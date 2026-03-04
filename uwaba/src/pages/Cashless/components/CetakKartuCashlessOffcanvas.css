@@ -1,0 +1,88 @@
+/* Cetak Kartu Cashless - offcanvas bawah, print hanya kartu */
+@media print {
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+
+  body.print-offcanvas-open > #root {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.print-offcanvas-open > div:not([class*="print-offcanvas-wrapper"]):not([class*="fixed"][class*="bottom-0"]) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body > div[class*="fixed"][class*="inset-0"],
+  body > div[class*="bg-black"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .print-offcanvas-wrapper {
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .print-offcanvas-wrapper .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .print-offcanvas-wrapper > div.flex-1,
+  .print-offcanvas-wrapper > div[class*="flex-1"],
+  .print-card-cashless-container {
+    display: flex !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+  .print-card-cashless,
+  .print-card-cashless * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .print-card-cashless {
+    display: block !important;
+    position: relative !important;
+    width: 85.6mm !important;
+    height: 53.98mm !important;
+    min-height: 53.98mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+
+  .print-card-cashless-container > *:not(.print-card-cashless) {
+    display: none !important;
+  }
+}

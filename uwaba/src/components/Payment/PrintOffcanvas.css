@@ -1,0 +1,144 @@
+/* CSS untuk menyembunyikan elemen offcanvas saat print */
+/* Hanya berlaku ketika print dari dalam offcanvas */
+@media print {
+  /* Sembunyikan backdrop offcanvas dan elemen dengan class no-print */
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+
+  /* Hanya sembunyikan #root jika body memiliki class print-offcanvas-open */
+  /* Ini menandakan bahwa print dilakukan dari dalam offcanvas */
+  body.print-offcanvas-open > #root {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Sembunyikan elemen lain di body yang bukan offcanvas (hanya jika ada class print-offcanvas-open) */
+  body.print-offcanvas-open > div:not([class*="print-offcanvas-wrapper"]):not([class*="fixed"][class*="bottom-0"]) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Sembunyikan backdrop offcanvas */
+  body > div[class*="fixed"][class*="inset-0"][class*="bg-black"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Reset offcanvas wrapper untuk print - hanya jika ada */
+  .print-offcanvas-wrapper,
+  body > div[class*="fixed"][class*="bottom-0"][class*="bg-white"] {
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    transform: none !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* Sembunyikan header dan URL input section (elemen dengan class no-print) */
+  .print-offcanvas-wrapper .no-print,
+  body > div[class*="fixed"][class*="bottom-0"] > div:first-child,
+  body > div[class*="fixed"][class*="bottom-0"] > div:nth-child(2) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Pastikan hanya konten print yang terlihat (div dengan flex-1 overflow-auto) */
+  .print-offcanvas-wrapper > div.flex-1,
+  .print-offcanvas-wrapper > div[class*="flex-1"],
+  body > div[class*="fixed"][class*="bottom-0"] > div.flex-1,
+  body > div[class*="fixed"][class*="bottom-0"] > div[class*="flex-1"] {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+  }
+
+  /* Pastikan semua konten di dalam flex-1 terlihat */
+  .print-offcanvas-wrapper > div.flex-1 > *,
+  .print-offcanvas-wrapper > div[class*="flex-1"] > *,
+  .print-offcanvas-wrapper > div.flex-1 > div > *,
+  .print-offcanvas-wrapper > div[class*="flex-1"] > div > *,
+  body > div[class*="fixed"][class*="bottom-0"] > div.flex-1 > *,
+  body > div[class*="fixed"][class*="bottom-0"] > div[class*="flex-1"] > *,
+  body > div[class*="fixed"][class*="bottom-0"] > div.flex-1 > div > *,
+  body > div[class*="fixed"][class*="bottom-0"] > div[class*="flex-1"] > div > * {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Pastikan print page terlihat */
+  .print-page,
+  .print-uwaba,
+  .print-kwitansi {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Pastikan container print terlihat */
+  .print-offcanvas-wrapper .print-container,
+  .print-offcanvas-wrapper #printArea,
+  .print-container,
+  #printArea {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Pastikan semua konten di dalam print container terlihat */
+  .print-container *,
+  #printArea *,
+  .print-page *,
+  .print-uwaba *,
+  .print-kwitansi * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Pastikan konten di dalam div flex-1 juga terlihat */
+  .print-offcanvas-wrapper > div.flex-1 > div > *,
+  .print-offcanvas-wrapper > div[class*="flex-1"] > div > *,
+  body > div[class*="fixed"][class*="bottom-0"] > div.flex-1 > div > *,
+  body > div[class*="fixed"][class*="bottom-0"] > div[class*="flex-1"] > div > * {
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: block !important;
+  }
+}

@@ -1,0 +1,53 @@
+import { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { pengeluaranAPI } from '../../../../services/api'
+import { useNotification } from '../../../../contexts/NotificationContext'
+import { canApprove as canApproveUtil, canEdit as canEditUtil } from '../utils/pengeluaranUtils'
+import { useAuthStore } from '../../../../store/authStore'
+
+/**
+ * Custom hook untuk mengelola actions rencana (approve, reject, edit)
+ * @param {Function} loadAllRencana - Function untuk reload list rencana
+ * @param {Function} onCloseOffcanvas - Callback untuk menutup offcanvas setelah action
+ * @returns {Object} State dan handlers untuk rencana actions
+ */
+export const useRencanaActions = (loadAllRencana, onCloseOffcanvas) => {
+  const { user } = useAuthStore()
+  const { showNotification } = useNotification()
+  const navigate = useNavigate()
+  const [loading, setLoading] = useState(false)
+
+  const canApprove = useCallback((rencana) => {
+    return canApproveUtil(rencana, user)
+  }, [user])
+
+  const canEdit = useCallback((rencana) => {
+    return canEditUtil(rencana)
+  }, [])
+
+  const handleEdit = useCallback((id) => {
+    navigate(`/pengeluaran/edit/${id}`)
+  }, [navigate])
+
+  const handleApprove = useCallback((id, onOpenModal) => {
+    if (onOpenModal) {
+      onOpenModal('approve', id)
+    }
+  }, [])
+
+  const handleReject = useCallback((id, onOpenModal) => {
+    if (onOpenModal) {
+      onOpenModal('reject', id)
+    }
+  }, [])
+
+  return {
+    loading,
+    canApprove,
+    canEdit,
+    handleEdit,
+    handleApprove,
+    handleReject
+  }
+}
+

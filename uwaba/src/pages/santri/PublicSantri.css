@@ -1,0 +1,522 @@
+/* Public Santri Page Styles - Mirip dengan UWABA */
+.public-santri-page {
+  position: relative;
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  background: linear-gradient(to bottom right, #f0fdfa 0%, #ffffff 50%, #ccfbf1 100%);
+  transition: background 0.3s ease;
+}
+
+.dark .public-santri-page {
+  background: linear-gradient(to bottom right, #134e4a 0%, #1f2937 50%, #0f766e 100%);
+  color: #e2e8f0;
+}
+
+/* Background Decoration - Mirip dengan Layout UWABA */
+.public-bg-decoration {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.dark .bg-pattern {
+  opacity: 0.1;
+}
+
+.bg-circle {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+}
+
+.bg-circle-1 {
+  top: 0;
+  right: 0;
+  width: 384px;
+  height: 384px;
+  background: rgba(16, 185, 129, 0.2);
+  transform: translate(50%, -50%);
+}
+
+.dark .bg-circle-1 {
+  background: rgba(13, 148, 136, 0.2);
+}
+
+.bg-circle-2 {
+  bottom: 0;
+  left: 0;
+  width: 320px;
+  height: 320px;
+  background: rgba(45, 212, 191, 0.2);
+  transform: translate(-50%, 50%);
+}
+
+.dark .bg-circle-2 {
+  background: rgba(15, 118, 110, 0.2);
+}
+
+.bg-circle-3 {
+  top: 50%;
+  left: 50%;
+  width: 256px;
+  height: 256px;
+  background: rgba(20, 184, 166, 0.1);
+  transform: translate(-50%, -50%);
+}
+
+.dark .bg-circle-3 {
+  background: rgba(17, 94, 89, 0.1);
+}
+
+.bg-line {
+  position: absolute;
+  background: linear-gradient(to bottom, rgba(45, 212, 191, 0.5), transparent);
+}
+
+.dark .bg-line {
+  background: linear-gradient(to bottom, rgba(13, 148, 136, 0.5), transparent);
+}
+
+.bg-line-1 {
+  top: 80px;
+  right: 40px;
+  width: 1px;
+  height: 128px;
+}
+
+.bg-line-2 {
+  bottom: 80px;
+  left: 40px;
+  width: 128px;
+  height: 1px;
+  background: linear-gradient(to right, rgba(45, 212, 191, 0.5), transparent);
+}
+
+.dark .bg-line-2 {
+  background: linear-gradient(to right, rgba(13, 148, 136, 0.5), transparent);
+}
+
+.bg-ring {
+  position: absolute;
+  border: 2px solid;
+  border-radius: 50%;
+  opacity: 0.3;
+}
+
+.bg-ring-1 {
+  top: 33.33%;
+  right: 25%;
+  width: 96px;
+  height: 96px;
+  border-color: rgba(45, 212, 191, 0.3);
+}
+
+.dark .bg-ring-1 {
+  border-color: rgba(13, 148, 136, 0.3);
+}
+
+.bg-ring-2 {
+  bottom: 25%;
+  left: 33.33%;
+  width: 64px;
+  height: 64px;
+  border-color: rgba(20, 184, 166, 0.3);
+}
+
+.dark .bg-ring-2 {
+  border-color: rgba(15, 118, 110, 0.3);
+}
+
+/* Scrollable Content Wrapper */
+.public-content-wrapper {
+  position: relative;
+  z-index: 10;
+  height: calc(100vh - 80px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  padding-bottom: 80px; /* Space untuk bottom nav di mobile */
+  -webkit-overflow-scrolling: touch;
+  max-width: 1200px;
+  margin: 0 auto;
+  margin-top: 80px;
+}
+
+/* Desktop: tambah padding bottom untuk floating nav */
+@media (min-width: 640px) {
+  .public-content-wrapper {
+    padding-bottom: 100px; /* Space untuk floating nav di desktop */
+  }
+  
+  /* Pastikan bottom nav di tengah layar di desktop */
+  .public-bottom-nav {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    max-width: 28rem; /* max-w-md */
+    width: auto;
+  }
+}
+
+/* Header - Mirip dengan UWABA, Full Width */
+.public-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #0d9488 0%, #14b8a6 100%);
+  color: white;
+  border-bottom: 2px solid #0f766e;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dark .public-header {
+  background: linear-gradient(135deg, #115e59 0%, #0d9488 100%);
+  border-bottom-color: #134e4a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.header-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.header-content h1 {
+  margin: 0 0 4px 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.header-content .subtitle {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.dark-mode-toggle {
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.dark-mode-toggle:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+/* Loading & Error */
+.loading-container,
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  text-align: center;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #e2e8f0;
+  border-top-color: #14b8a6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-container h1 {
+  color: #ef4444;
+  margin-bottom: 10px;
+}
+
+.dark .error-container h1 {
+  color: #f87171;
+}
+
+/* Biodata Section */
+.biodata-section,
+.ijin-section {
+  padding: 20px 0;
+  margin-bottom: 20px;
+}
+
+.biodata-section h2,
+.ijin-section h2 {
+  margin: 0 0 20px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  border-bottom: 3px solid #14b8a6;
+  padding-bottom: 10px;
+}
+
+.dark .biodata-section h2,
+.dark .ijin-section h2 {
+  color: #e2e8f0;
+  border-bottom-color: #0d9488;
+}
+
+/* Biodata Card - Minimalis */
+.biodata-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  transition: box-shadow 0.2s ease;
+}
+
+.dark .biodata-card {
+  background: #1f2937;
+  border-color: #374151;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.biodata-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.dark .biodata-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.biodata-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #14b8a6;
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.dark .biodata-card-title {
+  color: #0d9488;
+  border-bottom-color: #374151;
+}
+
+.biodata-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.biodata-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.biodata-field .field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #14b8a6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dark .biodata-field .field-label {
+  color: #0d9488;
+}
+
+.biodata-field .field-value {
+  font-size: 15px;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+.dark .biodata-field .field-value {
+  color: #e2e8f0;
+}
+
+/* Ijin Section */
+.no-data {
+  text-align: center;
+  padding: 40px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.dark .no-data {
+  color: #64748b;
+}
+
+.ijin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ijin-item {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  border-left: 4px solid #14b8a6;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dark .ijin-item {
+  background: #1f2937;
+  border-left-color: #0d9488;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.ijin-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.2);
+}
+
+.ijin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dark .ijin-header {
+  border-bottom-color: #4b5563;
+}
+
+.ijin-tahun {
+  font-weight: 700;
+  font-size: 18px;
+  color: #14b8a6;
+}
+
+.dark .ijin-tahun {
+  color: #0d9488;
+}
+
+.ijin-urutan {
+  font-size: 12px;
+  color: #64748b;
+  background: #e2e8f0;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.dark .ijin-urutan {
+  color: #94a3b8;
+  background: #4b5563;
+}
+
+.ijin-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ijin-detail-item {
+  display: flex;
+  gap: 10px;
+}
+
+.ijin-detail-item label {
+  font-weight: 600;
+  color: #475569;
+  min-width: 80px;
+}
+
+.dark .ijin-detail-item label {
+  color: #94a3b8;
+}
+
+.ijin-detail-item span {
+  color: #1e293b;
+  flex: 1;
+}
+
+.dark .ijin-detail-item span {
+  color: #e2e8f0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .public-content-wrapper {
+    padding: 15px;
+    padding-bottom: 80px; /* Space untuk bottom nav di mobile */
+    margin-top: 80px;
+    height: calc(100vh - 80px);
+  }
+  
+  @media (min-width: 640px) {
+    .public-content-wrapper {
+      padding-bottom: 20px; /* Tidak perlu space di tablet */
+    }
+  }
+
+  .public-header {
+    padding: 10px 15px;
+  }
+
+  .header-content h1 {
+    font-size: 18px;
+  }
+
+  .header-content .subtitle {
+    font-size: 11px;
+  }
+
+  .dark-mode-toggle {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  .biodata-section,
+  .ijin-section {
+    padding: 15px 0;
+  }
+
+  .biodata-card {
+    padding: 16px;
+  }
+
+  .biodata-card-title {
+    font-size: 16px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+  }
+
+  .biodata-card-content {
+    gap: 10px;
+  }
+
+  .biodata-field .field-value {
+    font-size: 14px;
+  }
+}

@@ -1,0 +1,165 @@
+/* Print Surat Boyong */
+.print-boyong-page {
+  width: 100%;
+  min-height: 100vh;
+  background: white;
+  padding: 8px 20px 20px 20px;
+}
+
+.print-boyong-container {
+  max-width: 210mm;
+  margin: 0 auto;
+  background: white;
+}
+
+.surat-boyong {
+  background: white;
+  padding: 5mm 20mm 20mm 20mm;
+  font-family: 'Times New Roman', serif;
+  font-size: 12pt;
+  line-height: 1.8;
+  color: #000;
+}
+
+/* Kop surat (gambar/kop/surat.png) */
+.surat-boyong-kop {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.surat-boyong-kop-img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.surat-boyong-nomor {
+  margin-bottom: 16px;
+  font-size: 12pt;
+  line-height: 1.2;
+}
+
+.surat-boyong-nomor p {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.surat-boyong-isi {
+  margin-bottom: 32px;
+}
+
+.surat-boyong-paragraf {
+  text-align: justify;
+  margin-bottom: 14px;
+  text-indent: 30px;
+}
+
+.surat-boyong-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  line-height: 1.3;
+}
+
+.surat-boyong-table .label {
+  width: 180px;
+  vertical-align: top;
+  padding: 1px 8px 1px 0;
+}
+
+.surat-boyong-table .sep {
+  width: 20px;
+  padding: 1px 4px 1px 0;
+  vertical-align: top;
+}
+
+.surat-boyong-table .value {
+  vertical-align: top;
+  padding: 1px 0;
+}
+
+.surat-boyong-ttd {
+  margin-top: 48px;
+  text-align: right;
+}
+
+.surat-boyong-tanggal {
+  margin: 0 0 6px 0;
+  font-size: 12pt;
+  line-height: 1.3;
+}
+
+.surat-boyong-jabatan {
+  margin: 0;
+  font-size: 12pt;
+  line-height: 1.3;
+}
+
+/* Container TTD + stempel: ukuran tetap, stempel tumpang tindih di atas TTD */
+.surat-boyong-ttd-images {
+  position: relative;
+  width: 260px;
+  height: 150px;
+  margin: 12px 0 2px 0;
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.surat-boyong-ttd-img {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 200px;
+  height: 85px;
+  object-fit: contain;
+  object-position: right bottom;
+  z-index: 1;
+  mix-blend-mode: multiply;
+}
+
+.surat-boyong-stempel {
+  position: absolute;
+  right: 110px;
+  bottom: 0;
+  width: 135px;
+  height: 135px;
+  object-fit: contain;
+  z-index: 2;
+}
+
+.surat-boyong-ttd-nama {
+  font-weight: bold;
+  text-decoration: underline;
+  font-size: 12pt;
+  margin: 2px 0 0 0;
+}
+
+@media print {
+  .print-boyong-page {
+    padding: 0;
+    background: white;
+  }
+
+  .print-boyong-container {
+    max-width: 100%;
+  }
+
+  .surat-boyong {
+    padding: 5mm 15mm 15mm 15mm;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 8mm 15mm 15mm 15mm;
+  }
+}
+
+.print-boyong-in-offcanvas {
+  padding: 10px;
+}
+
+.print-boyong-in-offcanvas .surat-boyong {
+  padding: 5mm 15mm 15mm 15mm;
+}

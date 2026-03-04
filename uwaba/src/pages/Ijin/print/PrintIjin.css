@@ -1,0 +1,233 @@
+/* Print Ijin Styles */
+.print-ijin-page {
+  width: 100%;
+  min-height: 100vh;
+  background: white;
+  padding: 20px;
+}
+
+.print-ijin-container {
+  max-width: 210mm;
+  margin: 0 auto;
+  background: white;
+}
+
+.surat-ijin {
+  background: white;
+  padding: 20mm;
+  margin-bottom: 20px;
+  page-break-after: always;
+  font-family: 'Times New Roman', serif;
+  font-size: 12pt;
+  line-height: 1.8;
+  color: #000;
+}
+
+.surat-ijin:last-child {
+  page-break-after: auto;
+}
+
+/* Header dengan Logo */
+.surat-header {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  gap: 20px;
+}
+
+.header-left {
+  flex-shrink: 0;
+}
+
+.logo {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  display: block;
+}
+
+.header-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.judul-surat {
+  font-size: 18pt;
+  font-weight: bold;
+  margin: 0;
+  text-align: center;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.alamat-pesantren {
+  font-size: 12pt;
+  text-align: center;
+  margin: 0;
+  color: #333;
+  font-weight: 500;
+}
+
+/* Garis Pembatas */
+.garis-pembatas {
+  border-top: 2px solid #000;
+  margin: 15px 0;
+}
+
+/* Nomor Surat */
+.nomor-surat {
+  text-align: right;
+  margin-bottom: 20px;
+  font-size: 11pt;
+}
+
+.nomor-surat p {
+  margin: 0;
+}
+
+/* Isi Surat */
+.isi-surat {
+  margin-bottom: 40px;
+}
+
+.paragraf {
+  text-align: justify;
+  margin-bottom: 15px;
+  text-indent: 30px;
+}
+
+.data-santri {
+  margin: 20px 0;
+}
+
+.table-data {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 15px 0;
+}
+
+.table-data tbody tr {
+  border-bottom: none;
+}
+
+.table-data td {
+  padding: 5px 0;
+  vertical-align: top;
+}
+
+.table-data .label {
+  width: 120px;
+  font-weight: normal;
+}
+
+.table-data .separator {
+  width: 10px;
+  text-align: center;
+  padding: 0 5px;
+}
+
+.table-data .value {
+  font-weight: normal;
+}
+
+/* Tanda Tangan */
+.ttd-section {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 80px;
+  padding-top: 20px;
+}
+
+.ttd-left,
+.ttd-right {
+  width: 45%;
+  text-align: center;
+}
+
+.ttd-left p,
+.ttd-right p {
+  margin: 5px 0;
+  font-size: 12pt;
+}
+
+.ttd-space {
+  height: 80px;
+  margin: 15px 0;
+  border-bottom: 1px solid #000;
+}
+
+.ttd-name {
+  font-weight: bold;
+  margin-top: 5px;
+  text-decoration: underline;
+  font-size: 12pt;
+}
+
+/* Footer Note */
+.footer-note {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ddd;
+  font-size: 10pt;
+  color: #666;
+}
+
+/* Loading dan Error */
+.loading,
+.error {
+  text-align: center;
+  padding: 40px;
+  font-size: 14pt;
+}
+
+.error {
+  color: #dc2626;
+}
+
+/* Print Styles */
+@media print {
+  .print-ijin-page {
+    padding: 0;
+    background: white;
+    page-break-after: avoid;
+    page-break-before: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-ijin-container {
+    page-break-after: avoid;
+    page-break-before: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    break-before: avoid;
+    break-inside: avoid;
+  }
+
+  .surat-ijin {
+    padding: 15mm;
+    margin-bottom: 0;
+    page-break-after: always;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .surat-ijin:last-child {
+    page-break-after: auto;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+}
+
+/* Untuk offcanvas */
+.print-ijin-in-offcanvas {
+  padding: 10px;
+}
+
+.print-ijin-in-offcanvas .surat-ijin {
+  padding: 15mm;
+}

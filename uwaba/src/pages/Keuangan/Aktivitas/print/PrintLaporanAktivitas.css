@@ -1,0 +1,328 @@
+/* Print Laporan Aktivitas - satu hari per halaman */
+.print-laporan-aktivitas {
+  padding: 0;
+  font-size: 12px;
+  color: #111;
+}
+
+.print-laporan-aktivitas-header {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.print-laporan-aktivitas-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+
+.print-laporan-aktivitas-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--teal-600, #0d9488);
+}
+
+.print-laporan-aktivitas-empty {
+  padding: 24px;
+  text-align: center;
+  color: #666;
+}
+
+/* Satu hari = satu blok; saat print, setiap blok di halaman baru */
+.print-day-page {
+  position: relative;
+  margin-bottom: 24px;
+  page-break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-right: 2rem;
+}
+
+.print-day-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Nomor halaman: kanan atas, hanya angka */
+.print-day-pagenum {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 0.85em;
+  color: #6b7280;
+  line-height: 1;
+}
+
+@media print {
+  .print-laporan-aktivitas-header {
+    display: block !important;
+    visibility: visible !important;
+    overflow: visible !important;
+  }
+
+  .print-laporan-aktivitas-logo {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 56px !important;
+    height: 56px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-day-page {
+    margin-bottom: 0;
+    page-break-after: always;
+    min-height: 100vh;
+    box-sizing: border-box;
+    overflow: visible !important;
+  }
+
+  .print-day-page:last-child {
+    page-break-after: auto;
+  }
+
+  .print-day-pagenum {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    color: #000 !important;
+  }
+
+  .print-laporan-aktivitas {
+    font-size: 11px;
+  }
+
+  .print-day-header,
+  .print-day-items {
+    break-inside: avoid;
+  }
+
+  /* Paksa header + tabel ringkasan (Tanggal, Asal, Pemasukan, Pengeluaran, Sisa) tampil di print */
+  .print-day-header {
+    overflow: visible !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .print-day-title {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .print-day-summary-wrap {
+    display: block !important;
+    visibility: visible !important;
+    overflow: visible !important;
+  }
+
+  .print-day-summary {
+    display: table !important;
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-day-summary thead {
+    display: table-header-group !important;
+  }
+
+  .print-day-summary tbody {
+    display: table-row-group !important;
+  }
+
+  .print-day-summary tr {
+    display: table-row !important;
+  }
+
+  .print-day-summary th,
+  .print-day-summary td {
+    display: table-cell !important;
+    border: 1px solid #333 !important;
+  }
+}
+
+.print-day-header {
+  margin-bottom: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: visible;
+}
+
+.print-day-title {
+  font-weight: 700;
+  padding: 8px 10px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.print-day-hijriyah {
+  font-weight: 500;
+  color: #4b5563;
+  margin-left: 4px;
+}
+
+/* Pembungkus tabel ringkasan agar selalu tampil (di layar dan print) */
+.print-day-summary-wrap {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.print-day-summary {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  table-layout: fixed;
+}
+
+.print-day-summary thead {
+  display: table-header-group;
+}
+
+.print-day-summary tbody {
+  display: table-row-group;
+}
+
+.print-day-summary tr {
+  display: table-row;
+}
+
+.print-day-summary th,
+.print-day-summary td {
+  display: table-cell;
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+}
+
+.print-day-summary th {
+  background: #f3f4f6;
+  font-weight: 600;
+  color: #111;
+}
+
+.print-day-summary td {
+  font-weight: 500;
+  color: #111;
+}
+
+.print-day-summary .text-green {
+  color: #059669;
+}
+
+.print-day-summary .text-red {
+  color: #dc2626;
+}
+
+.print-day-items {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.print-day-items th,
+.print-day-items td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+}
+
+.print-day-items th {
+  background: #f3f4f6;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.print-day-items .text-right {
+  text-align: right;
+}
+
+.print-tipe-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.print-tipe-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.print-tipe-svg {
+  width: 1em;
+  height: 1em;
+}
+
+.print-tipe-pemasukan {
+  color: #059669;
+}
+
+.print-tipe-pengeluaran {
+  color: #dc2626;
+}
+
+.print-day-items .text-green {
+  color: #059669;
+}
+
+.print-day-items .text-red {
+  color: #dc2626;
+}
+
+.dark .print-day-hijriyah {
+  color: #9ca3af;
+}
+
+.dark .print-day-header,
+.dark .print-day-title,
+.dark .print-day-summary th,
+.dark .print-day-items th {
+  background: #374151;
+  border-color: #4b5563;
+  color: #f3f4f6;
+}
+
+.dark .print-day-summary {
+  background: #1f2937;
+  border-color: #4b5563;
+}
+
+.dark .print-day-summary td {
+  border-color: #4b5563;
+  color: #e5e7eb;
+}
+
+.dark .print-day-summary td,
+.dark .print-day-items td {
+  border-color: #4b5563;
+  color: #e5e7eb;
+}
+
+.dark .print-day-summary .text-green,
+.dark .print-day-items .text-green {
+  color: #34d399;
+}
+
+.dark .print-day-summary .text-red,
+.dark .print-day-items .text-red {
+  color: #f87171;
+}
+
+.dark .print-tipe-pemasukan {
+  color: #34d399;
+}
+
+.dark .print-tipe-pengeluaran {
+  color: #f87171;
+}

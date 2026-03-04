@@ -1,0 +1,26 @@
+# Environment & rahasia
+.env
+.env.*
+*.local
+
+# Dependencies
+/vendor/
+node_modules/
+
+# Log & cache
+*.log
+error.log
+storage/logs/
+cache/
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Key/credential
+*.json
+!composer.json
+!package.json
+!package-lock.json

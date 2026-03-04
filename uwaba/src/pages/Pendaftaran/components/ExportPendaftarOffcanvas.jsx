@@ -1,0 +1,185 @@
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import * as XLSX from 'xlsx'
+import {
+  EXPORT_COLUMNS,
+  getExportColumnsSelection,
+  setStoredExportColumns,
+  getDefaultExportColumns
+} from '../exportPendaftarConfig'
+import { useNotification } from '../../../contexts/NotificationContext'
+
+/**
+ * Hitung keterangan bayar: Lunas / Belum / Kurang Rp x
+ */
+function getKeteranganBayar(row) {
+  const wajib = row.wajib != null ? Number(row.wajib) : 0
+  const bayar = row.bayar != null ? Number(row.bayar) : 0
+  const kurang = row.kurang != null ? Number(row.kurang) : Math.max(0, wajib - bayar)
+  if (wajib <= 0) return '-'
+  if (bayar >= wajib) return 'Lunas'
+  if (bayar <= 0) return 'Belum'
+  return `Kurang Rp ${Math.round(kurang).toLocaleString('id-ID')}`
+}
+
+export default function ExportPendaftarOffcanvas({ isOpen, onClose, filteredData = [], isExportSelected = false, tahunAjaran, tahunAjaranMasehi }) {
+  const { showNotification } = useNotification()
+  const [selected, setSelected] = useState(() => getExportColumnsSelection())
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelected(getExportColumnsSelection())
+    }
+  }, [isOpen])
+
+  const handleToggle = (key) => {
+    const next = { ...selected, [key]: !selected[key] }
+    setSelected(next)
+    setStoredExportColumns(next)
+  }
+
+  const handleSelectAll = (checked) => {
+    const next = getDefaultExportColumns()
+    EXPORT_COLUMNS.forEach(({ key }) => { next[key] = checked })
+    setSelected(next)
+    setStoredExportColumns(next)
+  }
+
+  const handleExport = () => {
+    const activeColumns = EXPORT_COLUMNS.filter(({ key }) => selected[key])
+    if (activeColumns.length === 0) {
+      showNotification('Pilih minimal satu kolom untuk dieksport', 'warning')
+      return
+    }
+
+    const rows = filteredData.map((row, index) => {
+      const tahunAjaranStr = row.tahun_hijriyah && row.tahun_masehi
+        ? `${row.tahun_hijriyah} / ${row.tahun_masehi}`
+        : (row.tahun_hijriyah || row.tahun_masehi || '-')
+      const base = {
+        ...row,
+        no: index + 1,
+        tahun_ajaran: tahunAjaranStr,
+        total_wajib: row.wajib != null ? row.wajib : '-',
+        total_bayar: row.bayar != null ? row.bayar : '-',
+        keterangan_bayar: getKeteranganBayar(row)
+      }
+      const out = {}
+      activeColumns.forEach(({ key, label }) => {
+        const v = base[key]
+        out[label] = v === null || v === undefined || v === '' ? '-' : v
+      })
+      return out
+    })
+
+    try {
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Data Pendaftar')
+      const suffix = [tahunAjaran, tahunAjaranMasehi].filter(Boolean).join('_') || 'filter'
+      const filename = `Data_Pendaftar_${suffix}_${new Date().toISOString().split('T')[0]}.xlsx`
+      XLSX.writeFile(wb, filename)
+      showNotification(`Berhasil eksport ${rows.length} baris`, 'success')
+      onClose()
+    } catch (e) {
+      showNotification('Gagal eksport: ' + (e.message || 'Unknown error'), 'error')
+    }
+  }
+
+  const noneChecked = EXPORT_COLUMNS.every(({ key }) => !selected[key])
+
+  if (!isOpen) return null
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="export-pendaftar-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 z-[9998]"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <motion.div
+        key="export-pendaftar-panel"
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'tween', duration: 0.25 }}
+        className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white dark:bg-gray-800 shadow-xl z-[9999] flex flex-col"
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Eksport Data Pendaftar
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            aria-label="Tutup"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            {isExportSelected
+              ? <>Akan dieksport <strong>{filteredData.length} baris</strong> yang ditandai. Pilih kolom yang akan disertakan:</>
+              : <>Data yang dieksport mengikuti filter saat ini. Jumlah baris: <strong>{filteredData.length}</strong>. Pilih kolom yang akan disertakan:</>
+            }
+          </p>
+          <div className="flex gap-2 mb-4">
+            <button
+              type="button"
+              onClick={() => handleSelectAll(true)}
+              className="text-xs px-2 py-1 rounded bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-800/50"
+            >
+              Centang semua
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectAll(false)}
+              className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            >
+              Hapus centang
+            </button>
+          </div>
+          <ul className="space-y-2">
+            {EXPORT_COLUMNS.map(({ key, label }) => (
+              <li key={key} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id={`export-${key}`}
+                  checked={!!selected[key]}
+                  onChange={() => handleToggle(key)}
+                  className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                />
+                <label htmlFor={`export-${key}`} className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                  {label}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={filteredData.length === 0 || noneChecked}
+            className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Eksport ke Excel
+          </button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  )
+}

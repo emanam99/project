@@ -1,0 +1,7 @@
+# CORS hanya di-handle oleh PHP (CorsMiddleware). Jangan set CORS di sini agar tidak duplikat (browser menolak "multiple values").
+# Preflight OPTIONS harus sampai ke index.php agar CorsMiddleware return 200.
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+

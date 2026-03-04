@@ -1,0 +1,37 @@
+# Environment (isi rahasia; gunakan env.local / env.production sebagai template)
+.env
+.env.local
+.env.*.local
+
+# Google Service Account key (jangan commit)
+*-e8ecd1f5cf1b.json
+gen-lang-client-*.json
+
+# Composer
+/vendor/
+composer.lock
+
+# Error logs
+error.log
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test.php
+test-*.php
+debug.php
+
+# Documentation (optional, bisa di-upload juga)
+README.md
+UPLOAD-GUIDE.md
+

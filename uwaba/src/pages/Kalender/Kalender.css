@@ -1,0 +1,680 @@
+.kalender-page {
+  padding: 1rem;
+  max-width: 640px;
+  margin: 0 auto;
+  min-height: 100%;
+}
+
+.kalender-page__header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dark .kalender-page__header {
+  border-color: #374151;
+}
+
+.kalender-page__title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111;
+  margin: 0 0 0.5rem 0;
+}
+
+.kalender-page__subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.dark .kalender-page__title {
+  color: #f9fafb;
+}
+
+.kalender-page__today {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.kalender-page__today-label {
+  color: #6b7280;
+}
+
+.dark .kalender-page__today-label {
+  color: #9ca3af;
+}
+
+.kalender-page__today-masehi {
+  font-weight: 600;
+  color: #374151;
+}
+
+.dark .kalender-page__today-masehi {
+  color: #e5e7eb;
+}
+
+.kalender-page__today-hijri {
+  color: #0d9488;
+  font-weight: 600;
+}
+
+.kalender-page__tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+  background: #f3f4f6;
+}
+
+.dark .kalender-page__tabs {
+  background: #374151;
+}
+
+.kalender-page__tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.dark .kalender-page__tab {
+  color: #9ca3af;
+}
+
+.kalender-page__tab:hover {
+  color: #0d9488;
+}
+
+.dark .kalender-page__tab:hover {
+  color: #5eead4;
+}
+
+.kalender-page__tab--active {
+  background: #fff;
+  color: #0d9488;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.dark .kalender-page__tab--active {
+  background: #1f2937;
+  color: #5eead4;
+}
+
+.kalender-page__content {
+  min-height: 320px;
+  /* Scroll hanya di area ini; tab di atas tidak ikut scroll. Style scrollbar tipis & halus. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(13, 148, 136, 0.4) transparent;
+}
+
+.kalender-page__content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.kalender-page__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kalender-page__content::-webkit-scrollbar-thumb {
+  background: rgba(13, 148, 136, 0.35);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.kalender-page__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(13, 148, 136, 0.55);
+}
+
+.dark .kalender-page__content {
+  scrollbar-color: rgba(20, 184, 166, 0.45) transparent;
+}
+
+.dark .kalender-page__content::-webkit-scrollbar-thumb {
+  background: rgba(20, 184, 166, 0.4);
+}
+
+.dark .kalender-page__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(20, 184, 166, 0.6);
+}
+
+.kalender-page__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+  gap: 0.75rem;
+}
+
+.dark .kalender-page__loading {
+  color: #9ca3af;
+}
+
+/* Accordion pengaturan ukuran font kalender – ringkas */
+.kalender-pengaturan-accordion {
+  padding: 0.5rem 0.65rem;
+  background: rgba(13, 148, 136, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(13, 148, 136, 0.15);
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.dark .kalender-pengaturan-accordion {
+  background: rgba(20, 184, 166, 0.08);
+  border-color: rgba(20, 184, 166, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.kalender-pengaturan-accordion__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.kalender-pengaturan-accordion__label {
+  font-size: 0.7rem;
+  color: #374151;
+  font-weight: 500;
+  min-width: 5.5rem;
+}
+
+.dark .kalender-pengaturan-accordion__label {
+  color: #e5e7eb;
+}
+
+.kalender-pengaturan-accordion__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.kalender-pengaturan-accordion__size {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid rgba(13, 148, 136, 0.2);
+  border-radius: 0.375rem;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.dark .kalender-pengaturan-accordion__size {
+  border-color: rgba(20, 184, 166, 0.25);
+  background: rgba(31, 41, 55, 0.6);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.kalender-pengaturan-accordion__btn {
+  width: 1.65rem;
+  height: 1.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: #0d9488;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.kalender-pengaturan-accordion__btn:hover {
+  background: rgba(13, 148, 136, 0.12);
+  color: #0f766e;
+}
+
+.dark .kalender-pengaturan-accordion__btn {
+  color: #5eead4;
+}
+
+.dark .kalender-pengaturan-accordion__btn:hover {
+  background: rgba(20, 184, 166, 0.15);
+  color: #2dd4bf;
+}
+
+.kalender-pengaturan-accordion__input {
+  width: 2.75rem;
+  padding: 0.2rem 0.15rem;
+  font-size: 0.7rem;
+  text-align: center;
+  border: none;
+  border-left: 1px solid rgba(13, 148, 136, 0.15);
+  border-right: 1px solid rgba(13, 148, 136, 0.15);
+  background: transparent;
+  color: #111;
+  -moz-appearance: textfield;
+}
+
+.kalender-pengaturan-accordion__input::-webkit-outer-spin-button,
+.kalender-pengaturan-accordion__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.dark .kalender-pengaturan-accordion__input {
+  border-left-color: rgba(20, 184, 166, 0.2);
+  border-right-color: rgba(20, 184, 166, 0.2);
+  color: #f3f4f6;
+}
+
+/* Toggle baris grid (kotak tanggal, garis horizontal, vertikal) */
+.kalender-pengaturan-accordion__row--toggle {
+  margin-top: 0.1rem;
+}
+
+.kalender-pengaturan-accordion__row--toggle .kalender-pengaturan-accordion__label {
+  min-width: 0;
+}
+
+.kalender-pengaturan-accordion__switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 1.85rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.kalender-pengaturan-accordion__switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.kalender-pengaturan-accordion__switch-slider {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgba(13, 148, 136, 0.25);
+  border-radius: 9999px;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.kalender-pengaturan-accordion__switch-slider::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: calc(0.95rem - 2px);
+  height: calc(0.95rem - 2px);
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.kalender-pengaturan-accordion__switch input:checked + .kalender-pengaturan-accordion__switch-slider {
+  background: rgba(13, 148, 136, 0.5);
+}
+
+.kalender-pengaturan-accordion__switch input:checked + .kalender-pengaturan-accordion__switch-slider::after {
+  transform: translateX(0.9rem);
+}
+
+.dark .kalender-pengaturan-accordion__switch-slider::after {
+  background: #e5e7eb;
+}
+
+.dark .kalender-pengaturan-accordion__switch input:checked + .kalender-pengaturan-accordion__switch-slider {
+  background: rgba(20, 184, 166, 0.45);
+}
+
+.kalender-pengaturan-accordion__toggle-with-thickness {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.kalender-pengaturan-accordion__line-thickness {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.kalender-pengaturan-accordion__thickness-input {
+  width: 2.25rem;
+  padding: 0.15rem 0.1rem;
+  font-size: 0.65rem;
+  text-align: center;
+  border: 1px solid rgba(13, 148, 136, 0.25);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.8);
+  color: #111;
+  -moz-appearance: textfield;
+}
+
+.kalender-pengaturan-accordion__thickness-input::-webkit-outer-spin-button,
+.kalender-pengaturan-accordion__thickness-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.dark .kalender-pengaturan-accordion__thickness-input {
+  border-color: rgba(20, 184, 166, 0.3);
+  background: rgba(31, 41, 55, 0.6);
+  color: #f3f4f6;
+}
+
+.kalender-pengaturan-accordion__thickness-unit {
+  font-size: 0.6rem;
+  color: #6b7280;
+}
+
+.dark .kalender-pengaturan-accordion__thickness-unit {
+  color: #9ca3af;
+}
+
+/* Hari Penting list */
+.kalender-hari-penting {
+  padding: 0.5rem 0;
+}
+
+.kalender-hari-penting__refresh {
+  margin-bottom: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  border-radius: 0.5rem;
+  border: 1px solid #0d9488;
+  background: transparent;
+  color: #0d9488;
+  cursor: pointer;
+}
+
+.kalender-hari-penting__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.kalender-hari-penting__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}
+
+.dark .kalender-hari-penting__item {
+  background: #374151;
+  border-color: #4b5563;
+}
+
+.kalender-hari-penting__dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+
+.kalender-hari-penting__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.kalender-hari-penting__nama {
+  font-weight: 600;
+  color: #111;
+}
+
+.dark .kalender-hari-penting__nama {
+  color: #f3f4f6;
+}
+
+.kalender-hari-penting__keterangan {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.dark .kalender-hari-penting__keterangan {
+  color: #9ca3af;
+}
+
+.kalender-hari-penting--loading,
+.kalender-hari-penting--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: #6b7280;
+  gap: 0.75rem;
+}
+
+.dark .kalender-hari-penting--loading,
+.dark .kalender-hari-penting--empty {
+  color: #9ca3af;
+}
+
+/* Tombol halaman Pengaturan Kalender – selaras dengan style page kalender */
+.kalender-pengaturan-page {
+  padding: 1rem;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.kalender-pengaturan-page .kalender-page__tabs {
+  margin-bottom: 1.25rem;
+}
+
+/* Scroll area Pengaturan Kalender – scrollbar tipis dan halus */
+.kalender-pengaturan-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(13, 148, 136, 0.35) transparent;
+}
+
+.kalender-pengaturan-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.kalender-pengaturan-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kalender-pengaturan-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.kalender-pengaturan-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(13, 148, 136, 0.35);
+}
+
+.kalender-pengaturan-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(13, 148, 136, 0.55);
+}
+
+.dark .kalender-pengaturan-scroll {
+  scrollbar-color: rgba(20, 184, 166, 0.4) transparent;
+}
+
+.dark .kalender-pengaturan-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(20, 184, 166, 0.4);
+}
+
+.dark .kalender-pengaturan-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(20, 184, 166, 0.6);
+}
+
+/* Daftar bulan (tab Bulan): grid di PC agar kolom lurus */
+.kalender-pengaturan-list__header {
+  grid-template-columns: minmax(0, 12rem) 5rem minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  align-items: center;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dark .kalender-pengaturan-list__header {
+  background: rgb(55 65 81 / 0.5);
+  border-bottom-color: rgb(55 65 81);
+}
+
+.kalender-pengaturan-list__row {
+  display: block;
+}
+
+@media (min-width: 640px) {
+  .kalender-pengaturan-list__row {
+    display: grid;
+    grid-template-columns: minmax(0, 12rem) 5rem minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    align-items: center;
+  }
+
+  .kalender-pengaturan-list__cell--bulan {
+    min-width: 0;
+  }
+
+  .kalender-pengaturan-list__cell--hari {
+    justify-self: start;
+  }
+
+  .kalender-pengaturan-list__select {
+    min-width: 4rem;
+    width: 100%;
+    max-width: 5rem;
+  }
+
+  .kalender-pengaturan-list__cell--mulai,
+  .kalender-pengaturan-list__cell--akhir {
+    min-width: 0;
+  }
+
+  .kalender-pengaturan-list__input {
+    min-width: 0;
+  }
+}
+
+.kalender-pengaturan__btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.kalender-pengaturan__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kalender-pengaturan__btn--primary {
+  background: #0d9488;
+  color: #fff;
+  border-color: #0d9488;
+}
+
+.kalender-pengaturan__btn--primary:hover:not(:disabled) {
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.dark .kalender-pengaturan__btn--primary {
+  background: #0d9488;
+  color: #fff;
+}
+
+.dark .kalender-pengaturan__btn--primary:hover:not(:disabled) {
+  background: #14b8a6;
+}
+
+.kalender-pengaturan__btn--secondary {
+  background: transparent;
+  color: #0d9488;
+  border-color: #0d9488;
+}
+
+.kalender-pengaturan__btn--secondary:hover:not(:disabled) {
+  background: rgba(13, 148, 136, 0.1);
+}
+
+.dark .kalender-pengaturan__btn--secondary {
+  color: #5eead4;
+  border-color: #14b8a6;
+}
+
+.dark .kalender-pengaturan__btn--secondary:hover:not(:disabled) {
+  background: rgba(20, 184, 166, 0.15);
+}
+
+.kalender-pengaturan__input-wrap {
+  font-size: 0.875rem;
+}
+
+.kalender-pengaturan__input-wrap input[type="number"] {
+  margin-left: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  width: 5.5rem;
+}
+
+.dark .kalender-pengaturan__input-wrap input[type="number"] {
+  border-color: #4b5563;
+  background: #374151;
+  color: #f3f4f6;
+}
+
+.kalender-pengaturan__btn--danger {
+  background: transparent;
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.kalender-pengaturan__btn--danger:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.dark .kalender-pengaturan__btn--danger {
+  color: #f87171;
+  border-color: #b91c1c;
+}
+
+.dark .kalender-pengaturan__btn--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.15);
+}

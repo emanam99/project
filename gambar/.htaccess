@@ -1,0 +1,18 @@
+# CORS untuk /gambar/ — agar uwaba2.alutsmani.id, daftar.alutsmani.id, dll. bisa fetch icon/gambar dari alutsmani.id/gambar/
+# Letakkan file ini di folder yang dilayani sebagai https://alutsmani.id/gambar/ (biasanya public_html/gambar/)
+
+<IfModule mod_headers.c>
+    # Izinkan request dari alutsmani.id dan semua subdomain; echo Origin yang request
+    SetEnvIf Origin "^(https?://([a-z0-9.-]*\.)?alutsmani\.id)$" CORS_ORIGIN=$1
+    Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" env=CORS_ORIGIN
+    Header always set Access-Control-Allow-Methods "GET, HEAD, OPTIONS" env=CORS_ORIGIN
+    Header always set Access-Control-Allow-Credentials "true" env=CORS_ORIGIN
+    Header always set Access-Control-Max-Age "86400" env=CORS_ORIGIN
+</IfModule>
+
+# Preflight OPTIONS: kembalikan 204 dan header CORS
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^ - [L]
+</IfModule>

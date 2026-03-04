@@ -1,0 +1,3 @@
+# Public folder untuk static assets
+# Gambar dan file static lainnya akan diakses dari root directory via proxy
+

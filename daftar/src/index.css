@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  body {
+    font-family: 'Poppins', sans-serif;
+    margin: 0;
+    padding: 0;
+    @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  
+  #root {
+    height: 100vh;
+    overflow: hidden;
+  }
+}
+
+@layer utilities {
+  /* Safe area untuk notched devices */
+  @supports (padding: max(0px)) {
+    .safe-area {
+      padding-left: max(1rem, env(safe-area-inset-left));
+      padding-right: max(1rem, env(safe-area-inset-right));
+      padding-top: max(1rem, env(safe-area-inset-top));
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    }
+  }
+  
+  /* Prevent zoom on input focus (mobile) */
+  input, select, textarea {
+    font-size: 16px;
+  }
+  
+  /* Dark mode untuk select option */
+  select option {
+    background-color: white !important;
+    color: rgb(17 24 39) !important;
+  }
+  
+  .dark select option {
+    background-color: rgb(31 41 55) !important;
+    color: rgb(229 231 235) !important;
+  }
+  
+  /* Smooth scroll */
+  * {
+    scroll-behavior: smooth;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

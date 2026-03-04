@@ -1,0 +1,1190 @@
+/* Print Ijin Pulangan Styles - Modern & Minimalis */
+.print-ijin-pulangan-page {
+  width: 100%;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 20px;
+}
+
+/* Pastikan wrapper tidak memiliki page break untuk print multiple */
+body.print-multiple-active .print-ijin-pulangan-page {
+  page-break-after: avoid !important;
+  break-after: avoid !important;
+  page-break-before: avoid !important;
+  break-before: avoid !important;
+}
+
+.print-ijin-pulangan-container {
+  max-width: 210mm;
+  margin: 0 auto;
+  background: transparent;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.surat-ijin-pulangan {
+  padding: 0;
+  margin-bottom: 20px;
+  page-break-after: always;
+  font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 10pt;
+  line-height: 1.4;
+  color: #1a202c;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Override page-break untuk print multiple - akan di-handle oleh page-break-between-docs atau page-break-between-santri */
+body.print-multiple-active .surat-ijin-pulangan {
+  page-break-after: avoid !important;
+  break-after: avoid !important;
+  page-break-before: avoid !important;
+  break-before: avoid !important;
+}
+
+/* Pastikan saat print massal, tidak ada page break yang menyebabkan halaman kosong */
+@media print {
+  body.print-multiple-active .surat-ijin-pulangan {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Pastikan semua elemen di print-pulangan-item tidak memiliki page break */
+  body.print-multiple-active .print-pulangan-item .surat-ijin-pulangan {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Pastikan semua elemen di print-shohifah-item tidak memiliki page break */
+  body.print-multiple-active .print-shohifah-item .print-shohifah-page,
+  body.print-multiple-active .print-shohifah-item .print-shohifah-container {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+}
+
+.surat-ijin-pulangan::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--bg-image);
+  background-size: 100% 100%;
+  background-position: center center;
+  background-repeat: no-repeat;
+  transform: scaleX(-1);
+  z-index: 0;
+}
+
+
+/* Header dengan Logo - Modern */
+.surat-header {
+  display: flex;
+  align-items: flex-start;
+  padding: 8mm 20mm 5mm 20mm;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.header-left {
+  flex-shrink: 0;
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.logo {
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+  display: block;
+}
+
+.header-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #1e293b;
+}
+
+.judul-surat {
+  font-size: 16pt;
+  font-weight: 700;
+  margin: 0;
+  margin-top: 8px;
+  text-align: left;
+  margin-bottom: 4px;
+  letter-spacing: -0.5px;
+  line-height: 1.3;
+  color: #1e293b;
+}
+
+.sub-judul-surat {
+  font-size: 13pt;
+  font-weight: 600;
+  margin: 0;
+  text-align: left;
+  margin-bottom: 4px;
+  line-height: 1.3;
+  color: #334155;
+}
+
+.alamat-pesantren {
+  font-size: 9pt;
+  text-align: left;
+  margin: 0;
+  font-weight: 400;
+  line-height: 1.3;
+  color: #475569;
+}
+
+
+/* Nomor Surat - Modern (jika ada) */
+.nomor-surat {
+  text-align: right;
+  margin: 10mm 30mm 5mm 30mm;
+  font-size: 9pt;
+  color: #64748b;
+  position: relative;
+  z-index: 1;
+}
+
+.nomor-surat p {
+  margin: 0;
+}
+
+/* Isi Surat - Modern */
+.isi-surat {
+  margin: 0 30mm 25px 30mm;
+  position: relative;
+  z-index: 1;
+}
+
+.paragraf {
+  text-align: justify;
+  margin-bottom: 12px;
+  text-indent: 0;
+  line-height: 1.4;
+  color: #1e293b;
+}
+
+.paragraf-intro {
+  margin-right: 10mm;
+}
+
+.data-santri {
+  margin: 15px 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  padding: 15px;
+  border-left: 4px solid #22c55e;
+}
+
+.table-data {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.table-data tbody tr {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.table-data tbody tr:last-child {
+  border-bottom: none;
+}
+
+.table-data td {
+  padding: 6px 0;
+  vertical-align: top;
+}
+
+.table-data .label {
+  width: 120px;
+  font-weight: 600;
+  color: #475569;
+  font-size: 9pt;
+}
+
+.table-data .separator {
+  width: 10px;
+  text-align: center;
+  padding: 0 8px;
+  color: #94a3b8;
+}
+
+.table-data .value {
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 9pt;
+}
+
+/* Tanggal Libur Section - Modern */
+.tanggal-libur-section {
+  margin: 15px 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  padding: 15px;
+  border: 2px solid;
+  border-image: linear-gradient(135deg, #22c55e 0%, #16a34a 50%, #15803d 100%) 1;
+}
+
+.tanggal-libur-section .table-data {
+  background: transparent;
+}
+
+.tanggal-libur-section .table-data .label {
+  color: #22c55e;
+  font-weight: 700;
+}
+
+.tanggal-libur-section .table-data .value {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+/* Tanda Tangan - Modern */
+.ttd-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin: 20px 30mm 0 30mm;
+  padding: 20px 0;
+  position: relative;
+  z-index: 1;
+}
+
+.ttd-left,
+.ttd-right {
+  width: 45%;
+  text-align: center;
+}
+
+.qr-code-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.qr-code-link {
+  display: inline-block;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  margin-bottom: 5px;
+}
+
+.qr-code-link:hover {
+  transform: scale(1.05);
+}
+
+.qr-code-image {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  display: block;
+}
+
+.qr-code-id {
+  font-size: 8pt;
+  font-weight: 600;
+  color: #1e293b;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.ttd-left p,
+.ttd-right p {
+  margin: 3px 0;
+  font-size: 9pt;
+  color: #475569;
+  line-height: 1.3;
+}
+
+.ttd-space {
+  height: 0;
+  margin: 0;
+  border-bottom: none;
+}
+
+.ttd-image-container {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  position: relative;
+  z-index: 2;
+  margin-bottom: -15px;
+}
+
+.ttd-image {
+  max-width: 200px;
+  max-height: 80px;
+  object-fit: contain;
+  position: relative;
+  z-index: 2;
+  mix-blend-mode: multiply;
+}
+
+.ttd-name {
+  font-weight: 700;
+  margin-top: 0;
+  font-size: 10pt;
+  color: #1e293b;
+  letter-spacing: 0.3px;
+  line-height: 1.3;
+  position: relative;
+  z-index: 1;
+  padding-top: 5px;
+}
+
+/* Keterangan Section - Modern */
+.keterangan-section {
+  margin: 20px 30mm 0 30mm;
+  padding: 15px;
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.3) 0%, rgba(241, 245, 249, 0.3) 100%);
+  border-radius: 8px;
+  border-left: 3px solid rgba(34, 197, 94, 0.4);
+  position: relative;
+  z-index: 1;
+}
+
+/* Garis Penanda Bawah */
+.garis-penanda-bawah {
+  height: 2px;
+  background: #000;
+  width: 10mm;
+  margin: 30mm 30mm 10mm auto;
+  position: relative;
+  z-index: 1;
+}
+
+.keterangan-title {
+  font-size: 10pt;
+  font-weight: 700;
+  margin: 0 0 10px 0;
+  color: #1e293b;
+}
+
+.keterangan-list {
+  margin: 0;
+  padding-left: 25px;
+  text-align: justify;
+  font-size: 9pt;
+  line-height: 1.5;
+  color: #334155;
+  list-style: decimal;
+}
+
+.keterangan-list li {
+  margin-bottom: 8px;
+}
+
+.keterangan-list li:last-child {
+  margin-bottom: 0;
+}
+
+/* Catatan Section - Modern (removed, tidak digunakan lagi) */
+.catatan-section {
+  display: none;
+}
+
+/* Loading dan Error */
+.loading,
+.error {
+  text-align: center;
+  padding: 40px;
+  font-size: 14pt;
+}
+
+.error {
+  color: #dc2626;
+}
+
+/* Print Styles */
+@media print {
+  /* Sembunyikan semua elemen di body kecuali print-offcanvas-wrapper dan kontennya */
+  body > *:not(.print-offcanvas-wrapper):not(script):not(style) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Pastikan #root dan semua child-nya disembunyikan */
+  #root,
+  #root > * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Sembunyikan backdrop */
+  body > div[class*="fixed"][class*="inset-0"][class*="bg-black"],
+  body > div[class*="fixed"][class*="inset-0"][class*="bg-black/50"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Sembunyikan offcanvas kanan (DetailSantriOffcanvas) - semua elemen fixed di kanan kecuali print-offcanvas-wrapper */
+  body > div[class*="fixed"][class*="right-0"]:not(.print-offcanvas-wrapper),
+  body > div[class*="fixed"][class*="top-0"][class*="bottom-0"][class*="right-0"]:not(.print-offcanvas-wrapper),
+  body > div[class*="fixed"][class*="right-0"][class*="max-w-2xl"]:not(.print-offcanvas-wrapper),
+  body > div[class*="fixed"][class*="right-0"][class*="max-w-md"]:not(.print-offcanvas-wrapper),
+  body > div[style*="zIndex: 99999"]:not(.print-offcanvas-wrapper),
+  body > div[style*="z-index: 99999"]:not(.print-offcanvas-wrapper) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+
+  /* Sembunyikan semua motion.div yang fixed di kanan (dari framer-motion) */
+  body > div[class*="motion"]:not(.print-offcanvas-wrapper),
+  body > div[data-framer-name]:not(.print-offcanvas-wrapper) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Reset offcanvas wrapper untuk print - sembunyikan border, shadow, dll */
+  .print-offcanvas-wrapper {
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    transform: none !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    z-index: auto !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* Sembunyikan header dan kontrol offcanvas */
+  .print-offcanvas-wrapper .no-print,
+  .print-offcanvas-wrapper > div:first-child,
+  .print-offcanvas-wrapper > div:nth-child(2) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Pastikan hanya konten print yang terlihat - tanpa wrapper styling */
+  .print-offcanvas-wrapper > div.flex-1,
+  .print-offcanvas-wrapper > div[class*="flex-1"] {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Pastikan div wrapper di dalam flex-1 juga tidak ada styling */
+  .print-offcanvas-wrapper > div.flex-1 > div,
+  .print-offcanvas-wrapper > div[class*="flex-1"] > div {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    background: transparent !important;
+  }
+
+  /* Pastikan print page terlihat */
+  .print-ijin-pulangan-page {
+    padding: 0 !important;
+    background: white !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .print-ijin-pulangan-container {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    background: transparent !important;
+  }
+
+  .surat-ijin-pulangan {
+    margin-bottom: 0 !important;
+    page-break-inside: avoid !important;
+    padding: 10mm 0 0 0 !important;
+  }
+  
+  /* Override page-break untuk print multiple - PASTIKAN TIDAK ADA PAGE BREAK */
+  body.print-multiple-active .surat-ijin-pulangan {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    position: relative !important;
+    overflow: visible !important;
+    max-height: 297mm !important;
+    height: auto !important;
+  }
+  
+  /* Pastikan semua elemen di dalam surat-ijin-pulangan tidak memiliki page break */
+  body.print-multiple-active .surat-ijin-pulangan > * {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+
+  /* Pastikan background image terlihat saat print */
+  .surat-ijin-pulangan::before {
+    content: '' !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background-image: var(--bg-image) !important;
+    background-size: 100% 100% !important;
+    background-position: center center !important;
+    background-repeat: no-repeat !important;
+    transform: scaleX(-1) !important;
+    z-index: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .surat-header {
+    padding: 8mm 20mm 5mm 20mm !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    z-index: 1 !important;
+    page-break-inside: avoid !important;
+  }
+
+  .header-left {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .logo {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 90px !important;
+    height: 90px !important;
+  }
+
+  .header-right {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #1e293b !important;
+  }
+
+  .judul-surat {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #1e293b !important;
+  }
+
+  .sub-judul-surat {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #334155 !important;
+  }
+
+  .alamat-pesantren {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #475569 !important;
+  }
+
+  .nomor-surat {
+    margin: 10mm 30mm 5mm 30mm !important;
+    font-size: 9pt !important;
+  }
+
+  .isi-surat {
+    margin: 0 30mm 15px 30mm !important;
+  }
+
+  .paragraf {
+    font-size: 10pt !important;
+    line-height: 1.3 !important;
+    margin-bottom: 8px !important;
+  }
+
+  .paragraf-intro {
+    margin-right: 10mm !important;
+  }
+
+  .table-data .label,
+  .table-data .value {
+    font-size: 9pt !important;
+    padding: 4px 0 !important;
+  }
+
+  .ttd-section {
+    margin: 15px 30mm 0 30mm !important;
+    padding: 15px 0 !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-end !important;
+  }
+
+  .ttd-left p,
+  .ttd-right p {
+    font-size: 9pt !important;
+    line-height: 1.3 !important;
+  }
+
+  .qr-code-container {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin-bottom: 10px !important;
+  }
+
+  .qr-code-link {
+    display: inline-block !important;
+    margin-bottom: 5px !important;
+  }
+
+  .qr-code-image {
+    width: 80px !important;
+    height: 80px !important;
+    object-fit: contain !important;
+    display: block !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .qr-code-id {
+    font-size: 8pt !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    text-align: center !important;
+    margin-top: 4px !important;
+  }
+
+  /* Keterangan section untuk print */
+  .keterangan-section {
+    margin: 10px 30mm 0 30mm !important;
+    padding: 12px !important;
+    background: linear-gradient(135deg, rgba(248, 250, 252, 0.3) 0%, rgba(241, 245, 249, 0.3) 100%) !important;
+    border-left: 3px solid rgba(34, 197, 94, 0.4) !important;
+    display: block !important;
+    visibility: visible !important;
+    page-break-inside: avoid !important;
+  }
+
+  .garis-penanda-bawah {
+    height: 2px !important;
+    background: #000 !important;
+    width: 10mm !important;
+    margin: 36mm 30mm 10mm auto !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    z-index: 1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .keterangan-title {
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+  }
+
+  .keterangan-list {
+    font-size: 9pt !important;
+    line-height: 1.5 !important;
+    list-style: decimal !important;
+    padding-left: 25px !important;
+  }
+
+  .keterangan-list li {
+    margin-bottom: 6px !important;
+  }
+
+  /* @page rule untuk Ijin Pulangan - Portrait */
+  /* Hanya berlaku saat body memiliki class print-ijin-pulangan-active */
+  @page {
+    size: A4 portrait;
+    margin: 0;
+    padding: 0;
+  }
+
+  .print-ijin-pulangan-container {
+    max-width: 210mm !important;
+    max-height: 297mm !important;
+    width: 210mm !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid !important;
+  }
+  
+  /* Pastikan container tidak memiliki page break untuk print multiple */
+  body.print-multiple-active .print-ijin-pulangan-container {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Pastikan semua elemen di dalam container tidak memiliki page break */
+  body.print-multiple-active .print-ijin-pulangan-container > * {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+
+  /* Pastikan background dan warna terlihat saat print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .data-santri {
+    background: #f8fafc !important;
+    border-left: 4px solid #22c55e !important;
+  }
+
+  .tanggal-libur-section {
+    background: #f8fafc !important;
+    border: 2px solid #22c55e !important;
+  }
+
+  .ttd-image-container {
+    background: transparent !important;
+    margin-bottom: -15px !important;
+  }
+
+  .ttd-image {
+    mix-blend-mode: multiply !important;
+    position: relative !important;
+    z-index: 2 !important;
+  }
+
+  .ttd-name {
+    position: relative !important;
+    z-index: 1 !important;
+    padding-top: 5px !important;
+  }
+
+  .ttd-space {
+    height: 0 !important;
+    border-bottom: none !important;
+  }
+
+  /* Pastikan semua konten surat terlihat */
+  .print-ijin-pulangan-page *,
+  .print-ijin-pulangan-container *,
+  .surat-ijin-pulangan * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Pastikan header dan logo terlihat dengan jelas */
+  .surat-ijin-pulangan .surat-header,
+  .surat-ijin-pulangan .header-left,
+  .surat-ijin-pulangan .header-right,
+  .surat-ijin-pulangan .logo,
+  .surat-ijin-pulangan .judul-surat,
+  .surat-ijin-pulangan .sub-judul-surat,
+  .surat-ijin-pulangan .alamat-pesantren {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    z-index: 10 !important;
+  }
+
+  .surat-ijin-pulangan .surat-header {
+    display: flex !important;
+  }
+
+  .surat-ijin-pulangan .header-right {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .surat-ijin-pulangan .logo {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Untuk offcanvas */
+.print-ijin-pulangan-in-offcanvas {
+  padding: 10px;
+}
+
+.print-ijin-pulangan-in-offcanvas .surat-ijin-pulangan {
+  padding: 15mm;
+}
+
+/* Print All Styles */
+/* Hide print all content on screen when not printing */
+.print-all-content {
+  display: none;
+}
+
+@media print {
+  /* Show print all content when printing */
+  body.print-all-active .print-all-content {
+    display: block !important;
+  }
+  
+  /* Hide regular tab content when printing all */
+  body.print-all-active .print-all-content ~ div {
+    display: none !important;
+  }
+  
+  /* First page (pulangan) - Portrait, tanpa page break di container (hanya di surat-ijin-pulangan) */
+  body.print-all-active .print-all-pulangan {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  
+  /* Hanya surat-ijin-pulangan yang memiliki page break setelahnya - menghindari double page break */
+  body.print-all-active .print-all-pulangan .surat-ijin-pulangan {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  
+  /* Second page (shohifah) - Landscape, page break sebelum untuk memastikan di halaman baru */
+  body.print-all-active .print-all-shohifah {
+    page-break-before: always;
+    break-before: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  
+  /* Pastikan shohifah tidak terpecah menjadi 2 halaman */
+  body.print-all-active .print-all-shohifah * {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* Pastikan tabel di shohifah tidak terpecah */
+  body.print-all-active .print-all-shohifah table {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* Pastikan container shohifah tidak terpecah */
+  body.print-all-active .print-all-shohifah .print-shohifah-container,
+  body.print-all-active .print-all-shohifah .shohifah-layout {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  
+  /* Pastikan tidak ada elemen lain di pulangan yang menyebabkan page break tambahan */
+  body.print-all-active .print-all-pulangan > *:not(.surat-ijin-pulangan) {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  
+  /* Override page-break-after default dari .surat-ijin-pulangan - hanya 1 page break */
+  body.print-all-active .print-all-pulangan .surat-ijin-pulangan {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  
+  /* Pastikan tidak ada page break tambahan setelah surat-ijin-pulangan */
+  body.print-all-active .print-all-pulangan .surat-ijin-pulangan ~ * {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Print Multiple Styles */
+  .print-multiple-content-wrapper {
+    display: none !important;
+  }
+  
+  body.print-multiple-active .print-multiple-content-wrapper {
+    display: block !important;
+  }
+  
+  .print-santri-item {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* Print Multiple - Struktur yang rapi dan konsisten */
+  /* HAPUS SEMUA PAGE BREAK DARI SEMUA ELEMEN, KECUALI YANG DITENTUKAN */
+  
+  /* Santri item - tidak ada page break */
+  body.print-multiple-active .print-santri-item {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* Semua child dari santri item - tidak ada page break */
+  body.print-multiple-active .print-santri-item > * {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Pulangan item - tidak ada page break, hanya portrait page */
+  body.print-multiple-active .print-pulangan-item {
+    page: portrait-page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Surat ijin pulangan - tidak ada page break */
+  body.print-multiple-active .print-pulangan-item .surat-ijin-pulangan {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Semua child dari pulangan item kecuali page-break-between-docs - tidak ada page break */
+  body.print-multiple-active .print-pulangan-item > *:not(.page-break-between-docs) {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Shohifah item - tidak ada page break, hanya landscape page */
+  body.print-multiple-active .print-shohifah-item {
+    page: landscape-page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Page break antara pulangan dan shohifah - HANYA INI YANG MEMILIKI PAGE BREAK */
+  body.print-multiple-active .page-break-between-docs {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+  
+  /* Page break antara santri - HANYA INI YANG MEMILIKI PAGE BREAK */
+  /* Pastikan tidak ada page break dari elemen sebelum atau sesudahnya */
+  body.print-multiple-active .page-break-between-santri {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    visibility: visible !important;
+  }
+  
+  /* Pastikan shohifah yang diikuti page-break-between-santri tidak memiliki page break */
+  /* Gunakan selector yang lebih spesifik untuk menghindari konflik */
+  body.print-multiple-active .print-santri-item .print-shohifah-item:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  
+  /* Pastikan page-break-between-santri hanya terjadi sekali */
+  body.print-multiple-active .print-santri-item:has(.page-break-between-santri) .print-shohifah-item {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  
+  /* Pastikan tidak ada page break dari elemen setelah shohifah kecuali page-break-between-santri */
+  body.print-multiple-active .print-shohifah-item ~ *:not(.page-break-between-santri) {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Pastikan semua wrapper dan container tidak memiliki page break */
+  body.print-multiple-active .print-ijin-pulangan-page,
+  body.print-multiple-active .print-shohifah-page,
+  body.print-multiple-active .print-ijin-pulangan-container,
+  body.print-multiple-active .print-shohifah-container {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  
+  /* Pastikan semua child dari wrapper tidak memiliki page break */
+  body.print-multiple-active .print-ijin-pulangan-page > *,
+  body.print-multiple-active .print-shohifah-page > *,
+  body.print-multiple-active .print-ijin-pulangan-container > *,
+  body.print-multiple-active .print-shohifah-container > * {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  
+  /* Pastikan shohifah layout tidak terpecah */
+  body.print-multiple-active .shohifah-layout {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Pastikan semua elemen di dalam print-pulangan-item dan print-shohifah-item tidak memiliki page break */
+  body.print-multiple-active .print-pulangan-item *,
+  body.print-multiple-active .print-shohifah-item * {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+  }
+  
+  /* Kecuali page-break-between-docs dan page-break-between-santri */
+  body.print-multiple-active .page-break-between-docs,
+  body.print-multiple-active .page-break-between-santri {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  
+  /* Named pages untuk orientasi konsisten */
+  @page portrait-page {
+    size: A4 portrait;
+    margin: 0;
+    padding: 0;
+  }
+  
+  @page landscape-page {
+    size: A4 landscape;
+    margin: 0;
+    padding: 0;
+  }
+  
+}
+
+/* Print All Styles */
+/* Show print all content when tab "Semua" is active */
+.print-all-content {
+  display: block;
+}
+
+@media print {
+  /* Show print all content when printing */
+  body.print-all-active .print-all-content {
+    display: block !important;
+  }
+  
+  /* First page (pulangan) - Portrait, tanpa page break di container (hanya di surat-ijin-pulangan) */
+  body.print-all-active .print-all-pulangan {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  
+  /* Hanya surat-ijin-pulangan yang memiliki page break setelahnya */
+  body.print-all-active .print-all-pulangan .surat-ijin-pulangan {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  
+  /* Second page (shohifah) - Landscape, page break sebelum untuk memastikan di halaman baru */
+  body.print-all-active .print-all-shohifah {
+    page-break-before: always;
+    break-before: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  
+  /* Pastikan shohifah tidak terpecah menjadi 2 halaman */
+  body.print-all-active .print-all-shohifah * {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  
+  /* Pastikan tabel di shohifah tidak terpecah */
+  body.print-all-active .print-all-shohifah table {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

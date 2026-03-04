@@ -1,0 +1,63 @@
+// ============================================================
+// GOOGLE APPS SCRIPT - Tempel ke script editor di Google Sheet
+// ============================================================
+// 1. Buka Google Sheet Anda
+// 2. Extensions > Apps Script
+// 3. Ganti kode default dengan kode di bawah
+// 4. Sheet: buat sheet "Users" dengan kolom A=id, B=password (atau sesuaikan)
+// 5. Deploy > New deployment > Web app
+//    - Execute as: Me | Who has access: Anyone
+// 6. Copy URL Web App ke .env: VITE_APPSCRIPT_URL=<url>
+// ============================================================
+
+function doPost(e) {
+  try {
+    const params = e.postData ? JSON.parse(e.postData.contents) : {};
+    const action = params.action || '';
+
+    if (action === 'login') {
+      return login(params);
+    }
+
+    return jsonResponse({ success: false, message: 'Action tidak dikenal' });
+  } catch (err) {
+    return jsonResponse({ success: false, message: String(err.message) });
+  }
+}
+
+function login(params) {
+  const id = (params.id || '').toString().trim();
+  const password = (params.password || '').toString();
+
+  if (!id || !password) {
+    return jsonResponse({ success: false, message: 'ID dan password wajib diisi' });
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Users');
+  if (!sheet) {
+    return jsonResponse({ success: false, message: 'Sheet "Users" tidak ditemukan' });
+  }
+
+  const data = sheet.getDataRange().getValues();
+  // Baris 0 = header (id, password, nama optional)
+  for (let i = 1; i < data.length; i++) {
+    const rowId = (data[i][0] || '').toString().trim();
+    const rowPass = (data[i][1] || '').toString();
+    if (rowId === id && rowPass === password) {
+      const name = data[i][2] != null ? String(data[i][2]) : id;
+      return jsonResponse({
+        success: true,
+        user: { id: rowId, name: name }
+      });
+    }
+  }
+
+  return jsonResponse({ success: false, message: 'ID atau password salah' });
+}
+
+function jsonResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}

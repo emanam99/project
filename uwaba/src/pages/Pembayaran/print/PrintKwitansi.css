@@ -1,0 +1,895 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+.print-kwitansi {
+  font-family: 'Inter', Arial, sans-serif;
+  font-size: 12px;
+  color: #22223b;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  position: relative;
+  height: 100vh;
+}
+
+/* Wrapper untuk konten yang bisa di-scroll horizontal */
+.print-container-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 140px;
+  padding-bottom: 20px;
+  /* Pastikan bisa scroll ke kiri penuh */
+  scroll-padding-left: 0;
+  scroll-padding-right: 0;
+}
+
+.print-container {
+  margin: 0 auto;
+  margin-bottom: 20px;
+  background: transparent;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px 0 rgba(34, 34, 59, 0.06);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.print-page.page-portrait .print-container {
+  width: 210mm;
+  min-width: 210mm;
+  padding: 8mm;
+}
+
+.print-page.page-landscape .print-container {
+  width: 297mm;
+  min-width: 297mm;
+  padding: 3mm;
+}
+
+/* --- Modern Controls (Ribbon Style) --- */
+.top-right-controls {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(to bottom, #f8f9fa, #e9ecef);
+  border-bottom: 1px solid #dee2e6;
+  padding: 8px 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.ribbon-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 36px;
+  position: relative;
+  gap: 0;
+  padding-right: 20px;
+}
+
+.ribbon-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.ribbon-section.right {
+  justify-content: flex-end;
+  padding-right: 0;
+}
+
+.ribbon-divider {
+  width: 1px;
+  height: 24px;
+  background-color: #ced4da;
+  flex-shrink: 0;
+  align-self: center;
+  z-index: 10;
+  pointer-events: none;
+  margin: 0 8px;
+}
+
+.top-right-controls .control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.top-right-controls .control-group:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.top-right-controls label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #495057;
+  white-space: nowrap;
+}
+
+.top-right-controls select {
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid #ced4da;
+  background-color: #ffffff;
+  font-size: 0.85em;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.top-right-controls select:hover {
+  border-color: #adb5bd;
+}
+
+.top-right-controls select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.top-right-controls button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85em;
+  transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.top-right-controls button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+.top-right-controls button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.top-right-controls .btn-print { 
+  background-color: #2563eb; 
+}
+
+.top-right-controls input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* Style untuk PrintKwitansi di dalam offcanvas */
+.print-kwitansi-in-offcanvas {
+  position: relative;
+}
+
+.print-kwitansi-in-offcanvas .print-container-wrapper {
+  padding-top: 140px; /* Tetap beri ruang untuk ribbon */
+}
+
+.print-kwitansi-in-offcanvas .print-container {
+  margin-top: 0;
+}
+
+.print-kwitansi-in-offcanvas .top-right-controls {
+  position: sticky;
+  top: 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #333;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.header-logo {
+  max-width: 70px;
+  height: auto;
+}
+
+.header-text {
+  text-align: right;
+}
+
+.header-text h1 {
+  margin: 0;
+  font-size: 1rem;
+  color: #319795;
+}
+
+.header-text p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.header-id {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #319795;
+  text-align: right;
+}
+
+.qr-code-container {
+  flex: 0 0 90px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.qr-code-link {
+  display: inline-block;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.qr-code-link:hover {
+  transform: scale(1.05);
+}
+
+.qr-code-image {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  border: 0px solid #eee;
+  background: #fff;
+  padding: 4px;
+}
+
+.biodata-table {
+  margin: 0 auto 12px auto;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.biodata-table td {
+  border: none;
+  padding: 1px 4px 1px 0;
+  vertical-align: top;
+}
+
+.biodata-label {
+  width: 95px;
+  font-weight: 600;
+}
+
+.section-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #319795;
+  margin: 18px 0 8px 0;
+  border-left: 3px solid #4fd1c5;
+  padding-left: 8px;
+}
+
+table.tabel-normal {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  table-layout: fixed;
+}
+
+table.tabel-normal th,
+table.tabel-normal td {
+  border: 1px solid #ddd;
+  padding: 6px;
+  text-align: left;
+  font-size: 1em;
+  vertical-align: top;
+}
+
+table.tabel-normal th {
+  background-color: #f2f2f2;
+  font-weight: 600;
+  color: #333;
+  text-align: center;
+}
+
+table.tabel-normal tbody tr:nth-child(even) td {
+  background: transparent;
+}
+
+/* Pastikan kolom Keterangan 1 di baris genap juga memiliki background yang sama */
+table.tabel-normal tbody tr:nth-child(even) td.keterangan-1-col,
+table.tabel-normal tbody tr:nth-of-type(even) td.keterangan-1-col {
+  background: transparent !important;
+}
+
+table.tabel-normal tbody tr:nth-child(odd) td {
+  background: transparent;
+}
+
+table.tabel-normal tbody tr:nth-child(odd) td.keterangan-1-col {
+  background: transparent !important;
+}
+
+.status {
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: white;
+  font-size: 0.8em;
+  display: inline-block;
+}
+
+.status.Lunas {
+  background: #c6f6d5;
+  color: #276749;
+  border: 1px solid #68d391;
+}
+
+.status.Kurang {
+  background: #fefcbf;
+  color: #b7791f;
+  border: 1px solid #faf089;
+}
+
+.status.BelumBayar {
+  background: #fed7d7;
+  color: #c53030;
+  border: 1px solid #feb2b2;
+}
+
+.total-row {
+  background-color: #e2e8f0;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.ttd-footer {
+  margin-top: 32px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 60px;
+  font-size: 12px;
+}
+
+.ttd-box {
+  text-align: center;
+}
+
+.ttd-label {
+  color: #4a5568;
+  margin-bottom: 24px;
+}
+
+.ttd-space {
+  height: 20px;
+}
+
+.ttd-nama {
+  font-weight: 600;
+  color: #22223b;
+  margin-top: 8px;
+}
+
+.loading {
+  text-align: center;
+  color: #319795;
+  font-size: 1.1em;
+  margin: 40px 0;
+}
+
+.error {
+  text-align: center;
+  color: #dc2626;
+  font-size: 1.1em;
+  margin: 40px 0;
+}
+
+.receipt-instance {
+  break-inside: avoid;
+  min-width: 0;
+  border: 1px solid #e5e7eb;
+  margin: 0;
+  padding: 0 30px 20px 30px;
+  box-sizing: border-box;
+  background: transparent;
+  page-break-inside: avoid;
+  overflow: visible;
+}
+
+.receipt-blue {
+  background: #e0f2fe !important;
+  padding: 0 30px 20px 30px;
+  border: none !important;
+}
+
+.receipt-green {
+  background: #d1fae5 !important;
+  padding: 0 30px 20px 30px;
+  border: none !important;
+}
+
+/* Garis horizontal biru langit di atas header */
+.top-border-line {
+  border-top: 1pt solid #87CEEB !important;
+  width: 100% !important;
+  margin-top: 0 !important;
+  margin-bottom: 12px !important;
+  margin-left: -30px;
+  margin-right: -30px;
+  padding-left: 30px;
+  padding-right: 30px;
+  display: block !important;
+  visibility: visible !important;
+}
+
+.receipt-instance .header,
+.receipt-instance .header-text,
+.receipt-instance .section-title,
+.receipt-instance .tabel-normal,
+.receipt-instance .tabel-normal th,
+.receipt-instance .biodata-table,
+.receipt-instance .biodata-table td,
+.receipt-instance .ttd-footer {
+  background: transparent !important;
+}
+
+/* Pastikan td di receipt-instance transparan, KECUALI baris genap */
+.receipt-instance .tabel-normal td {
+  background: transparent !important;
+}
+
+/* Pastikan semua kolom memiliki background transparan */
+.receipt-instance .tabel-normal tbody tr:nth-child(even) td,
+.receipt-instance table.tabel-normal tbody tr:nth-child(even) td,
+.receipt-instance .tabel-normal tr:nth-child(even) td {
+  background: transparent !important;
+}
+
+.receipt-instance .tabel-normal tbody tr:nth-child(even) td.keterangan-1-col,
+.receipt-instance table.tabel-normal tbody tr:nth-child(even) td.keterangan-1-col,
+.receipt-instance .tabel-normal tr:nth-child(even) td.keterangan-1-col,
+.receipt-instance .tabel-normal tbody tr:nth-of-type(even) td.keterangan-1-col,
+.receipt-instance table.tabel-normal tbody tr:nth-of-type(even) td.keterangan-1-col {
+  background: transparent !important;
+}
+
+.receipt-instance .tabel-normal tbody tr:nth-child(odd) td,
+.receipt-instance table.tabel-normal tbody tr:nth-child(odd) td,
+.receipt-instance .tabel-normal tr:nth-child(odd) td {
+  background: transparent !important;
+}
+
+.receipt-instance .tabel-normal tbody tr:nth-child(odd) td.keterangan-1-col,
+.receipt-instance table.tabel-normal tbody tr:nth-child(odd) td.keterangan-1-col,
+.receipt-instance .tabel-normal tr:nth-child(odd) td.keterangan-1-col {
+  background: transparent !important;
+}
+
+.qr-code-image {
+  background: #fff !important;
+}
+
+/* Tata letak untuk dua kolom: atas-bawah (sama seperti print UWABA) */
+#content.layout-two-columns {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5cm;
+}
+
+#content.layout-two-columns .receipt-instance {
+  width: 100%;
+  max-width: 100%;
+}
+
+#content.layout-two-columns .tabel-normal td,
+#content.layout-two-columns .tabel-normal th {
+  font-size: 0.85em;
+  padding: 4px;
+}
+
+.tabel-normal th:first-child,
+.tabel-normal td:first-child {
+  width: 35px;
+  text-align: center;
+}
+
+.keterangan-1-col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  font-size: 0.9em;
+  line-height: 1.3;
+  text-align: left !important;
+}
+
+th.via-col,
+td.via-col {
+  width: 38px;
+  min-width: 38px;
+  max-width: 38px;
+  text-align: center;
+  vertical-align: middle;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+/* Mobile responsive - tampilan rapi di HP untuk screen view */
+@media screen and (max-width: 768px) {
+  .print-kwitansi {
+    align-items: flex-start;
+    padding: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .print-container-wrapper {
+    padding-top: 140px;
+    padding-bottom: 20px;
+    padding-left: 12px;
+    padding-right: 12px;
+    overflow-x: visible;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    justify-content: center;
+  }
+
+  .print-container {
+    margin: 0 auto;
+    margin-bottom: 20px;
+    padding: 16px !important;
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: auto !important;
+    /* Hapus shadow untuk mobile */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .print-page.page-portrait .print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: auto !important;
+  }
+
+  .print-page.page-landscape .print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: auto !important;
+  }
+
+  /* Optimasi font dan spacing untuk mobile */
+  .header-text h1 {
+    font-size: 1.1rem;
+  }
+
+  .header-text p {
+    font-size: 0.9rem;
+  }
+
+  .section-title {
+    font-size: 1rem;
+    margin: 14px 0 6px 0;
+  }
+
+  table.tabel-normal {
+    font-size: 0.85em;
+  }
+
+  table.tabel-normal th,
+  table.tabel-normal td {
+    padding: 6px 4px;
+  }
+
+  .biodata-table {
+    font-size: 0.9em;
+  }
+
+  .qr-code-container {
+    flex: 0 0 70px;
+  }
+
+  .qr-code-image {
+    width: 60px;
+    height: 60px;
+  }
+
+  /* Receipt instance responsive - padding tetap sama dengan/tanpa warna */
+  .receipt-instance {
+    padding: 0 12px 12px 12px !important;
+    border: 1px solid #e5e7eb !important;
+  }
+
+  .receipt-blue,
+  .receipt-green {
+    padding: 0 12px 12px 12px !important;
+    border: none !important;
+  }
+
+  .top-border-line {
+    margin-left: -12px !important;
+    margin-right: -12px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Pastikan tabel tidak overflow di mobile */
+  .tabel-normal {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* TTD footer lebih compact di mobile */
+  .ttd-footer {
+    margin-top: 24px;
+    gap: 30px;
+    font-size: 0.9em;
+  }
+
+  /* Layout 2 kolom jadi vertikal di mobile */
+  #content.layout-two-columns {
+    flex-direction: column !important;
+  }
+
+  #content.layout-two-columns .receipt-instance {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+@media print {
+  /* Default portrait - akan di-override oleh JavaScript jika landscape */
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  /* Landscape orientation */
+  .print-page.page-landscape {
+    /* @page untuk landscape akan di-set oleh JavaScript */
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    width: auto;
+    min-height: auto;
+  }
+
+  .print-page {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: auto !important;
+    position: static !important;
+  }
+
+  .print-container-wrapper {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+  }
+
+  .print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    position: static !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    height: auto !important;
+    /* A4 width diatur melalui @page size, jadi container cukup 100% */
+  }
+
+  .print-page.page-portrait .print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .print-page.page-landscape .print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .print-page.page-landscape .print-container {
+    padding: 0 !important;
+  }
+
+  .header h1,
+  .header .info,
+  .section-title,
+  .status.Lunas,
+  .status.Kurang,
+  .status.BelumBayar,
+  .total-row td,
+  .ttd-label,
+  .ttd-nama {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Pastikan header tidak terpotong dan terlihat */
+  .receipt-instance {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 !important;
+    padding: 0 30px 20px 30px !important;
+    border: 1px solid #e5e7eb !important;
+  }
+
+  .receipt-blue,
+  .receipt-green {
+    border: none !important;
+  }
+
+  .receipt-instance:first-child {
+    page-break-before: avoid !important;
+    break-before: avoid !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  /* Pastikan header selalu terlihat saat print */
+  .header,
+  .receipt-instance .header,
+  #content .header,
+  .print-container .header,
+  .print-container .receipt-instance .header {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    width: 100% !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    margin-bottom: 15px !important;
+    padding-bottom: 10px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+  }
+
+  /* Pastikan header logo terlihat */
+  .header-logo,
+  .header .header-logo {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    max-width: 70px !important;
+    height: auto !important;
+  }
+
+  /* Pastikan header text terlihat */
+  .header-text,
+  .header-text h1,
+  .header-text p {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .header-id,
+  .header .header-id {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Pastikan semua tabel memiliki background transparan saat print */
+  .tabel-normal tbody tr:nth-child(even) td,
+  .receipt-instance .tabel-normal tbody tr:nth-child(even) td,
+  .receipt-instance table.tabel-normal tbody tr:nth-child(even) td,
+  table.tabel-normal tbody tr:nth-child(even) td {
+    background: transparent !important;
+  }
+
+  .tabel-normal tbody tr:nth-child(even) td.keterangan-1-col,
+  .receipt-instance .tabel-normal tbody tr:nth-child(even) td.keterangan-1-col,
+  .receipt-instance table.tabel-normal tbody tr:nth-child(even) td.keterangan-1-col,
+  table.tabel-normal tbody tr:nth-child(even) td.keterangan-1-col {
+    background: transparent !important;
+  }
+
+  .tabel-normal tbody tr:nth-child(odd) td,
+  .receipt-instance .tabel-normal tbody tr:nth-child(odd) td,
+  .receipt-instance table.tabel-normal tbody tr:nth-child(odd) td,
+  table.tabel-normal tbody tr:nth-child(odd) td {
+    background: transparent !important;
+  }
+
+  .tabel-normal tbody tr:nth-child(odd) td.keterangan-1-col,
+  .receipt-instance .tabel-normal tbody tr:nth-child(odd) td.keterangan-1-col,
+  .receipt-instance table.tabel-normal tbody tr:nth-child(odd) td.keterangan-1-col,
+  table.tabel-normal tbody tr:nth-child(odd) td.keterangan-1-col {
+    background: transparent !important;
+  }
+
+  /* Pastikan semua elemen di dalam print-container terlihat */
+  .print-container * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .print-container .header,
+  .print-container .receipt-instance,
+  .print-container .receipt-instance .header {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Pastikan padding pada kotak berwarna tetap sama saat print (padding sudah di .receipt-instance) */
+  .receipt-blue,
+  .receipt-green {
+    padding: 0 30px 20px 30px !important;
+  }
+
+  /* Pastikan garis border atas tepat di batas atas saat print */
+  .top-border-line {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    border-top: 1pt solid #87CEEB !important;
+    width: 100% !important;
+    margin-top: 0 !important;
+    margin-bottom: 12px !important;
+    margin-left: -30px !important;
+    margin-right: -30px !important;
+    padding-left: 30px !important;
+    padding-right: 30px !important;
+  }
+
+  /* Optimasi untuk layout dua kolom (atas-bawah) */
+  #content.layout-two-columns {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.05cm;
+  }
+
+  #content.layout-two-columns .receipt-instance {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #content.layout-two-columns .tabel-normal td,
+  #content.layout-two-columns .tabel-normal th {
+    font-size: 0.8em;
+    padding: 4px;
+  }
+}
+
