@@ -143,11 +143,24 @@ class RateLimitMiddleware implements MiddlewareInterface
             }
         }
 
-        // Rate limit export (get-all-pendaftar, registrasi-by-kondisi): 10 request per 5 menit per IP
-        $isExport = (strpos($path, '/api/pendaftaran/get-all-pendaftar') !== false)
-            || (strpos($path, '/api/pendaftaran/registrasi-by-kondisi') !== false);
+        // Rate limit get-all-pendaftar (load list Data Pendaftar): 60 request per 5 menit per IP — BUKAN export
+        $isGetAllPendaftar = (strpos($path, '/api/pendaftaran/get-all-pendaftar') !== false);
+        if ($isGetAllPendaftar && !$skipRateLimit) {
+            $lockout = $this->checkLockoutWithLimit($ip, '/api/pendaftaran/get-all-pendaftar', 60, 300);
+            if ($lockout !== null) {
+                $response = new Response();
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Terlalu banyak permintaan. Coba lagi dalam ' . ceil($lockout / 60) . ' menit.'
+                ], JSON_UNESCAPED_UNICODE));
+                return $this->withCorsHeaders($request, $response->withStatus(429)->withHeader('Content-Type', 'application/json; charset=utf-8'));
+            }
+        }
+
+        // Rate limit export (registrasi-by-kondisi): 30 request per 5 menit per IP
+        $isExport = (strpos($path, '/api/pendaftaran/registrasi-by-kondisi') !== false);
         if ($isExport && !$skipRateLimit) {
-            $lockout = $this->checkLockoutWithLimit($ip, '/api/pendaftaran/export', 10, 300);
+            $lockout = $this->checkLockoutWithLimit($ip, '/api/pendaftaran/export', 30, 300);
             if ($lockout !== null) {
                 $response = new Response();
                 $response->getBody()->write(json_encode([
@@ -194,9 +207,13 @@ class RateLimitMiddleware implements MiddlewareInterface
             }
         }
 
-        // Track export attempts (get-all-pendaftar, registrasi-by-kondisi) - kuota bersama
+        // Track get-all-pendaftar (load list)
+        if ($isGetAllPendaftar && !$skipRateLimit) {
+            $this->recordAttemptWithLimit($ip, '/api/pendaftaran/get-all-pendaftar', 60, 300);
+        }
+        // Track export attempts (registrasi-by-kondisi)
         if ($isExport && !$skipRateLimit) {
-            $this->recordAttemptWithLimit($ip, '/api/pendaftaran/export', 10, 300);
+            $this->recordAttemptWithLimit($ip, '/api/pendaftaran/export', 30, 300);
         }
 
         return $response;

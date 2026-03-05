@@ -4,6 +4,7 @@ namespace App\Middleware;
 
 use App\Auth\JwtAuth;
 use App\Database;
+use App\Helpers\ViewAsHelper;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -92,6 +93,15 @@ class AuthMiddleware implements MiddlewareInterface
         if (getenv('APP_ENV') !== 'production') {
             $uid = $payload['user_id'] ?? '?';
             error_log("AuthMiddleware: token valid user_id=" . $uid);
+        }
+
+        // Endpoint view-as harus melihat role asli (super_admin), bukan role efektif; jika tidak, saat "melihat sebagai" role lain akan dapat 403.
+        $path = $request->getUri()->getPath();
+        $isViewAsEndpoint = (strpos($path, 'auth/view-as') !== false);
+
+        if (!$isViewAsEndpoint) {
+            // Super admin "coba sebagai": ganti identitas dengan role/lembaga yang dipilih agar semua API konsisten
+            $payload = ViewAsHelper::mergePayloadWithViewAs($payload);
         }
 
         // Attach user data ke request untuk digunakan di controller

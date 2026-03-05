@@ -3,22 +3,17 @@ import { useAuthStore } from '../../store/authStore'
 import { useEffect, useState } from 'react'
 
 function SuperAdminRoute({ children }) {
-  const { isAuthenticated, user, checkAuth } = useAuthStore()
+  const { isAuthenticated, user, checkAuth, getEffectiveRole, isRealSuperAdmin } = useAuthStore()
   const [isChecking, setIsChecking] = useState(true)
   const location = useLocation()
+  const pathname = location.pathname || ''
 
   useEffect(() => {
-    // Check auth on mount
     checkAuth()
-    // Give a small delay to ensure checkAuth completes
-    const timer = setTimeout(() => {
-      setIsChecking(false)
-    }, 100)
-    
+    const timer = setTimeout(() => setIsChecking(false), 100)
     return () => clearTimeout(timer)
   }, [checkAuth])
 
-  // Show loading or nothing while checking
   if (isChecking) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -28,23 +23,22 @@ function SuperAdminRoute({ children }) {
   }
 
   if (!isAuthenticated) {
-    // Save current location to redirect back after login
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // Check if user has super_admin role
-  // Prioritize role_key from new role system, fallback to level for backward compatibility
-  const roleKey = (user?.role_key || user?.level || '').toLowerCase()
-  const isSuperAdmin = roleKey === 'super_admin'
-  
-  if (!user || !isSuperAdmin) {
-    // Don't redirect, just show nothing or error message
-    // The route won't be accessible anyway
+  const realSuperAdmin = isRealSuperAdmin?.() ?? (user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin')
+  const effectiveRole = getEffectiveRole?.() ?? (user?.role_key || user?.level || '').toLowerCase()
+
+  // Halaman Role & Akses selalu boleh diakses oleh super_admin asli (meski sedang "coba sebagai" role lain)
+  if (pathname === '/settings/role-akses' && realSuperAdmin) {
+    return children || <Outlet />
+  }
+
+  // Route super_admin lainnya: hanya boleh jika effectiveRole === super_admin (tidak sedang "coba sebagai" role lain)
+  if (!user || effectiveRole !== 'super_admin') {
     return <Navigate to="/" replace />
   }
 
-  // If children provided, render children (for direct component wrapping)
-  // Otherwise, render Outlet (for nested routes)
   return children || <Outlet />
 }
 

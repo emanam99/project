@@ -7,6 +7,7 @@ use App\Auth\JwtAuth;
 use App\Auth\PasswordHelper;
 use App\Helpers\LoginSuspiciousHelper;
 use App\Helpers\RoleHelper;
+use App\Helpers\ViewAsHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -269,6 +270,9 @@ class AuthController
                 }
             }
 
+            // Super admin "coba sebagai": ganti role/lembaga/permissions dengan yang efektif
+            $payload = ViewAsHelper::mergePayloadWithViewAs($payload);
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'data' => $payload
@@ -280,6 +284,50 @@ class AuthController
                 'success' => false,
                 'message' => 'Terjadi kesalahan saat verifikasi token'
             ], 500);
+        }
+    }
+
+    /**
+     * POST /api/auth/view-as — Set atau clear "coba sebagai" role (hanya super_admin).
+     * Body: { role_key?: string|null, lembaga_id?: number|null }
+     * Jika role_key kosong/null = clear. Setelah set/clear, frontend harus panggil verify lagi.
+     */
+    public function setViewAs(Request $request, Response $response): Response
+    {
+        try {
+            $payload = $request->getAttribute('user');
+            if (!$payload || !is_array($payload)) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+            $roleKey = strtolower(trim($payload['role_key'] ?? $payload['user_role'] ?? ''));
+            if ($roleKey !== 'super_admin') {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Hanya Super Admin yang dapat mengatur view as'], 403);
+            }
+            $pengurusId = (int) ($payload['user_id'] ?? $payload['id'] ?? 0);
+            if ($pengurusId <= 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'User tidak valid'], 403);
+            }
+            $data = $request->getParsedBody() ?? [];
+            $viewAsRole = isset($data['role_key']) ? trim((string) $data['role_key']) : null;
+            if ($viewAsRole === '') {
+                $viewAsRole = null;
+            }
+            $viewAsLembagaId = null;
+            if (isset($data['lembaga_id']) && $data['lembaga_id'] !== '' && $data['lembaga_id'] !== null) {
+                $viewAsLembagaId = (int) $data['lembaga_id'];
+            }
+            $ok = ViewAsHelper::setViewAs($pengurusId, $viewAsRole, $viewAsLembagaId);
+            if (!$ok && $viewAsRole !== null) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Role tidak valid'], 400);
+            }
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => $viewAsRole ? 'View as diset' : 'View as dikosongkan',
+                'data' => ['role_key' => $viewAsRole, 'lembaga_id' => $viewAsLembagaId]
+            ], 200);
+        } catch (\Exception $e) {
+            error_log("AuthController::setViewAs " . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
         }
     }
 

@@ -97,6 +97,7 @@ export default function SemuaMenu() {
     'Ijin',
     'Kalender',
     'Kalender Pesantren',
+    'Domisili',
     'Lembaga',
     'Setting',
     'Lainnya'

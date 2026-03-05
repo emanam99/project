@@ -19,53 +19,113 @@ const decodeJWT = (token) => {
   }
 }
 
-export const useAuthStore = create((set) => ({
+function normalizeUserFromPayload(payload) {
+  if (!payload) return null
+  return {
+    id: payload.user_id || payload.id,
+    nama: payload.user_name || payload.nama,
+    username: payload.username || null,
+    nip: payload.pengurus?.nip ?? null,
+    role_key: payload.role_key || payload.user_role || payload.level || 'user',
+    role_label: payload.role_label || payload.user_role || payload.level || 'user',
+    all_roles: payload.all_roles || [payload.role_key || payload.user_role || payload.level || 'user'],
+    allowed_apps: payload.allowed_apps || [],
+    permissions: payload.permissions || [],
+    lembaga_id: payload.lembaga_id ?? null,
+    level: (payload.role_key || payload.user_role || payload.level || 'user').toLowerCase(),
+    is_real_super_admin: payload.is_real_super_admin === true,
+    view_as_active: payload.view_as_active === true
+  }
+}
+
+export const useAuthStore = create((set, get) => ({
   token: null,
   user: null,
   isAuthenticated: false,
-  
+
   setAuth: (token, user) => {
     localStorage.setItem('auth_token', token)
-    // Normalize user data and store in localStorage as backup
     if (user) {
-      const normalizedUser = {
-        id: user.id,
-        nama: user.nama,
-        username: user.username || null,
-        nip: user.pengurus?.nip ?? null, // NIP dari tabel pengurus
-        // Role data baru
-        role_key: user.role_key || user.level || 'user',
-        role_label: user.role_label || user.level || 'user',
-        all_roles: user.all_roles || [user.role_key || user.level || 'user'], // Array semua role keys
-        allowed_apps: user.allowed_apps || [],
-        permissions: user.permissions || [],
-        lembaga_id: user.lembaga_id || null,
-        // Backward compatibility
-        level: (user.role_key || user.level || 'user').toLowerCase()
+      const normalizedUser = normalizeUserFromPayload({
+        ...user,
+        user_id: user.id,
+        user_name: user.nama,
+        user_role: user.role_key,
+        role_key: user.role_key,
+        role_label: user.role_label,
+        all_roles: user.all_roles,
+        allowed_apps: user.allowed_apps,
+        permissions: user.permissions,
+        lembaga_id: user.lembaga_id
+      })
+      if (!normalizedUser.is_real_super_admin) {
+        normalizedUser.is_real_super_admin = (user.role_key || user.level || '').toLowerCase() === 'super_admin'
       }
       localStorage.setItem('user_data', JSON.stringify(normalizedUser))
-      set({ 
-        token, 
-        user: normalizedUser, 
-        isAuthenticated: true 
-      })
+      set({ token, user: normalizedUser, isAuthenticated: true })
     } else {
-      set({ 
-        token, 
-        user: null, 
-        isAuthenticated: true 
-      })
+      set({ token, user: null, isAuthenticated: true })
     }
   },
-  
+
   logout: () => {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user_data')
-    set({ 
-      token: null, 
-      user: null, 
-      isAuthenticated: false 
-    })
+    set({ token: null, user: null, isAuthenticated: false })
+  },
+
+  /** Super admin: set "coba sebagai" role + lembaga di backend, lalu refresh user dari verify. */
+  setViewAsRole: async (roleKey, lembagaId = null) => {
+    try {
+      await authAPI.setViewAs(roleKey || null, lembagaId)
+      return get().refreshUserData()
+    } catch (err) {
+      console.error('setViewAsRole error:', err)
+      return false
+    }
+  },
+
+  /** Set hanya lembaga saat sudah dalam mode view-as (role tetap, lembaga diubah). */
+  setViewAsLembagaId: async (lembagaId) => {
+    const { user } = get()
+    const roleKey = user?.view_as_active ? user?.role_key : null
+    if (!roleKey) return false
+    try {
+      await authAPI.setViewAs(roleKey, lembagaId)
+      return get().refreshUserData()
+    } catch (err) {
+      console.error('setViewAsLembagaId error:', err)
+      return false
+    }
+  },
+
+  /** Super admin: clear "coba sebagai" di backend, lalu refresh user. */
+  clearViewAsRole: async () => {
+    try {
+      await authAPI.setViewAs(null)
+      return get().refreshUserData()
+    } catch (err) {
+      console.error('clearViewAsRole error:', err)
+      return false
+    }
+  },
+
+  /** Role efektif (dari backend; sudah termasuk "view as" jika aktif). */
+  getEffectiveRole: () => {
+    const { user } = get()
+    return (user?.role_key || user?.level || '').toLowerCase() || null
+  },
+
+  /** True jika user asli adalah super_admin (backend mengirim is_real_super_admin). */
+  isRealSuperAdmin: () => {
+    const { user } = get()
+    return user?.is_real_super_admin === true
+  },
+
+  /** Lembaga ID efektif (dari backend; sudah termasuk "view as" jika aktif). */
+  getEffectiveLembagaId: () => {
+    const { user } = get()
+    return user?.lembaga_id ?? null
   },
   
   checkAuth: async () => {
@@ -76,77 +136,35 @@ export const useAuthStore = create((set) => ({
       // Try to refresh user data from API verify (to get latest all_roles)
       try {
         const response = await authAPI.verify()
-        
         if (response.success && response.data) {
-          const payload = response.data
-          user = {
-            id: payload.user_id || payload.id,
-            nama: payload.user_name || payload.nama,
-            username: payload.username || null,
-            nip: payload.pengurus?.nip ?? null, // NIP dari tabel pengurus
-            // Role data baru dari API verify (terbaru dari database)
-            role_key: payload.role_key || payload.user_role || payload.level || 'user',
-            role_label: payload.role_label || payload.user_role || payload.level || 'user',
-            all_roles: payload.all_roles || [payload.role_key || payload.user_role || payload.level || 'user'], // Array semua role keys
-            allowed_apps: payload.allowed_apps || [],
-            permissions: payload.permissions || [],
-            lembaga_id: payload.lembaga_id || null,
-            // Backward compatibility
-            level: (payload.role_key || payload.user_role || payload.level || 'user').toLowerCase()
-          }
-          
-          // Update localStorage dengan data terbaru
-          localStorage.setItem('user_data', JSON.stringify(user))
+          user = normalizeUserFromPayload(response.data)
+          if (user) localStorage.setItem('user_data', JSON.stringify(user))
         }
       } catch (error) {
         console.error('Error verifying token, falling back to token decode:', error)
       }
-      
-      // Fallback: Try to get user from JWT token if API verify fails
+
       if (!user) {
         const decoded = decodeJWT(token)
         if (decoded) {
-          // JWT payload is stored in 'data' property
           const payload = decoded.data || decoded
-          user = {
-            id: payload.user_id || payload.id,
-            nama: payload.user_name || payload.nama,
-            username: payload.username || null,
-            nip: payload.pengurus?.nip ?? null, // NIP dari tabel pengurus
-            // Role data baru dari token
-            role_key: payload.role_key || payload.user_role || payload.level || 'user',
-            role_label: payload.role_label || payload.user_role || payload.level || 'user',
-            all_roles: payload.all_roles || [payload.role_key || payload.user_role || payload.level || 'user'], // Array semua role keys
-            allowed_apps: payload.allowed_apps || [],
-            permissions: payload.permissions || [],
-            lembaga_id: payload.lembaga_id || null,
-            // Backward compatibility
-            level: (payload.role_key || payload.user_role || payload.level || 'user').toLowerCase()
-          }
+          user = normalizeUserFromPayload(payload)
         }
       }
-      
-      // Fallback: try to get from localStorage if JWT decode fails
+
       if (!user) {
         const savedUser = localStorage.getItem('user_data')
         if (savedUser) {
           try {
             user = JSON.parse(savedUser)
-            // Normalize level to lowercase
-            if (user.level) {
-              user.level = user.level.toLowerCase()
-            }
+            if (user.level) user.level = user.level.toLowerCase()
           } catch (e) {
             console.error('Error parsing saved user data:', e)
           }
         }
       }
-      
-      set({ 
-        token, 
-        user,
-        isAuthenticated: true 
-      })
+
+      set({ token, user, isAuthenticated: true })
     }
   },
   
@@ -179,28 +197,12 @@ export const useAuthStore = create((set) => ({
       const response = await authAPI.verify()
       
       if (response.success && response.data) {
-        const payload = response.data
-        const updatedUser = {
-          id: payload.user_id || payload.id,
-          nama: payload.user_name || payload.nama,
-          username: payload.username || null,
-          nip: payload.pengurus?.nip ?? null, // NIP dari tabel pengurus
-          role_key: payload.role_key || payload.user_role || payload.level || 'user',
-          role_label: payload.role_label || payload.user_role || payload.level || 'user',
-          all_roles: payload.all_roles || [payload.role_key || payload.user_role || payload.level || 'user'],
-          allowed_apps: payload.allowed_apps || [],
-          permissions: payload.permissions || [],
-          lembaga_id: payload.lembaga_id || null,
-          level: (payload.role_key || payload.user_role || payload.level || 'user').toLowerCase()
+        const updatedUser = normalizeUserFromPayload(response.data)
+        if (updatedUser) {
+          localStorage.setItem('user_data', JSON.stringify(updatedUser))
+          useAuthStore.setState({ user: updatedUser })
+          return true
         }
-        
-        // Update localStorage
-        localStorage.setItem('user_data', JSON.stringify(updatedUser))
-        
-        // Update state
-        useAuthStore.setState({ user: updatedUser })
-        
-        return true
       }
     } catch (error) {
       console.error('Error refreshing user data:', error)

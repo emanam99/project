@@ -13,7 +13,8 @@ function DataPendaftar() {
   const navigate = useNavigate()
   const { showNotification } = useNotification()
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
-  const { user } = useAuthStore()
+  const { user, getEffectiveLembagaId } = useAuthStore()
+  const effectiveLembagaId = getEffectiveLembagaId?.() ?? user?.lembaga_id ?? null
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [pendaftarList, setPendaftarList] = useState([])
@@ -29,6 +30,7 @@ function DataPendaftar() {
   const [keteranganStatusFilter, setKeteranganStatusFilter] = useState('')
   const [gelombangFilter, setGelombangFilter] = useState('')
   const [statusSantriFilter, setStatusSantriFilter] = useState('')
+  const [statusMuridFilter, setStatusMuridFilter] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' })
   const [userLembaga, setUserLembaga] = useState(null)
   const [loadingLembaga, setLoadingLembaga] = useState(false)
@@ -52,38 +54,23 @@ function DataPendaftar() {
   // User dengan akses penuh (super_admin atau kategori Pesantren)
   const hasFullAccess = isSuperAdmin || isPesantrenUser
 
-  // Load lembaga data untuk user
+  // Load lembaga data untuk user (termasuk saat super_admin "coba sebagai" role + lembaga)
   useEffect(() => {
-    if (isPsbUser && user?.lembaga_id) {
+    if (effectiveLembagaId) {
       loadUserLembaga()
     }
-  }, [isPsbUser, user?.lembaga_id])
-
-  // Set default filter berdasarkan kategori lembaga (hanya sekali saat userLembaga pertama kali dimuat)
-  // Kategori Pesantren tidak perlu default filter (bisa akses semua)
-  useEffect(() => {
-    if (userLembaga && !hasFullAccess && !formalFilter && !diniyahFilter) {
-      if (userLembaga.kategori === 'Formal' && userLembaga.id) {
-        // Jika kategori formal, set default filter formal sesuai lembaga
-        setFormalFilter(userLembaga.id)
-      } else if (userLembaga.kategori === 'Diniyah' && userLembaga.id) {
-        // Jika kategori diniyah, set default filter diniyah sesuai lembaga
-        setDiniyahFilter(userLembaga.id)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLembaga]) // Hanya trigger saat userLembaga berubah (ignore formalFilter dan diniyahFilter untuk avoid loop)
+  }, [effectiveLembagaId])
 
   useEffect(() => {
     loadPendaftarData()
   }, [tahunAjaran, tahunAjaranMasehi])
 
   const loadUserLembaga = async () => {
-    if (!user?.lembaga_id) return
+    if (!effectiveLembagaId) return
     
     setLoadingLembaga(true)
     try {
-      const result = await lembagaAPI.getById(user.lembaga_id)
+      const result = await lembagaAPI.getById(effectiveLembagaId)
       if (result.success && result.data) {
         setUserLembaga(result.data)
       }
@@ -107,57 +94,41 @@ function DataPendaftar() {
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
   }, [pendaftarList, hasFullAccess])
 
+  const sameLembagaForMemo = (a, b) => (a != null && b != null && String(a) === String(b))
+
   const dynamicUniqueFormal = useMemo(() => {
-    // Jika bukan super_admin/pesantren dan kategori lembaga bukan formal, return empty
-    if (!hasFullAccess && userLembaga?.kategori !== 'Formal') {
-      return []
-    }
-    
     let filtered = pendaftarList
-    if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
+    if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
+    if (diniyahFilter) filtered = filtered.filter(p => sameLembagaForMemo(p.diniyah, diniyahFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
-    
-    // Jika bukan super_admin/pesantren, filter hanya sesuai lembaga user
-    if (!hasFullAccess && userLembaga?.kategori === 'Formal' && userLembaga?.id) {
-      filtered = filtered.filter(p => p.formal === userLembaga.id)
-    }
-    
+    if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
+
     const values = [...new Set(filtered.map(p => p.formal).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
-      count: filtered.filter(p => p.formal === val).length
+      count: filtered.filter(p => sameLembagaForMemo(p.formal, val)).length
     }))
-    return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, hasFullAccess, userLembaga])
+    return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
+  }, [pendaftarList, statusPendaftarFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess])
 
   const dynamicUniqueDiniyah = useMemo(() => {
-    // Jika bukan super_admin/pesantren dan kategori lembaga bukan diniyah, return empty
-    if (!hasFullAccess && userLembaga?.kategori !== 'Diniyah') {
-      return []
-    }
-    
     let filtered = pendaftarList
-    if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (formalFilter) filtered = filtered.filter(p => p.formal === formalFilter)
+    if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
+    if (formalFilter) filtered = filtered.filter(p => sameLembagaForMemo(p.formal, formalFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
-    
-    // Jika bukan super_admin/pesantren, filter hanya sesuai lembaga user
-    if (!hasFullAccess && userLembaga?.kategori === 'Diniyah' && userLembaga?.id) {
-      filtered = filtered.filter(p => p.diniyah === userLembaga.id)
-    }
+    if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
     
     const values = [...new Set(filtered.map(p => p.diniyah).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
-      count: filtered.filter(p => p.diniyah === val).length
+      count: filtered.filter(p => sameLembagaForMemo(p.diniyah, val)).length
     }))
-    return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, hasFullAccess, userLembaga])
+    return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess])
 
   const dynamicUniqueKeteranganStatus = useMemo(() => {
     let filtered = pendaftarList
@@ -168,6 +139,7 @@ function DataPendaftar() {
     if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang || '') === gelombangFilter)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
+    if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
     
     // Filter by lembaga if not full access
     if (!hasFullAccess) {
@@ -184,7 +156,7 @@ function DataPendaftar() {
       count: filtered.filter(p => p.keterangan_status === val).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, gelombangFilter, statusSantriFilter, hasFullAccess, userLembaga])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, userLembaga])
 
   const dynamicUniqueGelombang = useMemo(() => {
     let filtered = pendaftarList
@@ -193,6 +165,7 @@ function DataPendaftar() {
     if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
+    if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
     if (!hasFullAccess) {
       if (userLembaga?.kategori === 'Formal' && userLembaga?.id) {
         filtered = filtered.filter(p => p.formal === userLembaga.id)
@@ -206,7 +179,7 @@ function DataPendaftar() {
       count: filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === val : false).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, statusSantriFilter, hasFullAccess, userLembaga])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, userLembaga])
 
   const dynamicUniqueStatusSantri = useMemo(() => {
     let filtered = pendaftarList
@@ -215,6 +188,7 @@ function DataPendaftar() {
     if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
+    if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '') === statusMuridFilter)
     if (!hasFullAccess) {
       if (userLembaga?.kategori === 'Formal' && userLembaga?.id) {
         filtered = filtered.filter(p => p.formal === userLembaga.id)
@@ -228,7 +202,30 @@ function DataPendaftar() {
       count: filtered.filter(p => (p.status_santri || '') === val).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, hasFullAccess, userLembaga])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusMuridFilter, hasFullAccess, userLembaga])
+
+  const dynamicUniqueStatusMurid = useMemo(() => {
+    let filtered = pendaftarList
+    if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
+    if (formalFilter) filtered = filtered.filter(p => p.formal === formalFilter)
+    if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
+    if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
+    if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
+    if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
+    if (!hasFullAccess) {
+      if (userLembaga?.kategori === 'Formal' && userLembaga?.id) {
+        filtered = filtered.filter(p => p.formal === userLembaga.id)
+      } else if (userLembaga?.kategori === 'Diniyah' && userLembaga?.id) {
+        filtered = filtered.filter(p => p.diniyah === userLembaga.id)
+      }
+    }
+    const values = [...new Set(filtered.map(p => (p.status_murid != null && p.status_murid !== '') ? String(p.status_murid).trim() : null).filter(Boolean))]
+    const counts = values.map(val => ({
+      value: val,
+      count: filtered.filter(p => (p.status_murid || '').trim() === val).length
+    }))
+    return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, hasFullAccess, userLembaga])
 
   // Filter data berdasarkan search query dan filter lainnya
   useEffect(() => {
@@ -239,20 +236,16 @@ function DataPendaftar() {
       filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     }
 
-    // Filter by formal
-    if (formalFilter) {
-      filtered = filtered.filter(p => p.formal === formalFilter)
-    } else if (!hasFullAccess && userLembaga?.kategori === 'Formal' && userLembaga?.id) {
-      // Jika kategori formal dan belum ada filter formal, filter otomatis sesuai lembaga
-      filtered = filtered.filter(p => p.formal === userLembaga.id)
-    }
+    // Helper: bandingkan id lembaga (API bisa string/number)
+    const sameLembaga = (a, b) => (a != null && b != null && String(a) === String(b))
 
-    // Filter by diniyah
-    if (diniyahFilter) {
-      filtered = filtered.filter(p => p.diniyah === diniyahFilter)
-    } else if (!hasFullAccess && userLembaga?.kategori === 'Diniyah' && userLembaga?.id) {
-      // Jika kategori diniyah dan belum ada filter diniyah, filter otomatis sesuai lembaga
-      filtered = filtered.filter(p => p.diniyah === userLembaga.id)
+    // Filter by formal / diniyah hanya kalau user memilih filter. PSB: backend sudah return data mereka (OR), jadi tanpa pilih filter = tampilkan semua dari API
+    if (formalFilter && diniyahFilter) {
+      filtered = filtered.filter(p => sameLembaga(p.formal, formalFilter) || sameLembaga(p.diniyah, diniyahFilter))
+    } else if (formalFilter) {
+      filtered = filtered.filter(p => sameLembaga(p.formal, formalFilter))
+    } else if (diniyahFilter) {
+      filtered = filtered.filter(p => sameLembaga(p.diniyah, diniyahFilter))
     }
 
     // Filter by keterangan status
@@ -270,15 +263,9 @@ function DataPendaftar() {
       filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
     }
 
-    // Validasi: Non super_admin/pesantren harus punya minimal 1 filter aktif
-    // Jika tidak ada filter sama sekali, tampilkan kosong
-    if (!hasFullAccess) {
-      const hasActiveFilter = formalFilter || diniyahFilter || 
-        (userLembaga?.kategori === 'Formal' && userLembaga?.id) ||
-        (userLembaga?.kategori === 'Diniyah' && userLembaga?.id)
-      if (!hasActiveFilter) {
-        filtered = []
-      }
+    // Filter by status murid
+    if (statusMuridFilter) {
+      filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
     }
 
     // Filter by search query
@@ -313,7 +300,7 @@ function DataPendaftar() {
     }
 
     setFilteredList(filtered)
-  }, [searchQuery, pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, sortConfig, isSuperAdmin, userLembaga])
+  }, [searchQuery, pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, sortConfig, isSuperAdmin, userLembaga])
 
   const loadPendaftarData = async () => {
     setLoading(true)
@@ -332,7 +319,12 @@ function DataPendaftar() {
       }
     } catch (err) {
       console.error('Error loading pendaftar data:', err)
-      setError(err.message || 'Terjadi kesalahan saat memuat data')
+      if (err.response?.status === 429) {
+        const msg = err.response?.data?.message || 'Terlalu banyak permintaan. Coba lagi dalam beberapa menit.'
+        setError(msg)
+      } else {
+        setError(err.message || 'Terjadi kesalahan saat memuat data')
+      }
     } finally {
       setLoading(false)
     }
@@ -555,13 +547,8 @@ function DataPendaftar() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            {/* Header */}
+            {/* Search & Filter */}
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-                Data Pendaftar
-              </h1>
-              
-              {/* Search & Filter */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
                 {/* Search Input dengan tombol di kanan */}
                 <div className="relative pb-2 px-4 pt-3">
@@ -638,33 +625,29 @@ function DataPendaftar() {
                             </select>
                           )}
                           
-                          {/* Formal - untuk super_admin/pesantren atau user dengan kategori formal */}
-                          {(hasFullAccess || userLembaga?.kategori === 'Formal') && (
+                          {/* Daftar Formal / Diniyah — tampil untuk semua (super_admin, admin_psb, petugas_psb) */}
+                          <>
                             <select
                               value={formalFilter}
                               onChange={(e) => setFormalFilter(e.target.value)}
                               className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                             >
-                              {hasFullAccess && <option value="">Formal</option>}
+                              <option value="">Formal</option>
                               {dynamicUniqueFormal.map(item => (
-                                <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
+                                <option key={item.value} value={item.value}>{(item.label != null ? item.label : item.value)} ({item.count})</option>
                               ))}
                             </select>
-                          )}
-                          
-                          {/* Diniyah - untuk super_admin/pesantren atau user dengan kategori diniyah */}
-                          {(hasFullAccess || userLembaga?.kategori === 'Diniyah') && (
                             <select
                               value={diniyahFilter}
                               onChange={(e) => setDiniyahFilter(e.target.value)}
                               className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                             >
-                              {hasFullAccess && <option value="">Diniyah</option>}
+                              <option value="">Diniyah</option>
                               {dynamicUniqueDiniyah.map(item => (
-                                <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
+                                <option key={item.value} value={item.value}>{(item.label != null ? item.label : item.value)} ({item.count})</option>
                               ))}
                             </select>
-                          )}
+                          </>
                           
                           {/* Keterangan Status - untuk semua user */}
                           <select
@@ -696,6 +679,17 @@ function DataPendaftar() {
                           >
                             <option value="">Status Santri</option>
                             {dynamicUniqueStatusSantri.map(item => (
+                              <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
+                            ))}
+                          </select>
+                          {/* Status Murid */}
+                          <select
+                            value={statusMuridFilter}
+                            onChange={(e) => setStatusMuridFilter(e.target.value)}
+                            className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                          >
+                            <option value="">Status Murid</option>
+                            {dynamicUniqueStatusMurid.map(item => (
                               <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
                             ))}
                           </select>
@@ -859,6 +853,15 @@ function DataPendaftar() {
                           </div>
                         </th>
                         <th
+                          onClick={() => handleSort('status_murid')}
+                          className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
+                        >
+                          <div className="flex items-center gap-2">
+                            Status Murid
+                            <SortIcon columnKey="status_murid" />
+                          </div>
+                        </th>
+                        <th
                           onClick={() => handleSort('diniyah')}
                           className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
                         >
@@ -981,6 +984,17 @@ function DataPendaftar() {
                               }`}
                             >
                               {pendaftar.formal || '-'}
+                            </span>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                pendaftar.status_murid && String(pendaftar.status_murid).trim() !== '' && pendaftar.status_murid !== '-'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              }`}
+                            >
+                              {pendaftar.status_murid && String(pendaftar.status_murid).trim() ? pendaftar.status_murid : '-'}
                             </span>
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
@@ -1174,6 +1188,10 @@ function DataPendaftar() {
                           <div>
                             <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Formal</dt>
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.formal || '-'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status Murid</dt>
+                            <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.status_murid && String(selectedPendaftar.status_murid).trim() ? selectedPendaftar.status_murid : '-'}</dd>
                           </div>
                           <div>
                             <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Diniyah</dt>

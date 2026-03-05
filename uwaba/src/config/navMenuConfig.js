@@ -7,10 +7,15 @@ export const navMenuItems = [
   // Pendaftaran
   { path: '/dashboard-pendaftaran', label: 'Dashboard', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran', label: 'Pendaftaran', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
-  { path: '/pendaftaran/item', label: 'Item', group: 'Pendaftaran', requiresRole: ['admin_psb', 'super_admin'] },
+  { path: '/pendaftaran/item', label: 'Item', group: 'Pendaftaran', requiresSuperAdmin: true },
   { path: '/pendaftaran/data-pendaftar', label: 'Data Pendaftar', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
-  { path: '/pendaftaran/padukan-data', label: 'Padukan Data', group: 'Pendaftaran', requiresRole: ['admin_psb', 'super_admin'] },
+  { path: '/pendaftaran/padukan-data', label: 'Padukan Data', group: 'Pendaftaran', requiresSuperAdmin: true },
   { path: '/pendaftaran/pengaturan', label: 'Pengaturan', group: 'Pendaftaran', requiresRole: ['super_admin'] },
+  { path: '/pendaftaran/manage-item-set', label: 'Item Set', group: 'Pendaftaran', requiresSuperAdmin: true },
+  { path: '/pendaftaran/manage-kondisi', label: 'Kondisi', group: 'Pendaftaran', requiresSuperAdmin: true },
+  { path: '/pendaftaran/kondisi-registrasi', label: 'Registrasi', group: 'Pendaftaran', requiresSuperAdmin: true },
+  { path: '/pendaftaran/assign-item', label: 'Assign', group: 'Pendaftaran', requiresSuperAdmin: true },
+  { path: '/pendaftaran/simulasi', label: 'Simulasi', group: 'Pendaftaran', requiresSuperAdmin: true },
   // UWABA
   { path: '/dashboard-pembayaran', label: 'Dashboard Pembayaran', group: 'UWABA', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin'] },
   { path: '/uwaba', label: 'UWABA', group: 'UWABA', requiresRole: ['petugas_uwaba', 'admin_uwaba', 'super_admin'] },

@@ -249,5 +249,74 @@ class RoleHelper
         
         return false;
     }
+
+    /**
+     * Daftar lembaga PSB untuk pengurus (role admin_psb / petugas_psb), dikelompokkan by kategori.
+     * Satu lembaga Formal → hanya akses daftar formal lembaga itu; satu Diniyah → hanya daftar diniyah.
+     * Banyak lembaga → akses daftar formal (semua lembaga user yang Formal) + daftar diniyah (semua yang Diniyah).
+     *
+     * @param int $pengurusId ID pengurus
+     * @return array { formal_lembaga_ids: string[], diniyah_lembaga_ids: string[], formal_lembaga: [{id, nama}], diniyah_lembaga: [{id, nama}] }
+     */
+    public static function getPsbLembagaForPengurus(int $pengurusId): array
+    {
+        $empty = [
+            'formal_lembaga_ids' => [],
+            'diniyah_lembaga_ids' => [],
+            'formal_lembaga' => [],
+            'diniyah_lembaga' => [],
+        ];
+        try {
+            $db = self::getDb();
+            $userRoles = self::getUserRoles($pengurusId);
+            $psbLembagaIds = [];
+            foreach ($userRoles as $role) {
+                $roleKey = strtolower(trim($role['role_key'] ?? ''));
+                if (!in_array($roleKey, ['admin_psb', 'petugas_psb'], true)) {
+                    continue;
+                }
+                $lid = $role['lembaga_id'] ?? null;
+                if ($lid !== null && $lid !== '') {
+                    $psbLembagaIds[] = trim((string) $lid);
+                }
+            }
+            $psbLembagaIds = array_values(array_unique($psbLembagaIds));
+            if (empty($psbLembagaIds)) {
+                return $empty;
+            }
+            $placeholders = implode(',', array_fill(0, count($psbLembagaIds), '?'));
+            $stmt = $db->prepare("SELECT id, nama, kategori FROM lembaga WHERE id IN ($placeholders)");
+            $stmt->execute($psbLembagaIds);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $formalIds = [];
+            $diniyahIds = [];
+            $formalList = [];
+            $diniyahList = [];
+            foreach ($rows as $row) {
+                $id = $row['id'] ?? null;
+                $nama = $row['nama'] ?? $id;
+                $kategori = isset($row['kategori']) ? trim((string) $row['kategori']) : '';
+                if ($id === null || $id === '') {
+                    continue;
+                }
+                if (strtolower($kategori) === 'formal') {
+                    $formalIds[] = $id;
+                    $formalList[] = ['id' => $id, 'nama' => $nama];
+                } elseif (strtolower($kategori) === 'diniyah') {
+                    $diniyahIds[] = $id;
+                    $diniyahList[] = ['id' => $id, 'nama' => $nama];
+                }
+            }
+            return [
+                'formal_lembaga_ids' => $formalIds,
+                'diniyah_lembaga_ids' => $diniyahIds,
+                'formal_lembaga' => $formalList,
+                'diniyah_lembaga' => $diniyahList,
+            ];
+        } catch (\Exception $e) {
+            error_log("RoleHelper::getPsbLembagaForPengurus error: " . $e->getMessage());
+            return $empty;
+        }
+    }
 }
 

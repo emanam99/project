@@ -299,10 +299,14 @@ class PengeluaranController
                 ], 400);
             }
 
-            // Get rencana dengan admin_approve_nama jika sudah di-approve, termasuk jumlah komentar dan viewer
+            // Get rencana dengan admin_approve_nama (siapa approve), admin_nama (pembuat), last_edit_admin_nama (siapa terakhir edit)
             $sqlRencana = "SELECT r.*, 
                           p.nama as admin_nama,
                           peng_approve.nama as admin_approve_nama,
+                          (SELECT pg.nama FROM pengeluaran___rencana_detail rd
+                           LEFT JOIN pengurus pg ON rd.id_admin = pg.id
+                           WHERE rd.id_pengeluaran_rencana = r.id
+                           ORDER BY rd.id DESC LIMIT 1) as last_edit_admin_nama,
                           (SELECT COUNT(*) FROM pengeluaran___komentar k
                            WHERE k.id_rencana = r.id) as jumlah_komentar,
                           (SELECT COUNT(*) FROM pengeluaran___viewer v

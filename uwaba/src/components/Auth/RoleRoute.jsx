@@ -8,9 +8,10 @@ import { useEffect, useState } from 'react'
  * @param {ReactNode} children - Optional children untuk direct component wrapping
  */
 function RoleRoute({ allowedRoles = [], children }) {
-  const { isAuthenticated, user, checkAuth } = useAuthStore()
+  const { isAuthenticated, user, checkAuth, getEffectiveRole } = useAuthStore()
   const [isChecking, setIsChecking] = useState(true)
   const location = useLocation()
+  const effectiveRole = getEffectiveRole?.() ?? (user?.role_key || user?.level || '').toLowerCase()
 
   useEffect(() => {
     // Check auth on mount
@@ -37,35 +38,18 @@ function RoleRoute({ allowedRoles = [], children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // Helper untuk cek role - support multiple roles
-  const hasRole = (roles) => {
-    if (!user || !roles || !Array.isArray(roles)) {
-      return false
-    }
-    
-    // Cek dari all_roles (array semua role user) jika ada
-    if (user.all_roles && Array.isArray(user.all_roles) && user.all_roles.length > 0) {
-      const userRoles = user.all_roles.map(r => (r || '').toLowerCase()).filter(r => r)
-      const allowedRolesLower = roles.map(r => r.toLowerCase())
-      return userRoles.some(userRole => allowedRolesLower.includes(userRole))
-    }
-    
-    // Fallback: cek role_key utama
-    const userRole = (user.role_key || user.level || '').toLowerCase()
-    return roles.map(r => r.toLowerCase()).includes(userRole)
-  }
+  // Cek akses pakai effectiveRole (super_admin yang "coba sebagai" role X dianggap sebagai role X)
+  const hasAllowedRole = user && allowedRoles.length > 0 && allowedRoles.map(r => r.toLowerCase()).includes(effectiveRole)
 
   // Check if user has one of the allowed roles
-  if (!user || !hasRole(allowedRoles)) {
+  if (!user || !hasAllowedRole) {
     // Redirect to first accessible page or home
-    // Try to find first accessible menu based on user roles
-    if (user) {
-      // Check if user has access to pendaftaran
-      if (hasRole(['admin_psb', 'petugas_psb', 'super_admin'])) {
+    // Redirect berdasarkan effectiveRole
+    if (effectiveRole && allowedRoles.length > 0) {
+      if (['admin_psb', 'petugas_psb', 'super_admin'].includes(effectiveRole)) {
         return <Navigate to="/pendaftaran" replace />
       }
-      // Check if user has access to uwaba
-      if (hasRole(['petugas_uwaba', 'admin_uwaba', 'super_admin'])) {
+      if (['petugas_uwaba', 'admin_uwaba', 'super_admin'].includes(effectiveRole)) {
         return <Navigate to="/uwaba" replace />
       }
     }

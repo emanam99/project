@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Message\ResponseInterface as Response;
 use App\Controllers\AuthController;
+use App\Middleware\AuthMiddleware;
 
 return function (\Slim\App $app): void {
     // Test endpoint untuk debugging
@@ -23,5 +24,6 @@ return function (\Slim\App $app): void {
     $app->post('/api/auth/login', [AuthController::class, 'login']);
     $app->post('/api/auth/login-nik', [AuthController::class, 'loginNik']);
     $app->get('/api/auth/verify', [AuthController::class, 'verify']);
+    $app->post('/api/auth/view-as', [AuthController::class, 'setViewAs'])->add(new AuthMiddleware());
     $app->get('/api/auth/csrf-token', [AuthController::class, 'getCsrfToken']);
 };

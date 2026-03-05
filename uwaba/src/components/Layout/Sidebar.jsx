@@ -65,7 +65,7 @@ const navItems = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
     ),
-    requiresRole: ['admin_psb', 'super_admin']
+    requiresSuperAdmin: true
   },
   {
     path: '/pendaftaran/data-pendaftar',
@@ -85,7 +85,7 @@ const navItems = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
       </svg>
     ),
-    requiresRole: ['admin_psb', 'super_admin']
+    requiresSuperAdmin: true
   },
   {
     path: '/pendaftaran/pengaturan',
@@ -97,7 +97,7 @@ const navItems = [
       </svg>
     ),
     requiresRole: ['super_admin'],
-    showSeparatorAfter: true // Show separator after this group
+    showSeparatorAfter: true // Set, Kondisi, Registrasi, Assign, Simulasi hanya sebagai tab di page Item
   },
   // 2. UWABA Group: Dashboard Pembayaran, UWABA, Tunggakan, Khusus, Laporan
   {
@@ -457,7 +457,17 @@ const navItems = [
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
       </svg>
     ),
-    requiresRole: ['super_admin', 'admin_cashless'],
+    requiresRole: ['super_admin', 'admin_cashless']
+  },
+  {
+    path: '/settings/tahun-ajaran',
+    label: 'Tahun Ajaran',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+    requiresSuperAdmin: true,
     showSeparatorAfter: true // Akhir grup Setting (sebelum Domisili)
   },
   // Grup Domisili
@@ -612,7 +622,9 @@ function Sidebar() {
   const scrollTimeoutRef = useRef(null)
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { user } = useAuthStore()
+  const { user, viewAsRole, getEffectiveRole, isRealSuperAdmin } = useAuthStore()
+  const effectiveRole = getEffectiveRole?.() ?? (user?.role_key || user?.level || '').toLowerCase()
+  const realSuperAdmin = isRealSuperAdmin?.() ?? (user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin')
   
   // Ambil NIS/ID dari URL (pembayaran pakai nis, pendaftaran pakai id; bawa keduanya agar data santri tetap)
   const idFromUrl = searchParams.get('nis') || searchParams.get('id')
@@ -626,24 +638,13 @@ function Sidebar() {
     return user.permissions.includes(permission)
   }
   
-  // Helper untuk cek role - support multiple roles
+  // Helper untuk cek role - pakai effectiveRole (super_admin + viewAsRole => role yang dicoba)
   const hasRole = (roles) => {
     if (!user || !roles || !Array.isArray(roles)) {
       return false
     }
-    
-    // Cek dari all_roles (array semua role user) jika ada
-    if (user.all_roles && Array.isArray(user.all_roles) && user.all_roles.length > 0) {
-      const userRoles = user.all_roles.map(r => (r || '').toLowerCase()).filter(r => r) // Filter out empty strings
-      const allowedRoles = roles.map(r => r.toLowerCase())
-      const hasAccess = userRoles.some(userRole => allowedRoles.includes(userRole))
-      
-      return hasAccess
-    }
-    
-    // Fallback: cek role_key utama
-    const userRole = (user.role_key || user.level || '').toLowerCase()
-    return roles.map(r => r.toLowerCase()).includes(userRole)
+    const allowed = roles.map(r => r.toLowerCase())
+    return allowed.includes(effectiveRole)
   }
   
   // Indeks grup per item (berdasarkan urutan asli navItems); pembatas selalu antara beda grup
@@ -657,24 +658,25 @@ function Sidebar() {
     return out
   }, [])
 
-  const isSuperAdmin = user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin'
-
-  // Filter nav items dan tetap bawa groupIndex agar pembatas antar grup selalu tampil
+  // Filter nav items: pakai effectiveRole, kecuali Role & Akses selalu tampil untuk super_admin asli
   const filteredNavItems = useMemo(() => {
     const canSee = (item) => {
-      if (isSuperAdmin) return true // Super Admin bisa lihat semua menu (termasuk Umroh, Ijin, dll)
+      // Halaman Role & Akses selalu tampil untuk super_admin asli (meski sedang "coba sebagai" role lain)
+      if (item.path === '/settings/role-akses') {
+        return realSuperAdmin
+      }
+      if (effectiveRole === 'super_admin') return true // Super Admin (tanpa viewAs) lihat semua menu
       const userLevel = user?.level?.toLowerCase()
-      const userRole = (user?.role_key || user?.level || '').toLowerCase()
       if (item.requiresRole) return hasRole(item.requiresRole)
-      if (item.requiresSuperAdmin) return user && userRole === 'super_admin'
-      if (item.requiresAdmin) return user && (userLevel === 'admin' || userRole === 'admin_uwaba' || userRole === 'admin_psb' || userRole === 'admin_lembaga' || userRole === 'super_admin')
+      if (item.requiresSuperAdmin) return effectiveRole === 'super_admin'
+      if (item.requiresAdmin) return user && (userLevel === 'admin' || effectiveRole === 'admin_uwaba' || effectiveRole === 'admin_psb' || effectiveRole === 'admin_lembaga' || effectiveRole === 'super_admin')
       if (item.requiresPermission) return user && hasPermission(item.requiresPermission)
       return true
     }
     return navItems
       .map((item, i) => ({ item, groupIndex: groupIndices[i] }))
       .filter(({ item }) => canSee(item))
-  }, [user, groupIndices, isSuperAdmin])
+  }, [user, groupIndices, effectiveRole, realSuperAdmin, viewAsRole])
 
   // Handle scroll untuk auto-hide scrollbar
   const handleScroll = () => {

@@ -9,10 +9,8 @@ $SSH_USER = "u264984103"
 $SSH_HOST = "145.223.108.9"
 $SSH_PORT = 65002
 
-# Path folder gambar di server (relatif ke home di Hostinger)
-# Ubah jika gambar staging/production beda path (mis. subdomain).
-$REMOTE_GAMBAR_STAGING = "domains/alutsmani.id/public_html/gambar"
-$REMOTE_GAMBAR_PROD    = "domains/alutsmani.id/public_html/gambar"
+# Path folder gambar di server (relatif ke home di Hostinger) - 1 folder dipakai staging & production
+$REMOTE_GAMBAR = "domains/alutsmani.id/public_html/gambar"
 
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
 $localGambar = Join-Path $scriptDir "gambar"
@@ -20,19 +18,9 @@ if (-not (Test-Path $localGambar)) {
     Write-Error "Folder gambar tidak ditemukan: $localGambar"
 }
 
+$remoteBase = $REMOTE_GAMBAR
 Write-Host ""
 Write-Host "  Deploy folder gambar ke Shared Hosting (hanya file yang belum ada di server)" -ForegroundColor Cyan
-Write-Host '    1) Staging' -ForegroundColor Yellow
-Write-Host '    2) Production' -ForegroundColor Green
-Write-Host ""
-$choice = Read-Host '  Pilihan (1 atau 2)'
-$isStaging = $choice -eq "1"
-if (-not $isStaging -and $choice -ne "2") {
-    Write-Error 'Pilihan tidak valid. Gunakan 1 atau 2.'
-}
-
-$remoteBase = if ($isStaging) { $REMOTE_GAMBAR_STAGING } else { $REMOTE_GAMBAR_PROD }
-$envLabel = if ($isStaging) { "staging" } else { "production" }
 
 # Daftar file lokal (relatif ke folder gambar)
 $localFiles = @{}
@@ -71,7 +59,7 @@ foreach ($rel in $localFiles.Keys) {
 }
 
 if ($toUpload.Count -eq 0) {
-    Write-Host "Semua file sudah ada di server ($envLabel). Tidak ada yang di-upload." -ForegroundColor Green
+    Write-Host "Semua file sudah ada di server. Tidak ada yang di-upload." -ForegroundColor Green
     exit 0
 }
 
@@ -105,4 +93,4 @@ foreach ($u in $toUpload) {
 }
 
 Write-Host ""
-Write-Host "Selesai. $uploaded / $($toUpload.Count) file ter-upload ke shared hosting ($envLabel)." -ForegroundColor Green
+Write-Host "Selesai. $uploaded / $($toUpload.Count) file ter-upload ke shared hosting." -ForegroundColor Green

@@ -346,6 +346,15 @@ export const authAPI = {
     return response.data
   },
 
+  /** Set/clear "coba sebagai" role (hanya super_admin). Setelah ini panggil verify untuk refresh user. */
+  setViewAs: async (roleKey, lembagaId = null) => {
+    const response = await api.post('/auth/view-as', {
+      role_key: roleKey || null,
+      lembaga_id: lembagaId != null && lembagaId !== '' ? Number(lembagaId) : null
+    })
+    return response.data
+  },
+
   /** Logout V2: revoke session di server (jika token punya jti) */
   logoutV2: async () => {
     try {

@@ -186,7 +186,10 @@ function EditRencana() {
         nominal: (parseFloat(d.harga) || 0) * (parseInt(d.jumlah) || 1),
         rejected: Boolean(d.rejected)
       })),
-      admin_nama: adminNamaPembuat
+      admin_nama: adminNamaPembuat,
+      last_edit_admin_nama: rencana?.last_edit_admin_nama ?? null,
+      jumlah_komentar: rencana?.jumlah_komentar ?? 0,
+      jumlah_viewer: rencana?.jumlah_viewer ?? 0
     }
 
     const pesan = generateRencanaWhatsAppMessage(rencanaData, 'pending', { 

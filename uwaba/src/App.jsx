@@ -402,37 +402,21 @@ function App() {
               } 
             />
             
-            {/* Pendaftaran Admin only routes */}
-            <Route element={<RoleRoute allowedRoles={['admin_psb', 'super_admin']} />}>
-              <Route 
-                path="/pendaftaran/padukan-data" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <PadukanData />
-                  </Suspense>
-                } 
-              />
-            </Route>
-
-            {/* Pendaftaran Super Admin only routes */}
+            {/* Pendaftaran Super Admin only: Item, Padukan Data, Item Set, Kondisi, Registrasi, Assign, Simulasi, Pengaturan */}
             <Route element={<RoleRoute allowedRoles={['super_admin']} />}>
-              <Route 
-                path="/pendaftaran/pengaturan" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Pengaturan />
-                  </Suspense>
-                } 
-              />
-            </Route>
-
-            {/* Pendaftaran Admin only routes (continued) */}
-            <Route element={<RoleRoute allowedRoles={['admin_psb', 'super_admin']} />}>
               <Route 
                 path="/pendaftaran/item" 
                 element={
                   <Suspense fallback={<PageLoader />}>
                     <PendaftaranItem />
+                  </Suspense>
+                } 
+              />
+              <Route 
+                path="/pendaftaran/padukan-data" 
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PadukanData />
                   </Suspense>
                 } 
               />
@@ -473,6 +457,14 @@ function App() {
                 element={
                   <Suspense fallback={<PageLoader />}>
                     <Simulasi />
+                  </Suspense>
+                } 
+              />
+              <Route 
+                path="/pendaftaran/pengaturan" 
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Pengaturan />
                   </Suspense>
                 } 
               />

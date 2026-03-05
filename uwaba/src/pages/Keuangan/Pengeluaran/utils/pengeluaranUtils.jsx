@@ -90,10 +90,9 @@ export const generateRencanaWhatsAppMessage = (rencanaData, status, options = {}
   if (status === 'pending') {
     // Template untuk pending (baru dibuat atau di-edit)
     const statusText = isCreateMode ? 'Baru' : 'Di Edit'
-    // Selalu gunakan admin_nama dari rencanaData untuk "Dibuat oleh" (bukan user yang sedang login)
+    // Selalu dari DB: pembuat dan (jika ada) siapa yang terakhir edit
     const dibuatOleh = rencanaData.admin_nama || '-'
-    // Jika ini edit (bukan create), tambahkan informasi "Diedit oleh"
-    const dieditOleh = !isCreateMode && user?.nama ? user.nama : null
+    const dieditOleh = !isCreateMode && (rencanaData.last_edit_admin_nama || user?.nama) ? (rencanaData.last_edit_admin_nama || user.nama) : null
     const jumlahKomentar = rencanaData.jumlah_komentar || 0
     const jumlahViewer = rencanaData.jumlah_viewer || 0
     
@@ -114,9 +113,9 @@ export const generateRencanaWhatsAppMessage = (rencanaData, status, options = {}
 > 💬 ${jumlahKomentar} 👁️ ${jumlahViewer}`
     
   } else if (status === 'approve') {
-    // Template untuk approve (format sederhana)
+    // Template untuk approve: siapa yang approve dari DB (bukan yang menekan kirim ulang)
     const dibuatOleh = rencanaData.admin_nama || '-'
-    const diuproveOleh = user?.nama || actionLabel || '-'
+    const diuproveOleh = rencanaData.admin_approve_nama || actionLabel || '-'
     
     pesan = `${linkRencana}
 
@@ -129,7 +128,7 @@ Dibuat : ${dibuatOleh}
 Di Approve: ${diuproveOleh}`
     
   } else if (status === 'reject') {
-    // Template untuk reject (format sederhana)
+    // Template untuk reject (backend saat ini tidak menyimpan siapa yang menolak)
     const dibuatOleh = rencanaData.admin_nama || '-'
     const ditolakOleh = user?.nama || actionLabel || '-'
     

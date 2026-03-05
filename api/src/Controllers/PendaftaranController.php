@@ -6107,14 +6107,11 @@ class PendaftaranController
             $tahunMasehi = $queryParams['tahun_masehi'] ?? null;
 
             // Build WHERE clause untuk filter tahun
-            // Jika kedua tahun ada, gunakan OR logic (jika salah satu cocok, tampilkan)
-            // Jika hanya satu tahun, filter berdasarkan tahun tersebut
             $whereConditions = [];
             $params = [];
 
             if ($tahunHijriyah && $tahunHijriyah !== '' && $tahunMasehi && $tahunMasehi !== '') {
-                // Jika kedua tahun ada, gunakan OR logic (jika salah satu cocok, tampilkan)
-                $whereConditions[] = "(r.tahun_hijriyah = ? OR r.tahun_masehi = ?)";
+                $whereConditions[] = "r.tahun_hijriyah = ? AND r.tahun_masehi = ?";
                 $params[] = $tahunHijriyah;
                 $params[] = $tahunMasehi;
             } elseif ($tahunHijriyah && $tahunHijriyah !== '') {
@@ -6125,7 +6122,7 @@ class PendaftaranController
                 $params[] = $tahunMasehi;
             }
 
-            $whereClause = count($whereConditions) > 0 ? "WHERE " . $whereConditions[0] : "";
+            $whereClause = count($whereConditions) > 0 ? "WHERE " . implode(" AND ", $whereConditions) : "";
 
             // Query: semua kolom santri (kecuali admin, grup = private/internal) + kolom registrasi
             // wajib_from_detail = total harga item dari detail registrasi (psb___registrasi_detail + psb___item)
