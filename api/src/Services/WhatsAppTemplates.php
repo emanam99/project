@@ -10,6 +10,9 @@ class WhatsAppTemplates
 {
     private const FOOTER_NOMOR_RESMI = "\n\n> Mohon simpan nomor ini. Informasi resmi pesantren akan disampaikan melalui nomor ini.";
 
+    /** Link grup WhatsApp mahasiswa baru (jika formal = STAI). */
+    private const LINK_GRUP_MAHASISWA_BARU = 'https://chat.whatsapp.com/FWC1C6n6Nkc4XxWrQMgzOp?mode=gi_t';
+
     /**
      * Template: Biodata santri tersimpan (setelah simpan biodata PSB).
      * Dipakai oleh: sendPsbBiodataTerdaftar
@@ -64,6 +67,9 @@ class WhatsAppTemplates
         $msg .= "\nSilakan lengkapi berkas dan pembayaran di aplikasi pendaftaran.";
         if ($linkPendaftaran !== '') {
             $msg .= "\n\n🔗 Link pendaftaran:\n" . $linkPendaftaran;
+        }
+        if (strtoupper($daftarFormal) === 'STAI') {
+            $msg .= "\n\nSilahkan bergabung di grup mahasiswa baru dengan link berikut ini:\n" . self::LINK_GRUP_MAHASISWA_BARU;
         }
         $msg .= self::FOOTER_NOMOR_RESMI;
         return $msg;

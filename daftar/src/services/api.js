@@ -267,54 +267,26 @@ export const pendaftaranAPI = {
     return response.data
   },
 
+  /** GET transaksi pembayaran. Wajib auth; role santri hanya akses transaksi registrasi sendiri. id_registrasi dari getRegistrasi. */
   getTransaksi: async (idSantri, idRegistrasi = null) => {
-    // Gunakan endpoint publik untuk mendapatkan transaksi pembayaran
-    // Coba dengan id_santri dulu, jika tidak ada gunakan id_registrasi
     try {
+      if (!idRegistrasi) {
+        return { success: true, data: [] }
+      }
       const params = new URLSearchParams()
-      if (idSantri) {
-        params.append('id_santri', idSantri)
-      } else if (idRegistrasi) {
-        params.append('id_registrasi', idRegistrasi)
-      }
+      params.append('id_registrasi', idRegistrasi)
       params.append('_t', Date.now())
-      
-      // Coba endpoint publik baru dulu
-      try {
-        const response = await axios.get(`${getSlimApiUrl()}/pendaftaran/get-transaksi-public?${params.toString()}`, {
-          withCredentials: true,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        })
-        return response.data
-      } catch (publicError) {
-        // Jika endpoint publik belum ada (404), coba endpoint biasa (mungkin sudah dibuat publik)
-        if (publicError.response?.status === 404) {
-          console.warn('Endpoint get-transaksi-public belum tersedia, mencoba endpoint biasa...')
-          const response = await axios.get(`${getSlimApiUrl()}/pendaftaran/get-transaksi?${params.toString()}`, {
-            withCredentials: true,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          })
-          return response.data
-        }
-        throw publicError
-      }
+      const response = await api.get(`/pendaftaran/get-transaksi?${params.toString()}`)
+      return response.data
     } catch (error) {
       console.error('Error fetching transaksi:', error)
-      // Return empty array tanpa error untuk menghindari error di UI
-      // Jika 401 atau 404, berarti endpoint belum tersedia atau memerlukan login
-      if (error.response?.status === 401 || error.response?.status === 404) {
-        console.warn('Endpoint transaksi belum tersedia atau memerlukan login')
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        console.warn('Transaksi memerlukan login atau akses ditolak')
       }
       return {
         success: false,
         data: [],
-        message: error.response?.data?.message || 'Endpoint transaksi belum tersedia'
+        message: error.response?.data?.message || 'Gagal mengambil transaksi'
       }
     }
   },
@@ -330,6 +302,15 @@ export const pendaftaranAPI = {
   
   saveBiodata: async (data) => {
     const response = await api.post('/pendaftaran/save-biodata', data)
+    return response.data
+  },
+
+  /** GET biodata santri (untuk role santri = data sendiri dari token; admin boleh id_santri) */
+  getBiodata: async (idSantri = null) => {
+    const params = new URLSearchParams()
+    if (idSantri) params.append('id_santri', idSantri)
+    const url = params.toString() ? `/pendaftaran/get-biodata?${params.toString()}` : '/pendaftaran/get-biodata'
+    const response = await api.get(url)
     return response.data
   },
   

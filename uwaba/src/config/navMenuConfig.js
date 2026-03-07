@@ -11,11 +11,7 @@ export const navMenuItems = [
   { path: '/pendaftaran/data-pendaftar', label: 'Data Pendaftar', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran/padukan-data', label: 'Padukan Data', group: 'Pendaftaran', requiresSuperAdmin: true },
   { path: '/pendaftaran/pengaturan', label: 'Pengaturan', group: 'Pendaftaran', requiresRole: ['super_admin'] },
-  { path: '/pendaftaran/manage-item-set', label: 'Item Set', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/manage-kondisi', label: 'Kondisi', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/kondisi-registrasi', label: 'Registrasi', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/assign-item', label: 'Assign', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/simulasi', label: 'Simulasi', group: 'Pendaftaran', requiresSuperAdmin: true },
+  // Item Set, Kondisi, Registrasi, Assign, Simulasi = tab di dalam halaman Item, bukan menu utama
   // UWABA
   { path: '/dashboard-pembayaran', label: 'Dashboard Pembayaran', group: 'UWABA', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin'] },
   { path: '/uwaba', label: 'UWABA', group: 'UWABA', requiresRole: ['petugas_uwaba', 'admin_uwaba', 'super_admin'] },

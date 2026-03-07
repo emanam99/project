@@ -58,6 +58,8 @@ export const useAuthStore = create((set) => ({
     localStorage.removeItem('daftar_diniyah')
     localStorage.removeItem('daftar_formal')
     localStorage.removeItem('daftar_status_santri')
+    localStorage.removeItem('daftar_status_murid')
+    localStorage.removeItem('daftar_prodi')
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('redirect_after_login')
       sessionStorage.removeItem('pendaftaranData')
@@ -120,6 +122,26 @@ export const useAuthStore = create((set) => ({
             console.error('Error parsing saved user data:', e)
           }
         }
+      }
+
+      // Jika user dari verify/decode tidak punya NIK, pertahankan dari localStorage atau sessionStorage (aplikasi daftar)
+      const hasNik = user && (user.nik != null && String(user.nik).trim() !== '')
+      if (user && !hasNik) {
+        try {
+          const saved = localStorage.getItem('user_data')
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (parsed.nik != null && String(parsed.nik).trim() !== '') {
+              user = { ...user, nik: parsed.nik }
+            }
+          }
+          if ((!user.nik || String(user.nik).trim() === '') && typeof sessionStorage !== 'undefined') {
+            const sessionNik = sessionStorage.getItem('daftar_login_nik')
+            if (sessionNik && sessionNik.trim() !== '') {
+              user = { ...user, nik: sessionNik.trim() }
+            }
+          }
+        } catch (e) { /* ignore */ }
       }
       
       set({ 

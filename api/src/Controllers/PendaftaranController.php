@@ -879,10 +879,13 @@ class PendaftaranController
 
     /**
      * GET /api/pendaftaran/search-by-nik - Cari santri berdasarkan NIK
+     * Role santri: hanya boleh mencari NIK sendiri (dari token). Admin/psb: boleh cari NIK siapa saja.
      */
     public function searchByNik(Request $request, Response $response): Response
     {
         try {
+            $user = $request->getAttribute('user');
+            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
             $queryParams = $request->getQueryParams();
             $nik = $queryParams['nik'] ?? null;
 
@@ -891,6 +894,16 @@ class PendaftaranController
                     'success' => false,
                     'message' => 'NIK wajib diisi'
                 ], 400);
+            }
+
+            if ($roleKey === 'santri') {
+                $tokenNik = $user['nik'] ?? null;
+                if ($tokenNik === null || trim((string) $nik) !== trim((string) $tokenNik)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Anda hanya dapat mencari data NIK sendiri'
+                    ], 403);
+                }
             }
 
             $sql = "SELECT id, nis, nama, nik, gender, tempat_lahir, tanggal_lahir FROM santri WHERE nik = ? LIMIT 1";
@@ -980,6 +993,7 @@ class PendaftaranController
 
     /**
      * POST /api/pendaftaran/save-biodata - Simpan biodata pendaftaran ke tabel santri
+     * Role santri: hanya boleh menyimpan biodata sendiri (id dari token untuk UPDATE; untuk INSERT santri baru tidak ada id).
      */
     public function saveBiodata(Request $request, Response $response): Response
     {
@@ -989,6 +1003,7 @@ class PendaftaranController
             $appSource = $request->getHeaderLine('X-App-Source') ?: ($input['app_source'] ?? 'daftar');
             $appSource = strtolower(trim($appSource)) === 'uwaba' ? 'uwaba' : 'daftar';
             $user = $request->getAttribute('user');
+            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
             $idPengurusPengirim = null;
             if ($user !== null && $appSource === 'uwaba') {
                 $idPengurusPengirim = (int) ($user['id_pengurus'] ?? $user['pengurus_id'] ?? $user['id'] ?? 0) ?: null;
@@ -1000,6 +1015,11 @@ class PendaftaranController
             
             // Jika ID tidak ada atau null, atau client mengirim string 7 digit (bisa NIS lama dari form), anggap santri baru
             $idFromInputRaw = $input['id'] ?? null;
+            // Role santri: untuk UPDATE hanya boleh mengubah data sendiri (gunakan id dari token, abaikan id dari body)
+            $allowedIdForSantri = null;
+            if ($roleKey === 'santri') {
+                $allowedIdForSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+            }
             $isLikelyNisFromForm = is_string($idFromInputRaw) && preg_match('/^\d{7}$/', trim($idFromInputRaw));
             if (!isset($input['id']) || $input['id'] === null || $input['id'] === '' || $isLikelyNisFromForm) {
                 $isNewSantri = true;
@@ -1065,6 +1085,16 @@ class PendaftaranController
                         'success' => false,
                         'message' => 'ID santri tidak ditemukan atau tidak valid'
                     ], 400);
+                }
+                // Keamanan: role santri hanya boleh mengubah biodata sendiri
+                if ($roleKey === 'santri' && $allowedIdForSantri !== null) {
+                    $allowedResolved = SantriHelper::resolveId($this->db, $allowedIdForSantri);
+                    if ($allowedResolved === null || (int) $id !== (int) $allowedResolved) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Anda hanya dapat menyimpan biodata sendiri'
+                        ], 403);
+                    }
                 }
                 
                 // Validasi: Cek apakah NIK sudah terdaftar untuk santri lain (bukan dirinya sendiri)
@@ -2487,14 +2517,92 @@ class PendaftaranController
     }
 
     /**
+     * GET /api/pendaftaran/get-biodata - Biodata santri untuk aplikasi daftar.
+     * Role santri: hanya data sendiri (id dari token). Admin/psb: boleh id_santri di query.
+     */
+    public function getBiodata(Request $request, Response $response): Response
+    {
+        try {
+            $user = $request->getAttribute('user');
+            if (!is_array($user)) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+            $roleKey = strtolower(trim($user['role_key'] ?? $user['user_role'] ?? ''));
+            $queryParams = $request->getQueryParams();
+            $idSantri = $queryParams['id_santri'] ?? null;
+            if ($roleKey === 'santri') {
+                $idSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+            }
+            if (!$idSantri) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'ID santri tidak tersedia'
+                ], 400);
+            }
+            $resolvedId = SantriHelper::resolveId($this->db, $idSantri);
+            if ($resolvedId === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Santri tidak ditemukan'
+                ], 404);
+            }
+            $sql = "SELECT 
+                s.id, s.nis, s.nama, s.nik, s.tempat_lahir, s.tanggal_lahir, s.gender, s.nisn, s.no_kk, s.kepala_keluarga,
+                s.anak_ke, s.jumlah_saudara, s.saudara_di_pesantren, s.hobi, s.cita_cita, s.kebutuhan_khusus,
+                s.ayah, s.status_ayah, s.nik_ayah, s.tempat_lahir_ayah, s.tanggal_lahir_ayah,
+                s.pekerjaan_ayah, s.pendidikan_ayah, s.penghasilan_ayah,
+                s.ibu, s.status_ibu, s.nik_ibu, s.tempat_lahir_ibu, s.tanggal_lahir_ibu,
+                s.pekerjaan_ibu, s.pendidikan_ibu, s.penghasilan_ibu,
+                s.hubungan_wali, s.wali, s.nik_wali, s.tempat_lahir_wali, s.tanggal_lahir_wali,
+                s.pekerjaan_wali, s.pendidikan_wali, s.penghasilan_wali,
+                s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kode_pos, s.kabupaten, s.provinsi,
+                s.madrasah, s.nama_madrasah, s.alamat_madrasah, s.lulus_madrasah,
+                s.sekolah, s.nama_sekolah, s.alamat_sekolah, s.lulus_sekolah, s.npsn, s.nsm,
+                s.no_telpon, s.email, s.riwayat_sakit, s.ukuran_baju, s.kip, s.pkh, s.kks,
+                s.status_nikah, s.pekerjaan, s.no_wa_santri,
+                s.status_pendaftar, s.status_murid, s.status_santri,
+                s.kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
+                s.id_diniyah, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
+                s.id_formal, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
+                s.lttq, s.kelas_lttq, s.kel_lttq
+                FROM santri s
+                LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
+                LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
+                LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                LEFT JOIN daerah d ON d.id = dk.id_daerah
+                WHERE s.id = ? LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$resolvedId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row) {
+                return $this->jsonResponse($response, ['success' => true, 'data' => $row], 200);
+            }
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Santri tidak ditemukan'], 404);
+        } catch (\Exception $e) {
+            error_log("PendaftaranController::getBiodata " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil biodata',
+                'data' => null
+            ], 500);
+        }
+    }
+
+    /**
      * GET /api/pendaftaran/get-registrasi - Ambil data registrasi berdasarkan id_santri
+     * Role santri: hanya data sendiri (id dari token). Admin/psb: boleh id_santri di query.
      * Support filter: tahun_hijriyah, tahun_masehi
      */
     public function getRegistrasi(Request $request, Response $response): Response
     {
         try {
+            $user = $request->getAttribute('user');
+            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
+            if ($roleKey === 'santri') {
+                $idSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+            }
             $tahunHijriyah = $queryParams['tahun_hijriyah'] ?? null;
             $tahunMasehi = $queryParams['tahun_masehi'] ?? null;
 
@@ -2560,10 +2668,13 @@ class PendaftaranController
 
     /**
      * GET /api/pendaftaran/get-transaksi - Ambil transaksi berdasarkan id_registrasi
+     * Role santri: hanya boleh melihat transaksi registrasi sendiri (id_registrasi harus milik id_santri dari token).
      */
     public function getTransaksi(Request $request, Response $response): Response
     {
         try {
+            $user = $request->getAttribute('user');
+            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
             $queryParams = $request->getQueryParams();
             $idRegistrasi = $queryParams['id_registrasi'] ?? null;
 
@@ -2572,6 +2683,20 @@ class PendaftaranController
                     'success' => false,
                     'message' => 'Parameter id_registrasi wajib diisi'
                 ], 400);
+            }
+
+            if ($roleKey === 'santri') {
+                $idSantriToken = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+                if ($idSantriToken !== null) {
+                    $stmtOwn = $this->db->prepare("SELECT id FROM psb___registrasi WHERE id = ? AND id_santri = ? LIMIT 1");
+                    $stmtOwn->execute([$idRegistrasi, $idSantriToken]);
+                    if (!$stmtOwn->fetch(\PDO::FETCH_ASSOC)) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Data transaksi tidak ditemukan atau tidak dapat diakses'
+                        ], 403);
+                    }
+                }
             }
 
             $sql = "SELECT t.id, t.id_registrasi, t.id_santri, s.nis, t.nominal, t.via, t.hijriyah, t.masehi, t.id_admin, t.pc, 
@@ -2608,8 +2733,9 @@ class PendaftaranController
     }
 
     /**
-     * GET /api/pendaftaran/get-transaksi-public - Ambil transaksi berdasarkan id_santri atau id_registrasi (PUBLIC - tanpa auth).
-     * Data di-load dari tabel psb___transaksi (bukan payment). Endpoint publik untuk aplikasi daftar yang tidak menggunakan login.
+     * GET /api/pendaftaran/get-transaksi-public - DEPRECATED / DIHAPUS DARI ROUTE.
+     * Sebelumnya: public tanpa auth → siapa saja bisa akses transaksi orang lain (IDOR).
+     * Sekarang gunakan GET /api/pendaftaran/get-transaksi?id_registrasi=... dengan auth; backend cek kepemilikan untuk role santri.
      */
     public function getTransaksiPublic(Request $request, Response $response): Response
     {

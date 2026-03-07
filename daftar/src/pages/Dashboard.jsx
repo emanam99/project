@@ -210,6 +210,9 @@ function Dashboard() {
           }
 
           // Step 3: Cek pembayaran
+          // Pembayaran tersedia (in_progress) jika biodata + berkas sudah lengkap; completed jika sudah bayar >= 200000
+          const biodataDone = updatedSteps[0].status === 'completed'
+          const berkasDone = updatedSteps[1].status === 'completed'
           try {
             const registrasiResult = await pendaftaranAPI.getRegistrasi(
               user.id,
@@ -224,20 +227,23 @@ function Dashboard() {
               console.log('=== Checking Pembayaran ===')
               console.log('Total Bayar:', bayar)
               
-              // Jika sudah ada pembayaran >= 200000, set status menjadi completed
               if (bayar >= 200000) {
                 updatedSteps[2].status = 'completed'
               } else if (bayar > 0) {
+                updatedSteps[2].status = 'in_progress'
+              } else if (biodataDone && berkasDone) {
+                // Biodata dan berkas sudah lengkap → pembayaran tersedia (bisa diklik)
                 updatedSteps[2].status = 'in_progress'
               } else {
                 updatedSteps[2].status = 'pending'
               }
             } else {
-              updatedSteps[2].status = 'pending'
+              // Belum ada data registrasi: tetap tampilkan pembayaran tersedia jika biodata + berkas sudah lengkap
+              updatedSteps[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
             }
           } catch (error) {
             console.error('Error checking pembayaran:', error)
-            updatedSteps[2].status = 'pending'
+            updatedSteps[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
           }
           
           // Sinkronkan keterangan_status di backend (pengecekan bayar & berkas ada di backend)
@@ -335,7 +341,10 @@ function Dashboard() {
               updated[1].status = 'in_progress'
             }
             
-            // Cek pembayaran (step 3)
+            const biodataDone = updated[0].status === 'completed'
+            const berkasDone = updated[1].status === 'completed'
+            
+            // Cek pembayaran (step 3): tersedia jika biodata + berkas lengkap
             try {
               const registrasiResult = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
               if (registrasiResult.success && registrasiResult.data) {
@@ -345,12 +354,17 @@ function Dashboard() {
                   updated[2].status = 'completed'
                 } else if (bayar > 0) {
                   updated[2].status = 'in_progress'
+                } else if (biodataDone && berkasDone) {
+                  updated[2].status = 'in_progress'
                 } else {
                   updated[2].status = 'pending'
                 }
+              } else {
+                updated[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
               }
             } catch (error) {
               console.error('Error checking pembayaran in visibility change:', error)
+              updated[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
             }
             
             // Update steps

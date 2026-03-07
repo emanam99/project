@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { OPSI_BY_FORMAL, FORMAL_SHOW_STATUS_MURID } from '../../../pages/PilihanStatusMurid'
@@ -95,18 +95,26 @@ function StatusPendaftaranSection({
   getLabelClassName,
   kondisiFields = [] // [{ field_name, field_label, values: [{ value, label }] }, ...]
 }) {
-  // Reset prodi jika daftar_formal bukan STAI
+  // Reset prodi hanya ketika daftar_formal berubah (bukan setiap kali user mengetik di prodi)
+  const prevFormalRef = useRef(formData.daftar_formal)
   useEffect(() => {
-    if (formData.daftar_formal !== 'STAI' && formData.prodi) {
+    const prev = prevFormalRef.current
+    prevFormalRef.current = formData.daftar_formal
+    if (prev === formData.daftar_formal) return
+    if (formData.daftar_formal !== 'STAI') {
       onFieldChange('prodi', '')
     }
-  }, [formData.daftar_formal, formData.prodi, onFieldChange])
+  }, [formData.daftar_formal, onFieldChange])
 
-  // Reset status_murid jika daftar_formal berubah dan value saat ini tidak ada di opsi formal yang baru
+  // Reset status_murid hanya ketika daftar_formal berubah
+  const prevFormalMuridRef = useRef(formData.daftar_formal)
   useEffect(() => {
+    const prev = prevFormalMuridRef.current
+    prevFormalMuridRef.current = formData.daftar_formal
+    if (prev === formData.daftar_formal) return
     const formal = formData.daftar_formal
     if (!FORMAL_SHOW_STATUS_MURID.includes(formal)) {
-      if (formData.status_murid) onFieldChange('status_murid', '')
+      onFieldChange('status_murid', '')
       return
     }
     const opts = OPSI_BY_FORMAL[formal] || []
@@ -114,7 +122,7 @@ function StatusPendaftaranSection({
     if (formData.status_murid && !validValues.includes(formData.status_murid)) {
       onFieldChange('status_murid', '')
     }
-  }, [formData.daftar_formal, formData.status_murid, onFieldChange])
+  }, [formData.daftar_formal, onFieldChange])
 
   // Ambil opsi untuk satu field: status_murid di-filter menurut daftar_formal, field lain pakai values dari API
   const getOptionsForField = (field) => {

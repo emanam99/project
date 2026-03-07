@@ -233,12 +233,18 @@ class SantriBerkasControllerV2
 
     /**
      * GET /api/v2/santri-berkas/list - Daftar berkas santri
+     * Role santri: hanya daftar berkas sendiri (id dari token). Admin/psb: boleh id_santri di query.
      */
     public function getBerkasList(Request $request, Response $response): Response
     {
         try {
+            $user = $request->getAttribute('user');
+            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
+            if ($roleKey === 'santri') {
+                $idSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+            }
             $jenisBerkas = $queryParams['jenis_berkas'] ?? null;
 
             if (!$idSantri) {

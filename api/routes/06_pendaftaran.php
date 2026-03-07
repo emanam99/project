@@ -23,6 +23,7 @@ return function (\Slim\App $app): void {
         $group->post('/update', [PendaftaranController::class, 'updatePendaftaran']);
         $group->post('/delete-item', [PendaftaranController::class, 'deletePendaftaran']);
         $group->post('/save-biodata', [PendaftaranController::class, 'saveBiodata']);
+        $group->get('/get-biodata', [PendaftaranController::class, 'getBiodata']);
         $group->get('/get-registrasi', [PendaftaranController::class, 'getRegistrasi']);
         $group->get('/get-registrasi-by-id', [PendaftaranController::class, 'getRegistrasiById']);
         $group->get('/get-registrasi-detail', [PendaftaranController::class, 'getRegistrasiDetail']);

@@ -22,7 +22,8 @@ return function (\Slim\App $app): void {
     $app->get('/api/pendaftaran/kondisi-fields', [PendaftaranController::class, 'getKondisiFields']);
     $app->post('/api/pendaftaran/items-by-kondisi', [PendaftaranController::class, 'getItemsByKondisi']);
     $app->get('/api/pendaftaran/items-by-kondisi', [PendaftaranController::class, 'getItemsByKondisi']);
-    $app->get('/api/pendaftaran/get-transaksi-public', [PendaftaranController::class, 'getTransaksiPublic']);
+    // get-transaksi-public dihapus: celah keamanan (siapa saja bisa akses transaksi orang lain dengan id_santri/id_registrasi).
+    // Gunakan GET /api/pendaftaran/get-transaksi?id_registrasi=... dengan auth; role santri hanya akses transaksi sendiri.
     $app->get('/api/pendaftaran/get-tahun-ajaran-list', [PendaftaranController::class, 'getTahunAjaranList']);
 
     // Public endpoint untuk biodata santri dan ijin

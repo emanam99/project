@@ -96,6 +96,9 @@ function BiodataWaliSection({
         </label>
         <input
           type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
           value={formData.nik_wali}
           onChange={(e) => {
             const numericValue = e.target.value.replace(/\D/g, '').slice(0, 16)
@@ -104,7 +107,6 @@ function BiodataWaliSection({
           onFocus={() => onFocus('nik_wali')}
           onBlur={onBlur}
           maxLength={16}
-          inputMode="numeric"
           className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
           placeholder="16 digit NIK"
         />

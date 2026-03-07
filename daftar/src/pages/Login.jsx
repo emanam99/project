@@ -176,13 +176,16 @@ function Login() {
         const data = response.data || {}
         const hasSantriId = user != null && user.id != null && user.id !== ''
 
-        // Set auth dulu agar API getRegistrasi pakai token
-        setAuth(response.data.token, user)
-
-        // Simpan NIK yang baru dimasukkan agar halaman Biodata bisa pre-fill tanpa nulis ulang
+        // Simpan NIK dulu ke sessionStorage agar halaman Biodata (initial state) langsung dapat NIK
         try {
           sessionStorage.setItem('daftar_login_nik', nik)
         } catch (e) { /* ignore */ }
+
+        // Pastikan NIK dari input login selalu ada di user (terutama santri baru)
+        const userToSet = user ? { ...user, nik: user.nik || nik } : user
+
+        // Set auth agar API getRegistrasi pakai token dan Biodata bisa baca user.nik
+        setAuth(response.data.token, userToSet)
 
         let redirectUrl = (data.show_pilihan_status === true ? '/pilihan-status' : null) || data.redirect_url || '/'
         const skipFlowByBackend = data.show_pilihan_status === false
@@ -461,6 +464,9 @@ function Login() {
                   </motion.div>
                   <motion.input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
                     value={nik}
                     onChange={handleNikChange}
                     onFocus={() => setFocusedInput('nik')}

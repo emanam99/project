@@ -26,13 +26,23 @@ function Biodata() {
   const { tahunHijriyah, tahunMasehi, loadTahunAjaran } = useTahunAjaranStore()
   const navigate = useNavigate()
   const { setUnsavedChanges, clearUnsavedChanges } = useUnsavedChanges()
-  const [formData, setFormData] = useState({
+  // Initial state: NIK dari sessionStorage (di-set saat login) agar langsung terisi di form tanpa menunggu effect
+  const [formData, setFormData] = useState(() => {
+    const nikInit = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') : null) || ''
+    const ls = typeof localStorage !== 'undefined' ? localStorage : null
+    const statusPendaftarInit = (ls && ls.getItem('daftar_status_pendaftar')) || ''
+    const daftarDiniyahInit = (ls && ls.getItem('daftar_diniyah')) || ''
+    const daftarFormalInit = (ls && ls.getItem('daftar_formal')) || ''
+    const statusSantriInit = (ls && ls.getItem('daftar_status_santri')) || ''
+    const statusMuridInit = (ls && ls.getItem('daftar_status_murid')) || ''
+    const prodiInit = (ls && ls.getItem('daftar_prodi')) || ''
+    return {
     // NIS
     id: '',
 
     // Data Diri
     nama: '',
-    nik: '',
+    nik: nikInit,
     gender: '',
     tempat_lahir: '',
     tanggal_lahir: '',
@@ -114,14 +124,14 @@ function Biodata() {
     pekerjaan: '',
     no_wa_santri: '',
 
-    // Status Pendaftaran
-    status_pendaftar: '',
-    daftar_diniyah: '',
-    daftar_formal: '',
-    status_murid: '',
-    prodi: '',
+    // Status Pendaftaran (dari slide pilihan di awal: Pilihan Status, Opsi Pendidikan, Status Murid, Prodi, Status Santri)
+    status_pendaftar: statusPendaftarInit,
+    daftar_diniyah: daftarDiniyahInit,
+    daftar_formal: daftarFormalInit,
+    status_murid: statusMuridInit,
+    prodi: prodiInit,
     gelombang: '',
-    status_santri: '',
+    status_santri: statusSantriInit,
 
     // Kategori & Pendidikan
     kategori: '',
@@ -138,6 +148,7 @@ function Biodata() {
     lttq: '',
     kelas_lttq: '',
     kel_lttq: '',
+  }
   })
 
   const [hasChanges, setHasChanges] = useState(false)
@@ -155,8 +166,8 @@ function Biodata() {
   const [kondisiFields, setKondisiFields] = useState([]) // [{ field_name, field_label, values: [{ value, label }] }, ...]
 
   const formRef = useRef(null)
-  const isUserTypingRef = useRef(false)
   const isLoadingDataRef = useRef(false)
+  const hasLoadedForUserIdRef = useRef(null)
 
   // Use section navigation hook
   const { sectionRefs, activeSection, scrollToSection } = useSectionNavigation()
@@ -250,15 +261,18 @@ function Biodata() {
     loadKondisiFields()
   }, [])
 
+  // Helper: ambil NIK dari user atau sessionStorage (NIK yang dimasukkan saat login)
+  const getLoginNik = useCallback(() => {
+    return user?.nik || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') : null) || ''
+  }, [user?.nik])
+
   // Initialize form dengan NIK dari user atau sessionStorage (NIK yang dimasukkan saat login)
   useEffect(() => {
-    const nikFromUser = user?.nik
-    const nikFromSession = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') : null
-    const nikToSet = nikFromUser || nikFromSession || ''
+    const nikToSet = getLoginNik()
     if (nikToSet && !formData.nik) {
       setFormData(prev => ({ ...prev, nik: nikToSet }))
     }
-  }, [user?.nik])
+  }, [getLoginNik])
 
   // Load data dari API berdasarkan ID dari user (jika ada)
   useEffect(() => {
@@ -281,36 +295,20 @@ function Biodata() {
       isLoadingDataRef.current = true
 
       try {
-        const biodataResponse = await santriAPI.getById(user.id)
+        const biodataResponse = await pendaftaranAPI.getBiodata(user.id)
 
         if (biodataResponse.success && biodataResponse.data) {
           const biodata = biodataResponse.data
 
-          // Validasi: cek ID saja - jika ID tidak ada, undefined, null, atau karakter tidak valid, redirect ke login
-          const idValue = biodata.id
-
-          if (!isValidId(idValue)) {
-            console.warn('ID santri tidak valid atau tidak ada. Redirecting to login...', {
-              id: idValue,
-              idType: typeof idValue,
-              idString: String(idValue),
-              biodata
-            })
-            resetCsrfToken()
-            const authStore = useAuthStore.getState()
-            authStore.logout()
-            window.location.href = '/login'
-            return
-          }
-
-          // NIS: tampilkan kolom nis (7 digit); jangan pakai biodata.id karena bisa PK internal (bukan NIS)
+          // Tampilan untuk pendaftar: NIS 7 digit. Backend id santri = acuan API, tidak wajib sama dengan yang tampil.
           const nisDisplay = (biodata.nis && /^\d{7}$/.test(String(biodata.nis)))
             ? String(biodata.nis)
-            : (biodata.id && /^\d{7}$/.test(String(biodata.id)) ? String(biodata.id) : '')
+            : (biodata.id != null && biodata.id !== '' ? String(biodata.id) : '')
+          const nikFallback = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') : null
           const newFormData = {
             id: nisDisplay,
             nama: biodata.nama || '',
-            nik: biodata.nik || user.nik || '',
+            nik: biodata.nik || user.nik || nikFallback || '',
             gender: biodata.gender || '',
             tempat_lahir: biodata.tempat_lahir || '',
             tanggal_lahir: biodata.tanggal_lahir || '',
@@ -456,57 +454,24 @@ function Biodata() {
               if (savedSantri === 'Mukim' || savedSantri === 'Khoriji') {
                 newFormData.status_santri = savedSantri
               }
+              const savedMurid = localStorage.getItem('daftar_status_murid')
+              if (savedMurid && savedMurid !== '') {
+                newFormData.status_murid = savedMurid
+              }
+              const savedProdi = localStorage.getItem('daftar_prodi')
+              if (savedProdi && savedProdi !== '') {
+                newFormData.prodi = savedProdi
+              }
             } catch (e) { /* ignore */ }
           }
 
-          // Validasi: cek ID setelah semua data di-load
-          const finalIdValue = newFormData.id
-
-          if (!isValidId(finalIdValue)) {
-            console.warn('ID santri tidak valid setelah processing. Redirecting to login...', {
-              id: finalIdValue,
-              idType: typeof finalIdValue,
-              idString: String(finalIdValue),
-              newFormData
-            })
-            resetCsrfToken()
-            const authStore = useAuthStore.getState()
-            authStore.logout()
-            window.location.href = '/login'
-            return
-          }
-
-          // Set formData
-          setFormData(newFormData)
-          setHasChanges(false)
-
-          // Set formData
           setFormData(newFormData)
           setHasChanges(false)
         } else {
-          // Jika data tidak ditemukan (success: false), berarti data sudah dihapus dari database
-          // Redirect ke login karena user.id sudah divalidasi di atas
-          console.warn('Data santri tidak ditemukan di database. Redirecting to login...', {
-            response: biodataResponse,
-            userId: user.id
-          })
-          resetCsrfToken()
-          const authStore = useAuthStore.getState()
-          authStore.logout()
-          window.location.href = '/login'
-          return
+          console.warn('Data santri tidak ditemukan di database.', { response: biodataResponse, userId: user.id })
         }
       } catch (error) {
         console.error('Error loading data:', error)
-
-        // Jika error, kemungkinan data sudah dihapus
-        // Redirect ke login karena user.id sudah divalidasi di atas
-        console.warn('Error loading data santri. Redirecting to login...', error)
-        resetCsrfToken()
-        const authStore = useAuthStore.getState()
-        authStore.logout()
-        window.location.href = '/login'
-        return
       } finally {
         setIsLoading(false)
         setTimeout(() => {
@@ -515,80 +480,51 @@ function Biodata() {
       }
     }
 
-    // Load data jika user punya ID (santri yang sudah terdaftar)
-    if (user?.id && tahunHijriyah && tahunMasehi) {
+    // Load data sekali saja per user.id agar tidak overwrite input saat user mengetik atau setelah save
+    const uid = user?.id != null ? String(user.id) : null
+    if (uid && tahunHijriyah && tahunMasehi && hasLoadedForUserIdRef.current !== uid) {
+      hasLoadedForUserIdRef.current = uid
       loadDataFromUser()
     }
   }, [user?.id, tahunHijriyah, tahunMasehi])
 
-  // Santri baru (belum punya id): isi status_pendaftar, daftar_diniyah, daftar_formal & status_santri dari localStorage (sekali saja)
+  // Santri baru (belum punya id): isi dari localStorage sekali saja, jangan overwrite saat user mengetik
+  const hasFilledFromStorageRef = useRef(false)
   useEffect(() => {
-    if (!user || user.id) return
+    if (!user || user.id || hasFilledFromStorageRef.current) return
+    hasFilledFromStorageRef.current = true
     try {
-      let updated = false
-      const next = { ...formData }
-      if (formData.status_pendaftar === '') {
-        const saved = localStorage.getItem('daftar_status_pendaftar')
-        if (saved === 'Baru' || saved === 'Lama') {
-          next.status_pendaftar = saved
-          updated = true
+      setFormData(prev => {
+        let updated = false
+        const next = { ...prev }
+        if ((prev.status_pendaftar || '') === '') {
+          const saved = localStorage.getItem('daftar_status_pendaftar')
+          if (saved === 'Baru' || saved === 'Lama') { next.status_pendaftar = saved; updated = true }
         }
-      }
-      if (formData.daftar_diniyah === '') {
-        const saved = localStorage.getItem('daftar_diniyah')
-        if (saved && saved !== '') {
-          next.daftar_diniyah = saved
-          updated = true
+        if ((prev.daftar_diniyah || '') === '') {
+          const saved = localStorage.getItem('daftar_diniyah')
+          if (saved && saved !== '') { next.daftar_diniyah = saved; updated = true }
         }
-      }
-      if (formData.daftar_formal === '') {
-        const saved = localStorage.getItem('daftar_formal')
-        if (saved && saved !== '') {
-          next.daftar_formal = saved
-          updated = true
+        if ((prev.daftar_formal || '') === '') {
+          const saved = localStorage.getItem('daftar_formal')
+          if (saved && saved !== '') { next.daftar_formal = saved; updated = true }
         }
-      }
-      if (formData.status_santri === '') {
-        const saved = localStorage.getItem('daftar_status_santri')
-        if (saved === 'Mukim' || saved === 'Khoriji') {
-          next.status_santri = saved
-          updated = true
+        if ((prev.status_santri || '') === '') {
+          const saved = localStorage.getItem('daftar_status_santri')
+          if (saved === 'Mukim' || saved === 'Khoriji') { next.status_santri = saved; updated = true }
         }
-      }
-      if (updated) setFormData(next)
+        if ((prev.status_murid || '') === '') {
+          const saved = localStorage.getItem('daftar_status_murid')
+          if (saved && saved !== '') { next.status_murid = saved; updated = true }
+        }
+        if ((prev.prodi || '') === '') {
+          const saved = localStorage.getItem('daftar_prodi')
+          if (saved && saved !== '') { next.prodi = saved; updated = true }
+        }
+        return updated ? next : prev
+      })
     } catch (e) { /* ignore */ }
-  }, [user?.id, formData.status_pendaftar, formData.daftar_diniyah, formData.daftar_formal, formData.status_santri])
-
-  // Validasi formData: jika ID tidak ada, undefined, null, atau karakter tidak valid, redirect ke login
-  useEffect(() => {
-    // Skip validasi jika sedang saving, loading, atau baru saja save
-    if (isSaving || isLoading || isLoadingDataRef.current || justSaved) {
-      return
-    }
-
-    // Hanya validasi jika user punya ID yang valid (bukan santri baru) dan tidak sedang loading
-    if (user?.id && isValidId(user.id) && !isLoading && !isLoadingDataRef.current) {
-      const idValue = formData.id
-
-      // Jika user punya ID tapi formData.id tidak valid, redirect ke login
-      // Tapi skip jika formData.id masih kosong (santri baru yang belum save)
-      // Juga skip jika formData.id sama dengan user.id (sudah sinkron)
-      if (formData.id && formData.id !== String(user.id) && !isValidId(idValue)) {
-        console.warn('FormData ID tidak valid. Redirecting to login...', {
-          id: idValue,
-          idType: typeof idValue,
-          idString: String(idValue),
-          userId: user.id,
-          formData: formData
-        })
-        resetCsrfToken()
-        const authStore = useAuthStore.getState()
-        authStore.logout()
-        window.location.href = '/login'
-        return
-      }
-    }
-  }, [formData.id, user?.id, isLoading, isSaving, justSaved])
+  }, [user?.id])
 
   // Simpan formData ke sessionStorage setiap kali ada perubahan (untuk validasi di halaman Berkas)
   useEffect(() => {
@@ -693,9 +629,9 @@ function Biodata() {
           }
         }
 
-        setHasChanges(true)
         return updated
       })
+      setHasChanges(true)
       return
     } else if (field === 'nik_ayah' || field === 'nik_ibu' || field === 'nik_wali') {
       // Hanya filter angka dan batasi 16 digit
@@ -740,9 +676,9 @@ function Biodata() {
           }
         }
 
-        setHasChanges(true)
         return updated
       })
+      setHasChanges(true)
       return
     }
 
@@ -767,9 +703,9 @@ function Biodata() {
         }
       }
 
-      setHasChanges(true)
       return updated
     })
+    setHasChanges(true)
   }
 
   // Fungsi untuk cek field wajib yang belum diisi
@@ -919,30 +855,23 @@ function Biodata() {
         throw new Error(biodataResponse.message || 'Gagal menyimpan biodata')
       }
 
-      // Jika ini santri baru dan baru saja mendapatkan ID (atau update: pastikan NIS tampil benar)
+      // Backend mengembalikan id santri (acuan API) dan nis (7 digit, yang ditampilkan ke pendaftar)
       if (biodataResponse.data && biodataResponse.data.id) {
-        const newId = String(biodataResponse.data.id)
-        const nisFromResponse = biodataResponse.data.nis != null ? String(biodataResponse.data.nis) : null
-        
-        // Update user store dengan ID baru terlebih dahulu
+        const idSantri = String(biodataResponse.data.id)
+        const nis = biodataResponse.data.nis != null ? String(biodataResponse.data.nis) : ''
+        hasLoadedForUserIdRef.current = idSantri
         const authStore = useAuthStore.getState()
-        const updatedUser = {
+        authStore.setAuth(authStore.token, {
           ...user,
-          id: newId,
+          id: idSantri,
           nama: formData.nama || user?.nama || '',
           nik: formData.nik || user?.nik || '',
           role_key: user?.role_key || 'santri',
           role_label: user?.role_label || 'Santri',
           allowed_apps: user?.allowed_apps || ['daftar'],
           permissions: user?.permissions || []
-        }
-        authStore.setAuth(authStore.token, updatedUser)
-        
-        // Tampilkan NIS (7 digit), jangan timpa dengan id internal (PK)
-        const nisToShow = (nisFromResponse && /^\d{7}$/.test(nisFromResponse))
-          ? nisFromResponse
-          : (/^\d{7}$/.test(newId) ? newId : (formData.id && /^\d{7}$/.test(String(formData.id)) ? String(formData.id) : ''))
-        setFormData(prev => ({ ...prev, id: nisToShow }))
+        })
+        setFormData(prev => ({ ...prev, id: nis }))
       }
 
       setHasChanges(false)
@@ -953,6 +882,8 @@ function Biodata() {
         localStorage.removeItem('daftar_diniyah')
         localStorage.removeItem('daftar_formal')
         localStorage.removeItem('daftar_status_santri')
+        localStorage.removeItem('daftar_status_murid')
+        localStorage.removeItem('daftar_prodi')
       } catch (e) { /* ignore */ }
 
       // Reset flag setelah 3 detik (cukup waktu untuk semua state ter-update)
@@ -960,176 +891,14 @@ function Biodata() {
         setJustSaved(false)
       }, 3000)
 
-      // Sinkronkan keterangan_status di backend (jalan di background, jangan block loading)
+      // Sinkronkan keterangan_status di backend (jalan di background)
       const currentUserId = biodataResponse.data?.id ? String(biodataResponse.data.id) : (user?.id ? String(user.id) : null)
       if (currentUserId && tahunHijriyah && tahunMasehi) {
         pendaftaranAPI.syncKeteranganStatus({
           id_santri: currentUserId,
           tahun_hijriyah: tahunHijriyah,
           tahun_masehi: tahunMasehi
-        }).catch(error => console.error('Error sync keterangan_status after save biodata:', error))
-      }
-
-      // Muat ulang SEMUA data dari database setelah save berhasil
-      // Sama seperti ketika memasukkan NIK yang sudah ada, semua data harus di-load dari database
-      if (biodataResponse.data && biodataResponse.data.id) {
-        const idToLoad = String(biodataResponse.data.id)
-        
-        // Beri jeda sedikit agar backend selesai memproses
-        setTimeout(async () => {
-          try {
-            // Load semua data biodata dari API
-            const biodataResponse = await santriAPI.getById(idToLoad)
-            
-            if (biodataResponse.success && biodataResponse.data) {
-              const biodata = biodataResponse.data
-              
-              // Log untuk debugging email
-              console.log('Biodata reloaded after save - Email from DB:', biodata.email, 'Type:', typeof biodata.email, 'Full biodata:', biodata)
-              
-              // NIS tampilan: pakai biodata.nis (7 digit), jangan biodata.id (bisa PK internal)
-              const nisReload = (biodata.nis && /^\d{7}$/.test(String(biodata.nis)))
-                ? String(biodata.nis)
-                : (biodata.id && /^\d{7}$/.test(String(biodata.id)) ? String(biodata.id) : '')
-              const newFormData = {
-                id: nisReload,
-                nama: biodata.nama || '',
-                nik: biodata.nik || '',
-                gender: biodata.gender || '',
-                tempat_lahir: biodata.tempat_lahir || '',
-                tanggal_lahir: biodata.tanggal_lahir || '',
-                nisn: biodata.nisn || '',
-                no_kk: biodata.no_kk || '',
-                kepala_keluarga: biodata.kepala_keluarga || '',
-                anak_ke: biodata.anak_ke || '',
-                jumlah_saudara: biodata.jumlah_saudara || '',
-                saudara_di_pesantren: biodata.saudara_di_pesantren || '',
-                hobi: biodata.hobi || '',
-                cita_cita: biodata.cita_cita || '',
-                kebutuhan_khusus: biodata.kebutuhan_khusus || '',
-                ayah: biodata.ayah || '',
-                status_ayah: biodata.status_ayah || 'Masih Hidup',
-                nik_ayah: biodata.nik_ayah || '',
-                tempat_lahir_ayah: biodata.tempat_lahir_ayah || '',
-                tanggal_lahir_ayah: biodata.tanggal_lahir_ayah || '',
-                pekerjaan_ayah: biodata.pekerjaan_ayah || '',
-                pendidikan_ayah: biodata.pendidikan_ayah || '',
-                penghasilan_ayah: biodata.penghasilan_ayah || '',
-                ibu: biodata.ibu || '',
-                status_ibu: biodata.status_ibu || 'Masih Hidup',
-                nik_ibu: biodata.nik_ibu || '',
-                tempat_lahir_ibu: biodata.tempat_lahir_ibu || '',
-                tanggal_lahir_ibu: biodata.tanggal_lahir_ibu || '',
-                pekerjaan_ibu: biodata.pekerjaan_ibu || '',
-                pendidikan_ibu: biodata.pendidikan_ibu || '',
-                penghasilan_ibu: biodata.penghasilan_ibu || '',
-                hubungan_wali: biodata.hubungan_wali || '',
-                wali: biodata.wali || '',
-                nik_wali: biodata.nik_wali || '',
-                tempat_lahir_wali: biodata.tempat_lahir_wali || '',
-                tanggal_lahir_wali: biodata.tanggal_lahir_wali || '',
-                pekerjaan_wali: biodata.pekerjaan_wali || '',
-                pendidikan_wali: biodata.pendidikan_wali || '',
-                penghasilan_wali: biodata.penghasilan_wali || '',
-                dusun: biodata.dusun || '',
-                rt: biodata.rt || '',
-                rw: biodata.rw || '',
-                desa: biodata.desa || '',
-                kecamatan: biodata.kecamatan || '',
-                kabupaten: biodata.kabupaten || '',
-                provinsi: biodata.provinsi || '',
-                kode_pos: biodata.kode_pos || '',
-                no_telpon: biodata.no_telpon || '',
-                // Email wajib diisi - load dari database
-                // Jika email null atau empty di database, tetap set ke empty string (akan divalidasi saat save)
-                email: biodata.email ? String(biodata.email).trim() : '',
-                riwayat_sakit: biodata.riwayat_sakit || '',
-                ukuran_baju: biodata.ukuran_baju || '',
-                kip: biodata.kip || '',
-                pkh: biodata.pkh || '',
-                kks: biodata.kks || '',
-                status_nikah: biodata.status_nikah || '',
-                pekerjaan: biodata.pekerjaan || '',
-                no_wa_santri: biodata.no_wa_santri || '',
-                status_santri: biodata.status_santri || '',
-                kategori: biodata.kategori || '',
-                daerah: biodata.daerah || '',
-                kamar: biodata.kamar || '',
-                diniyah: biodata.diniyah || '',
-                kelas_diniyah: biodata.kelas_diniyah || '',
-                kel_diniyah: biodata.kel_diniyah || '',
-                nim_diniyah: biodata.nim_diniyah || '',
-                formal: biodata.formal || '',
-                kelas_formal: biodata.kelas_formal || '',
-                kel_formal: biodata.kel_formal || '',
-                nim_formal: biodata.nim_formal || '',
-                lttq: biodata.lttq || '',
-                kelas_lttq: biodata.kelas_lttq || '',
-                kel_lttq: biodata.kel_lttq || '',
-                prodi: biodata.prodi || '',
-                // Riwayat sekolah dan madrasah (Akan diupdate dari psb___registrasi di bawah jika ada)
-                madrasah: '',
-                nama_madrasah: '',
-                alamat_madrasah: '',
-                lulus_madrasah: '',
-                sekolah: '',
-                nama_sekolah: '',
-                alamat_sekolah: '',
-                lulus_sekolah: '',
-                npsn: '',
-                nsm: '',
-                jurusan: '',
-                program_sekolah: '',
-                gelombang: '',
-                status_pendaftar: '',
-                daftar_diniyah: '',
-                daftar_formal: '',
-                status_murid: ''
-              }
-              
-              // Load data registrasi untuk melengkapi formData
-              const registrasiResponse = await pendaftaranAPI.getRegistrasi(
-                idToLoad,
-                tahunHijriyah,
-                tahunMasehi
-              )
-              
-              if (registrasiResponse.success && registrasiResponse.data) {
-                const reg = registrasiResponse.data
-                const { getGelombangAktif } = useTahunAjaranStore.getState()
-                const gelombangAktif = getGelombangAktif()
-                
-                newFormData.status_pendaftar = reg.status_pendaftar || ''
-                newFormData.daftar_diniyah = reg.daftar_diniyah || ''
-                newFormData.daftar_formal = reg.daftar_formal || ''
-                newFormData.status_murid = reg.status_murid || ''
-                newFormData.status_santri = reg.status_santri || ''
-                newFormData.prodi = reg.prodi || newFormData.prodi
-                newFormData.gelombang = reg.gelombang || gelombangAktif || ''
-                newFormData.madrasah = reg.madrasah || ''
-                newFormData.nama_madrasah = reg.nama_madrasah || ''
-                newFormData.alamat_madrasah = reg.alamat_madrasah || ''
-                newFormData.lulus_madrasah = reg.lulus_madrasah || ''
-                newFormData.sekolah = reg.sekolah || ''
-                newFormData.nama_sekolah = reg.nama_sekolah || ''
-                newFormData.alamat_sekolah = reg.alamat_sekolah || ''
-                newFormData.lulus_sekolah = reg.lulus_sekolah || ''
-                newFormData.npsn = reg.npsn || ''
-                newFormData.nsm = reg.nsm || ''
-                newFormData.jurusan = reg.jurusan || ''
-                newFormData.program_sekolah = reg.program_sekolah || ''
-              }
-              
-              // Update formData dengan semua data dari database
-              setFormData(newFormData)
-              setHasChanges(false)
-              
-              console.log('✅ Data berhasil di-reload dari database setelah save')
-            }
-          } catch (e) {
-            console.error('Error reloading data after save:', e)
-          }
-        }, 1000) // Beri jeda 1 detik agar backend selesai memproses
+        }).catch(() => {})
       }
     } catch (error) {
       console.error('Error saving data:', error)

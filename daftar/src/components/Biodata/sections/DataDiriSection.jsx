@@ -64,6 +64,9 @@ function DataDiriSection({
         </div>
         <input
           type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
           value={formData.nik}
           onChange={(e) => {
             const numericValue = e.target.value.replace(/\D/g, '').slice(0, 16)
@@ -72,7 +75,6 @@ function DataDiriSection({
           onFocus={() => onFocus('nik')}
           onBlur={onBlur}
           maxLength={16}
-          inputMode="numeric"
           className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
           placeholder="16 digit NIK"
         />
@@ -145,6 +147,9 @@ function DataDiriSection({
         </div>
         <input
           type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
           value={formData.nisn}
           onChange={(e) => {
             const numericValue = e.target.value.replace(/\D/g, '').slice(0, 10)
@@ -153,7 +158,6 @@ function DataDiriSection({
           onFocus={() => onFocus('nisn')}
           onBlur={onBlur}
           maxLength={10}
-          inputMode="numeric"
           className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
           placeholder="10 digit NISN"
         />
@@ -179,6 +183,9 @@ function DataDiriSection({
         </div>
         <input
           type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
           value={formData.no_kk}
           onChange={(e) => {
             const numericValue = e.target.value.replace(/\D/g, '').slice(0, 16)
@@ -187,7 +194,6 @@ function DataDiriSection({
           onFocus={() => onFocus('no_kk')}
           onBlur={onBlur}
           maxLength={16}
-          inputMode="numeric"
           className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
           placeholder="16 digit Nomor Kartu Keluarga"
         />
