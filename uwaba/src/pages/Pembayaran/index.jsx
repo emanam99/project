@@ -6,6 +6,7 @@ import BiodataBox from '../../components/Biodata/BiodataBox'
 import RincianList from './components/RincianList'
 import UwabaRincian from './components/UwabaRincian'
 import SearchOffcanvas from '../../components/Biodata/SearchOffcanvas'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import { uwabaAPI } from '../../services/api'
 
 function Pembayaran() {
@@ -37,6 +38,7 @@ function Pembayaran() {
   })
   const [activeTab, setActiveTab] = useState('biodata') // 'biodata' atau 'rincian'
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const closeSearchOffcanvas = useOffcanvasBackClose(isSearchOpen, () => setIsSearchOpen(false))
   const [uwabaPrices, setUwabaPrices] = useState(null)
   const [biodata, setBiodata] = useState(null)
   const [isDesktop, setIsDesktop] = useState(false)
@@ -264,7 +266,7 @@ function Pembayaran() {
       {createPortal(
         <SearchOffcanvas
           isOpen={isSearchOpen}
-          onClose={() => setIsSearchOpen(false)}
+          onClose={closeSearchOffcanvas}
           onSelectSantri={handleSelectSantriFromSearch}
         />,
         document.body

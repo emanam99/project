@@ -5,6 +5,7 @@ import { pemasukanAPI } from '../../../services/api'
 import { useAuthStore } from '../../../store/authStore'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useNotification } from '../../../contexts/NotificationContext'
+import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
 import { getTanggalFromAPI } from '../../../utils/hijriDate'
 import Modal from '../../../components/Modal/Modal'
 import DetailOffcanvas from '../../../components/DetailOffcanvas/DetailOffcanvas'
@@ -212,6 +213,7 @@ function Pemasukan() {
 
   // State untuk offcanvas detail pemasukan
   const [showPemasukanOffcanvas, setShowPemasukanOffcanvas] = useState(false)
+  const closePemasukanOffcanvas = useOffcanvasBackClose(showPemasukanOffcanvas, () => { setShowPemasukanOffcanvas(false); setPemasukanDetail(null) })
   const [pemasukanDetail, setPemasukanDetail] = useState(null)
   const [loadingPemasukanDetail, setLoadingPemasukanDetail] = useState(false)
   const [uwabaTanggal, setUwabaTanggal] = useState(new Date().toISOString().split('T')[0])
@@ -1845,10 +1847,7 @@ function Pemasukan() {
       {/* Detail Offcanvas */}
       <DetailOffcanvas
         isOpen={showPemasukanOffcanvas}
-        onClose={() => {
-          setShowPemasukanOffcanvas(false)
-          setPemasukanDetail(null)
-        }}
+        onClose={closePemasukanOffcanvas}
         title="Detail Pemasukan"
         detailData={pemasukanDetail}
         loading={loadingPemasukanDetail}

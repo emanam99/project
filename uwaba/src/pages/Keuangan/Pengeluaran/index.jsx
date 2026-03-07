@@ -21,6 +21,7 @@ import { useRencanaNotifications } from './hooks/useRencanaNotifications'
 import { useAdminList } from './hooks/useAdminList'
 import { useRencanaDetail } from './hooks/useRencanaDetail'
 import { usePengeluaranDetail } from './hooks/usePengeluaranDetail'
+import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
 
 function Pengeluaran() {
   const { user } = useAuthStore()
@@ -127,6 +128,9 @@ function Pengeluaran() {
   const confirmAdminList = useAdminList(true) // Hanya super admin dan admin uwaba untuk approve/reject rencana pengeluaran
   const rencanaAdminList = useAdminList(true) // Hanya super admin dan admin uwaba untuk rencana pengeluaran
   const pengeluaranAdminList = useAdminList()
+  
+  const closePengeluaranDetailOffcanvas = useOffcanvasBackClose(pengeluaranDetailHook.showPengeluaranOffcanvas, () => { pengeluaranDetailHook.closePengeluaranOffcanvas(); pengeluaranAdminList.resetSelection() })
+  const closeRencanaDetailOffcanvas = useOffcanvasBackClose(rencanaDetailHook.showRencanaOffcanvas, () => { rencanaDetailHook.closeRencanaOffcanvas(); rencanaAdminList.resetSelection() })
   
   // Use custom hooks for notifications
   const { sendRencanaNotifications, sendNotificationsToConfirmAdmins } = useRencanaNotifications()
@@ -943,10 +947,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
       {/* Detail Offcanvas - Pengeluaran */}
       <DetailOffcanvas
         isOpen={pengeluaranDetailHook.showPengeluaranOffcanvas}
-        onClose={() => {
-          pengeluaranDetailHook.closePengeluaranOffcanvas()
-          pengeluaranAdminList.resetSelection()
-        }}
+        onClose={closePengeluaranDetailOffcanvas}
         detailData={pengeluaranDetailHook.selectedPengeluaran}
         loading={pengeluaranDetailHook.loadingPengeluaranDetail}
         type="pengeluaran"
@@ -962,10 +963,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
       {/* Detail Offcanvas - Rencana */}
       <DetailOffcanvas
         isOpen={rencanaDetailHook.showRencanaOffcanvas}
-        onClose={() => {
-          rencanaDetailHook.closeRencanaOffcanvas()
-          rencanaAdminList.resetSelection()
-        }}
+        onClose={closeRencanaDetailOffcanvas}
         detailData={rencanaDetailHook.rencanaDetail}
         loading={rencanaDetailHook.loadingRencanaDetail}
         type="rencana"

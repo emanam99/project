@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import { manageUsersAPI, jabatanAPI } from '../../services/api'
 import api from '../../services/api'
 import Modal from '../../components/Modal/Modal'
@@ -48,6 +49,7 @@ function EditUser() {
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [selectedSession, setSelectedSession] = useState(null)
   const [showSessionOffcanvas, setShowSessionOffcanvas] = useState(false)
+  const closeSessionOffcanvas = useOffcanvasBackClose(showSessionOffcanvas, () => { setShowSessionOffcanvas(false); setSelectedSession(null) })
   const [revokeLoading, setRevokeLoading] = useState(false)
   const [statusSaving, setStatusSaving] = useState(false)
   /** Aktivitas user (audit log) - untuk user yang sedang diedit */
@@ -1751,7 +1753,7 @@ function EditUser() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => { setShowSessionOffcanvas(false); setSelectedSession(null) }}
+            onClick={closeSessionOffcanvas}
             className="fixed inset-0 bg-black/50 z-[200]"
           />
           <motion.div
@@ -1766,7 +1768,7 @@ function EditUser() {
               <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Detail Session</h3>
               <button
                 type="button"
-                onClick={() => { setShowSessionOffcanvas(false); setSelectedSession(null) }}
+                onClick={closeSessionOffcanvas}
                 className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
                 aria-label="Tutup"
               >

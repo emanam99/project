@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { createPortal } from 'react-dom'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import BiodataJamaah from '../../components/Umroh/BiodataJamaah'
 import TabunganList from '../../components/Umroh/TabunganList'
 import SearchJamaahOffcanvas from '../../components/Umroh/SearchJamaahOffcanvas'
@@ -16,6 +17,7 @@ function Tabungan() {
   const [activeTab, setActiveTab] = useState('biodata') // 'biodata' atau 'tabungan'
   const [isDesktop, setIsDesktop] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const closeSearchOffcanvas = useOffcanvasBackClose(isSearchOpen, () => setIsSearchOpen(false))
   
   // Track window size untuk menentukan desktop/mobile
   useEffect(() => {
@@ -132,7 +134,7 @@ function Tabungan() {
       {createPortal(
         <SearchJamaahOffcanvas
           isOpen={isSearchOpen}
-          onClose={() => setIsSearchOpen(false)}
+          onClose={closeSearchOffcanvas}
           onSelectJamaah={handleSelectJamaahFromSearch}
         />,
         document.body

@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\SantriHelper;
+use App\Helpers\SantriKamarHelper;
 use App\Helpers\SantriRombelHelper;
 use App\Helpers\UserAktivitasLogger;
 use App\Services\WhatsAppService;
@@ -1245,6 +1246,7 @@ class PendaftaranController
                     $this->saveOrUpdateRegistrasi($id, $input, $input['id_admin'] ?? null);
                     
                     $this->appendSantriRombelRiwayatIfNeeded($id, $input, $request);
+                    $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, $oldSantri);
                     
                     $this->db->commit();
 
@@ -1394,6 +1396,7 @@ class PendaftaranController
                     $this->saveOrUpdateRegistrasi($id, $input, $input['id_admin'] ?? null);
                     
                     $this->appendSantriRombelRiwayatIfNeeded($id, $input, $request);
+                    $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, null);
                     
                     $this->db->commit();
 
@@ -1565,6 +1568,58 @@ class PendaftaranController
             throw $e; // id_pengurus wajib — biar caller bisa return 400
         } catch (\Throwable $e) {
             error_log('PendaftaranController::appendSantriRombelRiwayatIfNeeded: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Jika input berisi id_kamar (dan berubah dari nilai lama), sisipkan riwayat ke santri___kamar.
+     * id_pengurus diambil dari input atau user; tahun_ajaran dari input atau default hijriyah.
+     */
+    private function appendSantriKamarRiwayatIfNeeded(int $idSantri, array $input, Request $request, ?array $oldSantri = null): void
+    {
+        $newKamar = isset($input['id_kamar']) && $input['id_kamar'] !== '' && $input['id_kamar'] !== null ? (int) $input['id_kamar'] : null;
+        if ($newKamar === null || $newKamar <= 0) {
+            return;
+        }
+        if ($oldSantri !== null) {
+            $oldKamar = isset($oldSantri['id_kamar']) ? (int) $oldSantri['id_kamar'] : null;
+            if ($newKamar === $oldKamar) {
+                return;
+            }
+        }
+        $idPengurus = isset($input['id_pengurus']) && $input['id_pengurus'] !== '' && $input['id_pengurus'] !== null ? (int) $input['id_pengurus'] : null;
+        if (!$idPengurus) {
+            $user = $request->getAttribute('user');
+            $idPengurus = isset($user['id_pengurus']) ? (int) $user['id_pengurus'] : null;
+            $uid = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            if (!$idPengurus && $uid) {
+                $st = $this->db->prepare("SELECT id FROM pengurus WHERE id = ? LIMIT 1");
+                $st->execute([$uid]);
+                $row = $st->fetch(\PDO::FETCH_ASSOC);
+                $idPengurus = $row ? (int) $row['id'] : null;
+                if (!$idPengurus) {
+                    $st = $this->db->prepare("SELECT id FROM pengurus WHERE id_user = ? LIMIT 1");
+                    $st->execute([$uid]);
+                    $row = $st->fetch(\PDO::FETCH_ASSOC);
+                    $idPengurus = $row ? (int) $row['id'] : null;
+                }
+            }
+        }
+        if (!$idPengurus || $idPengurus <= 0) {
+            throw new \InvalidArgumentException('id_pengurus wajib diisi saat mengisi kamar (siapa yang melakukan perubahan). Sertakan di body atau login sebagai pengurus.');
+        }
+        $tahunKamar = isset($input['tahun_ajaran_kamar']) && trim((string) $input['tahun_ajaran_kamar']) !== '' ? trim((string) $input['tahun_ajaran_kamar']) : SantriRombelHelper::getDefaultTahunAjaran($this->db, 'hijriyah');
+        if (!$tahunKamar) {
+            return;
+        }
+        $statusSantri = isset($input['status_santri']) ? trim((string) $input['status_santri']) : ($oldSantri !== null ? ($oldSantri['status_santri'] ?? null) : null);
+        $kategori = isset($input['kategori']) ? trim((string) $input['kategori']) : ($oldSantri !== null ? ($oldSantri['kategori'] ?? null) : null);
+        try {
+            SantriKamarHelper::appendKamarRiwayat($this->db, $idSantri, $newKamar, $tahunKamar, $idPengurus, $statusSantri ?: null, $kategori ?: null);
+        } catch (\InvalidArgumentException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            error_log('PendaftaranController::appendSantriKamarRiwayatIfNeeded: ' . $e->getMessage());
         }
     }
 

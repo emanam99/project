@@ -9,6 +9,7 @@ use App\Controllers\AlamatController;
 use App\Controllers\PengurusController;
 use App\Controllers\RombelController;
 use App\Controllers\SantriController;
+use App\Controllers\SantriLulusanController;
 use App\Controllers\WaliKelasController;
 
 return function (\Slim\App $app): void {
@@ -28,6 +29,16 @@ return function (\Slim\App $app): void {
         ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
     $app->get('/api/santri/by-kelas', [SantriController::class, 'getSantriByKelas'])
         ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    $app->get('/api/santri/riwayat-rombel', [SantriController::class, 'getRiwayatRombel'])
+        ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    $app->get('/api/santri/riwayat-kamar', [SantriController::class, 'getRiwayatKamar'])
+        ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    // Lulusan (santri___lulusan) — super_admin only
+    $app->get('/api/santri-lulusan', [SantriLulusanController::class, 'getAll'])
+        ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    $app->post('/api/santri-lulusan', [SantriLulusanController::class, 'create'])
+        ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // Rombel (lembaga___rombel) — super_admin only
     $app->group('/api/rombel', function ($group) {
@@ -36,6 +47,7 @@ return function (\Slim\App $app): void {
         $group->post('', [RombelController::class, 'create']);
         $group->put('/{id}', [RombelController::class, 'update']);
         $group->patch('/{id}/status', [RombelController::class, 'setStatus']);
+        $group->delete('/{id}', [RombelController::class, 'delete']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // Wali kelas (lembaga___wali_kelas) — super_admin only, tidak ada delete (riwayat)

@@ -101,6 +101,8 @@ const RoleAkses = lazy(() => import('./pages/Settings/RoleAkses'))
 const Fitur = lazy(() => import('./pages/Settings/Fitur'))
 const TahunAjaranPage = lazy(() => import('./pages/Settings/TahunAjaran'))
 const RombelSantri = lazy(() => import('./pages/Settings/RombelSantri'))
+const DataSantri = lazy(() => import('./pages/Santri/DataSantri'))
+const DataLulusan = lazy(() => import('./pages/Lulusan/DataLulusan'))
 const Daerah = lazy(() => import('./pages/Domisili/Daerah'))
 const Kamar = lazy(() => import('./pages/Domisili/Kamar'))
 
@@ -775,6 +777,22 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Lembaga />
+                </Suspense>
+              } 
+            />
+            <Route 
+              path="/santri" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DataSantri />
+                </Suspense>
+              } 
+            />
+            <Route 
+              path="/lulusan" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DataLulusan />
                 </Suspense>
               } 
             />

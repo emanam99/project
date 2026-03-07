@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import CetakKartuCashlessOffcanvas from './components/CetakKartuCashlessOffcanvas'
 
 /**
@@ -12,13 +13,14 @@ export default function CetakKartuCashless() {
   const handleClose = () => {
     navigate('/cashless/pembuatan-akun', { replace: true })
   }
+  const closeWithBack = useOffcanvasBackClose(!!id, handleClose)
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {id ? (
         <CetakKartuCashlessOffcanvas
           isOpen={true}
-          onClose={handleClose}
+          onClose={closeWithBack}
           accountId={id}
         />
       ) : (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { umrohTabunganAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import { motion } from 'framer-motion'
 import TabunganFormOffcanvas from './TabunganFormOffcanvas'
 import DeleteTabunganModal from './DeleteTabunganModal'
@@ -14,6 +15,7 @@ function TabunganList({ jamaahId, jamaahData }) {
   const [loading, setLoading] = useState(false)
   const [saldo, setSaldo] = useState(0)
   const [showFormOffcanvas, setShowFormOffcanvas] = useState(false)
+  const closeFormOffcanvas = useOffcanvasBackClose(showFormOffcanvas, () => setShowFormOffcanvas(false))
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [itemToDelete, setItemToDelete] = useState(null)
 
@@ -253,7 +255,7 @@ function TabunganList({ jamaahId, jamaahData }) {
       {/* Form Offcanvas */}
       <TabunganFormOffcanvas
         isOpen={showFormOffcanvas}
-        onClose={() => setShowFormOffcanvas(false)}
+        onClose={closeFormOffcanvas}
         jamaahId={jamaahId}
         jamaahData={jamaahData}
         onSuccess={() => {

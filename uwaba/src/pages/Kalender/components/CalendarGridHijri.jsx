@@ -76,15 +76,19 @@ export default function CalendarGridHijri({ monthData, showGregorian = true, sho
     const emptyCount = startDay
 
     const dayCells = []
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+    const hour = now.getHours()
+    const minute = now.getMinutes()
+    const afterMaghrib = hour > 17 || (hour === 17 && minute >= 30)
+    const todayForHijri = new Date(today)
+    if (afterMaghrib) todayForHijri.setDate(todayForHijri.getDate() + 1)
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dayDate = new Date(startDate)
       dayDate.setDate(startDate.getDate() + (day - 1))
-      const dayDateCompare = new Date(dayDate)
-      dayDateCompare.setHours(0, 0, 0, 0)
-      const isToday = dayDateCompare.getTime() === today.getTime()
+      const dayDateCompare = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 0, 0, 0, 0)
+      const isToday = dayDateCompare.getTime() === todayForHijri.getTime()
       const pasaran = showPasaran ? calculatePasaran(dayDate) : null
       dayCells.push({
         day,

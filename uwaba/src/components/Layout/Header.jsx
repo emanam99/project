@@ -96,6 +96,8 @@ const HEADER_GROUPS = [
       { path: '/domisili/daerah', label: 'Daerah' },
       { path: '/domisili/kamar', label: 'Kamar' },
       { path: '/lembaga', label: 'Lembaga' },
+      { path: '/santri', label: 'Santri' },
+      { path: '/lulusan', label: 'Lulusan' },
       { path: '/rombel', label: 'Rombel' },
       { path: '/manage-jabatan', label: 'Jabatan' },
       { path: '/settings/role-akses', label: 'Role & Akses' },

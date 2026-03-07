@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { uploadsManagerAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import FilePreviewOffcanvas from '../../components/FilePreview/FilePreviewOffcanvas'
 
 function formatBytes(bytes) {
@@ -45,6 +46,7 @@ function ManageUploads() {
   const [deleteModal, setDeleteModal] = useState({ open: false, file: null })
   const [expandedFolder, setExpandedFolder] = useState(null)
   const [previewFile, setPreviewFile] = useState(null)
+  const closePreviewOffcanvas = useOffcanvasBackClose(!!previewFile, () => setPreviewFile(null))
   const [legacyInfo, setLegacyInfo] = useState(null)
   const [legacyRencanaInfo, setLegacyRencanaInfo] = useState(null)
   const [migrating, setMigrating] = useState(false)
@@ -363,7 +365,7 @@ function ManageUploads() {
       {/* Offcanvas preview file (kanan) */}
       <FilePreviewOffcanvas
         file={previewFile}
-        onClose={() => setPreviewFile(null)}
+        onClose={closePreviewOffcanvas}
         onDownload={handleDownloadForPreview}
         formatFileSize={formatBytes}
       />

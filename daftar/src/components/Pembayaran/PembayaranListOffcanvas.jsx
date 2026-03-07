@@ -573,10 +573,11 @@ function PembayaranListOffcanvas({
         email = registrasi.email || ''
       }
 
-      // Jika phone atau email masih kosong, ambil dari biodata santri
+      // Jika phone atau email masih kosong, ambil dari biodata santri via endpoint PUBLIC.
+      // GET /api/santri hanya untuk admin → 403 di aplikasi daftar; pakai /api/public/santri.
       if ((!phone || !email) && idSantri) {
         try {
-          const biodataResult = await santriAPI.getById(idSantri)
+          const biodataResult = await santriAPI.getByIdPublic(idSantri)
           if (biodataResult.success && biodataResult.data) {
             if (!phone) {
               phone = biodataResult.data.no_telpon || biodataResult.data.no_wa_santri || ''
@@ -1253,9 +1254,10 @@ function PembayaranListOffcanvas({
                       </div>
                     </div>
                     )}
-                    {/* SCROLLABLE - konten di bawah Nominal-Metode */}
-                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
-                    <div className="relative flex flex-col">
+                    {/* SCROLLABLE - konten di bawah Nominal-Metode; pakai flex agar step-3 punya footer tetap */}
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                    <div className="relative flex flex-col flex-1 min-h-0">
+                      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                       <AnimatePresence mode="wait" initial={false}>
                         {vaInfo && (() => {
                           const norm = transactionStatus ? String(transactionStatus).toLowerCase().trim() : null
@@ -1394,26 +1396,27 @@ function PembayaranListOffcanvas({
                                             showNotification('Gagal mengunduh gambar QR', 'error')
                                           }
                                         }}
-                                        className="mt-3 px-4 py-2 text-sm font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/50 inline-flex items-center gap-2"
+                                        className="mt-2 px-3 py-1.5 text-xs font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/50 inline-flex items-center gap-1.5"
                                       >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                         Unduh gambar QR
                                       </button>
                                     )}
                                     <div className="text-sm text-teal-600 mt-2">{vaInfo.payment_method==='qris' ? 'QRIS' : (vaInfo.bank||'')}</div>
                                   </div>
                                 )}
-                                {(vaInfo.payment_url || vaInfo.ipaymu_transaction_id || vaInfo.session_id) && (
-                                  <div className="flex flex-wrap items-center justify-between gap-2 relative z-[100]">
-                                    {vaInfo.payment_url && <a href={vaInfo.payment_url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium text-center min-w-0 flex-1 sm:flex-initial">Buka Halaman Bayar</a>}
-                                    <div className="flex gap-2 flex-shrink-0 ml-auto">
-                                      <button onClick={handleUbahTransaction} disabled={isCancelling} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg font-medium disabled:opacity-50 shadow-sm">Ubah</button>
-                                      <button onClick={() => setShowCancelModal(true)} className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg font-medium shadow-sm">Batal</button>
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             </div>
+                            {/* Footer tetap: Buka Halaman Bayar, Ubah, Batal — tidak ikut scroll */}
+                            {(vaInfo.payment_url || vaInfo.ipaymu_transaction_id || vaInfo.session_id) && (
+                              <div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-2 p-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                                {vaInfo.payment_url && <a href={vaInfo.payment_url} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium text-center min-w-0 flex-1 sm:flex-initial">Buka Halaman Bayar</a>}
+                                <div className="flex gap-2 flex-shrink-0 ml-auto">
+                                  <button onClick={handleUbahTransaction} disabled={isCancelling} className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg text-xs font-medium disabled:opacity-50 shadow-sm">Ubah</button>
+                                  <button onClick={() => setShowCancelModal(true)} className="px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-medium shadow-sm">Batal</button>
+                                </div>
+                              </div>
+                            )}
                           </motion.div>
                         )}
                         {vaInfo && (() => { const s = transactionStatus ? String(transactionStatus).toLowerCase().trim() : null; return s === 'paid' || s === 'success' })( ) && (
@@ -1438,7 +1441,7 @@ function PembayaranListOffcanvas({
                               </div>
                               <button
                                 onClick={() => { setTransactionStatus(null); setVaInfo(null); goToPaymentOpen() }}
-                                className="w-full mt-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors"
+                                className="w-full mt-2 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg transition-colors"
                               >
                                 Tutup
                               </button>
@@ -1446,7 +1449,7 @@ function PembayaranListOffcanvas({
                           </motion.div>
                         )}
                         {!vaInfo && ipaymuStep === 1 && (
-                          <motion.div key="step-1" initial={{ x: stepDirection === 1 ? 300 : -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: stepDirection === 1 ? -300 : 300, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                          <motion.div key="step-1" initial={{ x: stepDirection === 1 ? 300 : -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: stepDirection === 1 ? -300 : 300, opacity: 0 }} transition={{ duration: 0.3 }} className="flex-1 min-h-0 space-y-4 overflow-y-auto">
                             <div><h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Mau Bayar Berapa?</h4>
                               <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Sisa kurang: <strong className="text-red-600">Rp {kurang.toLocaleString('id-ID')}</strong></div>
                               <div className="text-xs text-gray-500 mb-4">Minimal pembayaran: <strong>Rp 100.000</strong></div>
@@ -1458,7 +1461,7 @@ function PembayaranListOffcanvas({
                           </motion.div>
                         )}
                         {!vaInfo && ipaymuStep === 2 && (
-                          <motion.div key="step-2" initial={{ x: stepDirection === 1 ? 300 : -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: stepDirection === 1 ? -300 : 300, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                          <motion.div key="step-2" initial={{ x: stepDirection === 1 ? 300 : -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: stepDirection === 1 ? -300 : 300, opacity: 0 }} transition={{ duration: 0.3 }} className="flex-1 min-h-0 space-y-4 overflow-y-auto">
                             <div><h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Pilih Metode Pembayaran</h4><div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Nominal: <strong className="text-teal-600">Rp {ipaymuAmount||'0'}</strong></div></div>
                             <div className="mb-2 border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
                               <button type="button" onClick={() => handleAccordionToggle('va')} className={`w-full px-4 py-3 flex items-center justify-between bg-white dark:bg-gray-700 ${openAccordion==='va'?'border-b border-gray-300':''}`}>
@@ -1499,27 +1502,28 @@ function PembayaranListOffcanvas({
                           </motion.div>
                         )}
                       </AnimatePresence>
+                      </div>
                     </div>
                     </div>
                     {!vaInfo && (ipaymuStep === 1 || ipaymuStep === 2 || ipaymuStep === 3) && (
-                      <div className="flex-shrink-0 p-4 pt-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                      <div className="flex-shrink-0 p-3 pt-2 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                         <div className="flex gap-2">
                           {ipaymuStep === 1 && (
                             <>
-                              <button onClick={() => goToPaymentOpen()} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 font-medium">Batal</button>
-                              <button onClick={() => { const amount = parseFloat(ipaymuAmount.replace(/\./g,''))||0; const minAmount=100000; if(!amount||amount<=0){showNotification('Masukkan nominal pembayaran','error');return} if(amount<minAmount){showNotification(`Minimal Rp ${minAmount.toLocaleString('id-ID')}`,'error');return} if(amount>kurang){showNotification(`Tidak boleh melebihi Rp ${kurang.toLocaleString('id-ID')}`,'error');return} setStepDirection(1); goToIPaymuStep(2) }} className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium flex items-center justify-center gap-2">Selanjutnya <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></button>
+                              <button onClick={() => goToPaymentOpen()} className="flex-1 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 text-xs font-medium">Batal</button>
+                              <button onClick={() => { const amount = parseFloat(ipaymuAmount.replace(/\./g,''))||0; const minAmount=100000; if(!amount||amount<=0){showNotification('Masukkan nominal pembayaran','error');return} if(amount<minAmount){showNotification(`Minimal Rp ${minAmount.toLocaleString('id-ID')}`,'error');return} if(amount>kurang){showNotification(`Tidak boleh melebihi Rp ${kurang.toLocaleString('id-ID')}`,'error');return} setStepDirection(1); goToIPaymuStep(2) }} className="flex-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">Selanjutnya <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></button>
                             </>
                           )}
                           {ipaymuStep === 2 && (
                             <>
-                              <button onClick={() => { setStepDirection(-1); goToIPaymuStep(1) }} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 font-medium flex items-center justify-center gap-2"><svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>Kembali</button>
-                              <button onClick={() => { if (!paymentMethod) { showNotification('Pilih metode pembayaran terlebih dahulu', 'error'); return } if (paymentMethod === 'va' && !paymentChannel) { showNotification('Pilih bank untuk Virtual Account', 'error'); return } if (paymentMethod === 'cstore' && !paymentChannel) { showNotification('Pilih merchant untuk Convenience Store', 'error'); return } setStepDirection(1); goToIPaymuStep(3) }} className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium flex items-center justify-center gap-2">Selanjutnya<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></button>
+                              <button onClick={() => { setStepDirection(-1); goToIPaymuStep(1) }} className="flex-1 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 text-xs font-medium flex items-center justify-center gap-1.5"><svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>Kembali</button>
+                              <button onClick={() => { if (!paymentMethod) { showNotification('Pilih metode pembayaran terlebih dahulu', 'error'); return } if (paymentMethod === 'va' && !paymentChannel) { showNotification('Pilih bank untuk Virtual Account', 'error'); return } if (paymentMethod === 'cstore' && !paymentChannel) { showNotification('Pilih merchant untuk Convenience Store', 'error'); return } setStepDirection(1); goToIPaymuStep(3) }} className="flex-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">Selanjutnya<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></button>
                             </>
                           )}
                           {ipaymuStep === 3 && (
                             <>
-                              <button onClick={() => { setStepDirection(-1); goToIPaymuStep(2) }} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 font-medium flex items-center justify-center gap-2"><svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>Kembali</button>
-                              <button onClick={handleIPaymuPayment} disabled={processingIPaymu} className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium disabled:opacity-50 flex items-center justify-center gap-2">{processingIPaymu ? <><svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>Memproses...</> : 'Bayar'}</button>
+                              <button onClick={() => { setStepDirection(-1); goToIPaymuStep(2) }} className="flex-1 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 text-xs font-medium flex items-center justify-center gap-1.5"><svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>Kembali</button>
+                              <button onClick={handleIPaymuPayment} disabled={processingIPaymu} className="flex-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-1.5">{processingIPaymu ? <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>Memproses...</> : 'Bayar'}</button>
                             </>
                           )}
                         </div>
@@ -1856,16 +1860,16 @@ function PembayaranListOffcanvas({
 
               {/* Tombol Upload Bukti TF dan Bayar dengan iPayMu */}
               {kurang > 0 && (
-                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <div className={`grid gap-3 ${SHOW_UPLOAD_TF_BUTTON ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className={`grid gap-2 ${SHOW_UPLOAD_TF_BUTTON ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {/* Tombol Upload Bukti TF (sementara disembunyikan via SHOW_UPLOAD_TF_BUTTON) */}
                     {SHOW_UPLOAD_TF_BUTTON && bisaUploadBukti ? (
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-0.5">
                         <button
                           onClick={onUploadBuktiClick}
-                          className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 text-sm"
+                          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors text-xs font-medium flex items-center justify-center gap-1.5"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
                           {jumlahBukti > 0 ? `TF ${nomorBuktiBerikutnya}` : 'Upload TF'}
@@ -1874,15 +1878,15 @@ function PembayaranListOffcanvas({
                       </div>
                     ) : null}
                     {/* Tombol Bayar dengan iPayMu */}
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-0.5">
                       <button
                         onClick={handleIPaymuClick}
                         disabled={processingIPaymu || kurang <= 0}
-                        className="px-4 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors text-xs font-medium flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {processingIPaymu ? (
                           <>
-                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
@@ -1890,7 +1894,7 @@ function PembayaranListOffcanvas({
                           </>
                         ) : (
                           <>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                             </svg>
                             iPayMu
@@ -1904,6 +1908,21 @@ function PembayaranListOffcanvas({
               )}
                 </>
                   )}
+                </div>
+
+                {/* Bantuan Kendala Pembayaran — selalu tampil di bawah offcanvas Rincian Pembayaran */}
+                <div className="flex-shrink-0 p-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <a
+                    href="https://wa.me/6282232999921"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                    </svg>
+                    Bantuan Kendala Pembayaran
+                  </a>
                 </div>
               </div>
             </div>

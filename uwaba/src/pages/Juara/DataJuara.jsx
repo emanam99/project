@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import * as XLSX from 'xlsx'
 import { santriJuaraAPI, lembagaAPI, santriAPI, pendaftaranAPI } from '../../services/api'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import SearchOffcanvas from '../../components/Biodata/SearchOffcanvas'
 import { compressImage } from '../../utils/imageCompression'
 import { useNotification } from '../../contexts/NotificationContext'
@@ -26,6 +27,7 @@ function DataJuara() {
   const [itemsPerPage, setItemsPerPage] = useState(50)
   const [showOffcanvas, setShowOffcanvas] = useState(false)
   const [showSearchOffcanvas, setShowSearchOffcanvas] = useState(false)
+  const closeSearchOffcanvas = useOffcanvasBackClose(showSearchOffcanvas, () => setShowSearchOffcanvas(false))
   const [editingItem, setEditingItem] = useState(null)
   const [selectedSantri, setSelectedSantri] = useState(null)
   const [loadingSantri, setLoadingSantri] = useState(false)
@@ -605,6 +607,8 @@ function DataJuara() {
     }
   }
 
+  const closeFormOffcanvas = useOffcanvasBackClose(showOffcanvas, handleCloseOffcanvas)
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     
@@ -1139,7 +1143,7 @@ function DataJuara() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                onClick={handleCloseOffcanvas}
+                onClick={closeFormOffcanvas}
                 className="fixed inset-0 bg-black bg-opacity-50"
                 style={{ zIndex: 9998, willChange: 'opacity' }}
               />
@@ -1168,7 +1172,7 @@ function DataJuara() {
                     )}
                   </div>
                   <button
-                    onClick={handleCloseOffcanvas}
+                    onClick={closeFormOffcanvas}
                     className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex-shrink-0 ml-4"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1449,7 +1453,7 @@ function DataJuara() {
                   <div className="flex justify-end gap-2 ml-auto">
                     <button
                       type="button"
-                      onClick={handleCloseOffcanvas}
+                      onClick={closeFormOffcanvas}
                       className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
                     >
                       Batal
@@ -1475,7 +1479,7 @@ function DataJuara() {
       {createPortal(
         <SearchOffcanvas
           isOpen={showSearchOffcanvas}
-          onClose={() => setShowSearchOffcanvas(false)}
+          onClose={closeSearchOffcanvas}
           onSelectSantri={handleSelectSantriFromSearch}
           zIndex={10000}
         />,

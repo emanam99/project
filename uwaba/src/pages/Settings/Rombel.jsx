@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { rombelAPI, lembagaAPI, waliKelasAPI, pengurusAPI, santriAPI } from '../../services/api'
+import { rombelAPI, lembagaAPI, waliKelasAPI, pengurusAPI, santriAPI, lulusanAPI, tahunAjaranAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
+import { useAuthStore } from '../../store/authStore'
 
 const normalizeStatus = (s) => {
   if (!s) return ''
@@ -16,6 +17,7 @@ const normalizeStatus = (s) => {
 function Rombel() {
   const { showNotification } = useNotification()
   const { options: tahunAjaranOptions } = useTahunAjaranStore()
+  const isSuperAdmin = useAuthStore((s) => (s.user?.role_key || s.user?.level || '').toLowerCase() === 'super_admin')
   const [rombelList, setRombelList] = useState([])
   const [lembagaMaster, setLembagaMaster] = useState([])
   const [loading, setLoading] = useState(true)
@@ -53,85 +55,53 @@ function Rombel() {
   const [pengurusList, setPengurusList] = useState([])
   const [santriList, setSantriList] = useState([])
   const [savingWali, setSavingWali] = useState(false)
+  const [santriOffcanvasOpen, setSantriOffcanvasOpen] = useState(false)
+  const [santriOffcanvasRombel, setSantriOffcanvasRombel] = useState(null)
+  const [santriOffcanvasList, setSantriOffcanvasList] = useState([])
+  const [santriOffcanvasLoading, setSantriOffcanvasLoading] = useState(false)
+  const [rombelSameLembaga, setRombelSameLembaga] = useState([])
+  const [moveMenuSantriId, setMoveMenuSantriId] = useState(null)
+  const [moveLoadingId, setMoveLoadingId] = useState(null)
+  const [selectedSantriIds, setSelectedSantriIds] = useState(() => new Set())
+  const [bulkMoveTargetOpen, setBulkMoveTargetOpen] = useState(false)
+  const [bulkMoveLoading, setBulkMoveLoading] = useState(false)
+  const [deletingRombel, setDeletingRombel] = useState(false)
+  const [lulusModalOpen, setLulusModalOpen] = useState(false)
+  const [lulusTahunAjaran, setLulusTahunAjaran] = useState('')
+  const [lulusTahunAjaranList, setLulusTahunAjaranList] = useState([])
+  const [lulusSubmitting, setLulusSubmitting] = useState(false)
+  const panelHistoryCountRef = useRef(0)
+  const isProgrammaticBackRef = useRef(false)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(50)
+  const [total, setTotal] = useState(0)
+  /** Semua data rombel untuk menghitung opsi filter + jumlah (tanpa pagination) */
+  const [filterSourceData, setFilterSourceData] = useState([])
 
-  useEffect(() => {
-    loadLembaga()
+  /** Nama lembaga kanonik: trim supaya grouping satu nama satu opsi (atasi lembaga_id beda tapi nama sama) */
+  const canonicalLembagaNama = useCallback((v) => {
+    if (v == null || v === '') return ''
+    return String(v).trim()
   }, [])
 
-  useEffect(() => {
-    loadRombel()
-  }, [])
-
-  const loadLembaga = async () => {
-    try {
-      const res = await lembagaAPI.getAll()
-      if (res.success && res.data) {
-        setLembagaMaster(res.data)
-      }
-    } catch (err) {
-      console.error('Error loading lembaga:', err)
-    }
-  }
-
-  const loadRombel = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await rombelAPI.getAll({})
-      if (response.success) {
-        setRombelList(response.data || [])
-      } else {
-        setError(response.message || 'Gagal memuat data rombel')
-      }
-    } catch (err) {
-      console.error('Error loading rombel:', err)
-      setError('Terjadi kesalahan saat memuat data rombel')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const matchByLembaga = useCallback((r, val) => !val || String(r.lembaga_id || '') === String(val), [])
+  const matchByLembaga = useCallback((r, val) => !val || canonicalLembagaNama(r.lembaga_nama) === canonicalLembagaNama(val), [canonicalLembagaNama])
   const matchByStatus = useCallback((r, val) => !val || normalizeStatus(r.status) === normalizeStatus(val), [])
   const matchByKelas = useCallback((r, val) => {
     if (!val) return true
     const k = String(r.kelas || '').trim()
     return k === String(val).trim()
   }, [])
-
-  const dataAfterFilters = useMemo(() => {
-    return rombelList.filter(
-      (r) =>
-        matchByLembaga(r, filterLembaga) &&
-        matchByStatus(r, filterStatus) &&
-        matchByKelas(r, filterKelas)
-    )
-  }, [rombelList, filterLembaga, filterStatus, filterKelas, matchByLembaga, matchByStatus, matchByKelas])
-
-  const filteredRombel = useMemo(() => {
-    if (!searchQuery.trim()) return dataAfterFilters
-    const q = searchQuery.trim().toLowerCase()
-    return dataAfterFilters.filter(
-      (r) =>
-        (r.lembaga_id && r.lembaga_id.toLowerCase().includes(q)) ||
-        (r.lembaga_nama && r.lembaga_nama.toLowerCase().includes(q)) ||
-        (r.kelas && r.kelas.toLowerCase().includes(q)) ||
-        (r.kel && r.kel.toLowerCase().includes(q)) ||
-        (r.keterangan && r.keterangan.toLowerCase().includes(q))
-    )
-  }, [dataAfterFilters, searchQuery])
-
   const statusLabel = useCallback((v) => (v === 'aktif' ? 'Aktif' : v === 'nonaktif' ? 'Nonaktif' : v), [])
 
   const { lembagaOptions, kelasOptions, statusOptions } = useMemo(() => {
-    const base = rombelList
+    const base = filterSourceData
     const dataForLembaga = base.filter((r) => matchByStatus(r, filterStatus) && matchByKelas(r, filterKelas))
     const lembagaCounts = {}
     dataForLembaga.forEach((r) => {
-      const id = r.lembaga_id != null ? String(r.lembaga_id) : ''
-      if (id === '') return
-      if (!lembagaCounts[id]) lembagaCounts[id] = { count: 0, nama: r.lembaga_nama || id }
-      lembagaCounts[id].count += 1
+      const namaKey = canonicalLembagaNama(r.lembaga_nama || r.lembaga_id)
+      if (namaKey === '') return
+      if (!lembagaCounts[namaKey]) lembagaCounts[namaKey] = { count: 0, nama: r.lembaga_nama || r.lembaga_id || namaKey }
+      lembagaCounts[namaKey].count += 1
     })
     const lembagaOptions = Object.entries(lembagaCounts)
       .map(([value, o]) => ({ value, label: o.nama || value, count: o.count }))
@@ -161,20 +131,94 @@ function Rombel() {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''))
 
     return { lembagaOptions, kelasOptions, statusOptions }
-  }, [rombelList, filterLembaga, filterStatus, filterKelas, matchByLembaga, matchByStatus, matchByKelas, statusLabel])
+  }, [filterSourceData, filterLembaga, filterStatus, filterKelas, matchByLembaga, matchByStatus, matchByKelas, statusLabel, canonicalLembagaNama])
 
   useEffect(() => {
-    const valid = new Set(['', ...lembagaOptions.map((o) => o.value)])
-    if (filterLembaga && !valid.has(filterLembaga)) setFilterLembaga('')
+    const validLembaga = new Set(['', ...lembagaOptions.map((o) => o.value)])
+    if (filterLembaga && !validLembaga.has(filterLembaga)) setFilterLembaga('')
   }, [filterLembaga, lembagaOptions])
   useEffect(() => {
-    const valid = new Set(['', ...kelasOptions.map((o) => o.value)])
-    if (filterKelas !== '' && !valid.has(filterKelas)) setFilterKelas('')
+    const validKelas = new Set(['', ...kelasOptions.map((o) => o.value)])
+    if (filterKelas !== '' && !validKelas.has(filterKelas)) setFilterKelas('')
   }, [filterKelas, kelasOptions])
   useEffect(() => {
-    const valid = new Set(['', ...statusOptions.map((o) => o.value)])
-    if (filterStatus && !valid.has(filterStatus)) setFilterStatus('')
+    const validStatus = new Set(['', ...statusOptions.map((o) => o.value)])
+    if (filterStatus && !validStatus.has(filterStatus)) setFilterStatus('')
   }, [filterStatus, statusOptions])
+
+  const loadLembaga = async () => {
+    try {
+      const res = await lembagaAPI.getAll()
+      if (res.success && res.data) {
+        setLembagaMaster(res.data)
+      }
+    } catch (err) {
+      console.error('Error loading lembaga:', err)
+    }
+  }
+
+  /** Ambil semua data rombel (limit besar) hanya untuk opsi filter + jumlah */
+  const loadFilterData = useCallback(async () => {
+    try {
+      const res = await rombelAPI.getAll({ page: 1, limit: 9999 })
+      if (res.success && Array.isArray(res.data)) {
+        setFilterSourceData(res.data)
+      }
+    } catch (err) {
+      console.error('Error loading filter data:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadLembaga()
+  }, [])
+
+  useEffect(() => {
+    loadFilterData()
+  }, [loadFilterData])
+
+  const loadRombel = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await rombelAPI.getAll({
+        page,
+        limit,
+        lembaga_nama: (filterLembaga || '').trim() || undefined,
+        status: filterStatus || undefined,
+        kelas: (filterKelas || '').trim() || undefined,
+        search: (searchQuery || '').trim() || undefined
+      })
+      if (response.success) {
+        setRombelList(response.data || [])
+        setTotal(response.total != null ? Number(response.total) : 0)
+      } else {
+        setError(response.message || 'Gagal memuat data rombel')
+      }
+    } catch (err) {
+      console.error('Error loading rombel:', err)
+      setError('Terjadi kesalahan saat memuat data rombel')
+    } finally {
+      setLoading(false)
+    }
+  }, [page, limit, filterLembaga, filterStatus, filterKelas, searchQuery])
+
+  useEffect(() => {
+    loadRombel()
+  }, [loadRombel])
+
+  const handleFilterChange = (setter, value) => {
+    setter(value)
+    setPage(1)
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+  const from = total === 0 ? 0 : (page - 1) * limit + 1
+  const to = Math.min(page * limit, total)
+
+  const getPanelHistoryUrl = useCallback(() => {
+    return window.location.pathname + window.location.search + (window.location.hash || '')
+  }, [])
 
   const handleOpenOffcanvas = (rombel = null) => {
     if (rombel) {
@@ -188,8 +232,11 @@ function Rombel() {
       })
     } else {
       setEditingRombel(null)
+      const resolvedId = (filterLembaga && lembagaMaster?.length)
+        ? (lembagaMaster.find((l) => canonicalLembagaNama(l.nama) === canonicalLembagaNama(filterLembaga))?.id ?? '')
+        : ''
       setFormData({
-        lembaga_id: filterLembaga || '',
+        lembaga_id: resolvedId || '',
         kelas: '',
         kel: '',
         keterangan: '',
@@ -197,9 +244,13 @@ function Rombel() {
       })
     }
     setOffcanvasOpen(true)
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState({ rombelPanel: 'edit' }, '', getPanelHistoryUrl())
+      panelHistoryCountRef.current += 1
+    }
   }
 
-  const handleCloseOffcanvas = () => {
+  const handleCloseOffcanvas = (fromProgrammatic = false) => {
     setOffcanvasOpen(false)
     setEditingRombel(null)
     setWaliOffcanvasOpen(false)
@@ -211,6 +262,10 @@ function Rombel() {
       keterangan: '',
       status: 'aktif'
     })
+    if (fromProgrammatic && typeof window !== 'undefined' && window.history && panelHistoryCountRef.current > 0) {
+      isProgrammaticBackRef.current = true
+      window.history.go(-panelHistoryCountRef.current)
+    }
   }
 
   const loadWaliKelas = useCallback(async (idKelas) => {
@@ -234,6 +289,10 @@ function Rombel() {
   }, [offcanvasOpen, editingRombel?.id, loadWaliKelas])
 
   const handleOpenWaliOffcanvas = () => {
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState({ rombelPanel: 'wali' }, '', getPanelHistoryUrl())
+      panelHistoryCountRef.current += 1
+    }
     setEditingWali(null)
     setWaliFormData({
       id_pengurus: '',
@@ -261,6 +320,10 @@ function Rombel() {
   }
 
   const handleEditWaliOffcanvas = (wk) => {
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState({ rombelPanel: 'wali' }, '', getPanelHistoryUrl())
+      panelHistoryCountRef.current += 1
+    }
     setEditingWali(wk)
     setWaliFormData({
       id_pengurus: wk.id_pengurus != null ? String(wk.id_pengurus) : '',
@@ -293,6 +356,243 @@ function Rombel() {
     if (editingRombel?.id) loadWaliKelas(editingRombel.id)
   }
 
+  useEffect(() => {
+    const onPopState = (e) => {
+      if (isProgrammaticBackRef.current) {
+        panelHistoryCountRef.current = Math.max(0, panelHistoryCountRef.current - 1)
+        if (panelHistoryCountRef.current <= 0) isProgrammaticBackRef.current = false
+        return
+      }
+      panelHistoryCountRef.current = Math.max(0, panelHistoryCountRef.current - 1)
+      if (waliOffcanvasOpen) {
+        handleCloseWaliOffcanvas()
+      } else if (offcanvasOpen) {
+        handleCloseOffcanvas()
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [offcanvasOpen, waliOffcanvasOpen])
+
+  const handleOpenSantriOffcanvas = async (e, rombel) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (!rombel?.id) return
+    setSantriOffcanvasRombel(rombel)
+    setSantriOffcanvasOpen(true)
+    setSantriOffcanvasList([])
+    setRombelSameLembaga([])
+    setMoveMenuSantriId(null)
+    setSelectedSantriIds(new Set())
+    setBulkMoveTargetOpen(false)
+    setSantriOffcanvasLoading(true)
+    try {
+      const [resSantri, resRombel] = await Promise.all([
+        santriAPI.getByRombelId(rombel.id),
+        rombel.lembaga_id != null && rombel.lembaga_id !== ''
+          ? rombelAPI.getAll({ lembaga_id: rombel.lembaga_id, limit: 500 })
+          : Promise.resolve({ success: false, data: [] })
+      ])
+      if (resSantri?.success && Array.isArray(resSantri.data)) {
+        setSantriOffcanvasList(resSantri.data)
+      }
+      if (resRombel?.success && Array.isArray(resRombel.data)) {
+        setRombelSameLembaga(resRombel.data.filter((r) => r.id !== rombel.id))
+      }
+    } catch (err) {
+      console.error('Error loading santri by rombel:', err)
+      showNotification('Gagal memuat daftar santri', 'error')
+    } finally {
+      setSantriOffcanvasLoading(false)
+    }
+  }
+
+  const handleCloseSantriOffcanvas = () => {
+    setSantriOffcanvasOpen(false)
+    setSantriOffcanvasRombel(null)
+    setSantriOffcanvasList([])
+    setRombelSameLembaga([])
+    setMoveMenuSantriId(null)
+    setSelectedSantriIds(new Set())
+    setBulkMoveTargetOpen(false)
+    setLulusModalOpen(false)
+  }
+
+  /** Update jumlah_santri rombel terkait di list & filter source agar tetap valid setelah lulus/pindah */
+  const updateRombelJumlahSantri = useCallback((rombelId, delta) => {
+    if (rombelId == null) return
+    setRombelList((prev) =>
+      prev.map((r) =>
+        r.id === rombelId ? { ...r, jumlah_santri: Math.max(0, (r.jumlah_santri ?? 0) + delta) } : r
+      )
+    )
+    setFilterSourceData((prev) =>
+      prev.map((r) =>
+        r.id === rombelId ? { ...r, jumlah_santri: Math.max(0, (r.jumlah_santri ?? 0) + delta) } : r
+      )
+    )
+  }, [])
+
+  const handleOpenLulusModal = async () => {
+    setLulusModalOpen(true)
+    setLulusTahunAjaran('')
+    try {
+      const res = await tahunAjaranAPI.getAll()
+      const raw = (res?.success && Array.isArray(res?.data)) ? res.data : []
+      setLulusTahunAjaranList(raw.map((row) => ({
+        value: row.tahun_ajaran ?? row.id ?? '',
+        label: row.tahun_ajaran ?? row.id ?? '–'
+      })).filter((o) => o.value))
+    } catch (_) {
+      setLulusTahunAjaranList([])
+    }
+  }
+
+  const handleSubmitLulus = async (e) => {
+    e.preventDefault()
+    if (!lulusTahunAjaran || !santriOffcanvasRombel?.lembaga_id) {
+      showNotification('Pilih tahun ajaran', 'warning')
+      return
+    }
+    const ids = Array.from(selectedSantriIds)
+    if (ids.length === 0) {
+      showNotification('Pilih minimal satu santri', 'warning')
+      return
+    }
+    setLulusSubmitting(true)
+    try {
+      const res = await lulusanAPI.createBulk({
+        id_rombel: santriOffcanvasRombel.id,
+        tahun_ajaran: lulusTahunAjaran,
+        id_santri_list: ids
+      })
+      if (res?.success) {
+        showNotification(res?.message ?? 'Berhasil mencatat lulusan', 'success')
+        setLulusModalOpen(false)
+        setSelectedSantriIds(new Set())
+        updateRombelJumlahSantri(santriOffcanvasRombel?.id, -ids.length)
+      } else {
+        showNotification(res?.message ?? 'Gagal mencatat lulusan', 'error')
+      }
+    } catch (err) {
+      console.error('Error create lulusan:', err)
+      showNotification('Gagal mencatat lulusan', 'error')
+    } finally {
+      setLulusSubmitting(false)
+    }
+  }
+
+  const toggleSantriSelection = (id) => {
+    setSelectedSantriIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllSantri = () => {
+    if (selectedSantriIds.size >= santriOffcanvasList.length) {
+      setSelectedSantriIds(new Set())
+    } else {
+      setSelectedSantriIds(new Set(santriOffcanvasList.map((s) => s.id)))
+    }
+  }
+
+  const handleBulkMoveToRombel = async (targetRombelId) => {
+    const ids = Array.from(selectedSantriIds)
+    if (ids.length === 0) return
+    const santriToMove = santriOffcanvasList.filter((s) => ids.includes(s.id))
+    if (santriToMove.length === 0) return
+    const targetRombel = rombelSameLembaga.find((r) => r.id === targetRombelId)
+    const targetLabel = targetRombel ? `${targetRombel.kelas || ''} ${targetRombel.kel ? `(${targetRombel.kel})` : ''}`.trim() || 'rombel' : 'rombel'
+    if (!window.confirm(`Pindah ${santriToMove.length} santri ke ${targetLabel}?`)) return
+    setBulkMoveTargetOpen(false)
+    setBulkMoveLoading(true)
+    let ok = 0
+    let fail = 0
+    for (const s of santriToMove) {
+      const role = s.role_rombel
+      const payload = {}
+      if (role === 'diniyah' || role === 'diniyah & formal') payload.id_diniyah = targetRombelId
+      if (role === 'formal' || role === 'diniyah & formal') payload.id_formal = targetRombelId
+      if (Object.keys(payload).length === 0) continue
+      try {
+        const res = await santriAPI.update(s.id, payload)
+        if (res?.success) ok += 1
+        else fail += 1
+      } catch (_) {
+        fail += 1
+      }
+    }
+    setBulkMoveLoading(false)
+    setSelectedSantriIds(new Set())
+    if (ok > 0) {
+      showNotification(`${ok} santri berhasil dipindah${fail > 0 ? `, ${fail} gagal` : ''}`, fail > 0 ? 'warning' : 'success')
+      const resRefresh = await santriAPI.getByRombelId(santriOffcanvasRombel.id)
+      if (resRefresh?.success && Array.isArray(resRefresh.data)) setSantriOffcanvasList(resRefresh.data)
+      updateRombelJumlahSantri(santriOffcanvasRombel.id, -ok)
+      updateRombelJumlahSantri(targetRombelId, ok)
+    } else {
+      showNotification('Gagal memindah santri', 'error')
+    }
+  }
+
+  const handleMoveSantriToRombel = async (santri, targetRombelId) => {
+    const role = santri.role_rombel
+    let payload = {}
+    if (role === 'diniyah' || role === 'diniyah & formal') payload.id_diniyah = targetRombelId
+    if (role === 'formal' || role === 'diniyah & formal') payload.id_formal = targetRombelId
+    if (Object.keys(payload).length === 0) return
+    setMoveMenuSantriId(null)
+    setMoveLoadingId(santri.id)
+    try {
+      const res = await santriAPI.update(santri.id, payload)
+      if (res?.success) {
+        showNotification('Santri berhasil dipindah ke rombel baru', 'success')
+        const resRefresh = await santriAPI.getByRombelId(santriOffcanvasRombel.id)
+        if (resRefresh?.success && Array.isArray(resRefresh.data)) {
+          setSantriOffcanvasList(resRefresh.data)
+        }
+        updateRombelJumlahSantri(santriOffcanvasRombel.id, -1)
+        updateRombelJumlahSantri(targetRombelId, 1)
+      } else {
+        showNotification(res?.message || 'Gagal memindah santri', 'error')
+      }
+    } catch (err) {
+      console.error('Error moving santri:', err)
+      showNotification('Gagal memindah santri', 'error')
+    } finally {
+      setMoveLoadingId(null)
+    }
+  }
+
+  const handleDeleteRombel = async () => {
+    if (!editingRombel?.id) return
+    const jumlah = Number(editingRombel.jumlah_santri ?? 0)
+    if (jumlah > 0) {
+      showNotification('Rombel tidak dapat dihapus karena masih ada santri di dalamnya', 'error')
+      return
+    }
+    if (!window.confirm('Yakin ingin menghapus rombel ini?')) return
+    setDeletingRombel(true)
+    try {
+      const res = await rombelAPI.delete(editingRombel.id)
+      if (res?.success) {
+        showNotification('Rombel berhasil dihapus', 'success')
+        handleCloseOffcanvas(true)
+        loadRombel()
+      } else {
+        showNotification(res?.message || 'Gagal menghapus rombel', 'error')
+      }
+    } catch (err) {
+      console.error('Error deleting rombel:', err)
+      showNotification('Gagal menghapus rombel', 'error')
+    } finally {
+      setDeletingRombel(false)
+    }
+  }
+
   const handleSubmitWali = async (e) => {
     e.preventDefault()
     if (!editingRombel?.id) return
@@ -315,6 +615,10 @@ function Rombel() {
         if (res.success) {
           showNotification('Wali kelas berhasil diupdate', 'success')
           handleCloseWaliOffcanvas()
+          if (panelHistoryCountRef.current > 0) {
+            isProgrammaticBackRef.current = true
+            window.history.back()
+          }
           loadWaliKelas(editingRombel.id)
         } else {
           showNotification(res.message || 'Gagal mengupdate wali kelas', 'error')
@@ -324,6 +628,10 @@ function Rombel() {
         if (res.success) {
           showNotification('Wali kelas berhasil ditambahkan', 'success')
           handleCloseWaliOffcanvas()
+          if (panelHistoryCountRef.current > 0) {
+            isProgrammaticBackRef.current = true
+            window.history.back()
+          }
           loadWaliKelas(editingRombel.id)
         } else {
           showNotification(res.message || 'Gagal menambahkan wali kelas', 'error')
@@ -350,7 +658,7 @@ function Rombel() {
         const response = await rombelAPI.update(editingRombel.id, formData)
         if (response.success) {
           showNotification('Rombel berhasil diupdate', 'success')
-          handleCloseOffcanvas()
+          handleCloseOffcanvas(true)
           loadRombel()
         } else {
           showNotification(response.message || 'Gagal mengupdate rombel', 'error')
@@ -359,7 +667,7 @@ function Rombel() {
         const response = await rombelAPI.create(formData)
         if (response.success) {
           showNotification('Rombel berhasil ditambahkan', 'success')
-          handleCloseOffcanvas()
+          handleCloseOffcanvas(true)
           loadRombel()
         } else {
           showNotification(response.message || 'Gagal menambahkan rombel', 'error')
@@ -397,7 +705,7 @@ function Rombel() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
                 onFocus={() => setIsInputFocused(true)}
                 onBlur={() => setIsInputFocused(false)}
                 className="w-full p-2 pr-24 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
@@ -425,7 +733,7 @@ function Rombel() {
                 </button>
                 <button
                   type="button"
-                  onClick={loadRombel}
+                  onClick={() => { loadFilterData(); loadRombel() }}
                   className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-700 dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 p-1.5 rounded text-xs transition-colors pointer-events-auto"
                   title="Refresh"
                 >
@@ -453,7 +761,7 @@ function Rombel() {
                     <span className="text-xs text-gray-600 dark:text-gray-400">Lembaga:</span>
                     <select
                       value={filterLembaga}
-                      onChange={(e) => setFilterLembaga(e.target.value)}
+                      onChange={(e) => handleFilterChange(setFilterLembaga, e.target.value)}
                       className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
                     >
                       <option value="">Semua</option>
@@ -464,7 +772,7 @@ function Rombel() {
                     <span className="text-xs text-gray-600 dark:text-gray-400 ml-1">Kelas:</span>
                     <select
                       value={filterKelas}
-                      onChange={(e) => setFilterKelas(e.target.value)}
+                      onChange={(e) => handleFilterChange(setFilterKelas, e.target.value)}
                       className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[120px]"
                     >
                       <option value="">Semua</option>
@@ -475,7 +783,7 @@ function Rombel() {
                     <span className="text-xs text-gray-600 dark:text-gray-400 ml-1">Status:</span>
                     <select
                       value={filterStatus}
-                      onChange={(e) => setFilterStatus(e.target.value)}
+                      onChange={(e) => handleFilterChange(setFilterStatus, e.target.value)}
                       className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                     >
                       <option value="">Semua</option>
@@ -489,9 +797,22 @@ function Rombel() {
             )}
           </AnimatePresence>
 
-          <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-gray-600 dark:text-gray-400">
-              Total: <span className="font-semibold text-gray-800 dark:text-gray-200">{filteredRombel.length}</span>
+              Menampilkan <span className="font-semibold text-gray-800 dark:text-gray-200">{from}</span>–<span className="font-semibold">{to}</span> dari <span className="font-semibold">{total}</span> rombel
+              {total > 0 && (
+                <span className="ml-2">
+                  (max <select
+                    value={limit}
+                    onChange={(e) => { setLimit(Number(e.target.value)); setPage(1) }}
+                    className="border rounded px-1.5 py-0.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                  >
+                    {[50, 100, 200].map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select> per halaman)
+                </span>
+              )}
             </span>
             <button
               type="button"
@@ -511,7 +832,7 @@ function Rombel() {
         <div className="container mx-auto px-4 pb-6 max-w-7xl">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence>
-              {filteredRombel.map((rombel, index) => (
+              {rombelList.map((rombel, index) => (
                 <motion.div
                   key={rombel.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -558,8 +879,21 @@ function Rombel() {
                       {rombel.keterangan}
                     </p>
                   )}
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={(e) => handleOpenSantriOffcanvas(e, rombel)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-medium bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-700 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors"
+                      title="Lihat daftar santri"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      {Number(rombel.jumlah_santri ?? 0)} santri
+                    </button>
+                  </div>
                   {rombel.tanggal_dibuat && (
-                    <p className="text-xs text-gray-500 dark:text-gray-500">
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                       Dibuat: {new Date(rombel.tanggal_dibuat).toLocaleDateString('id-ID')}
                     </p>
                   )}
@@ -568,13 +902,38 @@ function Rombel() {
             </AnimatePresence>
           </div>
 
-          {filteredRombel.length === 0 && (
+          {rombelList.length === 0 && !loading && (
             <div className="text-center py-12">
               <p className="text-gray-500 dark:text-gray-400">
                 {searchQuery || filterLembaga || filterStatus || filterKelas
                   ? 'Tidak ada rombel yang sesuai filter'
                   : 'Belum ada data rombel'}
               </p>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Sebelumnya
+              </button>
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Halaman <span className="font-semibold">{page}</span> dari <span className="font-semibold">{totalPages}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Selanjutnya
+              </button>
             </div>
           )}
         </div>
@@ -590,7 +949,7 @@ function Rombel() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={handleCloseOffcanvas}
+                onClick={() => { if (panelHistoryCountRef.current > 0) window.history.back() }}
                 className="fixed inset-0 bg-black/50 z-[200]"
               />
               <motion.div
@@ -607,7 +966,7 @@ function Rombel() {
                   </h3>
                   <button
                     type="button"
-                    onClick={handleCloseOffcanvas}
+                    onClick={() => { if (panelHistoryCountRef.current > 0) window.history.back() }}
                     className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
                     aria-label="Tutup"
                   >
@@ -755,21 +1114,35 @@ function Rombel() {
                     )}
                   </div>
 
-                  <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2 flex-shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleCloseOffcanvas}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
-                    >
-                      Batal
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                    >
-                      {saving ? 'Menyimpan...' : (editingRombel ? 'Simpan Perubahan' : 'Tambah')}
-                    </button>
+                  <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-2 flex-shrink-0">
+                    <div>
+                      {editingRombel?.id && isSuperAdmin && Number(editingRombel.jumlah_santri ?? 0) === 0 && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteRombel}
+                          disabled={deletingRombel}
+                          className="px-3 py-2 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 text-sm"
+                        >
+                          {deletingRombel ? 'Menghapus...' : 'Hapus Rombel'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { if (panelHistoryCountRef.current > 0) window.history.back() }}
+                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                      >
+                        {saving ? 'Menyimpan...' : (editingRombel ? 'Simpan Perubahan' : 'Tambah')}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </motion.div>
@@ -782,7 +1155,7 @@ function Rombel() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      onClick={handleCloseWaliOffcanvas}
+                      onClick={() => { if (panelHistoryCountRef.current > 0) window.history.back() }}
                       className="fixed inset-0 bg-black/50 z-[202]"
                     />
                     <motion.div
@@ -798,7 +1171,7 @@ function Rombel() {
                         </h3>
                         <button
                           type="button"
-                          onClick={handleCloseWaliOffcanvas}
+                          onClick={() => { if (panelHistoryCountRef.current > 0) window.history.back() }}
                           className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
                           aria-label="Tutup"
                         >
@@ -911,7 +1284,7 @@ function Rombel() {
                         <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 flex-shrink-0">
                           <button
                             type="button"
-                            onClick={handleCloseWaliOffcanvas}
+                            onClick={() => { if (panelHistoryCountRef.current > 0) window.history.back() }}
                             className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                           >
                             Batal
@@ -922,6 +1295,261 @@ function Rombel() {
                             className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm"
                           >
                             {savingWali ? 'Menyimpan...' : (editingWali ? 'Simpan Perubahan' : 'Simpan')}
+                          </button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Offcanvas Daftar Santri per Rombel — kanan */}
+      {createPortal(
+        <AnimatePresence>
+          {santriOffcanvasOpen && (
+            <>
+              <motion.div
+                key="santri-offcanvas-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={handleCloseSantriOffcanvas}
+                className="fixed inset-0 bg-black/50 z-[200]"
+              />
+              <motion.div
+                key="santri-offcanvas-panel"
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'tween', duration: 0.2 }}
+                className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white dark:bg-gray-800 shadow-xl z-[201] flex flex-col"
+              >
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                    Santri — {santriOffcanvasRombel ? `${santriOffcanvasRombel.lembaga_nama || santriOffcanvasRombel.lembaga_id} ${santriOffcanvasRombel.kelas || ''} ${santriOffcanvasRombel.kel ? `(${santriOffcanvasRombel.kel})` : ''}`.trim() || 'Rombel' : '–'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleCloseSantriOffcanvas}
+                    className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+                    aria-label="Tutup"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {!santriOffcanvasLoading && santriOffcanvasList.length > 0 && (
+                  <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-2 flex-shrink-0">
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={selectedSantriIds.size === santriOffcanvasList.length && santriOffcanvasList.length > 0}
+                        onChange={toggleSelectAllSantri}
+                        className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                      />
+                      Centang semua
+                    </label>
+                    {selectedSantriIds.size > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleOpenLulusModal}
+                          className="px-2.5 py-1.5 rounded-lg text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 flex items-center gap-1.5"
+                          title="Catat sebagai lulusan lembaga"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z" />
+                          </svg>
+                          Luluskan ({selectedSantriIds.size})
+                        </button>
+                        <div className="relative inline-block">
+                          <button
+                            type="button"
+                            disabled={bulkMoveLoading}
+                            onClick={() => setBulkMoveTargetOpen((prev) => !prev)}
+                            className="px-2.5 py-1.5 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            {bulkMoveLoading ? (
+                              <span className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent" />
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                              </svg>
+                            )}
+                            Pindah masal ({selectedSantriIds.size})
+                          </button>
+                        {bulkMoveTargetOpen && (
+                          <>
+                            <div className="fixed inset-0 z-[205]" aria-hidden onClick={() => setBulkMoveTargetOpen(false)} />
+                            <div className="absolute left-0 top-full mt-1 z-[206] min-w-[180px] max-h-48 overflow-y-auto py-1 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
+                              <p className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-600 sticky top-0 bg-white dark:bg-gray-800">
+                                Pindah {selectedSantriIds.size} santri ke:
+                              </p>
+                              {rombelSameLembaga.length === 0 ? (
+                                <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Tidak ada rombel lain.</p>
+                              ) : (
+                                rombelSameLembaga.map((r) => (
+                                  <button
+                                    key={r.id}
+                                    type="button"
+                                    onClick={() => handleBulkMoveToRombel(r.id)}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+                                  >
+                                    {r.kelas || '–'}{r.kel ? ` (${r.kel})` : ''}
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </>
+                        )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                <div className="flex-1 overflow-y-auto p-4">
+                  {santriOffcanvasLoading ? (
+                    <div className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-teal-500 border-t-transparent" />
+                    </div>
+                  ) : santriOffcanvasList.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 py-4">Tidak ada santri di rombel ini.</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {santriOffcanvasList.map((s) => (
+                        <li
+                          key={s.id}
+                          className="relative flex items-center gap-2 py-2 px-3 rounded-lg border border-gray-100 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/30"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedSantriIds.has(s.id)}
+                            onChange={() => toggleSantriSelection(s.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="shrink-0 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                          />
+                          <span className="text-sm font-mono text-gray-600 dark:text-gray-400 w-20 shrink-0">{s.nis ?? '–'}</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white truncate flex-1 min-w-0">{s.nama || '–'}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 hidden sm:inline">{s.status_santri || '–'}</span>
+                          {moveLoadingId === s.id ? (
+                            <span className="shrink-0 w-8 h-8 flex items-center justify-center">
+                              <span className="animate-spin rounded-full h-4 w-4 border-2 border-teal-500 border-t-transparent" />
+                            </span>
+                          ) : (
+                            <div className="shrink-0 relative">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setMoveMenuSantriId((prev) => (prev === s.id ? null : s.id)) }}
+                                className="p-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                                title="Pindah ke rombel lain (satu lembaga)"
+                                aria-label="Pindah rombel"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                </svg>
+                              </button>
+                              {moveMenuSantriId === s.id && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-[205]"
+                                    aria-hidden
+                                    onClick={() => setMoveMenuSantriId(null)}
+                                  />
+                                  <div className="absolute right-0 top-full mt-1 z-[206] min-w-[180px] max-h-48 overflow-y-auto py-1 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                    <p className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-600 sticky top-0 bg-white dark:bg-gray-800">
+                                      Pindah ke rombel (1 lembaga)
+                                    </p>
+                                    {rombelSameLembaga.length === 0 ? (
+                                      <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Tidak ada rombel lain.</p>
+                                    ) : (
+                                      rombelSameLembaga.map((r) => (
+                                        <button
+                                          key={r.id}
+                                          type="button"
+                                          onClick={() => {
+                                            if (window.confirm(`Pindah ${s.nama || 'santri'} ke ${r.kelas || ''} ${r.kel ? `(${r.kel})` : ''}?`)) {
+                                              handleMoveSantriToRombel(s, r.id)
+                                            }
+                                          }}
+                                          className="w-full text-left px-3 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+                                        >
+                                          {r.kelas || '–'}{r.kel ? ` (${r.kel})` : ''}
+                                        </button>
+                                      ))
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </motion.div>
+
+              {/* Modal Catat Lulusan — pilih tahun ajaran */}
+              <AnimatePresence>
+                {lulusModalOpen && (
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setLulusModalOpen(false)}
+                      className="fixed inset-0 bg-black/50 z-[210]"
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-sm mx-auto max-h-[85vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-xl shadow-xl z-[211] p-5 border border-gray-200 dark:border-gray-700"
+                    >
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+                        Catat Lulusan
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                        {selectedSantriIds.size} santri akan dicatat lulus dari lembaga ini. Pilih tahun ajaran kelulusan:
+                      </p>
+                      <form onSubmit={handleSubmitLulus}>
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Tahun Ajaran
+                          </label>
+                          <select
+                            value={lulusTahunAjaran}
+                            onChange={(e) => setLulusTahunAjaran(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                          >
+                            <option value="">— Pilih Tahun Ajaran —</option>
+                            {lulusTahunAjaranList.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setLulusModalOpen(false)}
+                            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                          >
+                            Batal
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={lulusSubmitting}
+                            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm"
+                          >
+                            {lulusSubmitting ? 'Menyimpan...' : 'Simpan'}
                           </button>
                         </div>
                       </form>

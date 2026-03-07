@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
 import { manageUsersAPI } from '../../../services/api'
 import api from '../../../services/api'
 import AddUserModal from '../../../components/Modal/AddUserModal'
@@ -300,6 +301,8 @@ function Pengurus() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showExportOffcanvas, setShowExportOffcanvas] = useState(false)
   const [detailPengurusId, setDetailPengurusId] = useState(null)
+  const closeExportOffcanvas = useOffcanvasBackClose(showExportOffcanvas, () => setShowExportOffcanvas(false))
+  const closeDetailOffcanvas = useOffcanvasBackClose(detailPengurusId != null, () => setDetailPengurusId(null))
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -730,7 +733,7 @@ const handleDownloadTemplate = useCallback(() => {
       {createPortal(
         <ExportPengurusOffcanvas
           isOpen={showExportOffcanvas}
-          onClose={() => setShowExportOffcanvas(false)}
+          onClose={closeExportOffcanvas}
           filteredData={filteredPengurus}
           lembagaList={lembagaList}
         />,
@@ -740,7 +743,7 @@ const handleDownloadTemplate = useCallback(() => {
       {createPortal(
         <DetailPengurusOffcanvas
           isOpen={detailPengurusId != null}
-          onClose={() => setDetailPengurusId(null)}
+          onClose={closeDetailOffcanvas}
           pengurusId={detailPengurusId}
           lembagaList={lembagaList}
           onSuccess={loadAllPengurus}

@@ -5,6 +5,12 @@ import { useAuthStore } from '../../store/authStore'
 import { useSidebarStore } from '../../store/sidebarStore'
 import { getGambarUrl } from '../../config/images'
 
+// Label tiap grup — urutan & nama sama seperti halaman Semua Menu (navMenuConfig + groupOrder)
+const GROUP_LABELS = [
+  'My Workspace', 'Pendaftaran', 'UWABA', 'UGT', 'Cashless', 'Keuangan', 'Umroh', 'Ijin',
+  'Kalender', 'Kalender Pesantren', 'Domisili', 'Lembaga', 'Setting', 'Tentang'
+]
+
 // Urutan grup: 0. My Workspace (paling atas), 1. Pendaftaran, 2. UWABA, 2b. UGT, 3. Keuangan, 4. Umroh, 5. Ijin, 6. Kalender, 7. Setting
 const navItems = [
   // 0. Grup My Workspace — semua user, paling atas
@@ -438,39 +444,7 @@ const navItems = [
     requiresSuperAdmin: true,
     showSeparatorAfter: true // Akhir grup Kalender Pesantren
   },
-  // 6. Setting (Dashboard Umum, User) → Lembaga (Pengurus, Lembaga) → Jabatan, Role, Fitur, ...
-  {
-    path: '/dashboard-umum',
-    label: 'Dashboard Umum',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-      </svg>
-    ),
-    requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin']
-  },
-  {
-    path: '/manage-users',
-    label: 'Kelola User',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-      </svg>
-    ),
-    requiresRole: ['super_admin', 'admin_cashless']
-  },
-  {
-    path: '/settings/tahun-ajaran',
-    label: 'Tahun Ajaran',
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    ),
-    requiresSuperAdmin: true,
-    showSeparatorAfter: true // Akhir grup Setting (sebelum Domisili)
-  },
-  // Grup Domisili
+  // Grup Domisili (urutan seperti Semua Menu)
   {
     path: '/domisili/daerah',
     label: 'Daerah',
@@ -493,7 +467,7 @@ const navItems = [
     requiresSuperAdmin: true,
     showSeparatorAfter: true
   },
-  // Grup Lembaga: Pengurus, Lembaga
+  // Grup Lembaga (urutan seperti Semua Menu)
   {
     path: '/pengurus',
     label: 'Pengurus',
@@ -510,6 +484,26 @@ const navItems = [
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      </svg>
+    ),
+    requiresSuperAdmin: true
+  },
+  {
+    path: '/santri',
+    label: 'Santri',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+    requiresSuperAdmin: true
+  },
+  {
+    path: '/lulusan',
+    label: 'Lulusan',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 14l9-5-9-5-9 5 9 5z" />
       </svg>
     ),
     requiresSuperAdmin: true
@@ -543,7 +537,38 @@ const navItems = [
       </svg>
     ),
     requiresSuperAdmin: true,
-    showSeparatorAfter: true // Akhir grup Lembaga
+    showSeparatorAfter: true
+  },
+  // Grup Setting (urutan seperti Semua Menu: Dashboard Umum, Kelola User, Tahun Ajaran, Role & Akses, Fitur, Kelola File, Data Juara)
+  {
+    path: '/dashboard-umum',
+    label: 'Dashboard Umum',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+    ),
+    requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin']
+  },
+  {
+    path: '/manage-users',
+    label: 'Kelola User',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+    requiresRole: ['super_admin', 'admin_cashless']
+  },
+  {
+    path: '/settings/tahun-ajaran',
+    label: 'Tahun Ajaran',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+    requiresSuperAdmin: true
   },
   {
     path: '/settings/role-akses',
@@ -677,6 +702,29 @@ function Sidebar() {
       .map((item, i) => ({ item, groupIndex: groupIndices[i] }))
       .filter(({ item }) => canSee(item))
   }, [user, groupIndices, effectiveRole, realSuperAdmin, viewAsRole])
+
+  // Grup untuk accordion: { groupIndex, label, items }
+  const navGroups = useMemo(() => {
+    const byGroup = new Map()
+    filteredNavItems.forEach((entry) => {
+      const g = entry.groupIndex
+      if (!byGroup.has(g)) byGroup.set(g, { groupIndex: g, label: GROUP_LABELS[g] ?? 'Menu', items: [] })
+      byGroup.get(g).items.push(entry)
+    })
+    return Array.from(byGroup.values()).sort((a, b) => a.groupIndex - b.groupIndex)
+  }, [filteredNavItems])
+
+  const [openGroups, setOpenGroups] = useState(new Set())
+
+  const toggleGroup = (groupIndex) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupIndex)) next.delete(groupIndex)
+      else next.add(groupIndex)
+      return next
+    })
+  }
+  const isGroupOpen = (groupIndex) => openGroups.has(groupIndex)
 
   // Handle scroll untuk auto-hide scrollbar
   const handleScroll = () => {
@@ -814,7 +862,7 @@ function Sidebar() {
       </div>
 
       {/* Navigation Items */}
-      <ul 
+      <ul
         className={`sidebar-scroll flex flex-col py-4 space-y-1 flex-1 overflow-y-auto overflow-x-hidden ${isScrolling ? 'scrollbar-visible' : ''}`}
         onScroll={handleScroll}
         onMouseEnter={() => setIsScrolling(true)}
@@ -822,55 +870,112 @@ function Sidebar() {
           setTimeout(() => setIsScrolling(false), 500)
         }}
       >
-        {filteredNavItems.map((entry, index) => {
-          const { item, groupIndex } = entry
-          const isActive = isActivePath(item.path)
-          const nextEntry = filteredNavItems[index + 1]
-          const shouldShowDivider = nextEntry != null && nextEntry.groupIndex !== groupIndex
-          
-          // Path yang relevan untuk menyertakan NIS agar data santri tetap saat pindah (pendaftaran & pembayaran baca nis)
-          const pathsWithNis = ['/pendaftaran', '/uwaba', '/tunggakan', '/khusus']
-          const shouldIncludeNis = pathsWithNis.includes(item.path) && idFromUrl && /^\d{7}$/.test(idFromUrl)
-          const linkTo = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
-          
-          return (
-            <li key={item.path}>
-              <NavLink
-                to={linkTo}
-                className={`flex items-center h-12 ${isCollapsed ? 'justify-center' : 'space-x-3'} px-3 rounded-lg mx-2 transition-colors duration-200 ${
-                  isActive
-                    ? 'bg-primary-50 dark:bg-primary-900/50 text-primary-600 dark:text-primary-400 font-semibold'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400'
-                }`}
-                title={isCollapsed ? item.label : ''}
-              >
-                <span
-                  className={`inline-flex items-center justify-center ${isCollapsed ? 'h-12 w-12' : 'h-12 w-12'} ${
-                    isActive ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500'
+        {isCollapsed ? (
+          /* Sidebar collapsed: tampilan flat dengan pembatas grup */
+          filteredNavItems.map((entry, index) => {
+            const { item, groupIndex } = entry
+            const isActive = isActivePath(item.path)
+            const nextEntry = filteredNavItems[index + 1]
+            const shouldShowDivider = nextEntry != null && nextEntry.groupIndex !== groupIndex
+            const pathsWithNis = ['/pendaftaran', '/uwaba', '/tunggakan', '/khusus']
+            const shouldIncludeNis = pathsWithNis.includes(item.path) && idFromUrl && /^\d{7}$/.test(idFromUrl)
+            const linkTo = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
+            return (
+              <li key={item.path}>
+                <NavLink
+                  to={linkTo}
+                  className={`flex items-center h-12 justify-center px-3 rounded-lg mx-2 transition-colors duration-200 ${
+                    isActive
+                      ? 'bg-primary-50 dark:bg-primary-900/50 text-primary-600 dark:text-primary-400 font-semibold'
+                      : 'text-gray-500 dark:text-gray-400 hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400'
                   }`}
+                  title={item.label}
                 >
-                  {item.icon}
-                </span>
-                <AnimatePresence>
-                  {!isCollapsed && (
-                    <motion.span
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: 'auto' }}
-                      exit={{ opacity: 0, width: 0 }}
-                      className="text-sm font-medium whitespace-nowrap overflow-hidden"
+                  <span
+                    className={`inline-flex items-center justify-center h-12 w-12 ${
+                      isActive ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500'
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                </NavLink>
+                {shouldShowDivider && (
+                  <div className="mx-2 my-2 border-t border-gray-200 dark:border-gray-700" aria-hidden="true" />
+                )}
+              </li>
+            )
+          })
+        ) : (
+          /* Sidebar expanded: accordion per grup dengan judul */
+          navGroups.map((group) => {
+            const open = isGroupOpen(group.groupIndex)
+            return (
+              <li key={group.groupIndex} className="mb-1">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.groupIndex)}
+                  className="flex items-center w-full h-9 px-3 rounded-lg mx-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
+                >
+                  <motion.span
+                    animate={{ rotate: open ? 0 : -90 }}
+                    className="shrink-0 mr-2 text-gray-400"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </motion.span>
+                  <span className="truncate">{group.label}</span>
+                </button>
+                <AnimatePresence initial={false}>
+                  {open && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
                     >
-                      {item.label}
-                    </motion.span>
+                      {group.items.map((entry) => {
+                        const { item } = entry
+                        const isActive = isActivePath(item.path)
+                        const pathsWithNis = ['/pendaftaran', '/uwaba', '/tunggakan', '/khusus']
+                        const shouldIncludeNis = pathsWithNis.includes(item.path) && idFromUrl && /^\d{7}$/.test(idFromUrl)
+                        const linkTo = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
+                        return (
+                          <NavLink
+                            key={item.path}
+                            to={linkTo}
+                            className={`flex items-center h-12 space-x-3 px-3 pl-6 rounded-lg mx-2 transition-colors duration-200 ${
+                              isActive
+                                ? 'bg-primary-50 dark:bg-primary-900/50 text-primary-600 dark:text-primary-400 font-semibold'
+                                : 'text-gray-500 dark:text-gray-400 hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-600 dark:hover:text-primary-400'
+                            }`}
+                          >
+                            <span
+                              className={`inline-flex items-center justify-center h-12 w-12 shrink-0 ${
+                                isActive ? 'text-primary-500 dark:text-primary-400' : 'text-gray-400 dark:text-gray-500'
+                              }`}
+                            >
+                              {item.icon}
+                            </span>
+                            <motion.span
+                              initial={{ opacity: 0, width: 0 }}
+                              animate={{ opacity: 1, width: 'auto' }}
+                              exit={{ opacity: 0, width: 0 }}
+                              className="text-sm font-medium whitespace-nowrap overflow-hidden"
+                            >
+                              {item.label}
+                            </motion.span>
+                          </NavLink>
+                        )
+                      })}
+                    </motion.div>
                   )}
                 </AnimatePresence>
-              </NavLink>
-              {/* Pembatas grup: selalu tampil saat pindah ke grup berikutnya */}
-              {shouldShowDivider && (
-                <div className="mx-2 my-2 border-t border-gray-200 dark:border-gray-700" aria-hidden="true" />
-              )}
-            </li>
-          )
-        })}
+              </li>
+            )
+          })
+        )}
       </ul>
 
       {/* Toggle Button */}

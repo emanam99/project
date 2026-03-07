@@ -427,10 +427,11 @@ export const santriAPI = {
     return response.data
   },
 
-  /** Santri by kelas: untuk offcanvas Cek di Rombel Santri. params = { mode, diniyah, kelas_diniyah, kel_diniyah } atau { mode, formal, kelas_formal, kel_formal } */
+  /** Santri by kelas: untuk offcanvas Cek di Rombel Santri. params = { mode, diniyah, kelas_diniyah, kel_diniyah } atau { mode, formal, kelas_formal, kel_formal } atau id_rombel */
   getByKelas: async (mode, params) => {
     const q = new URLSearchParams()
     q.set('mode', mode)
+    if (params.id_rombel != null && params.id_rombel !== '') q.set('id_rombel', params.id_rombel)
     if (mode === 'diniyah') {
       if (params.diniyah != null) q.set('diniyah', params.diniyah)
       if (params.kelas_diniyah != null) q.set('kelas_diniyah', params.kelas_diniyah)
@@ -441,6 +442,47 @@ export const santriAPI = {
       if (params.kel_formal != null) q.set('kel_formal', params.kel_formal)
     }
     const response = await api.get(`/santri/by-kelas?${q.toString()}`)
+    return response.data
+  },
+
+  /** Santri by rombel id (id_diniyah = id OR id_formal = id). Menggabungkan hasil diniyah + formal, dedupe by id. */
+  getByRombelId: async (rombelId) => {
+    const [resD, resF] = await Promise.all([
+      api.get(`/santri/by-kelas?mode=diniyah&id_rombel=${encodeURIComponent(rombelId)}`).then(r => r.data),
+      api.get(`/santri/by-kelas?mode=formal&id_rombel=${encodeURIComponent(rombelId)}`).then(r => r.data)
+    ])
+    const listD = (resD?.success && Array.isArray(resD.data)) ? resD.data : []
+    const listF = (resF?.success && Array.isArray(resF.data)) ? resF.data : []
+    const byId = new Map()
+    listD.forEach(s => { byId.set(s.id, { ...s, role_rombel: 'diniyah' }) })
+    listF.forEach(s => {
+      if (byId.has(s.id)) byId.get(s.id).role_rombel = 'diniyah & formal'
+      else byId.set(s.id, { ...s, role_rombel: 'formal' })
+    })
+    return { success: true, data: Array.from(byId.values()) }
+  },
+
+  getRiwayatRombel: async (idSantri) => {
+    const response = await api.get(`/santri/riwayat-rombel?id_santri=${encodeURIComponent(idSantri)}`)
+    return response.data
+  },
+
+  getRiwayatKamar: async (idSantri) => {
+    const response = await api.get(`/santri/riwayat-kamar?id_santri=${encodeURIComponent(idSantri)}`)
+    return response.data
+  }
+}
+
+// Lulusan (santri___lulusan) — super_admin only
+export const lulusanAPI = {
+  getAll: async () => {
+    const response = await api.get('/santri-lulusan')
+    return response.data
+  },
+
+  /** Body: { id_rombel: number, tahun_ajaran, id_santri_list: number[] } */
+  createBulk: async (payload) => {
+    const response = await api.post('/santri-lulusan', payload)
     return response.data
   }
 }
@@ -512,6 +554,8 @@ export const kalenderAPI = {
     if (params.action) q.set('action', params.action)
     if (params.tahun) q.set('tahun', params.tahun)
     if (params.tanggal) q.set('tanggal', params.tanggal)
+    if (params.tanggal_awal) q.set('tanggal_awal', params.tanggal_awal)
+    if (params.tanggal_akhir) q.set('tanggal_akhir', params.tanggal_akhir)
     if (params.waktu) q.set('waktu', params.waktu)
     const url = q.toString() ? `/kalender?${q.toString()}` : '/kalender'
     const response = await api.get(url)
@@ -2306,7 +2350,12 @@ export const rombelAPI = {
   getAll: async (params = {}) => {
     const q = new URLSearchParams()
     if (params.lembaga_id) q.set('lembaga_id', params.lembaga_id)
+    if (params.lembaga_nama != null && params.lembaga_nama !== '') q.set('lembaga_nama', params.lembaga_nama)
     if (params.status) q.set('status', params.status)
+    if (params.kelas != null && params.kelas !== '') q.set('kelas', params.kelas)
+    if (params.search != null && params.search !== '') q.set('search', params.search)
+    if (params.page != null) q.set('page', String(params.page))
+    if (params.limit != null) q.set('limit', String(params.limit))
     const url = q.toString() ? `/rombel?${q.toString()}` : '/rombel'
     const response = await api.get(url)
     return response.data
@@ -2329,6 +2378,11 @@ export const rombelAPI = {
 
   setStatus: async (id, status) => {
     const response = await api.patch(`/rombel/${id}/status`, { status })
+    return response.data
+  },
+
+  delete: async (id) => {
+    const response = await api.delete(`/rombel/${id}`)
     return response.data
   }
 }

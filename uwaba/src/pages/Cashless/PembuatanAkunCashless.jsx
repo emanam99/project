@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useNotification } from '../../contexts/NotificationContext'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import { cashlessAPI, manageUsersAPI } from '../../services/api'
 import CetakKartuCashlessOffcanvas from './components/CetakKartuCashlessOffcanvas'
 
@@ -30,6 +31,7 @@ export default function PembuatanAkunCashless() {
   const [loadingSantri, setLoadingSantri] = useState(false)
   const [cetakOffcanvasOpen, setCetakOffcanvasOpen] = useState(false)
   const [cetakAccountId, setCetakAccountId] = useState(null)
+  const closeCetakOffcanvas = useOffcanvasBackClose(cetakOffcanvasOpen, () => setCetakOffcanvasOpen(false))
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -422,7 +424,7 @@ export default function PembuatanAkunCashless() {
 
       <CetakKartuCashlessOffcanvas
         isOpen={cetakOffcanvasOpen}
-        onClose={() => setCetakOffcanvasOpen(false)}
+        onClose={closeCetakOffcanvas}
         accountId={cetakAccountId}
       />
     </div>

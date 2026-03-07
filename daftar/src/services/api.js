@@ -210,9 +210,20 @@ export const santriAPI = {
     const response = await api.get('/santri')
     return response.data
   },
-  
+
+  /** GET /api/santri?id=... — butuh role admin_psb/petugas_psb/super_admin */
   getById: async (id) => {
     const response = await api.get(`/santri?id=${id}`)
+    return response.data
+  },
+
+  /**
+   * GET /api/public/santri?id=... — untuk aplikasi daftar (role santri).
+   * Endpoint public bisa diakses dengan auth token tanpa perlu role admin.
+   * Dipakai saat butuh biodata (no_telpon, email) untuk iPayMu dll.
+   */
+  getByIdPublic: async (id) => {
+    const response = await api.get(`/public/santri?id=${encodeURIComponent(id)}`)
     return response.data
   },
   

@@ -27,9 +27,10 @@ class KalenderController
     }
 
     /**
-     * GET /api/kalender?action=all|year|today|convert|to_masehi
+     * GET /api/kalender?action=all|year|today|convert|convert_range|to_masehi
      * Public - tidak perlu auth.
      * - convert: Masehi → Hijriyah (tanggal=Y-m-d Masehi, optional waktu untuk setelah Maghrib).
+     * - convert_range: Masehi → Hijriyah untuk range (tanggal_awal, tanggal_akhir Y-m-d). Satu panggilan untuk banyak tanggal.
      * - to_masehi: Hijriyah → Masehi (tanggal=Y-m-d Hijriyah).
      */
     public function get(Request $request, Response $response): Response
@@ -55,6 +56,9 @@ class KalenderController
             }
             if ($action === 'convert' && isset($params['tanggal'])) {
                 return $this->convert($response, $params['tanggal'], $params['waktu'] ?? '00:00:00');
+            }
+            if ($action === 'convert_range' && isset($params['tanggal_awal']) && isset($params['tanggal_akhir'])) {
+                return $this->convertRange($response, $params['tanggal_awal'], $params['tanggal_akhir'], $params['waktu'] ?? '00:00:00');
             }
             if ($action === 'to_masehi' && isset($params['tanggal'])) {
                 return $this->hijriToMasehi($response, $params['tanggal']);
@@ -147,6 +151,46 @@ class KalenderController
         $hijriyahTanggal = 1 + $diff;
         $hijriyah = $row['tahun'] . '-' . str_pad($row['id_bulan'], 2, '0', STR_PAD_LEFT) . '-' . str_pad($hijriyahTanggal, 2, '0', STR_PAD_LEFT);
         return $this->json($response, ['masehi' => $tanggal, 'hijriyah' => $hijriyah, 'waktu' => $waktu]);
+    }
+
+    /**
+     * Konversi range tanggal Masehi → Hijriyah dalam satu panggilan.
+     * GET /api/kalender?action=convert_range&tanggal_awal=2025-03-01&tanggal_akhir=2025-03-31&waktu=00:00:00
+     * Response: { data: { "2025-03-01": "1446-09-01", ... } }
+     */
+    private function convertRange(Response $response, string $tanggalAwal, string $tanggalAkhir, string $waktu): Response
+    {
+        $start = \DateTime::createFromFormat('Y-m-d', $tanggalAwal);
+        $end = \DateTime::createFromFormat('Y-m-d', $tanggalAkhir);
+        if (!$start || !$end || $start > $end) {
+            return $this->json($response, ['data' => [], 'error' => 'tanggal_awal dan tanggal_akhir harus format Y-m-d dan awal <= akhir']);
+        }
+        $data = [];
+        $stmt = $this->getDb()->prepare("SELECT tahun, id_bulan, mulai, akhir FROM psa___kalender WHERE mulai <= ? AND akhir >= ? LIMIT 1");
+        $current = clone $start;
+        $interval = new \DateInterval('P1D');
+        while ($current <= $end) {
+            $tanggal = $current->format('Y-m-d');
+            $tanggalHijriyah = $tanggal;
+            if ($this->isAfterMaghrib($waktu)) {
+                $d = clone $current;
+                $d->add(new \DateInterval('P1D'));
+                $tanggalHijriyah = $d->format('Y-m-d');
+            }
+            $stmt->execute([$tanggalHijriyah, $tanggalHijriyah]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row && !empty($row['mulai']) && !empty($row['akhir'])) {
+                $date1 = new \DateTime($row['mulai']);
+                $date2 = new \DateTime($tanggalHijriyah);
+                $diff = $date1->diff($date2)->days;
+                $hijriyahTanggal = 1 + (int) $diff;
+                $data[$tanggal] = $row['tahun'] . '-' . str_pad((string) $row['id_bulan'], 2, '0', STR_PAD_LEFT) . '-' . str_pad((string) $hijriyahTanggal, 2, '0', STR_PAD_LEFT);
+            } else {
+                $data[$tanggal] = '0000-00-00';
+            }
+            $current->add($interval);
+        }
+        return $this->json($response, ['data' => $data]);
     }
 
     /**

@@ -95,27 +95,33 @@ export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gri
   useEffect(() => {
     const last = new Date(year, month, 0)
     const daysInMonth = last.getDate()
-    const keys = []
-    for (let day = 1; day <= daysInMonth; day++) {
-      keys.push(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`)
-    }
+    const tanggalAwal = `${year}-${String(month).padStart(2, '0')}-01`
+    const tanggalAkhir = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+
     const fromCache = {}
-    keys.forEach((key) => {
+    for (let day = 1; day <= daysInMonth; day++) {
+      const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const hijriyah = getConvertCache(key)
       if (hijriyah) fromCache[key] = hijriyah
-    })
+    }
     setHijriMap(fromCache)
 
     let cancelled = false
-    keys.forEach((tanggal) => {
-      kalenderAPI.get({ action: 'convert', tanggal }).then((res) => {
+    kalenderAPI.get({ action: 'convert_range', tanggal_awal: tanggalAwal, tanggal_akhir: tanggalAkhir })
+      .then((res) => {
         if (cancelled) return
-        if (res && res.hijriyah && res.hijriyah !== '0000-00-00') {
-          setConvertCache(tanggal, res.hijriyah)
-          setHijriMap((prev) => ({ ...prev, [tanggal]: res.hijriyah }))
-        }
-      }).catch(() => {})
-    })
+        const data = res && res.data && typeof res.data === 'object' ? res.data : {}
+        const next = { ...fromCache }
+        Object.keys(data).forEach((tanggal) => {
+          const hijriyah = data[tanggal]
+          if (hijriyah && hijriyah !== '0000-00-00') {
+            setConvertCache(tanggal, hijriyah)
+            next[tanggal] = hijriyah
+          }
+        })
+        setHijriMap(next)
+      })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [year, month])
 

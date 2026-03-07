@@ -131,6 +131,81 @@ class SantriController
         }
     }
 
+    /**
+     * GET /api/santri/riwayat-rombel?id_santri=... — riwayat rombel santri (santri___rombel).
+     */
+    public function getRiwayatRombel(Request $request, Response $response): Response
+    {
+        try {
+            $idSantri = $request->getQueryParams()['id_santri'] ?? null;
+            if (!$idSantri) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'id_santri wajib'], 400);
+            }
+            $resolvedId = SantriHelper::resolveId($this->db, $idSantri);
+            if ($resolvedId === null) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Santri tidak ditemukan'], 404);
+            }
+            if (!$this->tableExists('santri___rombel')) {
+                return $this->jsonResponse($response, ['success' => true, 'data' => []], 200);
+            }
+            $sql = "SELECT sr.id, sr.id_rombel, sr.id_santri, sr.nim, sr.tahun_ajaran, sr.tanggal_dibuat,
+                    l.nama AS lembaga_nama, l.kategori AS lembaga_kategori, r.kelas, r.kel,
+                    CONCAT(TRIM(COALESCE(r.kelas,'')), IF(TRIM(COALESCE(r.kel,''))='','',' '), TRIM(COALESCE(r.kel,''))) AS rombel_label
+                    FROM santri___rombel sr
+                    JOIN lembaga___rombel r ON r.id = sr.id_rombel
+                    JOIN lembaga l ON l.id = r.lembaga_id
+                    WHERE sr.id_santri = ?
+                    ORDER BY sr.tahun_ajaran DESC, sr.tanggal_dibuat DESC";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$resolvedId]);
+            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return $this->jsonResponse($response, ['success' => true, 'data' => $data], 200);
+        } catch (\Exception $e) {
+            error_log("Get riwayat rombel error: " . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Error mengambil riwayat rombel', 'data' => []], 500);
+        }
+    }
+
+    /**
+     * GET /api/santri/riwayat-kamar?id_santri=... — riwayat kamar santri (santri___kamar).
+     */
+    public function getRiwayatKamar(Request $request, Response $response): Response
+    {
+        try {
+            $idSantri = $request->getQueryParams()['id_santri'] ?? null;
+            if (!$idSantri) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'id_santri wajib'], 400);
+            }
+            $resolvedId = SantriHelper::resolveId($this->db, $idSantri);
+            if ($resolvedId === null) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Santri tidak ditemukan'], 404);
+            }
+            if (!$this->tableExists('santri___kamar')) {
+                return $this->jsonResponse($response, ['success' => true, 'data' => []], 200);
+            }
+            $sql = "SELECT sk.id, sk.id_kamar, sk.id_santri, sk.tahun_ajaran, sk.status_santri, sk.kategori, sk.tanggal_dibuat,
+                    d.daerah, dk.kamar, CONCAT(d.daerah, '.', dk.kamar) AS daerah_kamar
+                    FROM santri___kamar sk
+                    JOIN daerah___kamar dk ON dk.id = sk.id_kamar
+                    JOIN daerah d ON d.id = dk.id_daerah
+                    WHERE sk.id_santri = ?
+                    ORDER BY sk.tahun_ajaran DESC, sk.tanggal_dibuat DESC";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$resolvedId]);
+            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return $this->jsonResponse($response, ['success' => true, 'data' => $data], 200);
+        } catch (\Exception $e) {
+            error_log("Get riwayat kamar error: " . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Error mengambil riwayat kamar', 'data' => []], 500);
+        }
+    }
+
+    private function tableExists(string $table): bool
+    {
+        $stmt = $this->db->query("SHOW TABLES LIKE " . $this->db->quote($table));
+        return $stmt->rowCount() > 0;
+    }
+
     public function updateSantri(Request $request, Response $response): Response
     {
         try {
@@ -151,12 +226,20 @@ class SantriController
                 ], 404);
             }
             $id = $resolvedId;
+            // Simpan kamar hanya via id_kamar (daerah/kamar legacy tidak lagi diupdate)
             $fields = [
-                'nama', 'nik', 'tempat_lahir', 'tanggal_lahir', 'gender', 'ayah', 'ibu', 'no_telpon', 'dusun', 'rt', 'rw', 'desa', 'kecamatan', 'kode_pos', 'kabupaten', 'provinsi',
+                'nama', 'nik', 'tempat_lahir', 'tanggal_lahir', 'gender', 'ayah', 'ibu', 'no_telpon', 'no_wa_santri', 'dusun', 'rt', 'rw', 'desa', 'kecamatan', 'kode_pos', 'kabupaten', 'provinsi',
+                'status_ayah', 'nik_ayah', 'tempat_lahir_ayah', 'tanggal_lahir_ayah', 'pekerjaan_ayah', 'pendidikan_ayah', 'penghasilan_ayah',
+                'status_ibu', 'nik_ibu', 'tempat_lahir_ibu', 'tanggal_lahir_ibu', 'pekerjaan_ibu', 'pendidikan_ibu', 'penghasilan_ibu',
+                'hubungan_wali', 'wali', 'nik_wali', 'tempat_lahir_wali', 'tanggal_lahir_wali', 'pekerjaan_wali', 'pendidikan_wali', 'penghasilan_wali', 'no_telpon_wali',
                 'id_diniyah', 'nim_diniyah', 'id_formal', 'nim_formal',
                 'lttq', 'kelas_lttq', 'kel_lttq',
-                'daerah', 'kamar', 'id_kamar', 'status_santri', 'kategori', 'saudara_di_pesantren'
+                'id_kamar', 'status_santri', 'kategori', 'saudara_di_pesantren'
             ];
+            $hasNoTelponWali = $this->db->query("SHOW COLUMNS FROM santri LIKE 'no_telpon_wali'")->rowCount() > 0;
+            if (!$hasNoTelponWali) {
+                $fields = array_values(array_diff($fields, ['no_telpon_wali']));
+            }
 
             $set = [];
             $params = [];
@@ -557,12 +640,12 @@ class SantriController
             }
 
             if ($mode === 'diniyah') {
-                $sql = "SELECT s.id, s.nis, s.nama, s.id_diniyah AS id_rombel, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah
+                $sql = "SELECT s.id, s.nis, s.nama, s.status_santri, s.id_diniyah AS id_rombel, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah
                     FROM santri s
                     LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                     WHERE s.id_diniyah = ? ORDER BY s.nama";
             } else {
-                $sql = "SELECT s.id, s.nis, s.nama, s.id_formal AS id_rombel, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal
+                $sql = "SELECT s.id, s.nis, s.nama, s.status_santri, s.id_formal AS id_rombel, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal
                     FROM santri s
                     LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                     WHERE s.id_formal = ? ORDER BY s.nama";

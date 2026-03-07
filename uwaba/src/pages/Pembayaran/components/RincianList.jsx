@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { paymentAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
+import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
 import Modal from '../../../components/Modal/Modal'
 import TunggakanFormModal from './TunggakanFormModal'
 import UnifiedPaymentOffcanvas from './UnifiedPaymentOffcanvas'
@@ -54,6 +55,8 @@ function RincianList({ santriId, mode = 'tunggakan' }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [itemToDelete, setItemToDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const closePaymentOffcanvas = useOffcanvasBackClose(showPaymentOffcanvas, () => { setShowPaymentOffcanvas(false); setSelectedItem(null) })
+  const closePrintOffcanvas = useOffcanvasBackClose(showPrintOffcanvas, () => setShowPrintOffcanvas(false))
 
   // Fetch rincian data (santriId bisa id numerik atau NIS 7 digit; backend resolve otomatis)
   const fetchRincian = async () => {
@@ -395,10 +398,7 @@ function RincianList({ santriId, mode = 'tunggakan' }) {
       {/* Payment Offcanvas */}
       <UnifiedPaymentOffcanvas
         isOpen={showPaymentOffcanvas}
-        onClose={() => {
-          setShowPaymentOffcanvas(false)
-          setSelectedItem(null)
-        }}
+        onClose={closePaymentOffcanvas}
         mode={mode}
         item={selectedItem}
         santriId={santriId}
@@ -408,7 +408,7 @@ function RincianList({ santriId, mode = 'tunggakan' }) {
       {/* Print Offcanvas */}
       <PrintOffcanvas
         isOpen={showPrintOffcanvas}
-        onClose={() => setShowPrintOffcanvas(false)}
+        onClose={closePrintOffcanvas}
         santriId={santriId}
         mode={mode}
       />

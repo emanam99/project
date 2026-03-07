@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { dashboardAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import BulkEditOffcanvas from './components/BulkEditOffcanvas'
 import DetailSantriOffcanvas from './components/DetailSantriOffcanvas'
 import ExportIjinOffcanvas from './components/ExportIjinOffcanvas'
@@ -44,6 +45,8 @@ function DataIjin() {
   const [showBulkEditOffcanvas, setShowBulkEditOffcanvas] = useState(false)
   const [showDetailOffcanvas, setShowDetailOffcanvas] = useState(false)
   const [selectedSantri, setSelectedSantri] = useState(null)
+  const closeBulkEditOffcanvas = useOffcanvasBackClose(showBulkEditOffcanvas, () => setShowBulkEditOffcanvas(false))
+  const closeDetailSantriOffcanvas = useOffcanvasBackClose(showDetailOffcanvas, () => { setShowDetailOffcanvas(false); setSelectedSantri(null) })
   const [showPrintModal, setShowPrintModal] = useState(false)
   const [showPrintOffcanvas, setShowPrintOffcanvas] = useState(false)
   const [printOptions, setPrintOptions] = useState({ pulangan: false, shohifah: false })
@@ -1377,9 +1380,7 @@ function DataIjin() {
       {/* Bulk Edit Offcanvas */}
       <BulkEditOffcanvas
         isOpen={showBulkEditOffcanvas}
-        onClose={() => {
-          setShowBulkEditOffcanvas(false)
-        }}
+        onClose={closeBulkEditOffcanvas}
         selectedSantriList={filteredAndSortedData.filter(s => selectedItems.has(s.id))}
         allDataSantri={dataSantri}
         onSuccess={() => {
@@ -1391,10 +1392,7 @@ function DataIjin() {
       {/* Detail Santri Offcanvas */}
       <DetailSantriOffcanvas
         isOpen={showDetailOffcanvas}
-        onClose={() => {
-          setShowDetailOffcanvas(false)
-          setSelectedSantri(null)
-        }}
+        onClose={closeDetailSantriOffcanvas}
         santri={selectedSantri}
         onSuccess={async () => {
           // Reload data santri setelah update

@@ -61,6 +61,8 @@ export const navMenuItems = [
   // Grup Lembaga
   { path: '/pengurus', label: 'Pengurus', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/lembaga', label: 'Lembaga', group: 'Lembaga', requiresSuperAdmin: true },
+  { path: '/santri', label: 'Santri', group: 'Lembaga', requiresSuperAdmin: true },
+  { path: '/lulusan', label: 'Lulusan', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/rombel', label: 'Rombel', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/rombel-santri', label: 'Rombel Santri', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/manage-jabatan', label: 'Jabatan', group: 'Lembaga', requiresSuperAdmin: true },
