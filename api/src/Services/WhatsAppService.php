@@ -793,11 +793,11 @@ class WhatsAppService
         } elseif ($paymentMethod === 'cstore') {
             $store = strtolower($paymentChannel);
             if ($store === 'alfamart') {
-                $instruksi = "1. Datang ke gerai Alfamart\n2. Beri tahu kasir: Bayar iPayMu\n3. Sebutkan kode pembayaran di atas\n4. Bayar sesuai nominal";
+                $instruksi = "1. Datang ke gerai Alfamart\n2. Beri tahu kasir: Bayar PLASAMAL\n3. Sebutkan kode pembayaran di atas\n4. Bayar sesuai nominal";
             } elseif ($store === 'indomaret') {
-                $instruksi = "1. Datang ke gerai Indomaret\n2. Beri tahu kasir: Bayar iPayMu\n3. Sebutkan kode pembayaran di atas\n4. Bayar sesuai nominal";
+                $instruksi = "1. Datang ke gerai Indomaret\n2. Beri tahu kasir: Bayar LINKITA\n3. Sebutkan kode pembayaran di atas\n4. Bayar sesuai nominal";
             } else {
-                $instruksi = "Datang ke gerai, beri tahu kasir bayar iPayMu, sebutkan kode di atas, lalu bayar sesuai nominal.";
+                $instruksi = "Datang ke gerai, sebutkan kode pembayaran di atas ke kasir, lalu bayar sesuai nominal.";
             }
         }
 

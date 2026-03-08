@@ -1327,7 +1327,7 @@ function PembayaranListOffcanvas({
                                       {(vaInfo.payment_channel || '').toLowerCase() === 'alfamart' && (
                                         <>
                                           <li>Datang ke gerai Alfamart terdekat.</li>
-                                          <li>Beri tahu kasir: &quot;Bayar iPayMu&quot;.</li>
+                                          <li>Beri tahu kasir: &quot;Bayar PLASAMAL&quot;.</li>
                                           <li>Sebutkan kode pembayaran di atas.</li>
                                           <li>Bayar sesuai nominal yang ditagihkan.</li>
                                         </>
@@ -1335,7 +1335,7 @@ function PembayaranListOffcanvas({
                                       {(vaInfo.payment_channel || '').toLowerCase() === 'indomaret' && (
                                         <>
                                           <li>Datang ke gerai Indomaret terdekat.</li>
-                                          <li>Beri tahu kasir: &quot;Bayar iPayMu&quot;.</li>
+                                          <li>Beri tahu kasir: &quot;Bayar LINKITA&quot;.</li>
                                           <li>Sebutkan kode pembayaran di atas.</li>
                                           <li>Bayar sesuai nominal yang ditagihkan.</li>
                                         </>
@@ -1343,8 +1343,7 @@ function PembayaranListOffcanvas({
                                       {!['alfamart','indomaret'].includes((vaInfo.payment_channel || '').toLowerCase()) && (
                                         <>
                                           <li>Datang ke gerai {vaInfo.bank || 'mitra'} terdekat.</li>
-                                          <li>Beri tahu kasir: &quot;Bayar iPayMu&quot;.</li>
-                                          <li>Sebutkan kode pembayaran di atas.</li>
+                                          <li>Beri tahu kasir kode pembayaran di atas.</li>
                                           <li>Bayar sesuai nominal.</li>
                                         </>
                                       )}

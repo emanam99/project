@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../store/authStore'
 import { useThemeStore } from '../../store/themeStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
-import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, getAppEnv } from '../../services/api'
+import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, lembagaAPI, getAppEnv } from '../../services/api'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { APP_VERSION } from '../../config/version'
 
@@ -121,7 +121,11 @@ const HEADER_GROUPS = [
 function Header() {
   const appEnv = getAppEnv()
   const isStaging = appEnv === 'staging'
-  const { user, logout } = useAuthStore()
+  const { user, logout, clearViewAsRole } = useAuthStore()
+  const viewAsActive = user?.view_as_active === true
+  const viewAsRoleLabel = viewAsActive && (user?.role_label || (user?.role_key || user?.level || '').toLowerCase())
+  const [viewAsLembagaName, setViewAsLembagaName] = useState(null)
+  const viewAsDescription = viewAsActive && [viewAsRoleLabel, viewAsLembagaName].filter(Boolean).join(' • ')
   const { theme, toggleTheme } = useThemeStore()
   const { tahunAjaran, setTahunAjaran, options, tahunAjaranMasehi, setTahunAjaranMasehi, optionsMasehi } = useTahunAjaranStore()
   const navigate = useNavigate()
@@ -223,6 +227,23 @@ function Header() {
       }
     }
   }, [user?.id])
+
+  // Nama lembaga saat mode "coba akses role lain" aktif
+  useEffect(() => {
+    if (!viewAsActive || !user?.lembaga_id) {
+      setViewAsLembagaName(null)
+      return
+    }
+    let cancelled = false
+    lembagaAPI.getById(user.lembaga_id).then((res) => {
+      if (cancelled) return
+      const name = res?.data?.nama ?? res?.nama ?? null
+      setViewAsLembagaName(name || null)
+    }).catch(() => {
+      if (!cancelled) setViewAsLembagaName(null)
+    })
+    return () => { cancelled = true }
+  }, [viewAsActive, user?.lembaga_id])
 
   // Judul halaman: berdasarkan grup aktif, judul = label menu yang aktif (lebih simpel)
   const getPageTitle = () => {
@@ -507,6 +528,11 @@ function Header() {
     } catch (_) {}
     logout()
     navigate('/login')
+  }
+
+  const handleExitViewAs = async () => {
+    const ok = await clearViewAsRole?.()
+    if (ok) setShowUserDropdown(false)
   }
 
   return (
@@ -986,6 +1012,22 @@ function Header() {
           )}
         </AnimatePresence>
 
+        {/* Mode "Coba akses role lain" aktif: keterangan role + lembaga + tombol keluar (desktop only) */}
+        {viewAsActive && viewAsDescription && (
+          <div className="hidden md:flex items-center gap-2 mr-2 px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 max-w-[180px] sm:max-w-[220px]">
+            <span className="text-[11px] leading-tight text-white/95 break-words">
+              <strong>{viewAsDescription}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={handleExitViewAs}
+              className="shrink-0 px-1.5 py-0.5 text-[11px] font-medium rounded bg-white/25 hover:bg-white/40 text-white border border-white/40 transition-colors"
+            >
+              Keluar mode
+            </button>
+          </div>
+        )}
+
         {/* Tahun Ajaran - Desktop (custom dropdown, tampil modern saat terbuka) */}
         <div className="hidden sm:flex flex-col gap-1.5 mr-2 relative" ref={taRef}>
           {/* Tahun Ajaran Hijriyah */}
@@ -1120,6 +1162,24 @@ function Header() {
                   })()}
                   {user?.username && <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">@{user.username}</div>}
                 </div>
+
+                {/* Mode "Coba akses role lain" aktif: keterangan role + lembaga + tombol keluar (mobile only, di dalam profil expand) */}
+                {viewAsActive && viewAsDescription && (
+                  <div className="md:hidden w-full px-4 py-2 border-b dark:border-gray-700">
+                    <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2">
+                      <p className="text-xs text-amber-800 dark:text-amber-200 mb-2">
+                        <strong>{viewAsDescription}</strong>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleExitViewAs}
+                        className="w-full px-3 py-1.5 text-xs font-medium rounded bg-amber-600 hover:bg-amber-700 text-white transition-colors"
+                      >
+                        Keluar mode
+                      </button>
+                    </div>
+                  </div>
+                )}
                 
                 <button 
                   className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"

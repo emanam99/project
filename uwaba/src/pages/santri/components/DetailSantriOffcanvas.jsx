@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { santriAPI, rombelAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
+import ModalPindahRombel from '../../../components/Modal/ModalPindahRombel'
 
 const field = (label, value) => (
   <div key={label} className="flex flex-col gap-0.5">
@@ -16,14 +17,11 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
   const [santri, setSantri] = useState(null)
   const [riwayatRombel, setRiwayatRombel] = useState([])
   const [riwayatDaerah, setRiwayatDaerah] = useState([])
-  /** 'diniyah' | 'formal' = dropdown mana yang terbuka */
-  const [pindahMenuKategori, setPindahMenuKategori] = useState(null)
-  const [rombelSameLembagaDiniyah, setRombelSameLembagaDiniyah] = useState([])
-  const [rombelSameLembagaFormal, setRombelSameLembagaFormal] = useState([])
-  const [lembagaNamaDiniyah, setLembagaNamaDiniyah] = useState('')
-  const [lembagaNamaFormal, setLembagaNamaFormal] = useState('')
+  /** 'diniyah' | 'formal' = modal pindah rombel untuk kategori mana */
+  const [pindahModalKategori, setPindahModalKategori] = useState(null)
+  const [lembagaIdDiniyah, setLembagaIdDiniyah] = useState('')
+  const [lembagaIdFormal, setLembagaIdFormal] = useState('')
   const [pindahLoading, setPindahLoading] = useState(false)
-  const [loadingRombelOptions, setLoadingRombelOptions] = useState(false)
 
   const idSantri = santriRow?.id ?? santriRow?.nis
 
@@ -39,9 +37,9 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
       setSantri(null)
       setRiwayatRombel([])
       setRiwayatDaerah([])
-      setPindahMenuKategori(null)
-      setRombelSameLembagaDiniyah([])
-      setRombelSameLembagaFormal([])
+      setPindahModalKategori(null)
+      setLembagaIdDiniyah('')
+      setLembagaIdFormal('')
       return
     }
     setLoading(true)
@@ -59,75 +57,36 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
       .finally(() => setLoading(false))
   }, [isOpen, idSantri])
 
-  // Saat salah satu menu Pindah Rombel dibuka: load opsi rombel per kategori, list dari lembaga saat ini saja, hanya yang aktif
+  // Ambil lembaga_id untuk diniyah/formal (untuk modal pindah rombel)
   useEffect(() => {
-    if (!pindahMenuKategori || !santri) {
-      setRombelSameLembagaDiniyah([])
-      setRombelSameLembagaFormal([])
-      setLembagaNamaDiniyah('')
-      setLembagaNamaFormal('')
+    if (!santri) {
+      setLembagaIdDiniyah('')
+      setLembagaIdFormal('')
       return
     }
-    const hasDiniyah = santri.id_diniyah != null && santri.id_diniyah !== ''
-    const hasFormal = santri.id_formal != null && santri.id_formal !== ''
-    if (!hasDiniyah && !hasFormal) return
-    setLoadingRombelOptions(true)
-    rombelAPI.getAll({ limit: 500 })
-      .then((res) => {
-        const list = res?.success && Array.isArray(res?.data) ? res.data : []
-        const isAktif = (r) => (r?.status || '').toString().toLowerCase() === 'aktif'
-        if (hasDiniyah) {
-          const currentDiniyah = list.find((r) => String(r.id) === String(santri.id_diniyah))
-          const lembagaIdDiniyah = currentDiniyah?.lembaga_id
-          if (lembagaIdDiniyah != null) {
-            const sameLembaga = list.filter(
-              (r) => String(r.lembaga_id) === String(lembagaIdDiniyah) &&
-                String(r.id) !== String(santri.id_diniyah) &&
-                isAktif(r)
-            )
-            setRombelSameLembagaDiniyah(sameLembaga)
-            setLembagaNamaDiniyah(currentDiniyah?.lembaga_nama || '')
-          } else {
-            setRombelSameLembagaDiniyah([])
-            setLembagaNamaDiniyah('')
-          }
-        } else {
-          setRombelSameLembagaDiniyah([])
-          setLembagaNamaDiniyah('')
-        }
-        if (hasFormal) {
-          const currentFormal = list.find((r) => String(r.id) === String(santri.id_formal))
-          const lembagaIdFormal = currentFormal?.lembaga_id
-          if (lembagaIdFormal != null) {
-            const sameLembaga = list.filter(
-              (r) => String(r.lembaga_id) === String(lembagaIdFormal) &&
-                String(r.id) !== String(santri.id_formal) &&
-                isAktif(r)
-            )
-            setRombelSameLembagaFormal(sameLembaga)
-            setLembagaNamaFormal(currentFormal?.lembaga_nama || '')
-          } else {
-            setRombelSameLembagaFormal([])
-            setLembagaNamaFormal('')
-          }
-        } else {
-          setRombelSameLembagaFormal([])
-          setLembagaNamaFormal('')
-        }
-      })
-      .catch(() => {
-        setRombelSameLembagaDiniyah([])
-        setRombelSameLembagaFormal([])
-        setLembagaNamaDiniyah('')
-        setLembagaNamaFormal('')
-      })
-      .finally(() => setLoadingRombelOptions(false))
-  }, [pindahMenuKategori, santri])
+    if (santri.id_diniyah == null || santri.id_diniyah === '') setLembagaIdDiniyah('')
+    else {
+      rombelAPI.getById(santri.id_diniyah).then((r) => {
+        setLembagaIdDiniyah(r?.success && r?.data ? (r.data.lembaga_id || '') : '')
+      }).catch(() => setLembagaIdDiniyah(''))
+    }
+    if (santri.id_formal == null || santri.id_formal === '') setLembagaIdFormal('')
+    else {
+      rombelAPI.getById(santri.id_formal).then((r) => {
+        setLembagaIdFormal(r?.success && r?.data ? (r.data.lembaga_id || '') : '')
+      }).catch(() => setLembagaIdFormal(''))
+    }
+  }, [santri?.id_diniyah, santri?.id_formal])
 
-  const handlePindahRombel = async (role, targetRombelId) => {
+  const handlePindahRombel = async (role, targetRombelId, tahunAjaran = '') => {
     if (!santri?.id || !targetRombelId) return
     const payload = role === 'diniyah' ? { id_diniyah: targetRombelId } : { id_formal: targetRombelId }
-    setPindahMenuKategori(null)
+    const ta = (tahunAjaran || '').trim()
+    if (ta) {
+      if (role === 'diniyah') payload.tahun_ajaran_diniyah = ta
+      else payload.tahun_ajaran_formal = ta
+    }
+    setPindahModalKategori(null)
     setPindahLoading(true)
     try {
       const res = await santriAPI.update(santri.id, payload)
@@ -280,56 +239,22 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <h5 className="text-xs font-semibold text-gray-600 dark:text-gray-400">Diniyah</h5>
                             {hasDiniyah && (
-                              <div className="relative shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => setPindahMenuKategori((prev) => (prev === 'diniyah' ? null : 'diniyah'))}
-                                  disabled={pindahLoading || (pindahMenuKategori !== null && loadingRombelOptions)}
-                                  className={btnPindahClass}
-                                  aria-label="Pindah rombel diniyah"
-                                >
-                                  {(pindahMenuKategori === 'diniyah' && loadingRombelOptions) ? (
-                                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-teal-500 border-t-transparent" />
-                                  ) : (
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                                    </svg>
-                                  )}
-                                  Pindah Rombel
-                                </button>
-                                {pindahMenuKategori === 'diniyah' && (
-                                  <>
-                                    <div className="fixed inset-0 z-[205]" aria-hidden onClick={() => setPindahMenuKategori(null)} />
-                                    <div className="absolute right-0 top-full mt-1 z-[206] min-w-[200px] max-h-56 overflow-y-auto py-2 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
-                                      {loadingRombelOptions ? (
-                                        <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Memuat opsi...</p>
-                                      ) : rombelSameLembagaDiniyah.length > 0 ? (
-                                        <>
-                                          <p className="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                            {lembagaNamaDiniyah ? lembagaNamaDiniyah + ' — pindah ke:' : 'Pindah ke:'}
-                                          </p>
-                                          {rombelSameLembagaDiniyah.map((r) => (
-                                            <button
-                                              key={r.id}
-                                              type="button"
-                                              onClick={() => {
-                                                if (window.confirm('Pindah rombel diniyah ke ' + ((r.kelas || '') + (r.kel ? ' (' + r.kel + ')' : '')) + '?')) {
-                                                  handlePindahRombel('diniyah', r.id)
-                                                }
-                                              }}
-                                              className="w-full text-left px-3 py-1.5 text-sm text-gray-800 dark:text-gray-200 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded"
-                                            >
-                                              {(r.kelas || '–') + (r.kel ? ' (' + r.kel + ')' : '')}
-                                            </button>
-                                          ))}
-                                        </>
-                                      ) : (
-                                        <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Tidak ada rombel aktif lain di lembaga ini.</p>
-                                      )}
-                                    </div>
-                                  </>
+                              <button
+                                type="button"
+                                onClick={() => setPindahModalKategori('diniyah')}
+                                disabled={pindahLoading || !lembagaIdDiniyah}
+                                className={btnPindahClass}
+                                aria-label="Pindah rombel diniyah"
+                              >
+                                {pindahLoading ? (
+                                  <span className="animate-spin rounded-full h-3 w-3 border-2 border-teal-500 border-t-transparent" />
+                                ) : (
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                  </svg>
                                 )}
-                              </div>
+                                Pindah Rombel
+                              </button>
                             )}
                           </div>
                           <TabelRombel list={riwayatDiniyah} />
@@ -339,56 +264,22 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <h5 className="text-xs font-semibold text-gray-600 dark:text-gray-400">Formal</h5>
                             {hasFormal && (
-                              <div className="relative shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => setPindahMenuKategori((prev) => (prev === 'formal' ? null : 'formal'))}
-                                  disabled={pindahLoading || (pindahMenuKategori !== null && loadingRombelOptions)}
-                                  className={btnPindahClass}
-                                  aria-label="Pindah rombel formal"
-                                >
-                                  {(pindahMenuKategori === 'formal' && loadingRombelOptions) ? (
-                                    <span className="animate-spin rounded-full h-3 w-3 border-2 border-teal-500 border-t-transparent" />
-                                  ) : (
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                                    </svg>
-                                  )}
-                                  Pindah Rombel
-                                </button>
-                                {pindahMenuKategori === 'formal' && (
-                                  <>
-                                    <div className="fixed inset-0 z-[205]" aria-hidden onClick={() => setPindahMenuKategori(null)} />
-                                    <div className="absolute right-0 top-full mt-1 z-[206] min-w-[200px] max-h-56 overflow-y-auto py-2 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
-                                      {loadingRombelOptions ? (
-                                        <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Memuat opsi...</p>
-                                      ) : rombelSameLembagaFormal.length > 0 ? (
-                                        <>
-                                          <p className="px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                            {lembagaNamaFormal ? lembagaNamaFormal + ' — pindah ke:' : 'Pindah ke:'}
-                                          </p>
-                                          {rombelSameLembagaFormal.map((r) => (
-                                            <button
-                                              key={r.id}
-                                              type="button"
-                                              onClick={() => {
-                                                if (window.confirm('Pindah rombel formal ke ' + ((r.kelas || '') + (r.kel ? ' (' + r.kel + ')' : '')) + '?')) {
-                                                  handlePindahRombel('formal', r.id)
-                                                }
-                                              }}
-                                              className="w-full text-left px-3 py-1.5 text-sm text-gray-800 dark:text-gray-200 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded"
-                                            >
-                                              {(r.kelas || '–') + (r.kel ? ' (' + r.kel + ')' : '')}
-                                            </button>
-                                          ))}
-                                        </>
-                                      ) : (
-                                        <p className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Tidak ada rombel aktif lain di lembaga ini.</p>
-                                      )}
-                                    </div>
-                                  </>
+                              <button
+                                type="button"
+                                onClick={() => setPindahModalKategori('formal')}
+                                disabled={pindahLoading || !lembagaIdFormal}
+                                className={btnPindahClass}
+                                aria-label="Pindah rombel formal"
+                              >
+                                {pindahLoading ? (
+                                  <span className="animate-spin rounded-full h-3 w-3 border-2 border-teal-500 border-t-transparent" />
+                                ) : (
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                                  </svg>
                                 )}
-                              </div>
+                                Pindah Rombel
+                              </button>
                             )}
                           </div>
                           <TabelRombel list={riwayatFormal} />
@@ -405,6 +296,17 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
                   </section>
                 )
               })()}
+
+              {/* Modal Pindah Rombel (sama dengan di page Rombel): tahun ajaran + list rombel, tanpa konfirmasi setelah pilih */}
+              <ModalPindahRombel
+                isOpen={!!pindahModalKategori}
+                onClose={() => setPindahModalKategori(null)}
+                title={'Pindah Rombel ' + (pindahModalKategori === 'diniyah' ? 'Diniyah' : 'Formal')}
+                lembagaId={pindahModalKategori === 'diniyah' ? lembagaIdDiniyah : lembagaIdFormal}
+                excludeRombelId={pindahModalKategori === 'diniyah' ? santri?.id_diniyah : santri?.id_formal}
+                onSelect={(targetRombelId, tahunAjaran) => handlePindahRombel(pindahModalKategori, targetRombelId, tahunAjaran)}
+                skipConfirmAfterSelect
+              />
 
               {/* Riwayat Daerah (Kamar) */}
               <section>

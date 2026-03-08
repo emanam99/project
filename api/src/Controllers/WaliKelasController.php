@@ -231,13 +231,23 @@ class WaliKelasController
             }
 
             $data = $request->getParsedBody();
+            if (!is_array($data)) {
+                $bodyContents = $request->getBody()->getContents();
+                $data = (!empty($bodyContents) && json_decode($bodyContents, true) !== null)
+                    ? (array) json_decode($bodyContents, true)
+                    : [];
+            }
             $idKelas = isset($data['id_kelas']) ? (int) $data['id_kelas'] : (int) $old['id_kelas'];
             $idPengurus = array_key_exists('id_pengurus', $data) && $data['id_pengurus'] !== '' ? (int) $data['id_pengurus'] : null;
             $idKetua = array_key_exists('id_ketua', $data) && $data['id_ketua'] !== '' ? (int) $data['id_ketua'] : null;
             $idWakil = array_key_exists('id_wakil', $data) && $data['id_wakil'] !== '' ? (int) $data['id_wakil'] : null;
             $idSekretaris = array_key_exists('id_sekretaris', $data) && $data['id_sekretaris'] !== '' ? (int) $data['id_sekretaris'] : null;
             $idBendahara = array_key_exists('id_bendahara', $data) && $data['id_bendahara'] !== '' ? (int) $data['id_bendahara'] : null;
-            $tahunAjaran = $data['tahun_ajaran'] ?? $old['tahun_ajaran'];
+            $tahunAjaranSent = array_key_exists('tahun_ajaran', $data) || array_key_exists('tahunAjaran', $data);
+            $tahunAjaranVal = $data['tahun_ajaran'] ?? $data['tahunAjaran'] ?? '';
+            $tahunAjaran = $tahunAjaranSent
+                ? (trim((string) $tahunAjaranVal) !== '' ? trim((string) $tahunAjaranVal) : null)
+                : $old['tahun_ajaran'];
             $gedung = $data['gedung'] ?? $old['gedung'];
             $ruang = $data['ruang'] ?? $old['ruang'];
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)

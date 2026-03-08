@@ -415,8 +415,8 @@ function DataSantri() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
               <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Daftar Santri ({filteredList.length})
+                  <h2 className="text-lg font-semibold text-gray-500 dark:text-gray-400">
+                    {filteredList.length}
                   </h2>
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -430,7 +430,6 @@ function DataSantri() {
                       </svg>
                       Eksport
                     </button>
-                    <label className="text-sm text-gray-700 dark:text-gray-300">Tampilkan:</label>
                     <select
                       value={itemsPerPage >= filteredList.length ? 'all' : itemsPerPage}
                       onChange={(e) => handleItemsPerPageChange(e.target.value)}
@@ -443,7 +442,6 @@ function DataSantri() {
                       <option value="500">500</option>
                       <option value="all">Semua</option>
                     </select>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">per halaman</span>
                   </div>
                 </div>
               </div>
