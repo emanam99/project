@@ -2637,18 +2637,17 @@ class PengeluaranController
                 ], 200);
             }
 
-            // Ambil pengurus yang memiliki role dengan lembaga yang sama
-            // Lembaga yang valid adalah yang ada di tabel role (berdasarkan role key yang mengandung nama lembaga)
-            // Atau bisa juga dari pengurus___role yang lembaga_id-nya sama
-            // Untuk sekarang, kita ambil dari pengurus___role berdasarkan lembaga_id
+            // Ambil pengurus yang punya jabatan di lembaga ini (aktif), termasuk no_wa untuk notifikasi
             $sqlPengurus = "SELECT DISTINCT p.id, p.nama, p.gelar_awal, p.gelar_akhir,
+                           COALESCE(u.no_wa, '') AS whatsapp,
                            GROUP_CONCAT(DISTINCT j.nama ORDER BY j.nama SEPARATOR ', ') as roles
                            FROM pengurus p
+                           LEFT JOIN users u ON u.id = p.id_user
                            INNER JOIN pengurus___jabatan pj ON p.id = pj.pengurus_id
                            INNER JOIN jabatan j ON pj.jabatan_id = j.id
                            WHERE pj.lembaga_id = ?
                            AND pj.status = 'aktif'
-                           GROUP BY p.id, p.nama, p.gelar_awal, p.gelar_akhir
+                           GROUP BY p.id, p.nama, p.gelar_awal, p.gelar_akhir, u.no_wa
                            ORDER BY p.nama ASC";
             $stmtPengurus = $this->db->prepare($sqlPengurus);
             $stmtPengurus->execute([$lembaga]);

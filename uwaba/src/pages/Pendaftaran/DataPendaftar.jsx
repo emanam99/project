@@ -99,16 +99,16 @@ function DataPendaftar() {
   const dynamicUniqueFormal = useMemo(() => {
     let filtered = pendaftarList
     if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (diniyahFilter) filtered = filtered.filter(p => sameLembagaForMemo(p.diniyah, diniyahFilter))
+    if (diniyahFilter) filtered = filtered.filter(p => sameLembagaForMemo((p.daftar_diniyah ?? p.diniyah), diniyahFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
 
-    const values = [...new Set(filtered.map(p => p.formal).filter(Boolean))]
+    const values = [...new Set(filtered.map(p => p.daftar_formal ?? p.formal).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
-      count: filtered.filter(p => sameLembagaForMemo(p.formal, val)).length
+      count: filtered.filter(p => sameLembagaForMemo(p.daftar_formal ?? p.formal, val)).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
   }, [pendaftarList, statusPendaftarFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess])
@@ -116,16 +116,16 @@ function DataPendaftar() {
   const dynamicUniqueDiniyah = useMemo(() => {
     let filtered = pendaftarList
     if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (formalFilter) filtered = filtered.filter(p => sameLembagaForMemo(p.formal, formalFilter))
+    if (formalFilter) filtered = filtered.filter(p => sameLembagaForMemo((p.daftar_formal ?? p.formal), formalFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
     
-    const values = [...new Set(filtered.map(p => p.diniyah).filter(Boolean))]
+    const values = [...new Set(filtered.map(p => p.daftar_diniyah ?? p.diniyah).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
-      count: filtered.filter(p => sameLembagaForMemo(p.diniyah, val)).length
+      count: filtered.filter(p => sameLembagaForMemo(p.daftar_diniyah ?? p.diniyah, val)).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
   }, [pendaftarList, statusPendaftarFilter, formalFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess])
@@ -135,8 +135,8 @@ function DataPendaftar() {
     
     // Apply existing filters
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (formalFilter) filtered = filtered.filter(p => p.formal === formalFilter)
-    if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
+    if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
+    if (diniyahFilter) filtered = filtered.filter(p => (p.daftar_diniyah ?? p.diniyah) === diniyahFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang || '') === gelombangFilter)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
@@ -161,8 +161,8 @@ function DataPendaftar() {
   const dynamicUniqueGelombang = useMemo(() => {
     let filtered = pendaftarList
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (formalFilter) filtered = filtered.filter(p => p.formal === formalFilter)
-    if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
+    if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
+    if (diniyahFilter) filtered = filtered.filter(p => (p.daftar_diniyah ?? p.diniyah) === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
@@ -184,8 +184,8 @@ function DataPendaftar() {
   const dynamicUniqueStatusSantri = useMemo(() => {
     let filtered = pendaftarList
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (formalFilter) filtered = filtered.filter(p => p.formal === formalFilter)
-    if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
+    if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
+    if (diniyahFilter) filtered = filtered.filter(p => (p.daftar_diniyah ?? p.diniyah) === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '') === statusMuridFilter)
@@ -207,8 +207,8 @@ function DataPendaftar() {
   const dynamicUniqueStatusMurid = useMemo(() => {
     let filtered = pendaftarList
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
-    if (formalFilter) filtered = filtered.filter(p => p.formal === formalFilter)
-    if (diniyahFilter) filtered = filtered.filter(p => p.diniyah === diniyahFilter)
+    if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
+    if (diniyahFilter) filtered = filtered.filter(p => (p.daftar_diniyah ?? p.diniyah) === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
@@ -239,13 +239,15 @@ function DataPendaftar() {
     // Helper: bandingkan id lembaga (API bisa string/number)
     const sameLembaga = (a, b) => (a != null && b != null && String(a) === String(b))
 
-    // Filter by formal / diniyah hanya kalau user memilih filter. PSB: backend sudah return data mereka (OR), jadi tanpa pilih filter = tampilkan semua dari API
+    // Filter by daftar_formal / daftar_diniyah (psb___registrasi) hanya kalau user memilih filter
+    const df = (p) => p.daftar_formal ?? p.formal
+    const dd = (p) => p.daftar_diniyah ?? p.diniyah
     if (formalFilter && diniyahFilter) {
-      filtered = filtered.filter(p => sameLembaga(p.formal, formalFilter) || sameLembaga(p.diniyah, diniyahFilter))
+      filtered = filtered.filter(p => sameLembaga(df(p), formalFilter) || sameLembaga(dd(p), diniyahFilter))
     } else if (formalFilter) {
-      filtered = filtered.filter(p => sameLembaga(p.formal, formalFilter))
+      filtered = filtered.filter(p => sameLembaga(df(p), formalFilter))
     } else if (diniyahFilter) {
-      filtered = filtered.filter(p => sameLembaga(p.diniyah, diniyahFilter))
+      filtered = filtered.filter(p => sameLembaga(dd(p), diniyahFilter))
     }
 
     // Filter by keterangan status
@@ -280,9 +282,14 @@ function DataPendaftar() {
 
     // Sort: hanya jika user memilih sort per kolom; default tetap urutan API (id psb___registrasi DESC)
     if (sortConfig.key) {
+      const getSortVal = (p) => {
+        if (sortConfig.key === 'daftar_formal') return p.daftar_formal ?? p.formal
+        if (sortConfig.key === 'daftar_diniyah') return p.daftar_diniyah ?? p.diniyah
+        return p[sortConfig.key]
+      }
       filtered = [...filtered].sort((a, b) => {
-        const aVal = a[sortConfig.key]
-        const bVal = b[sortConfig.key]
+        const aVal = getSortVal(a)
+        const bVal = getSortVal(b)
         
         // Handle null/undefined values
         if (aVal == null && bVal == null) return 0
@@ -457,16 +464,21 @@ function DataPendaftar() {
     )
   }
 
-  // Keterangan bayar: Lunas / Belum / Kurang Rp x
+  // Keterangan bayar: belum / lunas / kurang Rp x (untuk kolom Ket di tabel)
   const getKeteranganBayar = (row) => {
     if (!row) return '-'
     const wajib = row.wajib != null ? Number(row.wajib) : 0
     const bayar = row.bayar != null ? Number(row.bayar) : 0
     const kurang = row.kurang != null ? Number(row.kurang) : Math.max(0, wajib - bayar)
     if (wajib <= 0) return '-'
-    if (bayar >= wajib) return 'Lunas'
-    if (bayar <= 0) return 'Belum'
-    return `Kurang Rp ${Math.round(kurang).toLocaleString('id-ID')}`
+    if (bayar >= wajib) return 'lunas'
+    if (bayar <= 0) return 'belum'
+    return `kurang Rp ${Math.round(kurang).toLocaleString('id-ID')}`
+  }
+
+  const formatRp = (val) => {
+    if (val == null || val === '') return '-'
+    return `Rp ${Number(val).toLocaleString('id-ID')}`
   }
 
   // Fungsi untuk mendapatkan warna badge berdasarkan keterangan_status
@@ -625,14 +637,14 @@ function DataPendaftar() {
                             </select>
                           )}
                           
-                          {/* Daftar Formal / Diniyah — tampil untuk semua (super_admin, admin_psb, petugas_psb) */}
+                          {/* Daftar Formal / Daftar Diniyah (dari psb___registrasi) — tampil untuk semua */}
                           <>
                             <select
                               value={formalFilter}
                               onChange={(e) => setFormalFilter(e.target.value)}
                               className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                             >
-                              <option value="">Formal</option>
+                              <option value="">Daftar Formal</option>
                               {dynamicUniqueFormal.map(item => (
                                 <option key={item.value} value={item.value}>{(item.label != null ? item.label : item.value)} ({item.count})</option>
                               ))}
@@ -642,7 +654,7 @@ function DataPendaftar() {
                               onChange={(e) => setDiniyahFilter(e.target.value)}
                               className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                             >
-                              <option value="">Diniyah</option>
+                              <option value="">Daftar Diniyah</option>
                               {dynamicUniqueDiniyah.map(item => (
                                 <option key={item.value} value={item.value}>{(item.label != null ? item.label : item.value)} ({item.count})</option>
                               ))}
@@ -705,9 +717,7 @@ function DataPendaftar() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
               <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Daftar Pendaftar ({filteredList.length})
-                  </h2>
+                  <span className="text-base font-normal text-gray-500 dark:text-gray-400">{filteredList.length}</span>
                   
                   {/* Export (selalu tampil) + Ubah Massal + Items per page */}
                   <div className="flex flex-wrap items-center gap-2">
@@ -748,9 +758,6 @@ function DataPendaftar() {
                         </button>
                       </>
                     )}
-                    <label className="text-sm text-gray-700 dark:text-gray-300">
-                      Tampilkan:
-                    </label>
                     <select
                       value={itemsPerPage >= filteredList.length ? 'all' : itemsPerPage}
                       onChange={(e) => handleItemsPerPageChange(e.target.value)}
@@ -763,9 +770,6 @@ function DataPendaftar() {
                       <option value="500">500</option>
                       <option value="all">Semua</option>
                     </select>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                      per halaman
-                    </span>
                   </div>
                 </div>
               </div>
@@ -830,7 +834,7 @@ function DataPendaftar() {
                           className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
                         >
                           <div className="flex items-center gap-2">
-                            Status Pendaftar
+                            Pendaftar
                             <SortIcon columnKey="status_pendaftar" />
                           </div>
                         </th>
@@ -844,12 +848,12 @@ function DataPendaftar() {
                           </div>
                         </th>
                         <th
-                          onClick={() => handleSort('formal')}
+                          onClick={() => handleSort('daftar_formal')}
                           className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
                         >
                           <div className="flex items-center gap-2">
                             Formal
-                            <SortIcon columnKey="formal" />
+                            <SortIcon columnKey="daftar_formal" />
                           </div>
                         </th>
                         <th
@@ -862,12 +866,12 @@ function DataPendaftar() {
                           </div>
                         </th>
                         <th
-                          onClick={() => handleSort('diniyah')}
+                          onClick={() => handleSort('daftar_diniyah')}
                           className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
                         >
                           <div className="flex items-center gap-2">
                             Diniyah
-                            <SortIcon columnKey="diniyah" />
+                            <SortIcon columnKey="daftar_diniyah" />
                           </div>
                         </th>
                         <th
@@ -875,9 +879,32 @@ function DataPendaftar() {
                           className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
                         >
                           <div className="flex items-center gap-2">
-                            Gelombang
+                            Gel
                             <SortIcon columnKey="gelombang" />
                           </div>
+                        </th>
+                        <th
+                          onClick={() => handleSort('wajib')}
+                          className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
+                        >
+                          <div className="flex items-center gap-2">
+                            Wajib
+                            <SortIcon columnKey="wajib" />
+                          </div>
+                        </th>
+                        <th
+                          onClick={() => handleSort('bayar')}
+                          className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
+                        >
+                          <div className="flex items-center gap-2">
+                            Bayar
+                            <SortIcon columnKey="bayar" />
+                          </div>
+                        </th>
+                        <th
+                          className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap"
+                        >
+                          Ket
                         </th>
                         <th
                           onClick={() => handleSort('prodi')}
@@ -902,7 +929,7 @@ function DataPendaftar() {
                           className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap"
                         >
                           <div className="flex items-center gap-2">
-                            ID
+                            NIS
                             <SortIcon columnKey="id" />
                           </div>
                         </th>
@@ -978,12 +1005,12 @@ function DataPendaftar() {
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                             <span
                               className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                pendaftar.formal && pendaftar.formal !== '-'
+                                (pendaftar.daftar_formal ?? pendaftar.formal) && (pendaftar.daftar_formal ?? pendaftar.formal) !== '-'
                                   ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400'
                                   : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                               }`}
                             >
-                              {pendaftar.formal || '-'}
+                              {pendaftar.daftar_formal ?? pendaftar.formal ?? '-'}
                             </span>
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
@@ -1000,16 +1027,25 @@ function DataPendaftar() {
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
                             <span
                               className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                pendaftar.diniyah && pendaftar.diniyah !== '-'
+                                (pendaftar.daftar_diniyah ?? pendaftar.diniyah) && (pendaftar.daftar_diniyah ?? pendaftar.diniyah) !== '-'
                                   ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
                                   : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                               }`}
                             >
-                              {pendaftar.diniyah || '-'}
+                              {pendaftar.daftar_diniyah ?? pendaftar.diniyah ?? '-'}
                             </span>
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                             {pendaftar.gelombang != null && pendaftar.gelombang !== '' ? String(pendaftar.gelombang) : '-'}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 text-right">
+                            {formatRp(pendaftar.wajib)}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 text-right">
+                            {formatRp(pendaftar.bayar)}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                            {getKeteranganBayar(pendaftar)}
                           </td>
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                             {pendaftar.prodi || '-'}
@@ -1186,16 +1222,16 @@ function DataPendaftar() {
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.alamat || '-'}</dd>
                           </div>
                           <div>
-                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Formal</dt>
-                            <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.formal || '-'}</dd>
+                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Daftar Formal</dt>
+                            <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.daftar_formal ?? selectedPendaftar.formal ?? '-'}</dd>
                           </div>
                           <div>
                             <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status Murid</dt>
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.status_murid && String(selectedPendaftar.status_murid).trim() ? selectedPendaftar.status_murid : '-'}</dd>
                           </div>
                           <div>
-                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Diniyah</dt>
-                            <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.diniyah || '-'}</dd>
+                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Daftar Diniyah</dt>
+                            <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.daftar_diniyah ?? selectedPendaftar.diniyah ?? '-'}</dd>
                           </div>
                           <div>
                             <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prodi</dt>

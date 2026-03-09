@@ -6533,6 +6533,8 @@ class PendaftaranController
                     'kel_lttq' => $pick('kel_lttq'),
                     'formal' => $pick('formal_santri', $pick('formal', '-')),
                     'diniyah' => $pick('diniyah_santri', $pick('diniyah', '-')),
+                    'daftar_formal' => $pick('formal', '-'),
+                    'daftar_diniyah' => $pick('diniyah', '-'),
                     'tahun_hijriyah' => $pick('tahun_hijriyah'),
                     'tahun_masehi' => $pick('tahun_masehi'),
                     'tanggal_dibuat' => $pick('tanggal_dibuat'),

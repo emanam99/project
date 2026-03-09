@@ -2,36 +2,36 @@ import { useRef, useEffect, useCallback } from 'react'
 
 /**
  * Hook agar offcanvas tertutup saat user menekan tombol Kembali (back).
- * - Saat offcanvas dibuka: pushState ke history.
- * - Saat user tekan back: popstate → panggil onClose.
- * - Saat tutup lewat tombol/overlay: history.back() lalu onClose agar stack bersih.
+ * - Jika urlManaged: false (default): saat buka pushState; saat tutup tombol panggil onClose lalu history.back().
+ * - Jika urlManaged: true: URL dikelola parent (setSearchParams replace:false saat buka). Hanya listen popstate → onClose.
+ *   Saat tutup tombol cukup onClose() (parent akan setSearchParams replace:true sehingga link berubah).
  *
  * @param {boolean} isOpen - Apakah offcanvas sedang terbuka
- * @param {function} onClose - Callback untuk menutup (biasanya setState(false))
- * @param {object} [options] - { state: object } state untuk pushState (default { offcanvas: true })
- * @returns {function} Fungsi close yang harus dipass ke onClose offcanvas (dan panggil saat buka jika perlu pushState)
+ * @param {function} onClose - Callback untuk menutup (biasanya setState(false) + setSearchParams tanpa param)
+ * @param {object} [options] - { state?: object, urlManaged?: boolean }
+ * @returns {function} Fungsi close untuk onClose offcanvas
  */
 export function useOffcanvasBackClose(isOpen, onClose, options = {}) {
   const pushedRef = useRef(false)
+  const urlManaged = options.urlManaged === true
 
-  // Saat offcanvas terbuka, push state sekali
+  // Saat offcanvas terbuka, push state sekali (hanya jika URL tidak dikelola parent)
   useEffect(() => {
-    if (isOpen && !pushedRef.current) {
-      window.history.pushState(
-        options.state != null ? options.state : { offcanvas: true },
-        '',
-        window.location.href
-      )
-      pushedRef.current = true
-    }
-  }, [isOpen, options.state])
+    if (urlManaged || !isOpen || pushedRef.current) return
+    window.history.pushState(
+      options.state != null ? options.state : { offcanvas: true },
+      '',
+      window.location.href
+    )
+    pushedRef.current = true
+  }, [isOpen, urlManaged, options.state])
 
-  // Reset ref saat tertutup (bukan dari back)
+  // Reset ref saat tertutup
   useEffect(() => {
     if (!isOpen) pushedRef.current = false
   }, [isOpen])
 
-  // Listen back: tutup offcanvas
+  // Listen back: tutup offcanvas (URL berubah = state beda, tutup offcanvas)
   useEffect(() => {
     const onPopState = () => {
       if (isOpen) {
@@ -43,12 +43,18 @@ export function useOffcanvasBackClose(isOpen, onClose, options = {}) {
     return () => window.removeEventListener('popstate', onPopState)
   }, [isOpen, onClose])
 
-  // Wrapped close: history.back() dulu agar stack bersih, lalu onClose
+  // Wrapped close: urlManaged → cukup onClose (link berubah lewat setSearchParams). Tidak urlManaged → onClose lalu history.back()
   return useCallback(() => {
-    if (pushedRef.current) {
-      window.history.back()
-      pushedRef.current = false
+    if (urlManaged) {
+      onClose()
+      return
     }
-    onClose()
-  }, [onClose])
+    if (pushedRef.current) {
+      pushedRef.current = false
+      onClose()
+      setTimeout(() => window.history.back(), 0)
+    } else {
+      onClose()
+    }
+  }, [onClose, urlManaged])
 }

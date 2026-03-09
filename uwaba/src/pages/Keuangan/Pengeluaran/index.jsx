@@ -127,10 +127,20 @@ function Pengeluaran() {
   // Use custom hooks for admin list management
   const confirmAdminList = useAdminList(true) // Hanya super admin dan admin uwaba untuk approve/reject rencana pengeluaran
   const rencanaAdminList = useAdminList(true) // Hanya super admin dan admin uwaba untuk rencana pengeluaran
-  const pengeluaranAdminList = useAdminList()
+  const pengeluaranAdminList = useAdminList(true) // Hanya super admin dan admin uwaba (endpoint list-super-admin-uwaba; getAll hanya super_admin)
   
-  const closePengeluaranDetailOffcanvas = useOffcanvasBackClose(pengeluaranDetailHook.showPengeluaranOffcanvas, () => { pengeluaranDetailHook.closePengeluaranOffcanvas(); pengeluaranAdminList.resetSelection() })
-  const closeRencanaDetailOffcanvas = useOffcanvasBackClose(rencanaDetailHook.showRencanaOffcanvas, () => { rencanaDetailHook.closeRencanaOffcanvas(); rencanaAdminList.resetSelection() })
+  const closePengeluaranDetailOffcanvas = useOffcanvasBackClose(pengeluaranDetailHook.showPengeluaranOffcanvas, () => {
+    const pengeluaranId = searchParams.get('pengeluaran')
+    if (pengeluaranId) justClosedPengeluaranIdRef.current = pengeluaranId
+    pengeluaranDetailHook.closePengeluaranOffcanvas()
+    pengeluaranAdminList.resetSelection()
+  }, { urlManaged: true })
+  const closeRencanaDetailOffcanvas = useOffcanvasBackClose(rencanaDetailHook.showRencanaOffcanvas, () => {
+    const rencanaId = searchParams.get('rencana')
+    if (rencanaId) justClosedRencanaIdRef.current = rencanaId
+    rencanaDetailHook.closeRencanaOffcanvas()
+    rencanaAdminList.resetSelection()
+  }, { urlManaged: true })
   
   // Use custom hooks for notifications
   const { sendRencanaNotifications, sendNotificationsToConfirmAdmins } = useRencanaNotifications()
@@ -186,6 +196,8 @@ function Pengeluaran() {
   // Track processed URL IDs to avoid infinite loops
   const processedRencanaIdRef = useRef(null)
   const processedPengeluaranIdRef = useRef(null)
+  const justClosedRencanaIdRef = useRef(null)
+  const justClosedPengeluaranIdRef = useRef(null)
 
   // Handle deep linking from URL query parameters
   useEffect(() => {
@@ -197,6 +209,15 @@ function Pengeluaran() {
       return
     }
     if (pengeluaranId && processedPengeluaranIdRef.current === pengeluaranId && pengeluaranDetailHook.showPengeluaranOffcanvas) {
+      return
+    }
+    // Jangan buka lagi jika ini ID yang baru saja ditutup (setelah history.back())
+    if (rencanaId && justClosedRencanaIdRef.current === rencanaId) {
+      justClosedRencanaIdRef.current = null
+      return
+    }
+    if (pengeluaranId && justClosedPengeluaranIdRef.current === pengeluaranId) {
+      justClosedPengeluaranIdRef.current = null
       return
     }
 
@@ -977,7 +998,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         getStatusBadge={getStatusBadge}
         canEdit={rencanaActions.canEdit(rencanaDetailHook.selectedRencana)}
         canApprove={rencanaActions.canApprove(rencanaDetailHook.selectedRencana)}
-        onEdit={() => rencanaActions.handleEdit(rencanaDetailHook.selectedRencana?.id)}
+        onEdit={(id) => rencanaActions.handleEdit(id ?? rencanaDetailHook.selectedRencana?.id)}
         onApprove={handleRencanaApprove}
         onReject={handleRencanaReject}
         listAdmins={rencanaAdminList.listAdmins}

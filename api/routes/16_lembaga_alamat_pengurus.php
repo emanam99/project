@@ -13,10 +13,11 @@ use App\Controllers\SantriLulusanController;
 use App\Controllers\WaliKelasController;
 
 return function (\Slim\App $app): void {
+    // GET lembaga: super_admin + admin_uwaba (untuk dropdown pengeluaran/rencana semua lembaga)
     $app->group('/api/lembaga', function ($group) {
         $group->get('', [LembagaController::class, 'getAllLembaga']);
         $group->get('/{id}', [LembagaController::class, 'getLembagaById']);
-    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['super_admin', 'admin_uwaba']))->add(new AuthMiddleware());
 
     $app->group('/api/lembaga', function ($group) {
         $group->post('', [LembagaController::class, 'createLembaga']);
@@ -63,8 +64,9 @@ return function (\Slim\App $app): void {
         $group->get('', [AlamatController::class, 'getList']);
     })->add(new RoleMiddleware(['admin_ugt', 'super_admin']))->add(new AuthMiddleware());
 
+    // GET pengurus: admin_ugt, super_admin, admin_uwaba (list + no HP untuk notifikasi)
     $app->group('/api/pengurus', function ($group) {
         $group->get('', [PengurusController::class, 'getList']);
         $group->get('/{id}', [PengurusController::class, 'getById']);
-    })->add(new RoleMiddleware(['admin_ugt', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['admin_ugt', 'super_admin', 'admin_uwaba']))->add(new AuthMiddleware());
 };

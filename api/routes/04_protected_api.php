@@ -16,8 +16,12 @@ return function (\Slim\App $app): void {
     // Daftar user (sensitif) — hanya super_admin
     $app->group('/api', function ($group) {
         $group->get('/user/list', [UserController::class, 'getAllUsers']);
-        $group->get('/user/list-super-admin-uwaba', [UserController::class, 'getSuperAdminAndUwabaUsers']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    // List super admin & admin uwaba (untuk notifikasi rencana/pengeluaran di offcanvas) — super_admin + admin_uwaba
+    $app->group('/api', function ($group) {
+        $group->get('/user/list-super-admin-uwaba', [UserController::class, 'getSuperAdminAndUwabaUsers']);
+    })->add(new RoleMiddleware(['admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
 
     // Data santri — admin_psb, petugas_psb, super_admin
     $app->group('/api', function ($group) {

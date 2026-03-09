@@ -744,7 +744,15 @@ class ManageUsersController
             $jabatanStmt = $this->db->prepare($jabatanSql);
             $jabatanStmt->execute([$userId]);
             $jabatanData = $jabatanStmt->fetchAll(\PDO::FETCH_ASSOC);
-            
+            // Normalisasi jabatan_status ke 'aktif' atau 'nonaktif' agar frontend tampil konsisten
+            // NULL/kosong di DB dianggap 'aktif' (default di schema)
+            foreach ($jabatanData as &$row) {
+                $raw = $row['jabatan_status'] ?? null;
+                $s = ($raw !== null && $raw !== '') ? strtolower(trim((string) $raw)) : 'aktif';
+                $row['jabatan_status'] = ($s === 'aktif' || $s === 'active') ? 'aktif' : 'nonaktif';
+            }
+            unset($row);
+
             // Add roles and jabatan arrays to user
             $user['roles'] = $rolesData ?: [];
             $user['jabatan'] = $jabatanData ?: [];
@@ -1162,13 +1170,17 @@ class ManageUsersController
                          VALUES (?, ?, ?, ?, ?, ?, ?)";
             
             $insertStmt = $this->db->prepare($insertSql);
+            $statusJabatan = isset($data['status']) ? trim((string) $data['status']) : 'aktif';
+            if ($statusJabatan !== 'aktif' && $statusJabatan !== 'nonaktif') {
+                $statusJabatan = 'aktif';
+            }
             $insertStmt->execute([
                 $userId,
                 $data['jabatan_id'],
                 $data['lembaga_id'] ?? null,
                 $data['tanggal_mulai'] ?? null,
                 $data['tanggal_selesai'] ?? null,
-                $data['status'] ?? 'aktif',
+                $statusJabatan,
                 $user['user_id'] ?? $userId
             ]);
             
@@ -1287,6 +1299,14 @@ class ManageUsersController
 
             $updateStmt = $this->db->prepare("UPDATE pengurus___jabatan SET status = ? WHERE id = ? AND pengurus_id = ?");
             $updateStmt->execute([$status, $pengurusJabatanId, $userId]);
+            $rowCount = $updateStmt->rowCount();
+
+            if ($rowCount === 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tidak ada baris jabatan yang diupdate. Pastikan id jabatan dan pengurus benar.'
+                ], 404);
+            }
 
             return $this->jsonResponse($response, [
                 'success' => true,

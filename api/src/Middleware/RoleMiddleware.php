@@ -54,41 +54,25 @@ class RoleMiddleware implements MiddlewareInterface
                 ->withHeader('Content-Type', 'application/json; charset=utf-8');
         }
 
-        // Normalize role (case insensitive)
-        $userRole = strtolower($userRole);
-        $allowedRoles = array_map('strtolower', $this->allowedRoles);
+        // Normalize untuk perbandingan dan log
+        $userRole = str_replace(' ', '_', strtolower(trim((string) $userRole)));
+        $allowedRoles = array_map(function ($r) {
+            return str_replace(' ', '_', strtolower(trim((string) $r)));
+        }, $this->allowedRoles);
 
-        // Cek apakah user memiliki role yang diizinkan
-        // 1) role_key utama
-        $hasAllowedRole = in_array($userRole, $allowedRoles);
+        $hasAllowedRole = false;
+        $dbRolesChecked = false;
+        $dbRoleKeys = [];
 
-        // 2) all_roles dari token (satu user bisa pengurus + santri)
-        if (!$hasAllowedRole && !empty($user['all_roles']) && is_array($user['all_roles'])) {
-            foreach ($user['all_roles'] as $r) {
-                if (in_array(strtolower(trim((string)$r)), $allowedRoles)) {
-                    $hasAllowedRole = true;
-                    break;
-                }
-            }
-        }
-
-        // 2b) Untuk akses santri: jika token punya santri_id, anggap punya role santri (user gabungan pengurus+santri)
-        if (!$hasAllowedRole && in_array('santri', $allowedRoles) && isset($user['santri_id']) && (int)$user['santri_id'] > 0) {
-            $hasAllowedRole = true;
-        }
-
-        // 2c) Untuk akses toko (Mybeddian): jika token punya toko_id, anggap punya role toko
-        if (!$hasAllowedRole && in_array('toko', $allowedRoles) && isset($user['toko_id']) && (int)$user['toko_id'] > 0) {
-            $hasAllowedRole = true;
-        }
-
-        // 3) Jika belum match dan user punya user_id (pengurus), cek role dari database
-        if (!$hasAllowedRole && !empty($this->allowedRoles) && (isset($user['user_id']) || isset($user['id']))) {
-            $userId = $user['user_id'] ?? $user['id'];
+        // 1) Prioritas: cek role dari database berdasarkan pengurus_id (untuk aplikasi uwaba pakai pengurus id, bukan user id)
+        $pengurusId = RoleHelper::getPengurusIdFromPayload($user);
+        if ($pengurusId !== null && $pengurusId > 0 && !empty($this->allowedRoles)) {
             try {
-                $userRoles = RoleHelper::getUserRoles((int)$userId);
+                $userRoles = RoleHelper::getUserRoles($pengurusId);
+                $dbRolesChecked = true;
                 foreach ($userRoles as $role) {
-                    $roleKey = strtolower(trim($role['role_key'] ?? ''));
+                    $roleKey = str_replace(' ', '_', strtolower(trim($role['role_key'] ?? '')));
+                    $dbRoleKeys[] = $roleKey;
                     if (in_array($roleKey, $allowedRoles)) {
                         $hasAllowedRole = true;
                         break;
@@ -99,8 +83,33 @@ class RoleMiddleware implements MiddlewareInterface
             }
         }
 
+        // 2) Fallback: role dari token (role_key, all_roles)
+        if (!$hasAllowedRole) {
+            $hasAllowedRole = in_array($userRole, $allowedRoles);
+        }
+        if (!$hasAllowedRole && !empty($user['all_roles']) && is_array($user['all_roles'])) {
+            foreach ($user['all_roles'] as $r) {
+                $rNorm = str_replace(' ', '_', strtolower(trim((string) $r)));
+                if (in_array($rNorm, $allowedRoles)) {
+                    $hasAllowedRole = true;
+                    break;
+                }
+            }
+        }
+
+        // 2b) Untuk akses santri: jika token punya santri_id, anggap punya role santri
+        if (!$hasAllowedRole && in_array('santri', $allowedRoles) && isset($user['santri_id']) && (int)$user['santri_id'] > 0) {
+            $hasAllowedRole = true;
+        }
+
+        // 2c) Untuk akses toko (Mybeddian): jika token punya toko_id, anggap punya role toko
+        if (!$hasAllowedRole && in_array('toko', $allowedRoles) && isset($user['toko_id']) && (int)$user['toko_id'] > 0) {
+            $hasAllowedRole = true;
+        }
+
         if (!empty($this->allowedRoles) && !$hasAllowedRole) {
-            error_log("RoleMiddleware: Akses ditolak. User role: $userRole, Required: " . json_encode($allowedRoles));
+            $pengurusIdForLog = RoleHelper::getPengurusIdFromPayload($user);
+            error_log("RoleMiddleware: Akses ditolak. user_id=" . ($user['user_id'] ?? $user['id'] ?? '') . ", pengurus_id=" . ($pengurusIdForLog ?? '') . ", role_from_token=$userRole, required=" . json_encode($allowedRoles) . ", db_checked=" . ($dbRolesChecked ? '1' : '0') . ", db_roles=" . json_encode($dbRoleKeys));
             $response = new Response();
             $response->getBody()->write(json_encode([
                 'success' => false,

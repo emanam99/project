@@ -42,12 +42,11 @@ export const useRencanaDetail = () => {
       setLoadingRencanaDetail(true)
       setSelectedRencana(rencana)
       
-      // Update URL dengan rencana ID
+      // Update URL dengan rencana ID (push state agar tombol Back menutup offcanvas)
       const newSearchParams = new URLSearchParams(searchParams)
       newSearchParams.set('rencana', rencana.id.toString())
-      // Hapus pengeluaran jika ada
       newSearchParams.delete('pengeluaran')
-      setSearchParams(newSearchParams, { replace: true })
+      setSearchParams(newSearchParams, { replace: false })
       
       const response = await pengeluaranAPI.getRencanaDetail(rencana.id)
       if (response.success) {

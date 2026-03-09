@@ -93,6 +93,42 @@ class RoleHelper
     }
 
     /**
+     * Resolve pengurus_id dari payload token (untuk lookup role).
+     * Token bisa punya user_id = pengurus.id (login V1/V2 uwaba) atau user_id = users.id (santri-only V2).
+     * 
+     * @param array $user payload dari request->getAttribute('user')
+     * @return int|null pengurus_id untuk getUserRoles, atau null
+     */
+    public static function getPengurusIdFromPayload(array $user): ?int
+    {
+        if (isset($user['id_pengurus']) && (int)$user['id_pengurus'] > 0) {
+            return (int)$user['id_pengurus'];
+        }
+        $userId = isset($user['user_id']) ? (int)$user['user_id'] : (int)($user['id'] ?? 0);
+        $usersId = isset($user['users_id']) ? (int)$user['users_id'] : null;
+        if ($userId <= 0) {
+            return null;
+        }
+        if ($usersId === null || $userId !== $usersId) {
+            return $userId;
+        }
+        // user_id === users_id: token mungkin dari login multi-role (users.id). Resolve pengurus_id dari tabel pengurus.
+        try {
+            $db = self::getDb();
+            $stmt = $db->prepare("SELECT id FROM pengurus WHERE id_user = ? LIMIT 1");
+            $stmt->execute([$usersId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row && !empty($row['id'])) {
+                return (int)$row['id'];
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        // Jangan pakai users.id sebagai pengurus_id (getUserRoles butuh pengurus.id)
+        return null;
+    }
+
+    /**
      * Dapatkan semua role pengurus (jika bisa memiliki multiple role)
      * 
      * @param int $pengurusId ID pengurus
@@ -118,9 +154,10 @@ class RoleHelper
             $stmt->execute([$pengurusId]);
             $results = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
-            // Normalize role_key untuk semua hasil
+            // Normalize role_key: lowercase + spasi jadi underscore (konsisten dengan RoleMiddleware)
             foreach ($results as &$result) {
-                $result['role_key'] = trim(strtolower($result['role_key'] ?? ''));
+                $k = trim(strtolower((string)($result['role_key'] ?? '')));
+                $result['role_key'] = str_replace(' ', '_', $k);
             }
             unset($result); // Unset reference
             

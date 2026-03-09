@@ -41,7 +41,12 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
       if (res.success && res.data?.user) {
         const u = res.data.user
         setDetail(u)
-        setUserJabatan(Array.isArray(u.jabatan) ? u.jabatan : [])
+        const rawJabatan = Array.isArray(u.jabatan) ? u.jabatan : []
+        const normalized = rawJabatan.map((j) => {
+          const s = (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? '').toString().trim().toLowerCase()
+          return { ...j, jabatan_status: (s === 'aktif' || s === 'active') ? 'aktif' : 'nonaktif' }
+        })
+        setUserJabatan(normalized)
       } else {
         setDetail(null)
         setUserJabatan([])
@@ -56,7 +61,8 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
-  }, [isOpen, pengurusId, showNotification])
+    // Hanya load ulang saat buka/tutup atau ganti pengurus; tidak saat parent re-render
+  }, [isOpen, pengurusId])
 
   useEffect(() => {
     if (!isOpen) return
@@ -121,23 +127,26 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
 
   const handleJabatanStatusToggle = async (pengurusJabatanId, currentStatus) => {
     if (!pengurusId || jabatanStatusSavingId !== null) return
-    const newStatus = currentStatus === 'aktif' ? 'nonaktif' : 'aktif'
+    const statusNorm = (currentStatus || '').toString().trim().toLowerCase()
+    const newStatus = (statusNorm === 'aktif' || statusNorm === 'active') ? 'nonaktif' : 'aktif'
+    const idKey = Number(pengurusJabatanId)
+    if (!idKey) return
     setJabatanStatusSavingId(pengurusJabatanId)
     try {
-      const res = await manageUsersAPI.updateJabatanStatus(pengurusId, pengurusJabatanId, newStatus)
+      const res = await manageUsersAPI.updateJabatanStatus(pengurusId, idKey, newStatus)
       if (res.success) {
         setUserJabatan((prev) =>
           prev.map((j) =>
-            j.pengurus_jabatan_id === pengurusJabatanId ? { ...j, jabatan_status: newStatus } : j
+            Number(j.pengurus_jabatan_id) === idKey ? { ...j, jabatan_status: newStatus } : j
           )
         )
         showNotification('Status jabatan berhasil diperbarui', 'success')
-        onSuccess?.()
+        // Tidak panggil onSuccess agar list tidak di-reload dan offcanvas tidak re-render/reload
       } else {
         showNotification(res.message || 'Gagal memperbarui status jabatan', 'error')
       }
     } catch (err) {
-      showNotification(err.response?.data?.message || 'Gagal memperbarui status jabatan', 'error')
+      showNotification(err?.response?.data?.message || err?.message || 'Gagal memperbarui status jabatan', 'error')
     } finally {
       setJabatanStatusSavingId(null)
     }
@@ -145,10 +154,12 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
 
   const handleRemoveJabatan = async (pengurusJabatanId) => {
     if (!window.confirm('Hapus jabatan ini?')) return
+    const idKey = Number(pengurusJabatanId)
+    if (!idKey) return
     try {
-      const res = await manageUsersAPI.removeUserJabatan(pengurusId, pengurusJabatanId)
+      const res = await manageUsersAPI.removeUserJabatan(pengurusId, idKey)
       if (res.success) {
-        setUserJabatan((prev) => prev.filter((j) => j.pengurus_jabatan_id !== pengurusJabatanId))
+        setUserJabatan((prev) => prev.filter((j) => Number(j.pengurus_jabatan_id) !== idKey))
         showNotification('Jabatan berhasil dihapus', 'success')
         onSuccess?.()
       } else {
@@ -264,8 +275,9 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   <ul className="space-y-2">
                     {userJabatan.map((j) => {
                       const jabatanInfo = availableJabatan.find((x) => x.id === j.jabatan_id)
-                      const isJabatanAktif = (j.jabatan_status || '').toLowerCase() === 'aktif'
-                      const saving = jabatanStatusSavingId === j.pengurus_jabatan_id
+                      const rawStatus = (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? '').toString().trim().toLowerCase()
+                      const isJabatanAktif = rawStatus === 'aktif' || rawStatus === 'active'
+                      const saving = Number(jabatanStatusSavingId) === Number(j.pengurus_jabatan_id)
                       return (
                         <li
                           key={j.pengurus_jabatan_id}
@@ -288,7 +300,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                               role="switch"
                               aria-checked={isJabatanAktif}
                               disabled={saving}
-                              onClick={() => handleJabatanStatusToggle(j.pengurus_jabatan_id, j.jabatan_status)}
+                              onClick={() => handleJabatanStatusToggle(j.pengurus_jabatan_id, j.jabatan_status || '')}
                               className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${
                                 isJabatanAktif ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'
                               }`}

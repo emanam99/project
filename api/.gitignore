@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+.jwt_secret_warned
 
 # Google Service Account key (jangan commit)
 *-e8ecd1f5cf1b.json

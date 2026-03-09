@@ -18,12 +18,11 @@ export const usePengeluaranDetail = () => {
     try {
       setLoadingPengeluaranDetail(true)
       
-      // Update URL dengan pengeluaran ID
+      // Update URL dengan pengeluaran ID (push state agar tombol Back menutup offcanvas)
       const newSearchParams = new URLSearchParams(searchParams)
       newSearchParams.set('pengeluaran', id.toString())
-      // Hapus rencana jika ada
       newSearchParams.delete('rencana')
-      setSearchParams(newSearchParams, { replace: true })
+      setSearchParams(newSearchParams, { replace: false })
       
       const response = await pengeluaranAPI.getPengeluaranDetail(id)
       if (response.success) {

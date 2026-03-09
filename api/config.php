@@ -63,8 +63,12 @@ if ($jwtSecret === null || $jwtSecret === '') {
         );
     }
     $jwtSecret = 'dev-secret-change-in-production-' . (__DIR__ ? md5(__DIR__) : 'default');
-    if (function_exists('error_log')) {
+    // Log peringatan maksimal sekali per hari untuk hindari spam error.log (config.php diload tiap request)
+    $warnFile = __DIR__ . '/.jwt_secret_warned';
+    $shouldWarn = !file_exists($warnFile) || (filemtime($warnFile) < strtotime('-1 day'));
+    if ($shouldWarn && function_exists('error_log')) {
         error_log('Backend config: JWT_SECRET tidak di-set di .env. Menggunakan fallback development. Untuk production wajib set JWT_SECRET di .env (min. 32 karakter untuk php-jwt 7).');
+        @touch($warnFile);
     }
 }
 if (strlen($jwtSecret) < 32 && (env('APP_ENV') === 'production')) {
