@@ -5,11 +5,10 @@ namespace App\Services;
 use App\Database;
 
 /**
- * Layanan kirim pesan WhatsApp - menyatu dengan cara yang dipakai di aplikasi UWABA
- * (offcanvas kwitansi, biodata): API wa.alutsmani.cloud.
+ * Layanan kirim pesan WhatsApp - memakai backend WA baru (wa/): wa.alutsmani.id / wa2.alutsmani.id.
  *
- * Konfigurasi: WA_API_URL, WA_API_KEY, WA_INSTANCE (default uwaba1).
- * Format request sama dengan frontend: POST { instance, phoneNumber, message }, header X-API-Key.
+ * Konfigurasi: WA_API_URL (mis. https://wa.alutsmani.id/api/whatsapp/send), WA_API_KEY (harus sama dengan wa/.env).
+ * Request: POST { phoneNumber, message } atau + imageBase64, imageMimetype; header X-API-Key.
  * Semua pesan terkirim dicatat di tabel whatsapp (id_santri, id_pengurus, kategori, sumber).
  */
 class WhatsAppService
@@ -38,7 +37,7 @@ class WhatsAppService
         $config = require __DIR__ . '/../../config.php';
         $wa = $config['whatsapp'] ?? [];
         return [
-            'api_url' => getenv('WA_API_URL') ?: ($wa['api_url'] ?? 'https://wa.alutsmani.cloud/api/external/send'),
+            'api_url' => getenv('WA_API_URL') ?: ($wa['api_url'] ?? 'https://wa.alutsmani.id/api/whatsapp/send'),
             'api_key' => getenv('WA_API_KEY') ?: ($wa['api_key'] ?? ''),
             'instance' => getenv('WA_INSTANCE') ?: ($wa['instance'] ?? 'uwaba1'),
         ];
@@ -79,6 +78,78 @@ class WhatsAppService
             $phone = '62' . $phone;
         }
         return $phone;
+    }
+
+    /**
+     * Cek apakah nomor terdaftar/aktif di WhatsApp (backend WA baru).
+     * Return format sama dengan response backend: success, data: { phoneNumber, isRegistered }, message.
+     *
+     * @param string $noWa Nomor WA (08xxx atau 62xxx)
+     * @return array ['success' => bool, 'data' => ['phoneNumber' => string, 'isRegistered' => bool], 'message' => string]
+     */
+    public static function checkNumber(string $noWa): array
+    {
+        $phone = self::formatPhoneNumber($noWa);
+        if (strlen($phone) < 10) {
+            return [
+                'success' => false,
+                'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
+                'message' => 'Nomor tidak valid',
+            ];
+        }
+
+        $cfg = self::getConfig();
+        $apiUrl = $cfg['api_url'];
+        $apiKey = $cfg['api_key'];
+        $checkUrl = preg_replace('#/api/whatsapp/send$#', '/api/whatsapp/check', $apiUrl);
+
+        if (empty($checkUrl) || empty($apiKey)) {
+            return [
+                'success' => true,
+                'data' => ['phoneNumber' => $phone, 'isRegistered' => true],
+                'message' => 'OK (dev)',
+            ];
+        }
+
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 10]);
+            $response = $client->post($checkUrl, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-API-Key' => $apiKey,
+                ],
+                'json' => ['phoneNumber' => $phone],
+            ]);
+
+            $code = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            $data = json_decode($body, true);
+
+            if ($code >= 200 && $code < 300 && isset($data['success']) && isset($data['data'])) {
+                return [
+                    'success' => (bool) $data['success'],
+                    'data' => [
+                        'phoneNumber' => $data['data']['phoneNumber'] ?? $phone,
+                        'isRegistered' => (bool) ($data['data']['isRegistered'] ?? false),
+                    ],
+                    'message' => $data['message'] ?? ($data['data']['isRegistered'] ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar di WhatsApp'),
+                ];
+            }
+
+            $errMsg = $data['message'] ?? $data['error'] ?? "HTTP {$code}";
+            return [
+                'success' => false,
+                'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
+                'message' => $errMsg,
+            ];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::checkNumber: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
+                'message' => $e->getMessage(),
+            ];
+        }
     }
 
     /**
@@ -228,27 +299,13 @@ class WhatsAppService
         $cfg = self::getConfig();
         $apiUrl = $cfg['api_url'];
         $apiKey = $cfg['api_key'];
-        $instance = $instance ?? $cfg['instance'];
 
         if (empty($apiUrl) || empty($apiKey)) {
-            error_log('WhatsAppService: WA_API_URL/WA_API_KEY tidak diset. Pesan (dev) ke ' . $phone);
-            $result = ['success' => true, 'message' => 'OK (dev)'];
-            if ($logContext !== null) {
-                self::logSentMessage(
-                    $phone,
-                    $message,
-                    0,
-                    'terkirim',
-                    $result['message'],
-                    $logContext['id_santri'] ?? null,
-                    $logContext['id_pengurus'] ?? null,
-                    $logContext['tujuan'] ?? 'wali_santri',
-                    $logContext['id_pengurus_pengirim'] ?? null,
-                    $logContext['kategori'] ?? 'custom',
-                    $logContext['sumber'] ?? 'system'
-                );
-            }
-            return $result;
+            error_log('WhatsAppService: WA_API_URL/WA_API_KEY tidak diset. Pesan ke ' . $phone . ' tidak dikirim.');
+            return [
+                'success' => false,
+                'message' => 'Backend WhatsApp belum dikonfigurasi. Set WA_API_URL dan WA_API_KEY di .env API (harus sama dengan wa/.env). Lalu hubungkan WA di Kelola Koneksi WA.',
+            ];
         }
 
         try {
@@ -259,7 +316,6 @@ class WhatsAppService
                     'X-API-Key' => $apiKey,
                 ],
                 'json' => [
-                    'instance' => $instance,
                     'phoneNumber' => $phone,
                     'message' => $message,
                 ],
@@ -397,36 +453,23 @@ class WhatsAppService
         $cfg = self::getConfig();
         $apiUrl = $cfg['api_url'];
         $apiKey = $cfg['api_key'];
-        $instance = $instance ?? $cfg['instance'];
 
         if (empty($apiUrl) || empty($apiKey)) {
-            error_log('WhatsAppService: WA_API_URL/WA_API_KEY tidak diset. Pesan+gambar (dev) ke ' . $phone);
-            $result = ['success' => true, 'message' => 'OK (dev)'];
-            if ($logContext !== null) {
-                self::logSentMessage(
-                    $phone,
-                    $message,
-                    1,
-                    'terkirim',
-                    $result['message'],
-                    $logContext['id_santri'] ?? null,
-                    $logContext['id_pengurus'] ?? null,
-                    $logContext['tujuan'] ?? 'wali_santri',
-                    $logContext['id_pengurus_pengirim'] ?? null,
-                    $logContext['kategori'] ?? 'custom',
-                    $logContext['sumber'] ?? 'system'
-                );
-            }
-            return $result;
+            error_log('WhatsAppService: WA_API_URL/WA_API_KEY tidak diset. Pesan+gambar ke ' . $phone . ' tidak dikirim.');
+            return [
+                'success' => false,
+                'message' => 'Backend WhatsApp belum dikonfigurasi. Set WA_API_URL dan WA_API_KEY di .env API.',
+            ];
         }
 
         $payload = [
-            'instance' => $instance,
             'phoneNumber' => $phone,
             'message' => $message,
-            'imageBase64' => $imageBase64,
-            'imageMimetype' => $imageMimetype,
         ];
+        if ($imageBase64 !== '' && $imageMimetype !== '') {
+            $payload['imageBase64'] = $imageBase64;
+            $payload['imageMimetype'] = $imageMimetype;
+        }
 
         try {
             $client = new \GuzzleHttp\Client(['timeout' => 20]);

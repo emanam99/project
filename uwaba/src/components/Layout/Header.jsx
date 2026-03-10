@@ -2,121 +2,15 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../store/authStore'
+import { useWhatsAppTemplate } from '../../contexts/WhatsAppTemplateContext'
 import { useThemeStore } from '../../store/themeStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, lembagaAPI, getAppEnv } from '../../services/api'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { APP_VERSION } from '../../config/version'
+import { getHeaderGroups } from '../../config/menuConfig'
 
-// Grup menu (sesuai sidebar): pengecekan judul berdasarkan grup aktif, judul = menu yang aktif
-const HEADER_GROUPS = [
-  {
-    name: 'Pendaftaran',
-    routes: [
-      { path: '/pendaftaran/pengaturan', label: 'Pengaturan' },
-      { path: '/pendaftaran/padukan-data', label: 'Padukan Data' },
-      { path: '/pendaftaran/data-pendaftar', label: 'Data Pendaftar' },
-      { path: '/pendaftaran/item', label: 'Item' },
-      { path: '/pendaftaran/manage-item-set', label: 'Manage Set' },
-      { path: '/pendaftaran/manage-kondisi', label: 'Manage Kondisi' },
-      { path: '/pendaftaran/kondisi-registrasi', label: 'Registrasi' },
-      { path: '/pendaftaran/assign-item', label: 'Assign' },
-      { path: '/dashboard-pendaftaran', label: 'Dashboard Pendaftaran' },
-      { path: '/pendaftaran', label: 'Pendaftaran', prefix: true }
-    ]
-  },
-  {
-    name: 'UWABA',
-    routes: [
-      { path: '/pembayaran/manage-data', label: 'Manage Data' },
-      { path: '/laporan', label: 'Laporan' },
-      { path: '/dashboard-pembayaran', label: 'Dashboard Pembayaran' },
-      { path: '/uwaba', label: 'UWABA' },
-      { path: '/tunggakan', label: 'Tunggakan' },
-      { path: '/khusus', label: 'Khusus' },
-      { path: '/umroh/tabungan', label: 'Tabungan Umroh', prefix: true },
-      { path: '/umroh/jamaah', label: 'Jamaah Umroh', prefix: true },
-      { path: '/laporan-umroh', label: 'Laporan Umroh' },
-      { path: '/dashboard-umroh', label: 'Dashboard Umroh' }
-    ]
-  },
-  {
-    name: 'UGT',
-    routes: [
-      { path: '/ugt/data-madrasah', label: 'Data Madrasah' },
-      { path: '/koordinator', label: 'Koordinator' },
-      { path: '/ugt', label: 'UGT', prefix: true }
-    ]
-  },
-  {
-    name: 'Keuangan',
-    routes: [
-      { path: '/aktivitas-tahun-ajaran', label: 'Aktivitas TA', prefix: true },
-      { path: '/aktivitas', label: 'Aktivitas', prefix: true },
-      { path: '/pemasukan', label: 'Pemasukan', prefix: true },
-      { path: '/pengeluaran', label: 'Pengeluaran', prefix: true },
-      { path: '/dashboard-keuangan', label: 'Dashboard Keuangan' }
-    ]
-  },
-  {
-    name: 'Ijin',
-    routes: [
-      { path: '/ijin/data-boyong', label: 'Data Boyong' },
-      { path: '/ijin/data-ijin', label: 'Data Ijin' },
-      { path: '/dashboard-ijin', label: 'Dashboard Ijin' },
-      { path: '/ijin', label: 'Ijin', prefix: true }
-    ]
-  },
-  {
-    name: 'Kalender',
-    routes: [
-      { path: '/kalender/hari-penting', label: 'Hari Penting' },
-      { path: '/kalender/pengaturan', label: 'Pengaturan Kalender' },
-      { path: '/converter', label: 'Converter' },
-      { path: '/kalender', label: 'Kalender', prefix: true }
-    ]
-  },
-  {
-    name: 'Cashless',
-    routes: [
-      { path: '/cashless/cetak-kartu', label: 'Cetak Kartu', prefix: true },
-      { path: '/cashless/data-toko', label: 'Data Toko' },
-      { path: '/cashless/topup', label: 'Top Up Dana' },
-      { path: '/cashless/pembuatan-akun', label: 'Akun Cashless' },
-      { path: '/cashless/pengaturan', label: 'Pengaturan Cashless' }
-    ]
-  },
-  {
-    name: 'Setting',
-    routes: [
-      { path: '/manage-users/edit', label: 'Edit User', prefix: true },
-      { path: '/manage-users/import', label: 'Import Users' },
-      { path: '/manage-users', label: 'Kelola User', prefix: true },
-      { path: '/pengurus', label: 'Pengurus', prefix: true },
-      { path: '/domisili/daerah', label: 'Daerah' },
-      { path: '/domisili/kamar', label: 'Kamar' },
-      { path: '/lembaga', label: 'Lembaga' },
-      { path: '/santri', label: 'Santri' },
-      { path: '/lulusan', label: 'Lulusan' },
-      { path: '/rombel', label: 'Rombel' },
-      { path: '/manage-jabatan', label: 'Jabatan' },
-      { path: '/settings/role-akses', label: 'Role & Akses' },
-      { path: '/settings/fitur', label: 'Fitur' },
-      { path: '/manage-uploads', label: 'Kelola File' },
-      { path: '/juara/data-juara', label: 'Data Juara', prefix: true },
-      { path: '/profil', label: 'Profil' },
-      { path: '/dashboard-umum', label: 'Dashboard Umum' }
-    ]
-  },
-  {
-    name: 'Tentang',
-    routes: [
-      { path: '/tentang', label: 'Tentang' },
-      { path: '/version', label: 'Versi' },
-      { path: '/info-aplikasi', label: 'Info Aplikasi' }
-    ]
-  }
-]
+const HEADER_GROUPS = getHeaderGroups()
 
 function Header() {
   const appEnv = getAppEnv()
@@ -130,6 +24,7 @@ function Header() {
   const { tahunAjaran, setTahunAjaran, options, tahunAjaranMasehi, setTahunAjaranMasehi, optionsMasehi } = useTahunAjaranStore()
   const navigate = useNavigate()
   const location = useLocation()
+  const { open: openTemplateOffcanvas } = useWhatsAppTemplate()
   const [showPaymentDropdown, setShowPaymentDropdown] = useState(false)
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [showSaldoDropdown, setShowSaldoDropdown] = useState(false)
@@ -1179,6 +1074,37 @@ function Header() {
                       </button>
                     </div>
                   </div>
+                )}
+
+                {user?.is_real_super_admin && (
+                  <>
+                    <button
+                      type="button"
+                      className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      onClick={() => {
+                        setShowUserDropdown(false)
+                        openTemplateOffcanvas()
+                      }}
+                    >
+                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      Template WA
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      onClick={() => {
+                        setShowUserDropdown(false)
+                        navigate('/whatsapp-koneksi')
+                      }}
+                    >
+                      <svg className="w-5 h-5 text-[#25D366]" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.76.966-.931 1.164-.171.199-.342.223-.639.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                      </svg>
+                      Kelola Koneksi WA
+                    </button>
+                  </>
                 )}
                 
                 <button 

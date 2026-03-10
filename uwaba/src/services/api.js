@@ -394,6 +394,126 @@ export const authAPI = {
   }
 }
 
+/** Base URL backend WA (Node) — koneksi/QR, status, connect/disconnect/logout. */
+export const getWaBackendUrl = () => {
+  const url = import.meta.env.VITE_WA_BACKEND_URL
+  if (url && typeof url === 'string' && url.trim() !== '') {
+    return url.trim().replace(/\/$/, '')
+  }
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:'
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:3001'
+  }
+  // Staging (uwaba2): backend WA di wa2.alutsmani.id (Apache proxy, tanpa port)
+  if (hostname.includes('uwaba2') || hostname === 'wa2.alutsmani.id') {
+    return 'https://wa2.alutsmani.id'
+  }
+  // Production (uwaba, mybeddian, dll.): backend WA di wa.alutsmani.id
+  if (hostname.includes('alutsmani.id') || hostname.includes('alutsmani.my.id')) {
+    return 'https://wa.alutsmani.id'
+  }
+  return `${protocol}//${hostname}:3001`
+}
+
+/**
+ * API backend WA (Node): status, connect, disconnect, logout.
+ * Request dengan Bearer token dari localStorage (kecuali getStatus bisa tanpa token).
+ */
+export const waBackendAPI = {
+  getStatus: async () => {
+    const base = getWaBackendUrl()
+    const res = await fetch(`${base}/api/whatsapp/status`, { method: 'GET', credentials: 'omit' })
+    const data = await res.json().catch(() => ({}))
+    return data
+  },
+  connect: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`${base}/api/whatsapp/connect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({})
+    })
+    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+  },
+  disconnect: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`${base}/api/whatsapp/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({})
+    })
+    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+  },
+  logout: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`${base}/api/whatsapp/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({})
+    })
+    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+  },
+  /**
+   * Kirim pesan lewat backend WA (untuk tes di halaman Koneksi WA).
+   * @param {string} phoneNumber - Nomor 08xxx atau 62xxx
+   * @param {string} message - Isi pesan
+   * @param {string} [imageBase64] - Base64 gambar (opsional)
+   * @param {string} [imageMimetype] - image/png, image/jpeg, dll.
+   */
+  send: async (phoneNumber, message, imageBase64 = null, imageMimetype = 'image/png') => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const body = {
+      phoneNumber: (phoneNumber || '').trim(),
+      message: message || ''
+    }
+    if (imageBase64) {
+      body.imageBase64 = imageBase64
+      body.imageMimetype = imageMimetype || 'image/png'
+    }
+    const res = await fetch(`${base}/api/whatsapp/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify(body)
+    })
+    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+  },
+
+  /**
+   * Cek apakah nomor terdaftar/aktif di WhatsApp (sama seperti fitur di wa lama).
+   * @param {string} phoneNumber - Nomor 08xxx atau 62xxx
+   */
+  checkNumber: async (phoneNumber) => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`${base}/api/whatsapp/check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ phoneNumber: (phoneNumber || '').trim() })
+    })
+    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+  }
+}
+
 /** Pengiriman WA terpusat lewat backend (sama dengan offcanvas kwitansi/biodata UWABA). Default = WA 1 (uwaba1). */
 export const waAPI = {
   /**
@@ -1475,9 +1595,7 @@ export const chatAPI = {
       const response = await api.get(`/chat/get-by-santri?id_santri=${encodeURIComponent(idSantri)}`)
       return response.data
     } catch (error) {
-      // Handle error dengan lebih baik
       console.error('Error in getChatBySantri:', error)
-      // Return format yang konsisten dengan response sukses
       if (error.response && error.response.data) {
         return error.response.data
       }
@@ -1487,6 +1605,62 @@ export const chatAPI = {
         data: []
       }
     }
+  },
+
+  /** Riwayat chat berdasarkan nomor tujuan (untuk offcanvas riwayat chat). */
+  getChatByNomor: async (nomorTujuan, limit = 100) => {
+    try {
+      const num = String(nomorTujuan || '').trim()
+      if (!num) {
+        return { success: true, data: [] }
+      }
+      const response = await api.get(
+        `/chat/get-all?nomor_tujuan=${encodeURIComponent(num)}&limit=${Math.min(Math.max(Number(limit) || 50, 1), 500)}`
+      )
+      return response.data
+    } catch (error) {
+      console.error('Error in getChatByNomor:', error)
+      if (error.response && error.response.data) {
+        return error.response.data
+      }
+      return {
+        success: false,
+        message: error.message || 'Gagal mengambil riwayat chat',
+        data: []
+      }
+    }
+  }
+}
+
+// Template WhatsApp — list (semua role chat), create/update/delete (super_admin)
+export const whatsappTemplateAPI = {
+  list: async (kategori = null) => {
+    const url = kategori
+      ? `/whatsapp-template/list?kategori=${encodeURIComponent(kategori)}`
+      : '/whatsapp-template/list'
+    const response = await api.get(url)
+    return response.data
+  },
+  create: async (data) => {
+    const response = await api.post('/whatsapp-template/create', {
+      kategori: data.kategori || 'umum',
+      nama: data.nama,
+      isi_pesan: data.isi_pesan
+    })
+    return response.data
+  },
+  update: async (data) => {
+    const response = await api.put('/whatsapp-template/update', {
+      id: data.id,
+      kategori: data.kategori,
+      nama: data.nama,
+      isi_pesan: data.isi_pesan
+    })
+    return response.data
+  },
+  delete: async (id) => {
+    const response = await api.post('/whatsapp-template/delete', { id })
+    return response.data
   }
 }
 

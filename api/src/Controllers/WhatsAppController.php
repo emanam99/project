@@ -71,6 +71,42 @@ class WhatsAppController
     }
 
     /**
+     * Cek nomor WA (apakah terdaftar di WhatsApp).
+     * POST /api/wa/check
+     * Body: { "phoneNumber": "08xxx atau 62xxx" }
+     */
+    public function check(Request $request, Response $response): Response
+    {
+        try {
+            $data = $request->getParsedBody();
+            $phoneNumber = trim($data['phoneNumber'] ?? $data['phone_number'] ?? '');
+
+            if ($phoneNumber === '') {
+                return $this->json($response, [
+                    'success' => false,
+                    'data' => ['phoneNumber' => '', 'isRegistered' => false],
+                    'message' => 'Nomor WhatsApp harus diisi',
+                ], 400);
+            }
+
+            $result = WhatsAppService::checkNumber($phoneNumber);
+
+            return $this->json($response, [
+                'success' => $result['success'],
+                'data' => $result['data'] ?? ['phoneNumber' => WhatsAppService::formatPhoneNumber($phoneNumber), 'isRegistered' => false],
+                'message' => $result['message'] ?? '',
+            ], $result['success'] ? 200 : 502);
+        } catch (\Exception $e) {
+            error_log('WhatsAppController::check ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'data' => ['phoneNumber' => '', 'isRegistered' => false],
+                'message' => 'Terjadi kesalahan saat mengecek nomor',
+            ], 500);
+        }
+    }
+
+    /**
      * Proses antrian WA pending (biodata_terdaftar yang menunggu NIS).
      * POST /api/wa/process-pending
      * Bisa dipanggil cron tiap 5–10 detik.

@@ -105,6 +105,7 @@ const DataSantri = lazy(() => import('./pages/Santri/DataSantri'))
 const DataLulusan = lazy(() => import('./pages/Lulusan/DataLulusan'))
 const Daerah = lazy(() => import('./pages/Domisili/Daerah'))
 const Kamar = lazy(() => import('./pages/Domisili/Kamar'))
+const KoneksiWa = lazy(() => import('./pages/WhatsApp/KoneksiWa'))
 
 // Loading component
 const PageLoader = () => (
@@ -870,6 +871,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <ManageUploads />
+                </Suspense>
+              } 
+            />
+            <Route 
+              path="/whatsapp-koneksi" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <KoneksiWa />
                 </Suspense>
               } 
             />

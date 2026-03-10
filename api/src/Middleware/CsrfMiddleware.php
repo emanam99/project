@@ -51,6 +51,8 @@ class CsrfMiddleware implements MiddlewareInterface
         'api/payment-transaction/callback', // POST dari payment gateway eksternal
         'api/payment-transaction/create',   // POST dilindungi Bearer (mybeddian/uwaba dari mybeddian2/uwaba2)
         'api/payment-transaction/',         // PUT/POST cancel, update dilindungi Bearer
+        'api/wa/check',   // POST cek nomor WA — dilindungi Bearer (fetch di frontend tanpa CSRF)
+        'api/wa/send',    // POST kirim WA — dilindungi Bearer
     ];
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface

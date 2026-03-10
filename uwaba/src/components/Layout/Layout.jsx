@@ -1,11 +1,14 @@
 import { useLocation, Outlet } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Header from './Header'
 import Sidebar from './Sidebar'
 import Navigation from './Navigation'
 import { tahunAjaranAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
+import { WhatsAppTemplateContext } from '../../contexts/WhatsAppTemplateContext'
+import WhatsAppTemplateOffcanvas from '../WhatsAppTemplateOffcanvas'
 
 const headerTransition = { type: 'tween', duration: 0.35, ease: [0.4, 0, 0.2, 1] }
 
@@ -55,6 +58,12 @@ function Layout() {
   const hideHeader = location.pathname === '/beranda' || location.pathname === '/semua-menu'
   const setOptions = useTahunAjaranStore((s) => s.setOptions)
   const setOptionsMasehi = useTahunAjaranStore((s) => s.setOptionsMasehi)
+  const [templateOffcanvasOpen, setTemplateOffcanvasOpen] = useState(false)
+  const templateContextValue = {
+    isOpen: templateOffcanvasOpen,
+    open: useCallback(() => setTemplateOffcanvasOpen(true), []),
+    close: useCallback(() => setTemplateOffcanvasOpen(false), [])
+  }
 
   useEffect(() => {
     Promise.all([
@@ -67,6 +76,7 @@ function Layout() {
   }, [setOptions, setOptionsMasehi])
 
   return (
+    <WhatsAppTemplateContext.Provider value={templateContextValue}>
     <div className="flex h-screen relative overflow-hidden">
       {/* Background hiasan */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-primary-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
@@ -145,6 +155,14 @@ function Layout() {
       {/* Bottom Navigation untuk Mobile */}
       <Navigation />
     </div>
+    {createPortal(
+      <WhatsAppTemplateOffcanvas
+        isOpen={templateOffcanvasOpen}
+        onClose={() => setTemplateOffcanvasOpen(false)}
+      />,
+      document.body
+    )}
+    </WhatsAppTemplateContext.Provider>
   )
 }
 

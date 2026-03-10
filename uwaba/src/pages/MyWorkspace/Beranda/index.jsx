@@ -88,7 +88,8 @@ const listItemTransition = { duration: 0.35, ease: easing }
 /* Animasi perpindahan blok tanggal/jam (bawah ↔ kanan) */
 const dateBlockLayoutTransition = { type: 'tween', duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }
 import { profilAPI, pendaftaranAPI } from '../../../services/api'
-import { navMenuItems } from '../../../config/navMenuConfig'
+import { navMenuItems, getItemByPath } from '../../../config/menuConfig'
+import { getIcon } from '../../../config/menuIcons'
 import { getTanggalFromAPI } from '../../../utils/hijriDate'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useSidebarStore } from '../../../store/sidebarStore'
@@ -198,8 +199,9 @@ const defaultMenuIcon = (
   </svg>
 )
 
-export function getMenuIcon(path) {
-  return menuIconsByPath[path] ?? defaultMenuIcon
+export function getMenuIcon(path, className = 'w-5 h-5') {
+  const item = getItemByPath(path)
+  return getIcon(item?.iconKey, className)
 }
 
 /** Warna per path untuk kotak menu — bg kartu = bg icon (satu warna), text icon, border/hover */

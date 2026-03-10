@@ -117,11 +117,15 @@ return [
         // Default false: rate limit tetap jalan di localhost. Set true hanya kalau sengaja untuk dev.
         'disable_rate_limit_localhost' => filter_var(env('DISABLE_RATE_LIMIT_LOCALHOST', 'false'), FILTER_VALIDATE_BOOLEAN)
     ],
-    // API WA sama dengan yang dipakai di UWABA (offcanvas kwitansi/biodata): wa.alutsmani.cloud
+    // Backend WA baru (wa/). Jika APP_URL local (localhost/127.0.0.1) → default WA lokal (port 3001). Else wa.alutsmani.id. Set WA_API_URL untuk override.
     'whatsapp' => [
-        'api_url' => env('WA_API_URL', 'https://wa.alutsmani.cloud/api/external/send'),
-        'api_key' => env('WA_API_KEY', 'wa-alutsmani-api-key-2024-production'),
-        'instance' => env('WA_INSTANCE', 'uwaba1'),
+        'api_url' => env('WA_API_URL', (function () {
+            $appUrl = env('APP_URL', 'http://localhost:5173');
+            $isLocal = (strpos($appUrl, 'localhost') !== false || strpos($appUrl, '127.0.0.1') !== false);
+            return $isLocal ? 'http://127.0.0.1:3001/api/whatsapp/send' : 'https://wa.alutsmani.id/api/whatsapp/send';
+        })()),
+        'api_key' => env('WA_API_KEY', ''),
+        'instance' => env('WA_INSTANCE', 'uwaba1'), // Tidak dikirim ke backend baru (satu sesi); tetap dipakai untuk log/sumber jika perlu.
     ],
     // Base URL aplikasi FRONTEND (UWABA), bukan backend. Link WA (setup akun pengurus) dibuka di frontend UWABA.
     // Dev: http://localhost:5173 (Vite UWABA). Production: https://uwaba.alutsmani.id

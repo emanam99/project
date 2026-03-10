@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { chatAPI, waAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
+import { checkWhatsAppNumber as checkWaNumberUtil } from '../../utils/whatsappCheck'
 
 function WhatsAppModal({ isOpen, onClose, santriId, namaSantri, noTelpon, page = 'uwaba' }) {
   const { showNotification } = useNotification()
@@ -123,7 +124,7 @@ Lihat riwayat ${pageLabel}: ${publicLink}
     setWaStatus('checking')
 
     try {
-      const result = await checkWhatsAppNumber(waNumber)
+      const result = await checkWaNumberUtil(waNumber)
 
       if (result.success && result.isRegistered) {
         setWaStatus('registered')

@@ -24,6 +24,7 @@ import AlamatSection from './sections/AlamatSection'
 import RiwayatPendidikanSection from './sections/RiwayatPendidikanSection'
 import BiodataWaliSection from './sections/BiodataWaliSection'
 import InformasiTambahanSection from './sections/InformasiTambahanSection'
+import RiwayatChatOffcanvas from './RiwayatChatOffcanvas'
 import StatusPendaftaranSection from './sections/StatusPendaftaranSection'
 import KategoriPendidikanSection from './sections/KategoriPendidikanSection'
 import BerkasSection from './sections/BerkasSection'
@@ -184,6 +185,8 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   const [hapusDiTabelSantri, setHapusDiTabelSantri] = useState(false)
   const [loadingRegistrasi, setLoadingRegistrasi] = useState(false)
   const [deletingRegistrasi, setDeletingRegistrasi] = useState(false)
+  const [showRiwayatChatOffcanvas, setShowRiwayatChatOffcanvas] = useState(false)
+  const [riwayatChatMeta, setRiwayatChatMeta] = useState({ nomor: '', idSantri: '', namaSantri: '' })
   const [kondisiValues, setKondisiValues] = useState({
     status_pendaftar: [],
     daftar_diniyah: [],
@@ -2077,6 +2080,16 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
                 onBlur={() => setFocusedField(null)}
             getLabelClassName={getLabelClassName}
             waCheck={waCheck}
+            onOpenRiwayatChat={(nomor) => {
+              if ((nomor || '').trim()) {
+                setRiwayatChatMeta({
+                  nomor: (nomor || '').trim(),
+                  idSantri: String(formData.id || ''),
+                  namaSantri: String(formData.nama || '')
+                })
+                setShowRiwayatChatOffcanvas(true)
+              }
+            }}
           />
 
 
@@ -2132,6 +2145,14 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
               />
             )}
         </form>
+
+        <RiwayatChatOffcanvas
+          isOpen={showRiwayatChatOffcanvas}
+          onClose={() => setShowRiwayatChatOffcanvas(false)}
+          nomorTujuan={riwayatChatMeta.nomor}
+          idSantri={riwayatChatMeta.idSantri}
+          namaSantri={riwayatChatMeta.namaSantri}
+        />
       </div>
     </div>
   )

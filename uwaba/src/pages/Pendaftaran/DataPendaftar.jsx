@@ -9,6 +9,7 @@ import { useNotification } from '../../contexts/NotificationContext'
 import ExportPendaftarOffcanvas from './components/ExportPendaftarOffcanvas'
 import BulkEditPendaftarOffcanvas from './components/BulkEditPendaftarOffcanvas'
 import DetailBerkasOffcanvas from './components/DetailBerkasOffcanvas'
+import RiwayatChatOffcanvas from './components/RiwayatChatOffcanvas'
 import { useWhatsAppCheck } from './components/hooks/useWhatsAppCheck'
 
 function DataPendaftar() {
@@ -45,6 +46,8 @@ function DataPendaftar() {
   const [detailBerkasList, setDetailBerkasList] = useState([])
   const [detailBerkasLoading, setDetailBerkasLoading] = useState(false)
   const [showDetailBerkasOffcanvas, setShowDetailBerkasOffcanvas] = useState(false)
+  const [showRiwayatChatOffcanvas, setShowRiwayatChatOffcanvas] = useState(false)
+  const [riwayatChatMeta, setRiwayatChatMeta] = useState({ nomor: '', idSantri: '', namaSantri: '' })
 
   const {
     isCheckingTelpon,
@@ -1286,6 +1289,22 @@ function DataPendaftar() {
                                   {waStatusTelpon === 'not_registered' && '✗ Tidak aktif WA'}
                                 </span>
                               )}
+                              {(selectedPendaftar.no_telpon || '').trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRiwayatChatMeta({
+                                      nomor: (selectedPendaftar.no_telpon || '').trim(),
+                                      idSantri: String(selectedPendaftar.id ?? ''),
+                                      namaSantri: String(selectedPendaftar.nama ?? '')
+                                    })
+                                    setShowRiwayatChatOffcanvas(true)
+                                  }}
+                                  className="px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors border border-teal-200 dark:border-teal-700"
+                                >
+                                  Riwayat
+                                </button>
+                              )}
                             </div>
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300 font-mono">{selectedPendaftar.no_telpon || '-'}</dd>
                           </div>
@@ -1322,6 +1341,22 @@ function DataPendaftar() {
                                   {waStatusWaSantri === 'registered' && '✓ Aktif WA'}
                                   {waStatusWaSantri === 'not_registered' && '✗ Tidak aktif WA'}
                                 </span>
+                              )}
+                              {(selectedPendaftar.no_wa_santri || '').trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRiwayatChatMeta({
+                                      nomor: (selectedPendaftar.no_wa_santri || '').trim(),
+                                      idSantri: String(selectedPendaftar.id ?? ''),
+                                      namaSantri: String(selectedPendaftar.nama ?? '')
+                                    })
+                                    setShowRiwayatChatOffcanvas(true)
+                                  }}
+                                  className="px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors border border-teal-200 dark:border-teal-700"
+                                >
+                                  Riwayat
+                                </button>
                               )}
                             </div>
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300 font-mono">{selectedPendaftar.no_wa_santri || '-'}</dd>
@@ -1516,6 +1551,13 @@ function DataPendaftar() {
                   idSantri={selectedPendaftar?.id}
                   namaPendaftar={selectedPendaftar?.nama}
                   onSuccess={refetchDetailBerkas}
+                />
+                <RiwayatChatOffcanvas
+                  isOpen={showRiwayatChatOffcanvas}
+                  onClose={() => setShowRiwayatChatOffcanvas(false)}
+                  nomorTujuan={riwayatChatMeta.nomor}
+                  idSantri={riwayatChatMeta.idSantri}
+                  namaSantri={riwayatChatMeta.namaSantri}
                 />
               </>,
               document.body

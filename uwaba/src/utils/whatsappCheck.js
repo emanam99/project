@@ -1,47 +1,39 @@
 /**
  * Utility functions untuk cek nomor WhatsApp
- * Reusable untuk digunakan di mana saja
+ * Memakai backend WA baru lewat API: POST /api/wa/check (API meneruskan ke wa.alutsmani.id / lokal).
  */
 
-const API_KEY = 'wa-alutsmani-api-key-2024-production'
-const API_URL = 'https://wa.alutsmani.cloud/api/external/check'
-const INSTANCE = 'uwaba1'
+import { getApiBaseUrl } from '../services/api'
 
 /**
  * Format nomor telepon untuk WhatsApp API
  * - Hapus karakter non-digit
  * - Tambahkan 62 jika nomor dimulai dengan 0
  * - Tambahkan 62 jika nomor belum dimulai dengan 62
- * 
+ *
  * @param {string} phoneNumber - Nomor telepon yang akan diformat
  * @returns {string} Nomor telepon yang sudah diformat (dengan prefix 62)
  */
 export const formatPhoneNumber = (phoneNumber) => {
   if (!phoneNumber) return ''
-  
-  // Hapus karakter non-digit
-  let formatted = phoneNumber.replace(/\D/g, '')
-  
-  // Tambahkan 62 jika nomor dimulai dengan 0
+
+  let formatted = String(phoneNumber).replace(/\D/g, '')
   if (formatted.startsWith('0')) {
     formatted = '62' + formatted.substring(1)
-  } 
-  // Tambahkan 62 jika nomor belum dimulai dengan 62
-  else if (!formatted.startsWith('62')) {
+  } else if (!formatted.startsWith('62')) {
     formatted = '62' + formatted
   }
-  
   return formatted
 }
 
 /**
- * Cek apakah nomor telepon terdaftar di WhatsApp
- * 
+ * Cek apakah nomor telepon terdaftar di WhatsApp (lewat API → backend WA baru).
+ *
  * @param {string} phoneNumber - Nomor telepon yang akan dicek (bisa dengan atau tanpa format)
  * @returns {Promise<{success: boolean, isRegistered: boolean, message?: string, error?: Error}>}
  */
 export const checkWhatsAppNumber = async (phoneNumber) => {
-  if (!phoneNumber || phoneNumber.trim() === '') {
+  if (!phoneNumber || String(phoneNumber).trim() === '') {
     return {
       success: false,
       isRegistered: false,
@@ -50,47 +42,32 @@ export const checkWhatsAppNumber = async (phoneNumber) => {
   }
 
   try {
-    // Format nomor telepon
     const formattedNumber = formatPhoneNumber(phoneNumber.trim())
+    const apiBase = getApiBaseUrl()
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null
 
-    // Panggil API
-    const response = await fetch(API_URL, {
+    const response = await fetch(`${apiBase}/wa/check`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': API_KEY
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({
-        instance: INSTANCE,
-        phoneNumber: formattedNumber
-      })
+      body: JSON.stringify({ phoneNumber: formattedNumber })
     })
 
+    const result = await response.json().catch(() => ({}))
+
     if (!response.ok) {
-      const errorText = await response.text()
-      let errorData
-      try {
-        errorData = JSON.parse(errorText)
-      } catch {
-        errorData = { message: errorText || `HTTP ${response.status}` }
-      }
-      throw new Error(errorData.message || 'Gagal mengecek nomor')
+      throw new Error(result.message || result.error || `HTTP ${response.status}`)
     }
 
-    const result = await response.json()
+    const data = result.data || {}
+    const isRegistered = !!data.isRegistered
 
-    if (result.success && result.data && result.data.isRegistered) {
-      return {
-        success: true,
-        isRegistered: true,
-        message: 'Nomor terdaftar di WhatsApp'
-      }
-    } else {
-      return {
-        success: true,
-        isRegistered: false,
-        message: 'Nomor tidak terdaftar di WhatsApp'
-      }
+    return {
+      success: !!result.success,
+      isRegistered,
+      message: result.message ?? (isRegistered ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar di WhatsApp')
     }
   } catch (error) {
     console.error('Error checking WhatsApp number:', error)

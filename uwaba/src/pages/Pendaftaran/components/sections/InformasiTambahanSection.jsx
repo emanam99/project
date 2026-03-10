@@ -11,6 +11,7 @@
  * @param {function} props.onBlur - Function untuk handle blur
  * @param {function} props.getLabelClassName - Function untuk mendapatkan className label
  * @param {object} props.waCheck - Object dari useWhatsAppCheck hook
+ * @param {function} [props.onOpenRiwayatChat] - Callback (nomor) => void untuk buka offcanvas riwayat chat
  */
 function InformasiTambahanSection({
   sectionRef,
@@ -20,7 +21,8 @@ function InformasiTambahanSection({
   onFocus,
   onBlur,
   getLabelClassName,
-  waCheck
+  waCheck,
+  onOpenRiwayatChat
 }) {
   const {
     isCheckingTelpon,
@@ -95,6 +97,15 @@ function InformasiTambahanSection({
               {waStatusTelpon === 'not_registered' && '✗'}
             </span>
           )}
+          {onOpenRiwayatChat && (formData.no_telpon || '').trim() && (
+            <button
+              type="button"
+              onClick={() => onOpenRiwayatChat((formData.no_telpon || '').trim())}
+              className="px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors border border-teal-200 dark:border-teal-700"
+            >
+              Riwayat
+            </button>
+          )}
         </div>
         <input
           type="text"
@@ -165,6 +176,15 @@ function InformasiTambahanSection({
               {waStatusWaSantri === 'registered' && '✓'}
               {waStatusWaSantri === 'not_registered' && '✗'}
             </span>
+          )}
+          {onOpenRiwayatChat && (formData.no_wa_santri || '').trim() && (
+            <button
+              type="button"
+              onClick={() => onOpenRiwayatChat((formData.no_wa_santri || '').trim())}
+              className="px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors border border-teal-200 dark:border-teal-700"
+            >
+              Riwayat
+            </button>
           )}
         </div>
         <input

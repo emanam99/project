@@ -11,6 +11,7 @@ use App\Controllers\SantriController;
 use App\Controllers\PaymentController;
 use App\Controllers\ChatController;
 use App\Controllers\SubscriptionController;
+use App\Controllers\WhatsAppTemplateController;
 
 return function (\Slim\App $app): void {
     // Daftar user (sensitif) — hanya super_admin
@@ -39,13 +40,20 @@ return function (\Slim\App $app): void {
         $group->post('/payment/syahriah/history', [PaymentController::class, 'getSyahriahHistory']);
     })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'super_admin']))->add(new AuthMiddleware());
 
-    // WhatsApp — hanya super_admin
+    // WhatsApp — cek nomor: semua user yang login (termasuk daftar/NIK = role santri), tanpa batasan role
+    $app->group('/api', function ($group) {
+        $group->post('/wa/check', [WhatsAppController::class, 'check']);
+    })->add(new AuthMiddleware());
+
+    // WhatsApp — kirim pesan: hanya staff (PSB + UWABA + super_admin). Process-pending: PSB saja
     $app->group('/api', function ($group) {
         $group->post('/wa/send', [WhatsAppController::class, 'send']);
+    })->add(new RoleMiddleware(['super_admin', 'admin_psb', 'petugas_psb', 'admin_uwaba', 'petugas_uwaba']))->add(new AuthMiddleware());
+    $app->group('/api', function ($group) {
         $group->post('/wa/process-pending', [WhatsAppController::class, 'processPending']);
-    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['super_admin', 'admin_psb', 'petugas_psb']))->add(new AuthMiddleware());
 
-    // Chat — role UWABA (digunakan di konteks pembayaran/WA)
+    // Chat — role UWABA + PSB (untuk riwayat chat pendaftaran, dll)
     $app->group('/api', function ($group) {
         $group->post('/chat/save', [ChatController::class, 'saveChat']);
         $group->post('/chat/save-all', [ChatController::class, 'saveAllChat']);
@@ -56,7 +64,17 @@ return function (\Slim\App $app): void {
         $group->get('/chat/get-by-santri', [ChatController::class, 'getBySantri']);
         $group->get('/chat/get-all', [ChatController::class, 'getAll']);
         $group->get('/chat/stats', [ChatController::class, 'getStats']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+
+    // Template WA — list: role yang bisa akses chat; create/update/delete: hanya super_admin
+    $app->group('/api', function ($group) {
+        $group->get('/whatsapp-template/list', [WhatsAppTemplateController::class, 'list']);
+    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+    $app->group('/api', function ($group) {
+        $group->post('/whatsapp-template/create', [WhatsAppTemplateController::class, 'create']);
+        $group->put('/whatsapp-template/update', [WhatsAppTemplateController::class, 'update']);
+        $group->post('/whatsapp-template/delete', [WhatsAppTemplateController::class, 'delete']);
+    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // User profil (sendiri) & subscription — cukup login; GET /user/{id} di controller harus cek: own id atau super_admin
     $app->group('/api', function ($group) {
