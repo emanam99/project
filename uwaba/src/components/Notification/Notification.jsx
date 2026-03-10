@@ -59,7 +59,7 @@ function Notification({ message, type = 'info', onClose, duration = null }) {
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: '100%', opacity: 0 }}
       transition={{ type: 'tween', duration: 0.3 }}
-      className={`fixed top-4 right-4 z-[9999] w-full max-w-xs sm:max-w-sm md:max-w-md ${bgColor} ${borderColor} border rounded-lg shadow-lg`}
+      className={`fixed top-4 right-4 z-[100010] w-full max-w-xs sm:max-w-sm md:max-w-md ${bgColor} ${borderColor} border rounded-lg shadow-lg`}
     >
       <div className="flex items-start p-4">
         <div className="flex-shrink-0">

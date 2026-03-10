@@ -716,16 +716,7 @@ class ManageUsersController
             $roleStmt->execute([$userId]);
             $rolesData = $roleStmt->fetchAll(\PDO::FETCH_ASSOC);
             
-            // Auto-set nonaktif jabatan yang tanggal_selesai sudah terlewat
-            $autoNonaktifStmt = $this->db->prepare("
-                UPDATE pengurus___jabatan 
-                SET status = 'nonaktif' 
-                WHERE pengurus_id = ? AND status = 'aktif' 
-                AND tanggal_selesai IS NOT NULL AND tanggal_selesai < CURDATE()
-            ");
-            $autoNonaktifStmt->execute([$userId]);
-            
-            // Get all jabatan data from pengurus___jabatan
+            // Get all jabatan data from pengurus___jabatan (read-only; jangan UPDATE di sini agar status yang baru di-aktifkan user tidak tertimpa saat offcanvas dibuka lagi)
             $jabatanSql = "SELECT 
                         j.id as jabatan_id,
                         j.nama as jabatan_nama,
@@ -746,10 +737,21 @@ class ManageUsersController
             $jabatanData = $jabatanStmt->fetchAll(\PDO::FETCH_ASSOC);
             // Normalisasi jabatan_status ke 'aktif' atau 'nonaktif' agar frontend tampil konsisten
             // NULL/kosong di DB dianggap 'aktif' (default di schema)
+            // Jika tanggal_selesai atau tanggal_mulai null/kosong/0000-00-00, dihitung aktif
+            $isEmptyDate = function ($v) {
+                if ($v === null || $v === '') return true;
+                $s = trim((string) $v);
+                return $s === '' || strpos($s, '0000-00-00') === 0;
+            };
             foreach ($jabatanData as &$row) {
                 $raw = $row['jabatan_status'] ?? null;
                 $s = ($raw !== null && $raw !== '') ? strtolower(trim((string) $raw)) : 'aktif';
                 $row['jabatan_status'] = ($s === 'aktif' || $s === 'active') ? 'aktif' : 'nonaktif';
+                $tanggalSelesaiEmpty = $isEmptyDate($row['tanggal_selesai'] ?? null);
+                $tanggalMulaiEmpty = $isEmptyDate($row['tanggal_mulai'] ?? null);
+                if ($tanggalSelesaiEmpty || $tanggalMulaiEmpty) {
+                    $row['jabatan_status'] = 'aktif';
+                }
             }
             unset($row);
 
@@ -1255,7 +1257,8 @@ class ManageUsersController
     }
 
     /**
-     * PUT /api/manage-users/{id}/jabatan/{pengurusJabatanId} - Update status jabatan (aktif / nonaktif)
+     * PUT /api/manage-users/{id}/jabatan/{pengurusJabatanId} - Update jabatan (status, tanggal_mulai, tanggal_selesai)
+     * Body: status (aktif|nonaktif), tanggal_mulai (optional), tanggal_selesai (optional). Kosong/0000-00-00 = NULL di DB.
      */
     public function updateUserJabatanStatus(Request $request, Response $response, array $args): Response
     {
@@ -1264,6 +1267,8 @@ class ManageUsersController
             $pengurusJabatanId = $args['pengurusJabatanId'] ?? '';
             $body = $request->getParsedBody() ?: [];
             $status = isset($body['status']) ? trim((string) $body['status']) : '';
+            $tanggalMulaiRaw = isset($body['tanggal_mulai']) ? trim((string) $body['tanggal_mulai']) : null;
+            $tanggalSelesaiRaw = isset($body['tanggal_selesai']) ? trim((string) $body['tanggal_selesai']) : null;
 
             if (empty($userId) || empty($pengurusJabatanId)) {
                 return $this->jsonResponse($response, [
@@ -1297,8 +1302,25 @@ class ManageUsersController
                 ], 404);
             }
 
-            $updateStmt = $this->db->prepare("UPDATE pengurus___jabatan SET status = ? WHERE id = ? AND pengurus_id = ?");
-            $updateStmt->execute([$status, $pengurusJabatanId, $userId]);
+            $normalizeDate = function ($v) {
+                if ($v === null || $v === '' || strpos(trim((string) $v), '0000-00-00') === 0) return null;
+                $v = trim((string) $v);
+                return $v !== '' ? $v : null;
+            };
+            $sets = ['status = ?'];
+            $params = [$status];
+            if (array_key_exists('tanggal_mulai', $body)) {
+                $sets[] = 'tanggal_mulai = ?';
+                $params[] = $normalizeDate($tanggalMulaiRaw);
+            }
+            if (array_key_exists('tanggal_selesai', $body)) {
+                $sets[] = 'tanggal_selesai = ?';
+                $params[] = $normalizeDate($tanggalSelesaiRaw);
+            }
+            $params[] = $pengurusJabatanId;
+            $params[] = $userId;
+            $updateStmt = $this->db->prepare('UPDATE pengurus___jabatan SET ' . implode(', ', $sets) . ' WHERE id = ? AND pengurus_id = ?');
+            $updateStmt->execute($params);
             $rowCount = $updateStmt->rowCount();
 
             if ($rowCount === 0) {

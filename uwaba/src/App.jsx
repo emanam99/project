@@ -135,14 +135,20 @@ function App() {
   const [isInitialized, setIsInitialized] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
     const initAuth = async () => {
-      await checkAuth()
-    // Small delay to ensure checkAuth completes
-      setTimeout(() => {
-      setIsInitialized(true)
-    }, 100)
+      try {
+        await checkAuth()
+      } catch (e) {
+        console.error('checkAuth error:', e)
+      } finally {
+        if (!cancelled) {
+          setTimeout(() => setIsInitialized(true), 100)
+        }
+      }
     }
     initAuth()
+    return () => { cancelled = true }
   }, [checkAuth])
 
   // Initialize PWA subscription saat user sudah authenticated
@@ -191,9 +197,13 @@ function App() {
     }
   }, [isAuthenticated])
 
-  // Don't render routes until auth check is complete
+  // Don't render routes until auth check is complete (tampilkan loading agar tidak putih polos)
   if (!isInitialized) {
-    return null // or a loading spinner
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-teal-500 border-t-transparent" />
+      </div>
+    )
   }
 
   return (
@@ -569,14 +579,17 @@ function App() {
               </Suspense>
             } 
           />
-          <Route 
-            path="/converter" 
-            element={
-              <Suspense fallback={<PageLoader />}>
-                <Converter />
-              </Suspense>
-            } 
-          />
+          {/* Converter - hanya super_admin dan admin_kalender */}
+          <Route element={<RoleRoute allowedRoles={['super_admin', 'admin_kalender']} />}>
+            <Route
+              path="/converter"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Converter />
+                </Suspense>
+              }
+            />
+          </Route>
           {/* Pengaturan Kalender - admin_kalender atau super_admin saja */}
           <Route element={<RoleRoute allowedRoles={['admin_kalender', 'super_admin']} />}>
             <Route 

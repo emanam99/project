@@ -397,7 +397,8 @@ const navItems = [
       <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
         <path d="M16 4l4 4-4 4M20 8H4M8 20l-4-4 4-4M4 16h16" />
       </svg>
-    )
+    ),
+    requiresRole: ['super_admin', 'admin_kalender']
   },
   {
     path: '/kalender/pengaturan',

@@ -45,7 +45,7 @@ export const navMenuItems = [
   // Kalender
   { path: '/kalender', label: 'Kalender', group: 'Kalender' },
   { path: '/kalender/hari-penting', label: 'Hari Penting', group: 'Kalender' },
-  { path: '/converter', label: 'Converter', group: 'Kalender' },
+  { path: '/converter', label: 'Converter', group: 'Kalender', requiresRole: ['super_admin', 'admin_kalender'] },
   { path: '/kalender/pengaturan', label: 'Pengaturan Kalender', group: 'Kalender', requiresRole: ['admin_kalender', 'super_admin'] },
   // Kalender Pesantren
   { path: '/kalender-pesantren', label: 'Jadwal Pesantren', group: 'Kalender Pesantren', requiresSuperAdmin: true },

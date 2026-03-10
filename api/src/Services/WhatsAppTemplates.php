@@ -133,7 +133,7 @@ class WhatsAppTemplates
         $sapaan = $nama !== '' ? $nama : 'Calon Santri';
         $msg = "✅ *Pembayaran Diterima*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
-        $msg .= "Pembayaran Anda sebesar *" . $nominalFormatted . "* telah tercatat dan terverifikasi.\n\n";
+        $msg .= "Pembayaran Anda sebesar *" . $nominalFormatted . "* telah tercatat, silahkan menunggu, Admin Akan mengecek DATA dan KELENGKAPAN BERKAS. Setelah selesai dicek oleh admin, anda akan mendapatkan notifikasi veriifikasi.\n\n";
         $msg .= "Terima kasih.";
         $msg .= self::FOOTER_NOMOR_RESMI;
         return $msg;
@@ -246,20 +246,32 @@ class WhatsAppTemplates
     /**
      * Template: Keterangan status sudah diverifikasi (icon centang hijau).
      * Dipakai oleh: sendPsbSudahDiverifikasi (saat admin uwaba klik Verifikasi).
+     * Jika formal = STAI → teks Mahasiswa + link grup mahasiswa saja. Selain itu → Santri, tanpa link.
      *
-     * @param array $biodata ['id' => ..., 'nis' => ..., 'nama' => ..., ...] (tampilan pakai NIS)
+     * @param array $biodata ['id' => ..., 'nis' => ..., 'nama' => ..., 'formal' => ...] (tampilan pakai NIS)
      */
     public static function sudahDiverifikasi(array $biodata): string
     {
         $nama = $biodata['nama'] ?? 'Calon Santri';
         $nis = $biodata['nis'] ?? $biodata['id'] ?? '-';
+        $daftarFormal = trim((string) ($biodata['formal'] ?? ''));
+        $isStai = strtoupper($daftarFormal) === 'STAI';
 
-        $msg = "✅ *Pendaftaran Santri Sudah Diverifikasi*\n\n";
-        $msg .= "_________________\n\n";
-        $msg .= "Pendaftaran Santri Baru Anda telah diverifikasi oleh admin.\n\n";
-        $msg .= "• *NIS:* " . $nis . "\n";
-        $msg .= "• *Nama:* " . $nama . "\n\n";
-        $msg .= "Terima kasih.";
+        if ($isStai) {
+            $msg = "✅ *Mahasiswa Sudah di verifikasi*\n\n";
+            $msg .= "_________________\n\n";
+            $msg .= "Pendaftaran Mahasiswa Baru Anda telah diverifikasi oleh admin.\n\n";
+            $msg .= "• *NIS:* " . $nis . "\n";
+            $msg .= "• *Nama:* " . $nama . "\n\n";
+            $msg .= "Silahkan bergabung di grup mahasiswa baru dengan link berikut ini:\n" . self::LINK_GRUP_MAHASISWA_BARU;
+        } else {
+            $msg = "✅ *Pendaftaran Santri Sudah Diverifikasi*\n\n";
+            $msg .= "_________________\n\n";
+            $msg .= "Pendaftaran Santri Baru Anda telah diverifikasi oleh admin.\n\n";
+            $msg .= "• *NIS:* " . $nis . "\n";
+            $msg .= "• *Nama:* " . $nama . "\n\n";
+            $msg .= "Terima kasih.";
+        }
         $msg .= self::FOOTER_NOMOR_RESMI;
         return $msg;
     }

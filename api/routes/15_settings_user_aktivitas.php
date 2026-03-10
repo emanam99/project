@@ -14,10 +14,13 @@ return function (\Slim\App $app): void {
         $group->get('/features-config', [SettingsController::class, 'getFeaturesConfig']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
-    // Master Tahun Ajaran (hanya super_admin)
+    // Master Tahun Ajaran: GET bisa diakses semua user yang login; create/update hanya super_admin
     $app->group('/api/tahun-ajaran', function ($group) {
         $group->get('', [TahunAjaranController::class, 'getAll']);
         $group->get('/{id}', [TahunAjaranController::class, 'getById']);
+    })->add(new AuthMiddleware());
+
+    $app->group('/api/tahun-ajaran', function ($group) {
         $group->post('', [TahunAjaranController::class, 'create']);
         $group->put('/{id}', [TahunAjaranController::class, 'update']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());

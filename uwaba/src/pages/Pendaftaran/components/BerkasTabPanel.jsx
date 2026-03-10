@@ -40,6 +40,7 @@ function BerkasTabPanel({ santriId, pendingFileFromEditor = null, onConsumePendi
     setIsBerkasOffcanvasOpen,
     setSelectedJenisBerkas,
     fetchBerkasList,
+    updateBerkasTidakAdaLocal,
     setBerkasList,
     handlePreviewBerkas,
     handleClosePreviewBerkas,
@@ -110,13 +111,13 @@ function BerkasTabPanel({ santriId, pendingFileFromEditor = null, onConsumePendi
       if (isCurrentlyNotAvailable) {
         const result = await pendaftaranAPI.unmarkTidakAda(localId, jenisBerkas)
         if (result.success) {
-          await fetchBerkasList(localId)
+          updateBerkasTidakAdaLocal(jenisBerkas, false)
           showNotification(`"${jenisBerkas}" ditandai sebagai tersedia`, 'info')
         } else showNotification(result.message || 'Gagal menghapus tanda tidak ada', 'error')
       } else {
         const result = await pendaftaranAPI.markTidakAda(localId, jenisBerkas)
         if (result.success) {
-          await fetchBerkasList(localId)
+          updateBerkasTidakAdaLocal(jenisBerkas, true)
           showNotification(`"${jenisBerkas}" ditandai sebagai tidak ada`, 'info')
         } else showNotification(result.message || 'Gagal menandai berkas', 'error')
       }

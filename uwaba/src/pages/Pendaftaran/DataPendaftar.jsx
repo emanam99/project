@@ -8,6 +8,8 @@ import { useAuthStore } from '../../store/authStore'
 import { useNotification } from '../../contexts/NotificationContext'
 import ExportPendaftarOffcanvas from './components/ExportPendaftarOffcanvas'
 import BulkEditPendaftarOffcanvas from './components/BulkEditPendaftarOffcanvas'
+import DetailBerkasOffcanvas from './components/DetailBerkasOffcanvas'
+import { useWhatsAppCheck } from './components/hooks/useWhatsAppCheck'
 
 function DataPendaftar() {
   const navigate = useNavigate()
@@ -40,6 +42,70 @@ function DataPendaftar() {
   const [isExportOffcanvasOpen, setIsExportOffcanvasOpen] = useState(false)
   const [selectedItems, setSelectedItems] = useState(new Set())
   const [showBulkEditOffcanvas, setShowBulkEditOffcanvas] = useState(false)
+  const [detailBerkasList, setDetailBerkasList] = useState([])
+  const [detailBerkasLoading, setDetailBerkasLoading] = useState(false)
+  const [showDetailBerkasOffcanvas, setShowDetailBerkasOffcanvas] = useState(false)
+
+  const {
+    isCheckingTelpon,
+    waStatusTelpon,
+    isCheckingWaSantri,
+    waStatusWaSantri,
+    checkPhoneNumberTelpon,
+    checkPhoneNumberWaSantri,
+    setWaStatusTelpon,
+    setWaStatusWaSantri
+  } = useWhatsAppCheck(showNotification)
+
+  // Auto-cek WA saat offcanvas detail dibuka (untuk No Telpon & No WA)
+  useEffect(() => {
+    if (!isDetailOffcanvasOpen || !selectedPendaftar) {
+      setWaStatusTelpon(null)
+      setWaStatusWaSantri(null)
+      return
+    }
+    setWaStatusTelpon(null)
+    setWaStatusWaSantri(null)
+    const noTelpon = (selectedPendaftar.no_telpon || '').trim().replace(/\D/g, '')
+    const noWa = (selectedPendaftar.no_wa_santri || '').trim().replace(/\D/g, '')
+    if (noTelpon.length >= 10) {
+      checkPhoneNumberTelpon(selectedPendaftar.no_telpon, { no_telpon: selectedPendaftar.no_telpon })
+    }
+    if (noWa.length >= 10) {
+      checkPhoneNumberWaSantri(selectedPendaftar.no_wa_santri, { no_wa_santri: selectedPendaftar.no_wa_santri })
+    }
+  }, [isDetailOffcanvasOpen, selectedPendaftar?.id_registrasi])
+
+  // Muat list berkas saat offcanvas detail dibuka
+  useEffect(() => {
+    if (!isDetailOffcanvasOpen || !selectedPendaftar?.id) {
+      setDetailBerkasList([])
+      return
+    }
+    let cancelled = false
+    setDetailBerkasLoading(true)
+    pendaftaranAPI.getBerkasList(selectedPendaftar.id)
+      .then((res) => {
+        if (cancelled) return
+        const list = (res?.success && Array.isArray(res?.data)) ? res.data : []
+        setDetailBerkasList(list)
+      })
+      .catch(() => { if (!cancelled) setDetailBerkasList([]) })
+      .finally(() => { if (!cancelled) setDetailBerkasLoading(false) })
+    return () => { cancelled = true }
+  }, [isDetailOffcanvasOpen, selectedPendaftar?.id])
+
+  const refetchDetailBerkas = () => {
+    if (!selectedPendaftar?.id) return
+    setDetailBerkasLoading(true)
+    pendaftaranAPI.getBerkasList(selectedPendaftar.id)
+      .then((res) => {
+        const list = (res?.success && Array.isArray(res?.data)) ? res.data : []
+        setDetailBerkasList(list)
+      })
+      .catch(() => setDetailBerkasList([]))
+      .finally(() => setDetailBerkasLoading(false))
+  }
 
   // Cek apakah user adalah super_admin
   const isSuperAdmin = user?.role_key === 'super_admin' || user?.all_roles?.includes('super_admin')
@@ -551,16 +617,17 @@ function DataPendaftar() {
   }
 
   return (
-    <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-      <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
-        <div className="p-4 sm:p-6 lg:p-8">
+    <div className="h-full flex flex-col overflow-hidden" style={{ minHeight: 0 }}>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="p-4 sm:p-6 lg:p-8 flex-1 flex flex-col min-h-0 overflow-hidden">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
+            className="flex flex-col flex-1 min-h-0 overflow-hidden"
           >
-            {/* Search & Filter */}
-            <div className="mb-6">
+            {/* Search & Filter - tetap di atas, tidak ikut scroll */}
+            <div className="mb-4 flex-shrink-0">
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
                 {/* Search Input dengan tombol di kanan */}
                 <div className="relative pb-2 px-4 pt-3">
@@ -713,8 +780,9 @@ function DataPendaftar() {
               </div>
             </div>
 
-            {/* List Pendaftar */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+            {/* List Pendaftar - jumlah, export, tabel, pagination ikut scroll; hanya input cari di atas yang tetap */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex-1 flex flex-col min-h-0">
+              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
               <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <span className="text-base font-normal text-gray-500 dark:text-gray-400">{filteredList.length}</span>
@@ -792,7 +860,7 @@ function DataPendaftar() {
                   <p>Belum ada data pendaftar</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto min-w-0">
                   <table className="w-full">
                     <thead className="bg-gray-50 dark:bg-gray-900">
                       <tr>
@@ -1132,6 +1200,7 @@ function DataPendaftar() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Offcanvas Detail Pendaftar & Eksport - render via portal ke document.body agar overlay menutup seluruh layar (sidebar + nav) */}
@@ -1184,12 +1253,99 @@ function DataPendaftar() {
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{selectedPendaftar.nik || '-'}</dd>
                           </div>
                           <div>
-                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">No Telpon</dt>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">No Telpon</dt>
+                              <button
+                                type="button"
+                                onClick={() => checkPhoneNumberTelpon(selectedPendaftar.no_telpon, { no_telpon: selectedPendaftar.no_telpon })}
+                                disabled={isCheckingTelpon || !(selectedPendaftar.no_telpon || '').trim()}
+                                className="px-1.5 py-0.5 bg-blue-500 hover:bg-blue-600 text-white text-[10px] rounded transition-colors flex items-center gap-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Cek aktif WhatsApp"
+                              >
+                                {isCheckingTelpon ? (
+                                  <span className="animate-spin text-[10px]">⏳</span>
+                                ) : (
+                                  <>
+                                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                    </svg>
+                                    <span className="text-[10px]">Cek</span>
+                                  </>
+                                )}
+                              </button>
+                              {waStatusTelpon && (
+                                <span className={`text-xs px-2 py-0.5 rounded dark:bg-opacity-80 ${
+                                  waStatusTelpon === 'checking'
+                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
+                                    : waStatusTelpon === 'registered'
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                }`}>
+                                  {waStatusTelpon === 'checking' && 'Sedang mengecek...'}
+                                  {waStatusTelpon === 'registered' && '✓ Aktif WA'}
+                                  {waStatusTelpon === 'not_registered' && '✗ Tidak aktif WA'}
+                                </span>
+                              )}
+                            </div>
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300 font-mono">{selectedPendaftar.no_telpon || '-'}</dd>
                           </div>
                           <div>
-                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">No WA</dt>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">No WA</dt>
+                              <button
+                                type="button"
+                                onClick={() => checkPhoneNumberWaSantri(selectedPendaftar.no_wa_santri, { no_wa_santri: selectedPendaftar.no_wa_santri })}
+                                disabled={isCheckingWaSantri || !(selectedPendaftar.no_wa_santri || '').trim()}
+                                className="px-1.5 py-0.5 bg-blue-500 hover:bg-blue-600 text-white text-[10px] rounded transition-colors flex items-center gap-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Cek aktif WhatsApp"
+                              >
+                                {isCheckingWaSantri ? (
+                                  <span className="animate-spin text-[10px]">⏳</span>
+                                ) : (
+                                  <>
+                                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                    </svg>
+                                    <span className="text-[10px]">Cek</span>
+                                  </>
+                                )}
+                              </button>
+                              {waStatusWaSantri && (
+                                <span className={`text-xs px-2 py-0.5 rounded dark:bg-opacity-80 ${
+                                  waStatusWaSantri === 'checking'
+                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
+                                    : waStatusWaSantri === 'registered'
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                                    : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                                }`}>
+                                  {waStatusWaSantri === 'checking' && 'Sedang mengecek...'}
+                                  {waStatusWaSantri === 'registered' && '✓ Aktif WA'}
+                                  {waStatusWaSantri === 'not_registered' && '✗ Tidak aktif WA'}
+                                </span>
+                              )}
+                            </div>
                             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300 font-mono">{selectedPendaftar.no_wa_santri || '-'}</dd>
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Berkas</dt>
+                              <button
+                                type="button"
+                                onClick={() => setShowDetailBerkasOffcanvas(true)}
+                                className="px-2 py-1 text-xs font-medium text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded-lg transition-colors border border-teal-200 dark:border-teal-700"
+                              >
+                                Cek detail berkas
+                              </button>
+                            </div>
+                            <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">
+                              {detailBerkasLoading
+                                ? 'Memuat...'
+                                : (() => {
+                                    const ada = (detailBerkasList || []).filter(b => !b.status_tidak_ada)
+                                    const names = ada.map(b => b.jenis_berkas || b.keterangan || 'Berkas').filter(Boolean)
+                                    return names.length ? names.join(', ') : '—'
+                                  })()}
+                            </dd>
                           </div>
                           <div>
                             <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total Wajib</dt>
@@ -1353,6 +1509,13 @@ function DataPendaftar() {
                     loadPendaftarData()
                     setSelectedItems(new Set())
                   }}
+                />
+                <DetailBerkasOffcanvas
+                  isOpen={showDetailBerkasOffcanvas}
+                  onClose={() => setShowDetailBerkasOffcanvas(false)}
+                  idSantri={selectedPendaftar?.id}
+                  namaPendaftar={selectedPendaftar?.nama}
+                  onSuccess={refetchDetailBerkas}
                 />
               </>,
               document.body

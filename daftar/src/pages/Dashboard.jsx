@@ -486,8 +486,31 @@ function Dashboard() {
     }
   }
 
-  const completedSteps = steps.filter(s => s.status === 'completed').length
-  const progressPercentage = (completedSteps / steps.length) * 100
+  // Teks keterangan menyesuaikan status
+  const getTeksKeterangan = (status) => {
+    switch (status) {
+      case 'Belum Terdaftar':
+        return 'Silakan isi biodata terlebih dahulu, lalu ikuti langkah-langkah di bawah untuk menyelesaikan pendaftaran.'
+      case 'Melengkapi Data':
+        return 'Lengkapi data Anda, lalu ikuti langkah-langkah di bawah untuk menyelesaikan pendaftaran.'
+      case 'Upload Berkas':
+      case 'Belum Upload':
+        return 'Silakan upload berkas-berkas yang diperlukan sesuai langkah di bawah.'
+      case 'Belum Bayar':
+        return 'Lakukan pembayaran untuk menyelesaikan pendaftaran. Ikuti langkah pembayaran di bawah.'
+      case 'Belum Diverifikasi':
+        return 'Pendaftaran telah berhasil. Hanya tinggal menunggu admin mengecek data dan berkas.'
+      case 'Sudah Diverifikasi':
+        return 'Data Anda telah diverifikasi admin.'
+      case 'Aktif':
+        return 'Pendaftaran Anda selesai. Status Anda aktif.'
+      case 'Belum Aktif':
+        return 'Menunggu aktivasi dari admin. Silakan pantau informasi terbaru.'
+      default:
+        return 'Silakan ikuti langkah-langkah di bawah untuk menyelesaikan pendaftaran.'
+    }
+  }
+  const teksKeterangan = getTeksKeterangan(keteranganStatus)
 
   return (
     <div className="h-full overflow-y-auto bg-white dark:bg-gray-900 rounded-lg shadow-sm p-3 md:p-4">
@@ -514,68 +537,11 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 md:p-6 mb-8">
-          {/* Desktop: Tampilkan header dengan label */}
-          <div className="hidden md:flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Progress Pendaftaran
-            </h2>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => window.location.reload()}
-                className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white text-xs rounded transition-colors"
-                title="Refresh progress"
-              >
-                🔄 Refresh
-              </button>
-            </div>
-          </div>
-          
-          {/* Mobile: Tampilkan hanya persentase di atas progress bar */}
-          <div className="md:hidden flex items-center justify-between mb-2">
-            <span className="text-base font-semibold text-teal-600 dark:text-teal-400">
-              {progressPercentage.toFixed(0)}%
-            </span>
-            <button
-              onClick={() => window.location.reload()}
-              className="p-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs rounded transition-colors"
-              title="Refresh progress"
-            >
-              🔄
-            </button>
-          </div>
-          
-          {/* Progress Bar */}
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 md:h-3">
-            <div 
-              className="bg-gradient-to-r from-teal-500 to-teal-600 h-3 rounded-full transition-all duration-500"
-              style={{ width: `${progressPercentage}%` }}
-            ></div>
-          </div>
-          
-          <div className="mt-2 space-y-2">
-            {/* Desktop: Tampilkan "X dari Y selesai" */}
-            <div className="hidden md:flex items-center justify-end">
-              <span className="text-sm font-medium text-teal-600 dark:text-teal-400">
-                {completedSteps} dari {steps.length} selesai
-              </span>
-            </div>
-            
-            {/* Mobile: Tampilkan persentase di bawah progress bar */}
-            <div className="md:hidden flex items-center justify-center">
-              <span className="text-xs text-gray-600 dark:text-gray-400">
-                {completedSteps}/{steps.length} langkah
-              </span>
-            </div>
-            
-            <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
-              {progressPercentage === 100 
-                ? '🎉 Selamat! Santri telah menyelesaikan semua tahap pendaftaran.'
-                : 'Silakan ikuti langkah-langkah di bawah untuk menyelesaikan pendaftaran.'
-              }
-            </p>
-          </div>
+        {/* Keterangan */}
+        <div className="mb-8">
+          <p className="text-sm md:text-base text-gray-600 dark:text-gray-400">
+            {teksKeterangan}
+          </p>
         </div>
 
         {/* Steps - Timeline Style */}
@@ -704,95 +670,103 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Gelombang Aktif Section */}
-        <div className="mt-8 mb-8 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-6">
-          <h3 className="font-semibold text-teal-900 dark:text-teal-100 mb-4 text-lg">
-            Informasi Gelombang Pendaftaran
-          </h3>
-          
-          {/* Gelombang Aktif */}
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-2">
-              <svg className="w-5 h-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span className="font-semibold text-teal-800 dark:text-teal-200">Gelombang Aktif:</span>
+        {/* Gelombang Pendaftaran — rapi & informatif */}
+        <section className="mt-8 mb-8 rounded-xl border border-teal-200/80 dark:border-teal-800/80 bg-gradient-to-b from-teal-50/80 to-white dark:from-teal-950/40 dark:to-gray-900 overflow-hidden shadow-sm">
+          <div className="px-4 py-4 md:px-6 md:py-5 border-b border-teal-200/60 dark:border-teal-800/60 bg-teal-50/50 dark:bg-teal-900/20">
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-teal-500/15 dark:bg-teal-500/25 flex items-center justify-center">
+                <svg className="w-5 h-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-semibold text-teal-900 dark:text-teal-100 text-base md:text-lg">
+                  Gelombang Pendaftaran
+                </h3>
+                {(tahunHijriyah || tahunMasehi) && (
+                  <p className="text-xs md:text-sm text-teal-700/80 dark:text-teal-300/80 mt-0.5">
+                    Tahun ajaran {[tahunHijriyah, tahunMasehi].filter(Boolean).join(' / ')}
+                  </p>
+                )}
+              </div>
             </div>
+          </div>
+
+          <div className="p-4 md:p-6">
+            {/* Gelombang saat ini */}
             {gelombangAktif ? (
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border-2 border-teal-500 dark:border-teal-400">
-                <div className="text-2xl font-bold text-teal-600 dark:text-teal-400 mb-1">
+              <div className="mb-5 p-4 rounded-xl bg-teal-500/10 dark:bg-teal-500/15 border border-teal-300/60 dark:border-teal-600/50">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="text-xs font-medium uppercase tracking-wide text-teal-600 dark:text-teal-400">Gelombang saat ini</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-teal-500 text-white">Aktif</span>
+                </div>
+                <div className="text-xl md:text-2xl font-bold text-teal-800 dark:text-teal-200">
                   Gelombang {gelombangAktif}
                 </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {formatTanggal(gelombang[gelombangAktif])}
-                </div>
-                <div className="mt-2">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400">
-                    Gelombang Aktif
-                  </span>
-                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Mulai {formatTanggal(gelombang[gelombangAktif])}
+                </p>
               </div>
             ) : (
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-300 dark:border-gray-600">
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Belum ada gelombang aktif
-                </div>
+              <div className="mb-5 p-4 rounded-xl bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Belum ada gelombang aktif. Periode pendaftaran akan diumumkan kemudian.
+                </p>
               </div>
             )}
-          </div>
-          
-          {/* List Gelombang 1-5 */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <svg className="w-4 h-4 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              <span className="text-sm font-medium text-teal-800 dark:text-teal-200">Daftar Gelombang:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[1, 2, 3, 4, 5].map((num) => {
-                const gelombangKey = String(num)
-                const tanggalGelombang = gelombang[gelombangKey]
-                const isAktif = gelombangAktif === gelombangKey
-                
-                return (
-                  <div
-                    key={num}
-                    className={`group relative flex items-center gap-2 px-3 py-2 rounded-lg border transition-all ${
-                      isAktif
-                        ? 'bg-teal-50 dark:bg-teal-900/30 border-teal-300 dark:border-teal-700 shadow-sm'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-teal-300 dark:hover:border-teal-700'
-                    }`}
-                  >
-                    <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      isAktif
-                        ? 'bg-teal-500 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                    }`}>
-                      {num}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-xs font-medium ${
+
+            {/* Daftar semua gelombang */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Jadwal gelombang</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {[1, 2, 3, 4, 5].map((num) => {
+                  const gelombangKey = String(num)
+                  const tanggalGelombang = gelombang[gelombangKey]
+                  const isAktif = gelombangAktif === gelombangKey
+                  const today = new Date()
+                  today.setHours(0, 0, 0, 0)
+                  const tanggalObj = tanggalGelombang ? new Date(tanggalGelombang) : null
+                  if (tanggalObj) tanggalObj.setHours(0, 0, 0, 0)
+                  const isLewat = tanggalObj && today > tanggalObj && !isAktif
+                  const isAkanDatang = tanggalObj && today < tanggalObj
+
+                  return (
+                    <div
+                      key={num}
+                      className={`rounded-lg border p-3 transition-all ${
                         isAktif
-                          ? 'text-teal-700 dark:text-teal-300'
-                          : 'text-gray-700 dark:text-gray-300'
-                      }`}>
-                        {formatTanggal(tanggalGelombang)}
-                      </div>
-                    </div>
-                    {isAktif && (
-                      <div className="flex-shrink-0">
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-500 text-white">
-                          Aktif
+                          ? 'border-teal-400 dark:border-teal-500 bg-teal-50 dark:bg-teal-900/30 ring-1 ring-teal-200 dark:ring-teal-800'
+                          : isLewat
+                            ? 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 opacity-80'
+                            : isAkanDatang
+                              ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50'
+                              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className={`text-sm font-bold ${isAktif ? 'text-teal-700 dark:text-teal-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                          Gelombang {num}
                         </span>
+                        {isAktif && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-500 text-white">Aktif</span>
+                        )}
+                        {isLewat && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-400/80 text-white dark:bg-gray-600">Selesai</span>
+                        )}
+                        {isAkanDatang && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Akan datang</span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )
-              })}
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {tanggalGelombang ? formatTanggal(tanggalGelombang) : '—'}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Info Box */}
         <div className="mt-8 mb-8 md:mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">

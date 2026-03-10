@@ -141,42 +141,42 @@ function Pendaftaran() {
         className="h-full min-h-0 flex flex-col overflow-hidden flex-1"
       >
         {/* Tab Navigation HP/Tablet: 3 tab Biodata | Berkas | Pembayaran */}
-        <div className="lg:hidden flex mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden flex-shrink-0">
+        <div className="lg:hidden flex mb-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden flex-shrink-0">
           <button
             onClick={() => setActiveTab('biodata')}
-            className={`flex-1 py-2 text-center border-b-2 font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+            className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1 transition-colors ${
               activeTab === 'biodata'
                 ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
             <span>Biodata</span>
           </button>
           <button
             onClick={() => setActiveTab('berkas')}
-            className={`flex-1 py-2 text-center border-b-2 font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+            className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1 transition-colors ${
               activeTab === 'berkas'
                 ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
             <span>Berkas</span>
           </button>
           <button
             onClick={() => setActiveTab('pembayaran')}
-            className={`flex-1 py-2 text-center border-b-2 font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+            className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1 transition-colors ${
               activeTab === 'pembayaran'
                 ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
             </svg>
             <span>Pembayaran</span>
@@ -227,29 +227,29 @@ function Pendaftaran() {
           {/* Kolom kanan PC: tab Berkas | Pembayaran; HP: tampil hanya saat tab Berkas atau Pembayaran */}
           <div ref={rightColumnRef} className="col-span-1 flex flex-col min-h-0 overflow-hidden">
             {/* Tab Berkas | Pembayaran (hanya tampil di PC) */}
-            <div className="hidden lg:flex mb-2 bg-white dark:bg-gray-800 rounded-t-lg shadow-sm overflow-hidden flex-shrink-0 border-b border-gray-200 dark:border-gray-600">
+            <div className="hidden lg:flex mb-1.5 bg-white dark:bg-gray-800 rounded-t-lg shadow-sm overflow-hidden flex-shrink-0 border-b border-gray-200 dark:border-gray-600">
               <button
                 onClick={() => setRightColumnTab('berkas')}
-                className={`flex-1 py-2.5 text-center border-b-2 font-semibold flex items-center justify-center gap-2 transition-colors ${
+                className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1.5 transition-colors ${
                   rightColumnTab === 'berkas'
                     ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
                 Berkas
               </button>
               <button
                 onClick={() => setRightColumnTab('pembayaran')}
-                className={`flex-1 py-2.5 text-center border-b-2 font-semibold flex items-center justify-center gap-2 transition-colors ${
+                className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1.5 transition-colors ${
                   rightColumnTab === 'pembayaran'
                     ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                 </svg>
                 Pembayaran

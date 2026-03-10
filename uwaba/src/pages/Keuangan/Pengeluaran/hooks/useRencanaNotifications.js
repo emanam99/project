@@ -31,7 +31,7 @@ export const useRencanaNotifications = () => {
       return
     }
 
-    // Fetch data rencana terbaru untuk mendapatkan jumlah komentar dan viewer yang ter-update
+    // Fetch data rencana terbaru untuk mendapatkan jumlah komentar, viewer, dan (untuk approve) siapa yang approve dari DB
     let updatedRencanaData = rencanaData
     if (rencanaData && rencanaData.id) {
       try {
@@ -39,13 +39,15 @@ export const useRencanaNotifications = () => {
         if (response.success && response.data) {
           // Merge data terbaru dengan data yang sudah ada
           // Pastikan admin_nama dari rencanaData tetap digunakan (pembuat asli)
+          // Untuk kirim ulang notif approve: pakai admin_approve_nama dari DB (response.data)
           updatedRencanaData = {
             ...rencanaData,
             ...response.data,
-            // Pastikan admin_nama tetap dari data asli (pembuat), bukan dari response terbaru
             admin_nama: rencanaData.admin_nama || response.data.admin_nama || '-',
-            jumlah_komentar: response.data.jumlah_komentar || rencanaData.jumlah_komentar || 0,
-            jumlah_viewer: response.data.jumlah_viewer || rencanaData.jumlah_viewer || 0
+            jumlah_komentar: response.data.jumlah_komentar ?? rencanaData.jumlah_komentar ?? 0,
+            jumlah_viewer: response.data.jumlah_viewer ?? rencanaData.jumlah_viewer ?? 0,
+            // Kirim ulang = ambil siapa yang approve dari database
+            admin_approve_nama: response.data.admin_approve_nama ?? rencanaData.admin_approve_nama
           }
         }
       } catch (error) {
@@ -118,8 +120,12 @@ export const useRencanaNotifications = () => {
     }
 
     // Gunakan template terpusat berdasarkan status
+    // Notif dikirim dari modal approve = yang approve adalah admin yang login
     const status = action === 'approve' ? 'approve' : 'reject'
-    const pesan = generateRencanaWhatsAppMessage(rencanaData, status, { user })
+    const pesan = generateRencanaWhatsAppMessage(rencanaData, status, {
+      user,
+      actionLabel: action === 'approve' ? (user?.nama || '') : undefined
+    })
 
     try {
       const result = await pengeluaranAPI.sendNotifWa(

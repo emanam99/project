@@ -221,6 +221,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
     setIsBerkasOffcanvasOpen,
     setSelectedJenisBerkas,
     fetchBerkasList,
+    updateBerkasTidakAdaLocal,
     setBerkasList,
     handlePreviewBerkas,
     handleClosePreviewBerkas,
@@ -319,7 +320,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
       if (isCurrentlyNotAvailable) {
         const result = await pendaftaranAPI.unmarkTidakAda(localId, jenisBerkas)
         if (result.success) {
-          if (localId) await fetchBerkasList(localId)
+          updateBerkasTidakAdaLocal(jenisBerkas, false)
           showNotification(`"${jenisBerkas}" ditandai sebagai tersedia`, 'info')
         } else {
           showNotification(result.message || 'Gagal menghapus tanda tidak ada', 'error')
@@ -327,7 +328,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
       } else {
         const result = await pendaftaranAPI.markTidakAda(localId, jenisBerkas)
         if (result.success) {
-          if (localId) await fetchBerkasList(localId)
+          updateBerkasTidakAdaLocal(jenisBerkas, true)
           showNotification(`"${jenisBerkas}" ditandai sebagai tidak ada`, 'info')
         } else {
           showNotification(result.message || 'Gagal menandai berkas', 'error')

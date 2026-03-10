@@ -14,33 +14,41 @@ export const getAppEnv = () => {
   return import.meta.env.DEV ? 'development' : 'production'
 }
 
-// Helper untuk mendapatkan base URL API — selalu dari .env (local / staging / production)
-// Tanpa VITE_API_BASE_URL: fallback dari hostname + peringatan agar set .env
+// Helper untuk mendapatkan base URL API
+// Saat akses dari HP/device lain lewat IP (10.x, 192.168.x): selalu pakai hostname agar API ke PC yang sama
+// Saat localhost atau production: pakai VITE_API_BASE_URL atau fallback
 export const getSlimApiUrl = () => {
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:'
+  const isPrivateOrIp = hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('172.16.') ||
+    hostname === '127.0.0.1'
+
+  // Akses lewat IP (HP buka 10.190.153.123:5173 dll): API harus ke host yang sama, jangan pakai localhost dari .env
+  if (typeof window !== 'undefined' && isPrivateOrIp && hostname !== 'localhost') {
+    const base = `${protocol}//${hostname}/api/public/api`
+    return base
+  }
+
   const envUrl = import.meta.env.VITE_API_BASE_URL
   if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
     const url = envUrl.trim()
     return url.endsWith('/') ? url.slice(0, -1) : url
   }
 
-  // Fallback jika .env belum di-set (disarankan set VITE_API_BASE_URL untuk semua environment)
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:'
+  // Fallback jika .env belum di-set
   const isLocal = hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
-    hostname === '10.111.215.123' ||
-    hostname === '192.168.0.103' ||
     hostname.startsWith('192.168.') ||
     hostname.startsWith('10.') ||
     hostname.startsWith('172.16.')
 
-  // Fallback local: gunakan routes API terbaru (api/public = entry point Slim, /api = prefix route)
   let fallback
   if (isLocal) {
     const localBase = (hostname === 'localhost' || hostname === '127.0.0.1')
       ? 'http://localhost'
       : `${protocol}//${hostname}`
-    // XAMPP/htdocs: project di htdocs → http://localhost/api/public/api
     fallback = `${localBase}/api/public/api`
   } else {
     const parts = hostname.split('.')
@@ -1731,9 +1739,10 @@ export const manageUsersAPI = {
     return response.data
   },
 
-  /** Update status jabatan pengurus (aktif / nonaktif) */
-  updateJabatanStatus: async (userId, pengurusJabatanId, status) => {
-    const response = await api.put(`/manage-users/${userId}/jabatan/${pengurusJabatanId}`, { status })
+  /** Update status jabatan pengurus (aktif / nonaktif). Optional: tanggal_mulai, tanggal_selesai untuk edit. */
+  updateJabatanStatus: async (userId, pengurusJabatanId, data) => {
+    const body = typeof data === 'string' ? { status: data } : { status: data.status, tanggal_mulai: data.tanggal_mulai, tanggal_selesai: data.tanggal_selesai }
+    const response = await api.put(`/manage-users/${userId}/jabatan/${pengurusJabatanId}`, body)
     return response.data
   },
 

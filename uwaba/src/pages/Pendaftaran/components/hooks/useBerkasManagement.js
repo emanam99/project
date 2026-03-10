@@ -167,9 +167,29 @@ export const useBerkasManagement = (localId) => {
 
   // Handle close delete modal
   const handleCloseDeleteModalBerkas = () => {
-    if (deletingId) return // Jangan tutup saat sedang menghapus
+    if (deletingId) return // Jangan tutup saat menghapus
     setShowDeleteModal(false)
     setBerkasToDelete(null)
+  }
+
+  /**
+   * Update lokal status "tidak ada" tanpa refetch (agar centang/uncentang tidak load ulang)
+   * @param {string} jenisBerkas - Jenis berkas
+   * @param {boolean} statusTidakAda - true = tandai tidak ada, false = hapus tanda
+   */
+  const updateBerkasTidakAdaLocal = (jenisBerkas, statusTidakAda) => {
+    setBerkasList((prev) => {
+      const idx = prev.findIndex((b) => b.jenis_berkas === jenisBerkas)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = { ...next[idx], status_tidak_ada: statusTidakAda ? 1 : 0 }
+        return next
+      }
+      if (statusTidakAda) {
+        return [...prev, { jenis_berkas: jenisBerkas, status_tidak_ada: 1 }]
+      }
+      return prev
+    })
   }
 
   return {
@@ -202,6 +222,7 @@ export const useBerkasManagement = (localId) => {
     
     // Functions
     fetchBerkasList,
+    updateBerkasTidakAdaLocal,
     handlePreviewBerkas,
     handleClosePreviewBerkas,
     downloadForPreview,

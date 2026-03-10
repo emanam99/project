@@ -169,9 +169,9 @@ const SearchAndFilterSection = memo(({
                   onChange={onStatusFilterChange}
                   className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                 >
-                  <option value="">Semua</option>
-                  {(statusOptions || []).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
+                  <option key="status-semua" value="">Semua</option>
+                  {(statusOptions || []).map((o, i) => (
+                    <option key={o.value !== '' && o.value != null ? o.value : `status-${i}`} value={o.value}>{o.label} ({o.count})</option>
                   ))}
                 </select>
 
@@ -181,9 +181,9 @@ const SearchAndFilterSection = memo(({
                   onChange={onKategoriLembagaFilterChange}
                   className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
                 >
-                  <option value="">Semua</option>
-                  {(kategoriOptions || []).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
+                  <option key="kategori-semua" value="">Semua</option>
+                  {(kategoriOptions || []).map((o, i) => (
+                    <option key={o.value !== '' && o.value != null ? o.value : `kategori-${i}`} value={o.value}>{o.label} ({o.count})</option>
                   ))}
                 </select>
 
@@ -193,9 +193,9 @@ const SearchAndFilterSection = memo(({
                   onChange={onJabatanLembagaFilterChange}
                   className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
                 >
-                  <option value="">Semua</option>
-                  {(lembagaOptions || []).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
+                  <option key="lembaga-semua" value="">Semua</option>
+                  {(lembagaOptions || []).map((o, i) => (
+                    <option key={o.value !== '' && o.value != null ? o.value : `lembaga-${i}`} value={o.value}>{o.label} ({o.count})</option>
                   ))}
                 </select>
 
@@ -205,9 +205,9 @@ const SearchAndFilterSection = memo(({
                   onChange={onJabatanFilterChange}
                   className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
                 >
-                  <option value="">Semua</option>
-                  {(jabatanOptions || []).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
+                  <option key="jabatan-semua" value="">Semua</option>
+                  {(jabatanOptions || []).map((o, i) => (
+                    <option key={o.value !== '' && o.value != null ? o.value : `jabatan-${i}`} value={o.value}>{o.label} ({o.count})</option>
                   ))}
                 </select>
               </div>
@@ -249,8 +249,8 @@ const PengurusListItem = memo(({ pengurus, index, onClick, getStatusBadgeColor, 
           </p>
           {lembagaFromApi.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {lembagaFromApi.map((l) => (
-                <span key={l.id} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400">
+              {lembagaFromApi.map((l, idx) => (
+                <span key={l.id != null && l.id !== '' ? l.id : `lembaga-${idx}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400">
                   {l.kategori ? `${l.nama || l.id} (${l.kategori})` : (l.nama || l.id)}
                 </span>
               ))}
@@ -259,7 +259,7 @@ const PengurusListItem = memo(({ pengurus, index, onClick, getStatusBadgeColor, 
           {jabatanList.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-1">
               {jabatanList.map((j, i) => (
-                <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400">
+                <span key={j.pengurus_jabatan_id != null ? j.pengurus_jabatan_id : `jabatan-${i}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400">
                   {j.lembaga_id ? `${j.jabatan_nama || '-'} (${getLembagaNama(j.lembaga_id)})` : (j.jabatan_nama || '-')}
                 </span>
               ))}

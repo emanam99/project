@@ -113,7 +113,7 @@ export const generateRencanaWhatsAppMessage = (rencanaData, status, options = {}
 > 💬 ${jumlahKomentar} 👁️ ${jumlahViewer}`
     
   } else if (status === 'approve') {
-    // Template untuk approve: siapa yang approve dari DB (bukan yang menekan kirim ulang)
+    // Di Approve: jika actionLabel diset (notif dari modal approve) = admin yang login; jika tidak (kirim ulang) = dari DB (admin_approve_nama)
     const dibuatOleh = rencanaData.admin_nama || '-'
     const diuproveOleh = rencanaData.admin_approve_nama || actionLabel || '-'
     

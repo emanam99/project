@@ -24,8 +24,12 @@ function BerkasOffcanvas({
   defaultFile = null,
   onUploadSuccess,
   showCameraScanner = false,
-  setShowCameraScanner = null
+  setShowCameraScanner = null,
+  /** Z-index untuk overlay/panel (agar tampil di atas offcanvas lain, mis. 10002) */
+  overlayZIndex = 100
 }) {
+  const backdropZ = overlayZIndex
+  const panelZ = overlayZIndex + 1
   const navigate = useNavigate()
   const { showNotification } = useNotification()
   const [uploading, setUploading] = useState(false)
@@ -151,7 +155,8 @@ function BerkasOffcanvas({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           onClick={onClose}
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+          style={{ zIndex: backdropZ }}
         />
       )}
       {isOpen && (
@@ -161,8 +166,8 @@ function BerkasOffcanvas({
           animate={{ y: 0 }}
           exit={{ y: '100%' }}
           transition={offcanvasTransition}
-          className="fixed inset-0 z-[101] flex flex-col justify-end md:justify-center md:items-center md:p-4 pointer-events-none"
-          style={{ willChange: 'transform' }}
+          className="fixed inset-0 flex flex-col justify-end md:justify-center md:items-center md:p-4 pointer-events-none"
+          style={{ zIndex: panelZ, willChange: 'transform' }}
         >
           <div
             className="w-full md:max-w-4xl md:max-h-[85vh] md:w-full flex flex-col bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-2xl shadow-xl max-h-[90vh] pointer-events-auto"

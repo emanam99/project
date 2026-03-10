@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { manageUsersAPI, jabatanAPI } from '../../../../services/api'
+import { manageUsersAPI, jabatanAPI, profilAPI } from '../../../../services/api'
 import { useNotification } from '../../../../contexts/NotificationContext'
 import { useAuthStore } from '../../../../store/authStore'
 import Modal from '../../../../components/Modal/Modal'
+import EditPengurusForm, { initialProfilForm, profilFormFromUser } from './EditPengurusForm'
 
 function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = [], onSuccess }) {
   const { showNotification } = useNotification()
@@ -17,6 +18,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
   const [statusSaving, setStatusSaving] = useState(false)
   const [jabatanStatusSavingId, setJabatanStatusSavingId] = useState(null)
   const [showAddJabatanModal, setShowAddJabatanModal] = useState(false)
+  const [editingJabatanId, setEditingJabatanId] = useState(null)
   const [newJabatan, setNewJabatan] = useState({
     jabatan_id: '',
     lembaga_id: '',
@@ -24,10 +26,16 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
     tanggal_selesai: '',
     status: 'aktif'
   })
+  const [showEditOffcanvas, setShowEditOffcanvas] = useState(false)
+  const [editForm, setEditForm] = useState(initialProfilForm)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editFormLoading, setEditFormLoading] = useState(false)
 
   useEffect(() => {
     if (!isOpen) {
       setShowAddJabatanModal(false)
+      setShowEditOffcanvas(false)
+      setEditingJabatanId(null)
     }
     if (!isOpen || !pengurusId) {
       setDetail(null)
@@ -42,9 +50,18 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
         const u = res.data.user
         setDetail(u)
         const rawJabatan = Array.isArray(u.jabatan) ? u.jabatan : []
+        const isEmptyDate = (v) => {
+          if (v == null || v === '') return true
+          const s = String(v).trim()
+          return s === '' || s.startsWith('0000-00-00')
+        }
         const normalized = rawJabatan.map((j) => {
           const s = (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? '').toString().trim().toLowerCase()
-          return { ...j, jabatan_status: (s === 'aktif' || s === 'active') ? 'aktif' : 'nonaktif' }
+          let jabatanStatus = (s === 'aktif' || s === 'active') ? 'aktif' : 'nonaktif'
+          const tanggalSelesaiEmpty = isEmptyDate(j.tanggal_selesai)
+          const tanggalMulaiEmpty = isEmptyDate(j.tanggal_mulai)
+          if (tanggalSelesaiEmpty || tanggalMulaiEmpty) jabatanStatus = 'aktif'
+          return { ...j, jabatan_status: jabatanStatus }
         })
         setUserJabatan(normalized)
       } else {
@@ -101,7 +118,158 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
     }
   }
 
-  const handleAddJabatan = async () => {
+  const formatDateForInput = (v) => {
+    if (v == null || v === '' || String(v).trim().startsWith('0000-00-00')) return ''
+    const s = String(v).trim().slice(0, 10)
+    return s || ''
+  }
+
+  const openEditOffcanvas = () => {
+    if (!pengurusId) return
+    setShowEditOffcanvas(true)
+    setEditFormLoading(true)
+    profilAPI.getUser(pengurusId).then((res) => {
+      if (res.success && res.user) {
+        setEditForm(profilFormFromUser(res.user))
+      } else {
+        setEditForm(profilFormFromUser(detail))
+        if (!res.success) showNotification(res.message || 'Gagal memuat data profil', 'error')
+      }
+    }).catch(() => {
+      setEditForm(profilFormFromUser(detail))
+      showNotification('Gagal memuat data profil', 'error')
+    }).finally(() => setEditFormLoading(false))
+  }
+
+  const handleSaveEdit = async () => {
+    if (!pengurusId || !detail || editSaving) return
+    const nama = (editForm.nama || '').trim()
+    if (!nama) {
+      showNotification('Nama tidak boleh kosong', 'error')
+      return
+    }
+    setEditSaving(true)
+    try {
+      const { status, ...profilPayload } = editForm
+      const resProfil = await profilAPI.updateProfile({ user_id: pengurusId, ...profilPayload })
+      if (!resProfil.success) {
+        showNotification(resProfil.message || 'Gagal menyimpan profil', 'error')
+        setEditSaving(false)
+        return
+      }
+      const updateData = {
+        nama,
+        whatsapp: (editForm.whatsapp || '').trim(),
+        status: editForm.status,
+        roles: detail.roles || []
+      }
+      if (detail.id_user != null) updateData.email = (editForm.email || '').trim()
+      const resManage = await manageUsersAPI.update(pengurusId, updateData)
+      if (resManage.success) {
+        showNotification('Data pengurus berhasil diperbarui', 'success')
+        setShowEditOffcanvas(false)
+        const again = await manageUsersAPI.getById(pengurusId)
+        if (again.success && again.data?.user) {
+          setDetail(again.data.user)
+          const rawJabatan = Array.isArray(again.data.user.jabatan) ? again.data.user.jabatan : []
+          const isEmptyDate = (v) => { if (v == null || v === '') return true; const s = String(v).trim(); return s === '' || s.startsWith('0000-00-00') }
+          const normalized = rawJabatan.map((j) => {
+            const s = (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? '').toString().trim().toLowerCase()
+            let jabatanStatus = (s === 'aktif' || s === 'active') ? 'aktif' : 'nonaktif'
+            if (isEmptyDate(j.tanggal_selesai) || isEmptyDate(j.tanggal_mulai)) jabatanStatus = 'aktif'
+            return { ...j, jabatan_status: jabatanStatus }
+          })
+          setUserJabatan(normalized)
+        }
+        onSuccess?.()
+      } else {
+        showNotification(resManage.message || 'Gagal memperbarui status/WA', 'error')
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || err?.message || 'Gagal memperbarui data', 'error')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const handleSaveWhatsapp = async (newNumber) => {
+    if (!pengurusId || !detail) return
+    try {
+      const updateData = {
+        nama: (detail.nama || '').trim(),
+        whatsapp: (newNumber || '').trim(),
+        status: detail.status || 'active',
+        roles: detail.roles || []
+      }
+      if (detail.id_user != null) updateData.email = (detail.email ?? detail.email_user ?? '').trim()
+      const res = await manageUsersAPI.update(pengurusId, updateData)
+      if (res.success) {
+        showNotification('Nomor WhatsApp berhasil diubah', 'success')
+        const resProfil = await profilAPI.getUser(pengurusId)
+        if (resProfil.success && resProfil.user) setEditForm(profilFormFromUser(resProfil.user))
+        const again = await manageUsersAPI.getById(pengurusId)
+        if (again.success && again.data?.user) setDetail(again.data.user)
+        onSuccess?.()
+      } else {
+        showNotification(res.message || 'Gagal mengubah nomor', 'error')
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || err?.message || 'Gagal mengubah nomor', 'error')
+    }
+  }
+
+  const openEditJabatan = (j) => {
+    setNewJabatan({
+      jabatan_id: String(j.jabatan_id ?? ''),
+      lembaga_id: String(j.lembaga_id ?? ''),
+      tanggal_mulai: formatDateForInput(j.tanggal_mulai),
+      tanggal_selesai: formatDateForInput(j.tanggal_selesai),
+      status: (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? 'aktif').toString().trim().toLowerCase() === 'nonaktif' ? 'nonaktif' : 'aktif'
+    })
+    setEditingJabatanId(j.pengurus_jabatan_id)
+    setShowAddJabatanModal(true)
+  }
+
+  const openTambahJabatan = () => {
+    setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
+    setEditingJabatanId(null)
+    setShowAddJabatanModal(true)
+  }
+
+  const handleSaveJabatan = async () => {
+    if (editingJabatanId != null) {
+      try {
+        const res = await manageUsersAPI.updateJabatanStatus(pengurusId, editingJabatanId, {
+          status: newJabatan.status,
+          tanggal_mulai: newJabatan.tanggal_mulai ? newJabatan.tanggal_mulai.trim() : null,
+          tanggal_selesai: newJabatan.tanggal_selesai ? newJabatan.tanggal_selesai.trim() : null
+        })
+        if (res.success) {
+          const again = await manageUsersAPI.getById(pengurusId)
+          if (again.success && again.data?.user?.jabatan) {
+            const rawJabatan = again.data.user.jabatan
+            const isEmptyDate = (v) => { if (v == null || v === '') return true; const s = String(v).trim(); return s === '' || s.startsWith('0000-00-00') }
+            const normalized = rawJabatan.map((j) => {
+              const s = (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? '').toString().trim().toLowerCase()
+              let st = (s === 'aktif' || s === 'active') ? 'aktif' : 'nonaktif'
+              if (isEmptyDate(j.tanggal_selesai) || isEmptyDate(j.tanggal_mulai)) st = 'aktif'
+              return { ...j, jabatan_status: st }
+            })
+            setUserJabatan(normalized)
+          }
+          setShowAddJabatanModal(false)
+          setEditingJabatanId(null)
+          setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
+          showNotification('Jabatan berhasil diperbarui', 'success')
+          onSuccess?.()
+        } else {
+          showNotification(res.message || 'Gagal memperbarui jabatan', 'error')
+        }
+      } catch (err) {
+        showNotification(err?.response?.data?.message || err?.message || 'Gagal memperbarui jabatan', 'error')
+      }
+      return
+    }
     if (!pengurusId || !newJabatan.lembaga_id || !newJabatan.jabatan_id) {
       showNotification('Pilih lembaga dan jabatan', 'error')
       return
@@ -111,9 +279,18 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
       if (res.success) {
         const again = await manageUsersAPI.getById(pengurusId)
         if (again.success && again.data?.user?.jabatan) {
-          setUserJabatan(again.data.user.jabatan)
+          const rawJabatan = again.data.user.jabatan
+          const isEmptyDate = (v) => { if (v == null || v === '') return true; const s = String(v).trim(); return s === '' || s.startsWith('0000-00-00') }
+          const normalized = rawJabatan.map((j) => {
+            const s = (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? '').toString().trim().toLowerCase()
+            let st = (s === 'aktif' || s === 'active') ? 'aktif' : 'nonaktif'
+            if (isEmptyDate(j.tanggal_selesai) || isEmptyDate(j.tanggal_mulai)) st = 'aktif'
+            return { ...j, jabatan_status: st }
+          })
+          setUserJabatan(normalized)
         }
         setShowAddJabatanModal(false)
+        setEditingJabatanId(null)
         setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
         showNotification('Jabatan berhasil ditambahkan', 'success')
         onSuccess?.()
@@ -192,7 +369,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
   const content = (
     <AnimatePresence onExitComplete={() => setShowPortal(false)}>
       {isOpen && (
-        <>
+        <Fragment key="detail-pengurus-offcanvas">
       <motion.div
         key="detail-pengurus-backdrop"
         initial={{ opacity: 0 }}
@@ -209,18 +386,29 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
         transition={{ type: 'tween', duration: 0.2 }}
         className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white dark:bg-gray-800 shadow-xl z-[201] flex flex-col"
       >
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Detail Pengurus</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-            aria-label="Tutup"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0 gap-2">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 truncate min-w-0">Detail Pengurus</h3>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {pengurusId != null && detail && (
+              <button
+                type="button"
+                onClick={openEditOffcanvas}
+                className="px-3 py-1.5 text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+              >
+                Edit
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+              aria-label="Tutup"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -260,10 +448,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Jabatan</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
-                      setShowAddJabatanModal(true)
-                    }}
+                    onClick={openTambahJabatan}
                     className="text-xs px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
                   >
                     + Tambah Jabatan
@@ -273,17 +458,24 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   <p className="text-xs text-gray-500 dark:text-gray-400 py-2">Belum ada jabatan.</p>
                 ) : (
                   <ul className="space-y-2">
-                    {userJabatan.map((j) => {
+                    {userJabatan.map((j, idx) => {
                       const jabatanInfo = availableJabatan.find((x) => x.id === j.jabatan_id)
                       const rawStatus = (j.jabatan_status ?? j.jabatanStatus ?? j.status ?? '').toString().trim().toLowerCase()
                       const isJabatanAktif = rawStatus === 'aktif' || rawStatus === 'active'
                       const saving = Number(jabatanStatusSavingId) === Number(j.pengurus_jabatan_id)
+                      const listKey = j.pengurus_jabatan_id != null && j.pengurus_jabatan_id !== '' ? j.pengurus_jabatan_id : `jabatan-${j.jabatan_id ?? idx}-${idx}`
                       return (
                         <li
-                          key={j.pengurus_jabatan_id}
+                          key={listKey}
                           className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600"
                         >
-                          <span className="text-sm text-gray-800 dark:text-gray-200 min-w-0 flex-1">
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => openEditJabatan(j)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditJabatan(j) } }}
+                            className="text-sm text-gray-800 dark:text-gray-200 min-w-0 flex-1 cursor-pointer hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+                          >
                             {jabatanInfo ? jabatanInfo.nama : j.jabatan_nama || `Jabatan #${j.jabatan_id}`}
                             {j.lembaga_id && (
                               <span className="text-gray-500 dark:text-gray-400 ml-1">
@@ -291,7 +483,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                               </span>
                             )}
                           </span>
-                          <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                             <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                               {saving ? '...' : (isJabatanAktif ? 'Aktif' : 'Nonaktif')}
                             </span>
@@ -360,16 +552,59 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
           )}
         </div>
       </motion.div>
-        </>
+
+      {showEditOffcanvas && (
+        <motion.div
+          key="detail-pengurus-edit-panel"
+          initial={{ x: '100%' }}
+          animate={{ x: 0 }}
+          exit={{ x: '100%' }}
+          transition={{ type: 'tween', duration: 0.2 }}
+          className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white dark:bg-gray-800 shadow-xl z-[202] flex flex-col"
+        >
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">Edit Pengurus</h3>
+            <button
+              type="button"
+              onClick={() => setShowEditOffcanvas(false)}
+              className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+              aria-label="Tutup"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {editFormLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary-600 border-t-transparent" />
+              </div>
+            ) : (
+              <EditPengurusForm
+                formData={editForm}
+                setFormData={setEditForm}
+                onCancel={() => setShowEditOffcanvas(false)}
+                onSubmit={handleSaveEdit}
+                saving={editSaving}
+                onSaveWhatsapp={handleSaveWhatsapp}
+              />
+            )}
+          </div>
+        </motion.div>
+      )}
+        </Fragment>
       )}
 
       <Modal
+        key="detail-pengurus-add-jabatan-modal"
         isOpen={showAddJabatanModal}
         onClose={() => {
           setShowAddJabatanModal(false)
+          setEditingJabatanId(null)
           setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
         }}
-        title="Tambah Jabatan"
+        title={editingJabatanId != null ? 'Edit Jabatan' : 'Tambah Jabatan'}
         maxWidth="max-w-md"
       >
         <div className="p-6">
@@ -379,11 +614,12 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
               value={newJabatan.lembaga_id}
               onChange={(e) => setNewJabatan({ ...newJabatan, lembaga_id: e.target.value, jabatan_id: '' })}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-200"
+              disabled={editingJabatanId != null}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value="">-- Pilih Lembaga --</option>
-              {(lembagaList || []).map((lem) => (
-                <option key={lem.id} value={lem.id}>{lem.nama || lem.id}</option>
+              <option key="lembaga-placeholder" value="">-- Pilih Lembaga --</option>
+              {(lembagaList || []).map((lem, i) => (
+                <option key={lem.id != null && lem.id !== '' ? lem.id : `lembaga-${i}`} value={lem.id}>{lem.nama || lem.id}</option>
               ))}
             </select>
           </div>
@@ -392,21 +628,21 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
             <select
               value={newJabatan.jabatan_id}
               onChange={(e) => setNewJabatan({ ...newJabatan, jabatan_id: e.target.value })}
-              disabled={!newJabatan.lembaga_id}
+              disabled={editingJabatanId != null || !newJabatan.lembaga_id}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-200 disabled:opacity-50"
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value="">
+              <option key="jabatan-placeholder" value="">
                 {newJabatan.lembaga_id ? '-- Pilih Jabatan --' : '-- Pilih Lembaga dulu --'}
               </option>
               {availableJabatan
                 .filter(
                   (j) =>
                     (j.lembaga_id === newJabatan.lembaga_id || !j.lembaga_id) &&
-                    !userJabatan.some((uj) => uj.jabatan_id === j.id && uj.jabatan_status === 'aktif')
+                    (editingJabatanId != null ? true : !userJabatan.some((uj) => uj.jabatan_id === j.id && uj.jabatan_status === 'aktif'))
                 )
-                .map((j) => (
-                  <option key={j.id} value={j.id}>
+                .map((j, i) => (
+                  <option key={j.id != null && j.id !== '' ? j.id : `jabatan-opt-${i}`} value={j.id}>
                     {j.nama} {j.kategori ? `(${j.kategori})` : ''}
                   </option>
                 ))}
@@ -432,11 +668,23 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
               />
             </div>
           </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
+            <select
+              value={newJabatan.status}
+              onChange={(e) => setNewJabatan({ ...newJabatan, status: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-gray-200"
+            >
+              <option value="aktif">Aktif</option>
+              <option value="nonaktif">Nonaktif</option>
+            </select>
+          </div>
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
             <button
               type="button"
               onClick={() => {
                 setShowAddJabatanModal(false)
+                setEditingJabatanId(null)
                 setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
               }}
               className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -445,10 +693,10 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
             </button>
             <button
               type="button"
-              onClick={handleAddJabatan}
+              onClick={handleSaveJabatan}
               className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
             >
-              Tambah
+              {editingJabatanId != null ? 'Simpan' : 'Tambah'}
             </button>
           </div>
         </div>
