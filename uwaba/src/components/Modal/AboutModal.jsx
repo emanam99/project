@@ -2,9 +2,9 @@ import Modal from './Modal'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-const aboutContent = `# Tentang Aplikasi Uwaba - Sistem Pembayaran Pesantren
+const aboutContent = `# Tentang eBeddien - Digital Service Center
 
-Aplikasi **Uwaba** (Uang Wajib Bulanan) adalah sistem manajemen pembayaran yang dirancang khusus untuk mengelola pembayaran santri di Pesantren Salafiyah Al-Utsmani. Aplikasi ini menyediakan fitur-fitur komprehensif untuk mengelola berbagai jenis pembayaran, monitoring, dan pelaporan.
+**eBeddien** adalah Digital Service Center yang dirancang untuk mengelola pembayaran santri di Pesantren Salafiyah Al-Utsmani. Aplikasi ini menyediakan fitur-fitur komprehensif untuk mengelola berbagai jenis pembayaran, monitoring, dan pelaporan.
 
 ## Fitur Utama
 
@@ -13,9 +13,9 @@ Aplikasi **Uwaba** (Uang Wajib Bulanan) adalah sistem manajemen pembayaran yang 
 - **Grafik Visual**: Visualisasi data pembayaran per bulan, komposisi santri, dan tren pembayaran
 - **Kelompok Data**: Analisis data berdasarkan lembaga, tahun ajaran, atau keterangan
 - **Rekap Status Santri**: Overview status santri (Mukim, Khoriji, Boyong, dll)
-- **Quick Access**: Akses cepat ke Pembayaran Khusus dan Monitoring Uwaba
+- **Quick Access**: Akses cepat ke Pembayaran Khusus dan Monitoring Pembayaran
 
-### 💰 Sistem Pembayaran Uwaba
+### 💰 Sistem Pembayaran Bulanan
 - **Pembayaran Bulanan**: Kelola pembayaran uang wajib bulanan santri
 - **Tracking Per Bulan**: Monitor pembayaran per bulan dengan detail lengkap
 - **Status Pembayaran**: Tandai status lunas, belum lunas, atau belum bayar
@@ -37,7 +37,7 @@ Aplikasi **Uwaba** (Uang Wajib Bulanan) adalah sistem manajemen pembayaran yang 
 
 ### 📋 Laporan & Analisis
 - **Laporan Detail**: Generate laporan pembayaran yang komprehensif
-- **Multi-Tab Laporan**: Laporan untuk Tunggakan, Khusus, dan Uwaba
+- **Multi-Tab Laporan**: Laporan untuk Tunggakan, Khusus, dan Pembayaran Bulanan
 - **Filter Periode**: Filter berdasarkan tanggal, tahun ajaran, dan admin
 - **Export & Print**: Export laporan ke format PDF atau langsung print
 - **Summary Box**: Ringkasan total pembayaran dengan breakdown detail
@@ -76,7 +76,7 @@ Aplikasi ini dibangun menggunakan teknologi modern:
 Aplikasi memiliki 5 tab navigasi utama:
 
 1. **Dashboard** - Halaman utama dengan statistik dan monitoring
-2. **Uwaba** - Sistem pembayaran bulanan
+2. **Pembayaran Bulanan** - Sistem pembayaran syahriah
 3. **Tunggakan** - Sistem pembayaran tunggakan
 4. **Khusus** - Sistem pembayaran khusus
 5. **Laporan** - Halaman laporan dan analisis

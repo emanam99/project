@@ -80,8 +80,8 @@ export const showNotification = async (options) => {
   const {
     title,
     body,
-    icon = getGambarUrl('/icon/icon192.png'),
-    badge = getGambarUrl('/icon/icon128.png'),
+    icon = getGambarUrl('/icon/ebeddien192.png'),
+    badge = getGambarUrl('/icon/ebeddien128.png'),
     image,
     tag,
     requireInteraction = false,

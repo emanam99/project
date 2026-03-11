@@ -221,8 +221,8 @@ function Sidebar() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
-              src={getGambarUrl('/uwaba-1.png')}
-              alt="UWABA"
+              src={getGambarUrl('/icon/ebeddienlogoputih.png')}
+              alt="eBeddien"
               className="h-12 w-12 transform scale-150"
               style={{ objectFit: 'cover' }}
             />
@@ -232,8 +232,8 @@ function Sidebar() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
-              src={getGambarUrl('/uwaba-4.png')}
-              alt="UWABA"
+              src={getGambarUrl('/icon/ebeddientextputih.png')}
+              alt="eBeddien"
               className="h-12 w-25 transform scale-150"
               style={{ objectFit: 'cover' }}
             />

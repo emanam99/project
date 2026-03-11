@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 import { getGambarUrl } from '../../config/images'
 
-const APP_FULL_NAME = 'UWABA Al-Utsmani'
-const APP_DESCRIPTION = 'Sistem pembayaran digital untuk transaksi keuangan santri dan lembaga.'
+const APP_FULL_NAME = 'eBeddien'
+const APP_DESCRIPTION = 'Digital Service Center - transaksi keuangan santri dan lembaga.'
 
 export default function Tentang() {
   return (
@@ -10,7 +10,7 @@ export default function Tentang() {
       <div className="max-w-2xl mx-auto px-4 py-8 pb-24">
         <div className="text-center mb-8">
           <img
-            src={getGambarUrl('icon-web.png')}
+            src={getGambarUrl('/icon/ebeddian/icon192.png')}
             alt="Logo"
             className="w-20 h-20 mx-auto mb-4 rounded-2xl object-contain"
           />

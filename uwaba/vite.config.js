@@ -33,9 +33,9 @@ export default defineConfig(({ mode }) => {
         globIgnores: ['**/index.html'],
       },
       manifest: {
-        name: 'UWABA',
-        short_name: 'UWABA',
-        description: 'UWABA Al-Utsmani adalah sebuah sistem pembayaran digital yang dirancang untuk memudahkan transaksi keuangan secara aman, cepat, dan efisien. Aplikasi ini mendukung berbagai fitur pembayaran, pencatatan transaksi, serta pengelolaan keuangan yang terintegrasi, sehingga sangat cocok digunakan oleh individu maupun lembaga dalam mengelola aktivitas keuangan sehari-hari.',
+        name: 'eBeddien - Digital Service Center',
+        short_name: 'eBeddien',
+        description: 'eBeddien adalah Digital Service Center yang dirancang untuk memudahkan pengelolaan manajemen Pesantren Salafiyah Al-Utsmani. Aplikasi ini mendukung berbagai fitur pembayaran, pencatatan, serta pengelolaan keuangan yang terintegrasi.',
         theme_color: '#0d9488',
         background_color: '#f3f4f6',
         display: 'minimal-ui',
@@ -46,9 +46,9 @@ export default defineConfig(({ mode }) => {
         dir: 'ltr',
         categories: ['finance', 'productivity', 'utilities'],
         icons: [
-          { src: `${GAMBAR_BASE}/icon/icon128.png`, sizes: '128x128', type: 'image/png', purpose: 'any' },
-          { src: `${GAMBAR_BASE}/icon/icon192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: `${GAMBAR_BASE}/icon/icon512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+          { src: `${GAMBAR_BASE}/icon/ebeddien128.png`, sizes: '128x128', type: 'image/png', purpose: 'any' },
+          { src: `${GAMBAR_BASE}/icon/ebeddien192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: `${GAMBAR_BASE}/icon/ebeddien512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
         ],
         screenshots: [
           { src: `${GAMBAR_BASE}/ss/ss1.jpg`, sizes: '512x1024', type: 'image/jpeg' },
@@ -62,7 +62,7 @@ export default defineConfig(({ mode }) => {
         ],
         shortcuts: [
           { name: 'Dashboard', short_name: 'Dashboard', description: 'Pantau Perkembangan Pembayaran', url: '/', icons: [{ src: `${GAMBAR_BASE}/icon/dashboard.png`, sizes: '96x96', type: 'image/png' }] },
-          { name: 'UWABA', short_name: 'UWABA', description: 'Lihat riwayat pembayaran', url: '/uwaba', icons: [{ src: `${GAMBAR_BASE}/icon/uwaba.png`, sizes: '96x96', type: 'image/png' }] }
+          { name: 'Pembayaran', short_name: 'Pembayaran', description: 'Lihat riwayat pembayaran', url: '/uwaba', icons: [{ src: `${GAMBAR_BASE}/icon/ebeddien192.png`, sizes: '96x96', type: 'image/png' }] }
         ]
       },
       workbox: {

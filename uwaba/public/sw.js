@@ -207,8 +207,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'Anda memiliki notifikasi baru',
-    icon: data.icon || 'https://alutsmani.id/gambar/icon/icon192.png',
-    badge: data.badge || 'https://alutsmani.id/gambar/icon/icon128.png',
+    icon: data.icon || 'https://alutsmani.id/gambar/icon/ebeddien192.png',
+    badge: data.badge || 'https://alutsmani.id/gambar/icon/ebeddien128.png',
     tag: data.tag,
     data: data.data || {},
     requireInteraction: data.requireInteraction || false,
@@ -220,7 +220,7 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(
-      data.title || 'UWABA',
+      data.title || 'eBeddien',
       options
     )
   )

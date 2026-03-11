@@ -2,9 +2,9 @@ import Modal from './Modal'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-const tutorialContent = `# Tutorial Penggunaan Aplikasi Uwaba
+const tutorialContent = `# Tutorial Penggunaan eBeddien
 
-Panduan lengkap untuk menggunakan aplikasi Uwaba (Sistem Pembayaran Pesantren) dengan efektif.
+Panduan lengkap untuk menggunakan eBeddien (Digital Service Center) dengan efektif.
 
 ---
 
@@ -46,11 +46,11 @@ Dashboard adalah halaman utama yang menampilkan ringkasan penting dan statistik 
 - **Komposisi Santri**: Pie chart komposisi santri berdasarkan status
 - **Grafik Pembayaran Khusus**: Bar chart pembayaran khusus
 - **Grafik Tunggakan**: Bar chart data tunggakan
-- **Grafik Pembayaran Uwaba Per Hari**: Line chart 15 hari terakhir
+- **Grafik Pembayaran Per Hari**: Line chart 15 hari terakhir
 
 #### Quick Access
 - **Pembayaran Khusus**: Tombol cepat ke halaman Pembayaran Khusus
-- **Monitoring Uwaba**: Tombol cepat ke halaman Monitoring Uwaba
+- **Monitoring Pembayaran**: Tombol cepat ke halaman Monitoring Pembayaran
 
 ### Cara Menggunakan Dashboard
 1. Klik menu **"Dashboard"** di sidebar (desktop) atau bottom nav (mobile)
@@ -60,11 +60,11 @@ Dashboard adalah halaman utama yang menampilkan ringkasan penting dan statistik 
 
 ---
 
-## 💰 2. Uwaba (Pembayaran Bulanan)
+## 💰 2. Pembayaran Bulanan (Syahriah)
 
-Uwaba adalah sistem untuk mengelola pembayaran uang wajib bulanan santri.
+Sistem untuk mengelola pembayaran uang wajib bulanan santri.
 
-### Fitur Uwaba
+### Fitur Pembayaran Bulanan
 
 #### Manajemen Pembayaran Bulanan
 - **Tahun Ajaran**: Pilih tahun ajaran yang ingin dilihat
@@ -75,8 +75,8 @@ Uwaba adalah sistem untuk mengelola pembayaran uang wajib bulanan santri.
 - **Detail Per Bulan**: Lihat detail pembayaran untuk setiap bulan
 - **Riwayat Pembayaran**: Track semua pembayaran yang pernah dilakukan
 
-#### Cara Menggunakan Uwaba
-1. Klik menu **"Uwaba"** di navigasi
+#### Cara Menggunakan
+1. Klik menu **"Pembayaran"** / **"UWABA"** di navigasi
 2. Masukkan **NIS** (7 digit) di kolom pencarian
 3. Pilih **Tahun Ajaran** yang ingin dilihat
 4. Lihat rincian pembayaran per bulan:
@@ -86,7 +86,7 @@ Uwaba adalah sistem untuk mengelola pembayaran uang wajib bulanan santri.
 5. Klik item pembayaran untuk melihat detail dan menambah pembayaran baru
 6. Gunakan tombol **"Bayar"** untuk mencatat pembayaran baru
 
-#### Mencatat Pembayaran Uwaba
+#### Mencatat Pembayaran Bulanan
 1. Klik item bulan yang ingin dibayar
 2. Lihat riwayat pembayaran yang sudah ada
 3. Klik **"Tambah Pembayaran"**
@@ -142,7 +142,7 @@ Laporan adalah halaman untuk melihat dan export laporan pembayaran.
 ### Fitur Laporan
 
 - **Laporan Detail**: Generate laporan pembayaran yang komprehensif
-- **Multi-Tab Laporan**: Laporan untuk Tunggakan, Khusus, dan Uwaba
+- **Multi-Tab Laporan**: Laporan untuk Tunggakan, Khusus, dan Pembayaran Bulanan
 - **Filter Periode**: Filter berdasarkan tanggal dan tahun ajaran
 - **Export & Print**: Export laporan ke format PDF atau langsung print
 

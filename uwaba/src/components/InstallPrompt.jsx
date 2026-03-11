@@ -82,7 +82,7 @@ function InstallPrompt() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
             <div className="flex-1">
-              <p className="text-sm font-semibold">Install Aplikasi UWABA</p>
+              <p className="text-sm font-semibold">Install Aplikasi eBeddien</p>
               <p className="text-xs text-white/80">Akses lebih cepat dan mudah tanpa browser</p>
             </div>
           </div>

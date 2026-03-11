@@ -43,8 +43,8 @@ export const ExampleSendSimpleNotification = () => {
       await sendNotification({
         title: 'Notifikasi Test',
         body: 'Ini adalah contoh notifikasi PWA',
-        icon: '/gambar/icon/icon192.png',
-        badge: '/gambar/icon/icon128.png'
+        icon: '/gambar/icon/ebeddien192.png',
+        badge: '/gambar/icon/ebeddien128.png'
       })
     } catch (error) {
       console.error('Error:', error.message)
@@ -69,8 +69,8 @@ export const ExampleNotificationWithActions = () => {
       await sendNotification({
         title: 'Rencana Pengeluaran Baru',
         body: 'Ada rencana pengeluaran baru yang perlu disetujui',
-        icon: '/gambar/icon/icon192.png',
-        badge: '/gambar/icon/icon128.png',
+        icon: '/gambar/icon/ebeddien192.png',
+        badge: '/gambar/icon/ebeddien128.png',
         tag: 'rencana-pengeluaran',
         data: {
           url: '/pengeluaran',
@@ -80,7 +80,7 @@ export const ExampleNotificationWithActions = () => {
           {
             action: 'view',
             title: 'Lihat Detail',
-            icon: '/gambar/icon/icon128.png'
+            icon: '/gambar/icon/ebeddien128.png'
           },
           {
             action: 'dismiss',
@@ -112,8 +112,8 @@ export const ExampleNotificationWithImage = () => {
       await sendNotification({
         title: 'Pembayaran Berhasil',
         body: 'Pembayaran Anda telah berhasil diproses',
-        icon: '/gambar/icon/icon192.png',
-        badge: '/gambar/icon/icon128.png',
+        icon: '/gambar/icon/ebeddien192.png',
+        badge: '/gambar/icon/ebeddien128.png',
         image: '/gambar/ss/ss1.jpg',
         data: {
           url: '/pembayaran'
@@ -142,8 +142,8 @@ export const ExampleNotificationWithVibration = () => {
       await sendNotification({
         title: 'Peringatan Penting',
         body: 'Ada sesuatu yang memerlukan perhatian Anda',
-        icon: '/gambar/icon/icon192.png',
-        badge: '/gambar/icon/icon128.png',
+        icon: '/gambar/icon/ebeddien192.png',
+        badge: '/gambar/icon/ebeddien128.png',
         vibrate: [200, 100, 200, 100, 200, 100, 200],
         requireInteraction: true,
         data: {

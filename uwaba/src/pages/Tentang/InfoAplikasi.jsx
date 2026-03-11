@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom'
 import { APP_VERSION } from '../../config/version'
 import { getGambarUrl } from '../../config/images'
 
-const APP_NAME = 'UWABA Al-Utsmani'
+const APP_NAME = 'eBeddien'
+const APP_SUBTITLE = 'Digital Service Center'
 const DEVELOPER = 'Beddian IT'
 const currentYear = new Date().getFullYear()
 
@@ -11,13 +12,14 @@ export default function InfoAplikasi() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <div className="max-w-md mx-auto px-4 py-8 pb-24 flex flex-col items-center justify-center min-h-[70vh]">
         <img
-          src={getGambarUrl('icon-web.png')}
+          src={getGambarUrl('/icon/ebeddien192.png')}
           alt="Logo"
           className="w-24 h-24 mb-6 rounded-2xl object-contain shadow-lg"
         />
         <h1 className="text-xl font-bold text-primary-600 dark:text-primary-400 text-center">
           {APP_NAME}
         </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{APP_SUBTITLE}</p>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
           Versi {APP_VERSION}
         </p>

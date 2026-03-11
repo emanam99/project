@@ -59,7 +59,7 @@ function Login() {
         const allowedApps = user?.allowed_apps || []
         
         if (!allowedApps.includes('uwaba')) {
-          setError('Akses ditolak. Role Anda tidak memiliki izin untuk mengakses aplikasi UWABA.')
+          setError('Akses ditolak. Role Anda tidak memiliki izin untuk mengakses aplikasi eBeddien.')
           return
         }
         
@@ -142,8 +142,8 @@ function Login() {
             className="max-w-md"
           >
             <motion.img
-              src={getGambarUrl('/uwaba-4.png')}
-              alt="UWABA"
+              src={getGambarUrl('/icon/ebeddien192.png')}
+              alt="eBeddien"
               className="max-w-xs w-auto h-24 mb-6 drop-shadow-2xl object-contain"
               whileHover={{ scale: 1.05 }}
               transition={{ type: "spring", stiffness: 300 }}
@@ -203,12 +203,12 @@ function Login() {
             {/* Logo untuk mobile */}
             <div className="md:hidden text-center mb-6">
               <motion.img
-                src={getGambarUrl('/uwaba-4.png')}
-                alt="UWABA"
+                src={getGambarUrl('/icon/ebeddien192.png')}
+                alt="eBeddien"
                 className="max-w-[120px] w-auto h-16 mx-auto mb-3 object-contain"
                 whileHover={{ scale: 1.05 }}
               />
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Sistem Pembayaran Digital</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Digital Service Center</p>
               <div className="flex items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                 <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7a1 1 0 011-1h8a1 1 0 011 1v8a1 1 0 01-1 1H8a1 1 0 01-1-1V7z" />
