@@ -264,18 +264,18 @@ Barakallahu fiikum.`
       const ok = result && (result.success === true || (result.success !== false && !result.message))
       if (ok) {
         try {
+          const nomorPengirim = result?.senderPhoneNumber ?? result?.data?.senderPhoneNumber
           await chatAPI.saveChat({
             id_santri: (biodata?.nis != null && biodata.nis !== '') ? biodata.nis : (santriId || biodata?.id),
-            nama_santri: namaSantri,
             nomor_tujuan: nomorFormatted,
             pesan: message,
             page: 'uwaba',
             source: 'template',
             status_pengiriman: 'berhasil',
             nomor_aktif: true,
-            admin_pengirim: user?.nama || user?.id || 'admin',
-            nomor_uwaba: 'uwaba1',
-            via_wa: 'WA 1'
+            id_pengurus: user?.id ?? null,
+            nomor_uwaba: nomorPengirim || null,
+            via_wa: nomorPengirim ? `WA ${nomorPengirim}` : 'WA 1'
           })
         } catch (e) {
           console.error('Error saving chat log:', e)

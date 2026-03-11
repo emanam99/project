@@ -48,7 +48,7 @@ function handleChangeGeneric(setFormData, e) {
   }
 }
 
-export default function EditPengurusForm({ formData, setFormData, onCancel, onSubmit, saving, onSaveWhatsapp }) {
+export default function EditPengurusForm({ formData, setFormData, onCancel, onSubmit, saving, onSaveWhatsapp, formId, hideFooter }) {
   const [showGantiWa, setShowGantiWa] = useState(false)
   const [noWaBaru, setNoWaBaru] = useState('')
   const [savingWa, setSavingWa] = useState(false)
@@ -68,7 +68,7 @@ export default function EditPengurusForm({ formData, setFormData, onCancel, onSu
   }
 
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit() }} className="space-y-5 pb-4">
+    <form id={formId || undefined} onSubmit={(e) => { e.preventDefault(); onSubmit() }} className="space-y-5 pb-4">
       {/* Data Diri */}
       <section className="rounded-xl bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600 p-4">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Data Diri</h2>
@@ -343,14 +343,16 @@ export default function EditPengurusForm({ formData, setFormData, onCancel, onSu
         </div>
       </section>
 
-      <div className="flex gap-3 pt-2 sticky bottom-0 bg-white dark:bg-gray-800 py-2 border-t border-gray-200 dark:border-gray-700">
-        <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium">
-          Batal
-        </button>
-        <button type="submit" disabled={saving} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium disabled:opacity-50">
-          {saving ? 'Menyimpan...' : 'Simpan'}
-        </button>
-      </div>
+      {!hideFooter && (
+        <div className="flex gap-3 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+          <button type="button" onClick={onCancel} className="px-4 py-2.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+            Batal
+          </button>
+          <button type="submit" disabled={saving} className="px-4 py-2.5 text-sm font-medium bg-teal-600 text-white rounded-xl hover:bg-teal-700 disabled:opacity-50">
+            {saving ? 'Menyimpan...' : 'Simpan'}
+          </button>
+        </div>
+      )}
     </form>
   )
 }

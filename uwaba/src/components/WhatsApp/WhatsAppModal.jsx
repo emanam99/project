@@ -174,18 +174,18 @@ Lihat riwayat ${pageLabel}: ${publicLink}
       if (ok) {
         try {
           const user = JSON.parse(localStorage.getItem('user') || '{}')
-          const viaWaLabel = instance === 'uwaba2' ? 'WA 2' : instance === 'uwaba1' ? 'WA 1' : 'Manual'
+          const nomorPengirim = result?.senderPhoneNumber ?? result?.data?.senderPhoneNumber
+          const viaWaLabel = nomorPengirim ? `WA ${nomorPengirim}` : (instance === 'uwaba2' ? 'WA 2' : instance === 'uwaba1' ? 'WA 1' : 'Manual')
           await chatAPI.saveChat({
             id_santri: santriId,
-            nama_santri: namaSantri,
             nomor_tujuan: formattedNumber,
             pesan: messageToSend.trim(),
             page: page,
             source: isEditing ? 'edited' : 'template',
             status_pengiriman: 'berhasil',
             nomor_aktif: true,
-            admin_pengirim: user.nama || user.id || 'admin',
-            nomor_uwaba: instance,
+            id_pengurus: user?.id ?? null,
+            nomor_uwaba: nomorPengirim || instance,
             via_wa: viaWaLabel
           })
 
@@ -236,14 +236,13 @@ Lihat riwayat ${pageLabel}: ${publicLink}
       const user = JSON.parse(localStorage.getItem('user') || '{}')
       chatAPI.saveChat({
         id_santri: santriId,
-        nama_santri: namaSantri,
         nomor_tujuan: formattedNumber,
         pesan: messageToSend.trim(),
         page: page,
         source: isEditing ? 'edited' : 'manual',
         status_pengiriman: 'berhasil',
         nomor_aktif: true,
-        admin_pengirim: user.nama || user.id || 'admin',
+        id_pengurus: user?.id ?? null,
         nomor_uwaba: 'manual',
         via_wa: 'Manual'
       }).then(() => {
@@ -486,7 +485,7 @@ Lihat riwayat ${pageLabel}: ${publicLink}
                       </div>
                       {(chat.via_wa || chat.nomor_uwaba) && (
                         <div className="text-xs text-gray-500 mb-1">
-                          Via: {chat.via_wa || (chat.nomor_uwaba === 'uwaba2' ? 'WA 2' : chat.nomor_uwaba === 'manual' ? 'Manual' : 'WA 1')}
+                          Via: {chat.via_wa || (/^\d+$/.test(String(chat.nomor_uwaba || '')) ? `WA ${chat.nomor_uwaba}` : (chat.nomor_uwaba === 'uwaba2' ? 'WA 2' : chat.nomor_uwaba === 'manual' ? 'Manual' : 'WA 1'))}
                         </div>
                       )}
                       <div className="text-sm text-gray-600 mb-1">

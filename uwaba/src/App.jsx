@@ -100,7 +100,6 @@ const CetakKartuCashless = lazy(() => import('./pages/Cashless/CetakKartuCashles
 const RoleAkses = lazy(() => import('./pages/Settings/RoleAkses'))
 const Fitur = lazy(() => import('./pages/Settings/Fitur'))
 const TahunAjaranPage = lazy(() => import('./pages/Settings/TahunAjaran'))
-const RombelSantri = lazy(() => import('./pages/Settings/RombelSantri'))
 const DataSantri = lazy(() => import('./pages/Santri/DataSantri'))
 const DataLulusan = lazy(() => import('./pages/Lulusan/DataLulusan'))
 const Daerah = lazy(() => import('./pages/Domisili/Daerah'))
@@ -815,14 +814,6 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Rombel />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/rombel-santri" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <RombelSantri />
                 </Suspense>
               } 
             />

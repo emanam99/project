@@ -257,13 +257,16 @@ class AuthController
                     error_log("Error refreshing role info in verify: " . $e->getMessage());
                     // Continue with existing payload if refresh fails
                 }
-                // NIP dari tabel pengurus (user_id di token = pengurus.id untuk role pengurus)
+                // NIP dan id_pengurus dari tabel pengurus (user_id di token = pengurus.id untuk role pengurus)
                 try {
-                    $stmt = $this->getDb()->prepare("SELECT nip FROM pengurus WHERE id = ? LIMIT 1");
+                    $stmt = $this->getDb()->prepare("SELECT id, nip FROM pengurus WHERE id = ? LIMIT 1");
                     $stmt->execute([$userId]);
                     $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-                    if ($row && $row['nip'] !== null && $row['nip'] !== '') {
-                        $payload['pengurus'] = ['nip' => (string) $row['nip']];
+                    if ($row && !empty($row['id'])) {
+                        $payload['id_pengurus'] = (int) $row['id'];
+                        if (isset($row['nip']) && trim((string) $row['nip']) !== '') {
+                            $payload['pengurus'] = ['nip' => (string) $row['nip']];
+                        }
                     }
                 } catch (\Exception $e) {
                     // ignore

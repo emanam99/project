@@ -253,57 +253,71 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
     }
   }
 
-  if (!isOpen) return null
-
-  const labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
-  const inputClass = 'w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-teal-500'
+  const labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5'
+  const inputClass = 'w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-teal-500'
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 z-[10000]"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <motion.div
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'tween', duration: 0.25 }}
-        className="fixed top-0 right-0 bottom-0 w-full max-w-lg bg-white dark:bg-gray-800 shadow-xl z-[10001] flex flex-col"
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate pr-2">
-            Edit Santri — {santri?.nama || formData.nama || 'Santri'}
-          </h3>
-          <button
-            type="button"
+      {isOpen && (
+        <>
+          <motion.div
+            key="edit-santri-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[10000]"
             onClick={onClose}
-            className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400"
-            aria-label="Tutup"
+            aria-hidden="true"
+          />
+          <motion.div
+            key="edit-santri-panel"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'tween', duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-gray-50 dark:bg-gray-900 shadow-2xl z-[10001] flex flex-col rounded-l-2xl overflow-hidden border-l border-gray-200 dark:border-gray-700"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        {/* Header */}
+        <div className="flex-shrink-0 px-5 pt-5 pb-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Edit Santri</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{santri?.nama || formData.nama || 'Santri'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2.5 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              aria-label="Tutup"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
             {loading ? (
-              <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-teal-500 border-t-transparent" />
+              <div className="flex flex-col items-center justify-center py-16 gap-4">
+                <div className="animate-spin rounded-full h-11 w-11 border-2 border-teal-500 border-t-transparent" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">Memuat data...</p>
               </div>
             ) : (
               <>
                 {/* Section: Data Diri */}
-                <section>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 pb-1 border-b border-gray-200 dark:border-gray-600">
-                    Data Diri
-                  </h4>
+                <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Data Diri</h4>
+                  </div>
+                  <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2">
                       <label className={labelClass}>Nama</label>
@@ -338,13 +352,21 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       <input type="text" value={formData.no_wa_santri} onChange={(e) => handleChange('no_wa_santri', e.target.value)} className={inputClass} placeholder="08..." />
                     </div>
                   </div>
-                </section>
+                  </div>
+                </div>
 
                 {/* Section: Alamat */}
-                <section>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 pb-1 border-b border-gray-200 dark:border-gray-600">
-                    Alamat
-                  </h4>
+                <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Alamat</h4>
+                  </div>
+                  <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2">
                       <label className={labelClass}>Dusun</label>
@@ -379,13 +401,20 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       <input type="text" value={formData.kode_pos} onChange={(e) => handleChange('kode_pos', e.target.value)} className={inputClass} />
                     </div>
                   </div>
-                </section>
+                  </div>
+                </div>
 
-                {/* Section: Biodata Ayah (lengkap seperti Pendaftaran) */}
-                <section>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 pb-1 border-b border-gray-200 dark:border-gray-600">
-                    Biodata Ayah
-                  </h4>
+                {/* Section: Biodata Ayah */}
+                <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Biodata Ayah</h4>
+                  </div>
+                  <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2">
                       <label className={labelClass}>Nama Ayah</label>
@@ -432,13 +461,20 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       </>
                     )}
                   </div>
-                </section>
+                  </div>
+                </div>
 
-                {/* Section: Biodata Ibu (lengkap) */}
-                <section>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 pb-1 border-b border-gray-200 dark:border-gray-600">
-                    Biodata Ibu
-                  </h4>
+                {/* Section: Biodata Ibu */}
+                <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Biodata Ibu</h4>
+                  </div>
+                  <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2">
                       <label className={labelClass}>Nama Ibu</label>
@@ -485,13 +521,20 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       </>
                     )}
                   </div>
-                </section>
+                  </div>
+                </div>
 
-                {/* Section: Biodata Wali (lengkap) */}
-                <section>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 pb-1 border-b border-gray-200 dark:border-gray-600">
-                    Biodata Wali
-                  </h4>
+                {/* Section: Biodata Wali */}
+                <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Biodata Wali</h4>
+                  </div>
+                  <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelClass}>Hubungan Wali</label>
@@ -544,13 +587,20 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       </select>
                     </div>
                   </div>
-                </section>
+                  </div>
+                </div>
 
                 {/* Section: Status & Domisili */}
-                <section>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 pb-1 border-b border-gray-200 dark:border-gray-600">
-                    Status & Domisili
-                  </h4>
+                <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Status & Domisili</h4>
+                  </div>
+                  <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelClass}>Status Santri</label>
@@ -602,13 +652,20 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       </select>
                     </div>
                   </div>
-                </section>
+                  </div>
+                </div>
 
-                {/* Section: Pendidikan (LTTQ saja; diniyah/formal tidak di-edit di sini) */}
-                <section>
-                  <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 pb-1 border-b border-gray-200 dark:border-gray-600">
-                    Pendidikan (LTTQ)
-                  </h4>
+                {/* Section: Pendidikan (LTTQ) */}
+                <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
+                      <svg className="w-4 h-4 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Pendidikan (LTTQ)</h4>
+                  </div>
+                  <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelClass}>LTTQ</label>
@@ -628,29 +685,32 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       <input type="text" value={formData.kel_lttq} onChange={(e) => handleChange('kel_lttq', e.target.value)} className={inputClass} />
                     </div>
                   </div>
-                </section>
+                  </div>
+                </div>
               </>
             )}
           </div>
 
-          <div className="flex-shrink-0 p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex gap-2">
+          <div className="flex-shrink-0 px-5 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
+              className="flex-1 px-4 py-2.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={loading || saving}
-              className="flex-1 px-4 py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+              className="flex-1 px-4 py-2.5 text-sm font-medium bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
             >
               {saving ? 'Menyimpan...' : 'Simpan'}
             </button>
           </div>
         </form>
       </motion.div>
+        </>
+      )}
     </AnimatePresence>
   )
 }

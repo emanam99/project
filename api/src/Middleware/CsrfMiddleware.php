@@ -53,6 +53,9 @@ class CsrfMiddleware implements MiddlewareInterface
         'api/payment-transaction/',         // PUT/POST cancel, update dilindungi Bearer
         'api/wa/check',   // POST cek nomor WA — dilindungi Bearer (fetch di frontend tanpa CSRF)
         'api/wa/send',    // POST kirim WA — dilindungi Bearer
+        'api/wa/edit-message', // POST edit pesan WA — dilindungi Bearer
+        'api/wa/incoming', // POST webhook pesan masuk dari server WA (tanpa session browser)
+        'api/wa/message-status', // POST update status pesan (sent/delivered/read) dari server WA
     ];
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface

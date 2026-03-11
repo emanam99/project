@@ -31,6 +31,25 @@ class AuthControllerV2
     }
 
     /**
+     * Jalankan callback dengan session timezone Indonesia (Asia/Jakarta) untuk token expires_at.
+     * Setelah selesai, timezone dikembalikan ke nilai sebelumnya.
+     */
+    private function withIndonesiaTimezone(callable $fn)
+    {
+        $prev = null;
+        try {
+            $res = $this->db->query("SELECT @@session.time_zone");
+            $prev = $res ? $res->fetchColumn() : null;
+            $this->db->exec("SET SESSION time_zone = 'Asia/Jakarta'");
+            return $fn();
+        } finally {
+            if ($prev !== null && $prev !== false && $prev !== '') {
+                $this->db->exec("SET SESSION time_zone = " . $this->db->quote($prev));
+            }
+        }
+    }
+
+    /**
      * Cek daftar: id_pengurus, nik, no_wa.
      * Hanya cek: ID pengurus ada dan belum punya user. Tidak validasi NIK/no_wa (banyak NIK tidak valid).
      * Return: sudah terdaftar di users atau belum; jika belum, return nama & no_wa untuk konfirmasi.
@@ -150,10 +169,10 @@ class AuthControllerV2
 
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $expiresAt = date('Y-m-d H:i:s', time() + 300); // 5 menit
-
-            $ins = $this->db->prepare("INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, 'pengurus', ?, ?, ?)");
-            $ins->execute([$tokenHash, $idPengurusResolved, $expiresAt, $noWa]);
+            $this->withIndonesiaTimezone(function () use ($tokenHash, $idPengurusResolved, $noWa) {
+                $ins = $this->db->prepare("INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, 'pengurus', ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)");
+                $ins->execute([$tokenHash, $idPengurusResolved, $noWa]);
+            });
 
             $config = require __DIR__ . '/../../config.php';
             $baseUrl = $this->getFrontendBaseUrl($request, $config);
@@ -169,6 +188,13 @@ class AuthControllerV2
                     'success' => false,
                     'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Coba lagi nanti.'),
                 ], 502);
+            }
+            if (!empty($sendResult['messageId'])) {
+                try {
+                    $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = ? WHERE token_hash = ?")->execute([trim($sendResult['messageId']), $tokenHash]);
+                } catch (\Throwable $e) {
+                    // Kolom wa_message_id mungkin belum ada sebelum migrasi
+                }
             }
 
             return $this->json($response, [
@@ -254,6 +280,7 @@ class AuthControllerV2
             $expiresAt = date('Y-m-d H:i:s', time() + 900);
             $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)");
             $ins->execute([$userId, $tokenHash, $expiresAt]);
+            $tokenId = (int) $this->db->lastInsertId();
 
             $config = require __DIR__ . '/../../config.php';
             $baseUrl = $this->getFrontendBaseUrl($request, $config);
@@ -263,6 +290,10 @@ class AuthControllerV2
             $sendResult = WhatsAppService::sendMessage($noWaDisplay, $message, null, $logContext);
             if (!$sendResult['success']) {
                 return $this->json($response, ['success' => false, 'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Coba lagi nanti.')], 502);
+            }
+            if ($tokenId > 0 && !empty($sendResult['messageId'])) {
+                $nomor62 = WhatsAppService::formatPhoneNumber($noWaDisplay);
+                $this->db->prepare("UPDATE user___password_reset_tokens SET wa_message_id = ?, nomor_tujuan = ? WHERE id = ?")->execute([trim($sendResult['messageId']), $nomor62, $tokenId]);
             }
             AuditLogger::log((string)$userId, 'request_ubah_password', ['sumber' => 'lupa_password'], $this->getClientIp($request), true);
             return $this->json($response, ['success' => true, 'message' => 'Link buat password baru telah dikirim ke WhatsApp Anda. Cek nomor yang terdaftar. Link aktif 15 menit.'], 200);
@@ -284,16 +315,35 @@ class AuthControllerV2
             }
 
             $tokenHash = hash('sha256', $token);
-            $stmt = $this->db->prepare("
-                SELECT st.id, st.entity_id, p.nama
-                FROM user___setup_tokens st
-                INNER JOIN pengurus p ON st.entity_type = 'pengurus' AND p.id = st.entity_id
-                WHERE st.token_hash = ? AND st.expires_at > NOW()
-            ");
-            $stmt->execute([$tokenHash]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
+                $stmt = $this->db->prepare("
+                    SELECT st.id, st.entity_id, p.nama
+                    FROM user___setup_tokens st
+                    INNER JOIN pengurus p ON st.entity_type = 'pengurus' AND p.id = st.entity_id
+                    WHERE st.token_hash = ? AND st.expires_at > NOW()
+                ");
+                $stmt->execute([$tokenHash]);
+                return $stmt->fetch(\PDO::FETCH_ASSOC);
+            });
 
             if (!$row) {
+                try {
+                    $stmtInv = $this->db->prepare("SELECT id, wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?");
+                    $stmtInv->execute([$tokenHash]);
+                    $inv = $stmtInv->fetch(\PDO::FETCH_ASSOC);
+                    if ($inv && !empty($inv['wa_message_id']) && !empty($inv['no_wa'])) {
+                        $isExpired = $this->withIndonesiaTimezone(function () use ($inv) {
+                            $r = $this->db->prepare("SELECT 1 FROM user___setup_tokens WHERE id = ? AND expires_at <= NOW()");
+                            $r->execute([$inv['id']]);
+                            return $r->fetch() !== false;
+                        });
+                        if ($isExpired) {
+                            $this->editWaMessageTokenInvalidated($inv['no_wa'], $inv['wa_message_id'], 'kadaluarsa', '🔒 Verifikasi Daftar UWABA');
+                            $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = NULL WHERE id = ?")->execute([$inv['id']]);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                }
                 return $this->json($response, ['success' => true, 'valid' => false], 200);
             }
 
@@ -334,14 +384,16 @@ class AuthControllerV2
             }
 
             $tokenHash = hash('sha256', $token);
-            $stmt = $this->db->prepare("
-                SELECT st.id, st.entity_id, st.no_wa
-                FROM user___setup_tokens st
-                INNER JOIN pengurus p ON st.entity_type = 'pengurus' AND p.id = st.entity_id AND p.id_user IS NULL
-                WHERE st.token_hash = ? AND st.expires_at > NOW()
-            ");
-            $stmt->execute([$tokenHash]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
+                $stmt = $this->db->prepare("
+                    SELECT st.id, st.entity_id, st.no_wa
+                    FROM user___setup_tokens st
+                    INNER JOIN pengurus p ON st.entity_type = 'pengurus' AND p.id = st.entity_id AND p.id_user IS NULL
+                    WHERE st.token_hash = ? AND st.expires_at > NOW()
+                ");
+                $stmt->execute([$tokenHash]);
+                return $stmt->fetch(\PDO::FETCH_ASSOC);
+            });
             if (!$row) {
                 return $this->json($response, ['success' => false, 'message' => 'Token tidak valid atau kadaluarsa'], 400);
             }
@@ -375,6 +427,15 @@ class AuthControllerV2
             $this->db->prepare("INSERT INTO user___password_history (user_id, password_hash) VALUES (?, ?)")->execute([$userId, $passwordHash]);
             $this->db->prepare("UPDATE users SET no_wa_verified_at = NOW() WHERE id = ?")->execute([$userId]);
             $this->db->prepare("UPDATE pengurus SET id_user = ? WHERE id = ?")->execute([$userId, $idPengurus]);
+            try {
+                $stmtWa = $this->db->prepare("SELECT wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?");
+                $stmtWa->execute([$tokenHash]);
+                $waRow = $stmtWa->fetch(\PDO::FETCH_ASSOC);
+                if ($waRow && !empty($waRow['wa_message_id']) && !empty($waRow['no_wa'])) {
+                    $this->editWaMessageTokenInvalidated($waRow['no_wa'], $waRow['wa_message_id'], 'dipakai', '🔒 Verifikasi Daftar UWABA');
+                }
+            } catch (\Throwable $e) {
+            }
             $this->db->prepare("DELETE FROM user___setup_tokens WHERE token_hash = ?")->execute([$tokenHash]);
             AuditLogger::log((string)$userId, 'setup_akun', ['username' => $username], $this->getClientIp($request), true);
 
@@ -496,10 +557,10 @@ class AuthControllerV2
 
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $expiresAt = date('Y-m-d H:i:s', time() + 300);
-
-            $ins = $this->db->prepare("INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, 'santri', ?, ?, ?)");
-            $ins->execute([$tokenHash, $santriId, $expiresAt, $noWa]);
+            $this->withIndonesiaTimezone(function () use ($tokenHash, $santriId, $noWa) {
+                $ins = $this->db->prepare("INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, 'santri', ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)");
+                $ins->execute([$tokenHash, $santriId, $noWa]);
+            });
 
             $config = require __DIR__ . '/../../config.php';
             $baseUrl = $this->getMybeddianFrontendBaseUrl($request, $config);
@@ -515,6 +576,12 @@ class AuthControllerV2
                     'success' => false,
                     'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Coba lagi nanti.'),
                 ], 502);
+            }
+            if (!empty($sendResult['messageId'])) {
+                try {
+                    $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = ? WHERE token_hash = ?")->execute([trim($sendResult['messageId']), $tokenHash]);
+                } catch (\Throwable $e) {
+                }
             }
 
             return $this->json($response, [
@@ -539,16 +606,35 @@ class AuthControllerV2
             }
 
             $tokenHash = hash('sha256', $token);
-            $stmt = $this->db->prepare("
-                SELECT st.id, st.entity_id, s.nama
-                FROM user___setup_tokens st
-                INNER JOIN santri s ON st.entity_type = 'santri' AND s.id = st.entity_id
-                WHERE st.token_hash = ? AND st.expires_at > NOW()
-            ");
-            $stmt->execute([$tokenHash]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
+                $stmt = $this->db->prepare("
+                    SELECT st.id, st.entity_id, s.nama
+                    FROM user___setup_tokens st
+                    INNER JOIN santri s ON st.entity_type = 'santri' AND s.id = st.entity_id
+                    WHERE st.token_hash = ? AND st.expires_at > NOW()
+                ");
+                $stmt->execute([$tokenHash]);
+                return $stmt->fetch(\PDO::FETCH_ASSOC);
+            });
 
             if (!$row) {
+                try {
+                    $stmtInv = $this->db->prepare("SELECT id, wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?");
+                    $stmtInv->execute([$tokenHash]);
+                    $inv = $stmtInv->fetch(\PDO::FETCH_ASSOC);
+                    if ($inv && !empty($inv['wa_message_id']) && !empty($inv['no_wa'])) {
+                        $isExpired = $this->withIndonesiaTimezone(function () use ($inv) {
+                            $r = $this->db->prepare("SELECT 1 FROM user___setup_tokens WHERE id = ? AND expires_at <= NOW()");
+                            $r->execute([$inv['id']]);
+                            return $r->fetch() !== false;
+                        });
+                        if ($isExpired) {
+                            $this->editWaMessageTokenInvalidated($inv['no_wa'], $inv['wa_message_id'], 'kadaluarsa', '🔒 Verifikasi Daftar Mybeddian');
+                            $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = NULL WHERE id = ?")->execute([$inv['id']]);
+                        }
+                    }
+                } catch (\Throwable $e) {
+                }
                 return $this->json($response, ['success' => true, 'valid' => false], 200);
             }
 
@@ -588,14 +674,16 @@ class AuthControllerV2
             }
 
             $tokenHash = hash('sha256', $token);
-            $stmt = $this->db->prepare("
-                SELECT st.id, st.entity_id, st.no_wa
-                FROM user___setup_tokens st
-                INNER JOIN santri s ON st.entity_type = 'santri' AND s.id = st.entity_id AND s.id_user IS NULL
-                WHERE st.token_hash = ? AND st.expires_at > NOW()
-            ");
-            $stmt->execute([$tokenHash]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
+                $stmt = $this->db->prepare("
+                    SELECT st.id, st.entity_id, st.no_wa
+                    FROM user___setup_tokens st
+                    INNER JOIN santri s ON st.entity_type = 'santri' AND s.id = st.entity_id AND s.id_user IS NULL
+                    WHERE st.token_hash = ? AND st.expires_at > NOW()
+                ");
+                $stmt->execute([$tokenHash]);
+                return $stmt->fetch(\PDO::FETCH_ASSOC);
+            });
             if (!$row) {
                 return $this->json($response, ['success' => false, 'message' => 'Token tidak valid atau kadaluarsa'], 400);
             }
@@ -629,6 +717,15 @@ class AuthControllerV2
             $this->db->prepare("INSERT INTO user___password_history (user_id, password_hash) VALUES (?, ?)")->execute([$userId, $passwordHash]);
             $this->db->prepare("UPDATE users SET no_wa_verified_at = NOW() WHERE id = ?")->execute([$userId]);
             $this->db->prepare("UPDATE santri SET id_user = ? WHERE id = ?")->execute([$userId, $idSantri]);
+            try {
+                $stmtWa = $this->db->prepare("SELECT wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?");
+                $stmtWa->execute([$tokenHash]);
+                $waRow = $stmtWa->fetch(\PDO::FETCH_ASSOC);
+                if ($waRow && !empty($waRow['wa_message_id']) && !empty($waRow['no_wa'])) {
+                    $this->editWaMessageTokenInvalidated($waRow['no_wa'], $waRow['wa_message_id'], 'dipakai', '🔒 Verifikasi Daftar Mybeddian');
+                }
+            } catch (\Throwable $e) {
+            }
             $this->db->prepare("DELETE FROM user___setup_tokens WHERE token_hash = ?")->execute([$tokenHash]);
 
             AuditLogger::log((string)$userId, 'setup_akun_santri', ['username' => $username, 'id_santri' => $idSantri], $this->getClientIp($request), true);
@@ -1333,6 +1430,7 @@ class AuthControllerV2
             $expiresAt = date('Y-m-d H:i:s', time() + 900); // 15 menit
             $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)");
             $ins->execute([$userId, $tokenHash, $expiresAt]);
+            $tokenId = (int) $this->db->lastInsertId();
             $config = require __DIR__ . '/../../config.php';
             $baseUrl = $this->getFrontendBaseUrl($request, $config);
             $link = $baseUrl . '/ubah-password?token=' . urlencode($plainToken);
@@ -1342,6 +1440,10 @@ class AuthControllerV2
             $sendResult = WhatsAppService::sendMessage($noWaDisplay, $message, null, $logContext);
             if (!$sendResult['success']) {
                 return $this->json($response, ['success' => false, 'message' => 'Gagal mengirim link: ' . ($sendResult['message'] ?? '')], 502);
+            }
+            if ($tokenId > 0 && !empty($sendResult['messageId'])) {
+                $nomor62 = WhatsAppService::formatPhoneNumber($noWaDisplay);
+                $this->db->prepare("UPDATE user___password_reset_tokens SET wa_message_id = ?, nomor_tujuan = ? WHERE id = ?")->execute([trim($sendResult['messageId']), $nomor62, $tokenId]);
             }
             AuditLogger::log((string)$userId, 'request_ubah_password', [], $this->getClientIp($request), true);
             return $this->json($response, ['success' => true, 'message' => 'Link ubah password telah dikirim ke WhatsApp Anda.'], 200);
@@ -1372,6 +1474,14 @@ class AuthControllerV2
             $stmt->execute([$tokenHash]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
+                $stmtInvalid = $this->db->prepare("SELECT id, wa_message_id, nomor_tujuan, used_at FROM user___password_reset_tokens WHERE token_hash = ?");
+                $stmtInvalid->execute([$tokenHash]);
+                $inv = $stmtInvalid->fetch(\PDO::FETCH_ASSOC);
+                if ($inv && !empty($inv['wa_message_id']) && !empty($inv['nomor_tujuan'])) {
+                    $reason = !empty($inv['used_at']) ? 'dipakai' : 'kadaluarsa';
+                    $this->editWaMessageTokenInvalidated($inv['nomor_tujuan'], $inv['wa_message_id'], $reason, 'Link ubah password');
+                    $this->db->prepare("UPDATE user___password_reset_tokens SET wa_message_id = NULL, nomor_tujuan = NULL WHERE id = ?")->execute([$inv['id']]);
+                }
                 return $this->json($response, ['success' => true, 'valid' => false], 200);
             }
             return $this->json($response, ['success' => true, 'valid' => true, 'nama' => $row['nama'] ?: $row['username']], 200);
@@ -1436,6 +1546,13 @@ class AuthControllerV2
             $this->db->prepare("UPDATE users SET password = ?, no_wa_verified_at = NOW() WHERE id = ?")->execute([$hash, $userId]);
             $this->db->prepare("INSERT INTO user___password_history (user_id, password_hash) VALUES (?, ?)")->execute([$userId, $hash]);
             $this->db->prepare("UPDATE user___password_reset_tokens SET used_at = NOW() WHERE id = ?")->execute([$row['id']]);
+            $stmtWa = $this->db->prepare("SELECT wa_message_id, nomor_tujuan FROM user___password_reset_tokens WHERE id = ?");
+            $stmtWa->execute([$row['id']]);
+            $waRow = $stmtWa->fetch(\PDO::FETCH_ASSOC);
+            if ($waRow && !empty($waRow['wa_message_id']) && !empty($waRow['nomor_tujuan'])) {
+                $this->editWaMessageTokenInvalidated($waRow['nomor_tujuan'], $waRow['wa_message_id'], 'dipakai', 'Link ubah password');
+                $this->db->prepare("UPDATE user___password_reset_tokens SET wa_message_id = NULL, nomor_tujuan = NULL WHERE id = ?")->execute([$row['id']]);
+            }
             AuditLogger::log((string)$userId, 'password_changed_reset', [], $this->getClientIp($request), true);
             return $this->json($response, ['success' => true, 'message' => 'Password berhasil diubah. Silakan login.'], 200);
         } catch (\Exception $e) {
@@ -1686,6 +1803,39 @@ class AuthControllerV2
         $keepIds = array_slice($allIds, 0, $limit);
         $placeholders = implode(',', array_fill(0, count($keepIds), '?'));
         $this->db->prepare("DELETE FROM user___sessions WHERE user_id = ? AND id NOT IN ($placeholders)")->execute(array_merge([$userId], $keepIds));
+    }
+
+    /**
+     * Edit pesan WA link keamanan jadi keterangan singkat (token kadaluarsa/dipakai).
+     * Dipanggil saat token sudah dipakai atau kadaluarsa agar link di WA tidak lagi aktif.
+     * Gagal edit (mis. batas 15 menit terlewati) tidak melempar; hanya log.
+     *
+     * @param string $nomorTujuan Nomor WA (62xxx)
+     * @param string $waMessageId wa_message_id dari tabel token
+     * @param string $reason 'kadaluarsa' atau 'dipakai'
+     * @param string $judul Judul yang tetap ditampilkan (mis. "🔒 Verifikasi Daftar UWABA"). Kosong = hanya "> Token sudah ..."
+     */
+    private function editWaMessageTokenInvalidated(string $nomorTujuan, string $waMessageId, string $reason, string $judul = ''): void
+    {
+        $nomor = WhatsAppService::formatPhoneNumber($nomorTujuan);
+        if (strlen($nomor) < 10 || $waMessageId === '') {
+            return;
+        }
+        $keterangan = $reason === 'dipakai' ? '> Token sudah dipakai' : '> Token sudah kadaluarsa';
+        $label = $judul !== '' ? trim($judul) . "\n\n" . $keterangan : $keterangan;
+        try {
+            $result = WhatsAppService::editMessage($nomor, $waMessageId, $label);
+            if (!$result['success']) {
+                error_log('AuthControllerV2::editWaMessageTokenInvalidated: ' . ($result['message'] ?? 'edit gagal'));
+                return;
+            }
+            try {
+                $this->db->prepare("UPDATE whatsapp SET isi_pesan = ? WHERE wa_message_id = ? AND (arah = 'keluar' OR arah IS NULL)")->execute([$label, $waMessageId]);
+            } catch (\Throwable $e) {
+            }
+        } catch (\Throwable $e) {
+            error_log('AuthControllerV2::editWaMessageTokenInvalidated: ' . $e->getMessage());
+        }
     }
 
     /**

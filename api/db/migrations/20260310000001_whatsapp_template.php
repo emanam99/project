@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Phinx\Migration\AbstractMigration;
 
 /**
- * Tabel whatsapp_template: template pesan WA dengan kategori.
+ * Tabel template WA. Nama akhir: whatsapp___template (setelah migration rename).
  * Untuk fitur chat (pendaftaran, uwaba, dll) — bisa dipakai di mana saja.
  */
 final class WhatsappTemplate extends AbstractMigration

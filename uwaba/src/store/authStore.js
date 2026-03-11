@@ -21,8 +21,10 @@ const decodeJWT = (token) => {
 
 function normalizeUserFromPayload(payload) {
   if (!payload) return null
+  const userId = payload.user_id || payload.id
   return {
-    id: payload.user_id || payload.id,
+    id: userId,
+    id_pengurus: payload.id_pengurus ?? (payload.user_id != null ? payload.user_id : null),
     nama: payload.user_name || payload.nama,
     username: payload.username || null,
     nip: payload.pengurus?.nip ?? null,

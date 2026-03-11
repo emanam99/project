@@ -7,7 +7,7 @@ export const EXPORT_STORAGE_KEY = 'dataSantriExportColumns'
 export const EXPORT_COLUMNS = [
   { key: 'no', label: 'No' },
   { key: 'id', label: 'ID' },
-  { key: 'nis', label: 'NIS' },
+  { key: 'nis', label: 'NIS', required: true },
   { key: 'nama', label: 'Nama' },
   { key: 'nik', label: 'NIK' },
   { key: 'gender', label: 'Jenis Kelamin' },
@@ -65,9 +65,12 @@ export function getDefaultExportColumns() {
   }, {})
 }
 
+const REQUIRED_KEYS = EXPORT_COLUMNS.filter((c) => c.required).map((c) => c.key)
+
 export function getExportColumnsSelection() {
   const defaultSel = getDefaultExportColumns()
   const stored = getStoredExportColumns()
-  if (!stored) return defaultSel
-  return { ...defaultSel, ...stored }
+  const merged = !stored ? defaultSel : { ...defaultSel, ...stored }
+  REQUIRED_KEYS.forEach((k) => { merged[k] = true })
+  return merged
 }

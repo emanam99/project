@@ -19,7 +19,10 @@ export default function ExportSantriOffcanvas({ isOpen, onClose, filteredData = 
     }
   }, [isOpen])
 
+  const isRequired = (key) => EXPORT_COLUMNS.find((c) => c.key === key)?.required === true
+
   const handleToggle = (key) => {
+    if (isRequired(key)) return
     const next = { ...selected, [key]: !selected[key] }
     setSelected(next)
     setStoredExportColumns(next)
@@ -27,7 +30,9 @@ export default function ExportSantriOffcanvas({ isOpen, onClose, filteredData = 
 
   const handleSelectAll = (checked) => {
     const next = getDefaultExportColumns()
-    EXPORT_COLUMNS.forEach(({ key }) => { next[key] = checked })
+    EXPORT_COLUMNS.forEach(({ key }) => {
+      next[key] = isRequired(key) ? true : checked
+    })
     setSelected(next)
     setStoredExportColumns(next)
   }
@@ -123,17 +128,22 @@ export default function ExportSantriOffcanvas({ isOpen, onClose, filteredData = 
             </button>
           </div>
           <ul className="space-y-2">
-            {EXPORT_COLUMNS.map(({ key, label }) => (
+            {EXPORT_COLUMNS.map(({ key, label, required }) => (
               <li key={key} className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   id={`export-santri-${key}`}
                   checked={!!selected[key]}
                   onChange={() => handleToggle(key)}
-                  className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                  disabled={!!required}
+                  className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 disabled:opacity-70 disabled:cursor-not-allowed"
                 />
-                <label htmlFor={`export-santri-${key}`} className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <label
+                  htmlFor={`export-santri-${key}`}
+                  className={`text-sm text-gray-700 dark:text-gray-300 ${required ? 'cursor-default' : 'cursor-pointer'}`}
+                >
                   {label}
+                  {required && <span className="text-gray-400 dark:text-gray-500 ml-1">(wajib)</span>}
                 </label>
               </li>
             ))}

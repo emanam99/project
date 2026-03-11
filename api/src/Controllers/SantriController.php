@@ -669,51 +669,6 @@ class SantriController
         }
     }
 
-    /**
-     * GET /api/santri/distinct-kelas?mode=diniyah|formal
-     * List rombel (lembaga___rombel) yang punya santri, dengan jumlah santri (id_diniyah atau id_formal).
-     */
-    public function getDistinctKelas(Request $request, Response $response): Response
-    {
-        try {
-            $params = $request->getQueryParams();
-            $mode = isset($params['mode']) ? strtolower(trim($params['mode'])) : 'diniyah';
-            if (!in_array($mode, ['diniyah', 'formal'], true)) {
-                $mode = 'diniyah';
-            }
-
-            if ($mode === 'diniyah') {
-                $sql = "SELECT r.id AS id_rombel, r.lembaga_id AS diniyah, r.kelas AS kelas_diniyah, r.kel AS kel_diniyah, COUNT(s.id) AS jumlah
-                    FROM lembaga___rombel r
-                    INNER JOIN santri s ON s.id_diniyah = r.id
-                    GROUP BY r.id, r.lembaga_id, r.kelas, r.kel
-                    ORDER BY r.lembaga_id, r.kelas, r.kel";
-            } else {
-                $sql = "SELECT r.id AS id_rombel, r.lembaga_id AS formal, r.kelas AS kelas_formal, r.kel AS kel_formal, COUNT(s.id) AS jumlah
-                    FROM lembaga___rombel r
-                    INNER JOIN santri s ON s.id_formal = r.id
-                    GROUP BY r.id, r.lembaga_id, r.kelas, r.kel
-                    ORDER BY r.lembaga_id, r.kelas, r.kel";
-            }
-
-            $stmt = $this->db->query($sql);
-            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'data' => $data,
-                'mode' => $mode
-            ], 200);
-        } catch (\Exception $e) {
-            error_log("getDistinctKelas error: " . $e->getMessage());
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Gagal mengambil data kelas santri',
-                'data' => []
-            ], 500);
-        }
-    }
-
     private function jsonResponse(Response $response, array $data, int $statusCode): Response
     {
         $response->getBody()->write(json_encode($data));

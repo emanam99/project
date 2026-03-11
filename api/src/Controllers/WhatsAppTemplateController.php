@@ -7,7 +7,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
- * CRUD template pesan WhatsApp (whatsapp_template).
+ * CRUD template pesan WhatsApp (tabel whatsapp___template).
  * List: role yang bisa akses chat (admin_uwaba, petugas_uwaba, admin_psb, petugas_psb, super_admin).
  * Create/Update/Delete: hanya super_admin.
  */
@@ -36,7 +36,7 @@ class WhatsAppTemplateController
             $params = $request->getQueryParams();
             $kategori = isset($params['kategori']) ? trim((string) $params['kategori']) : null;
 
-            $sql = 'SELECT id, kategori, nama, isi_pesan, created_at, updated_at FROM whatsapp_template WHERE 1=1';
+            $sql = 'SELECT id, kategori, nama, isi_pesan, created_at, updated_at FROM whatsapp___template WHERE 1=1';
             $bind = [];
             if ($kategori !== null && $kategori !== '') {
                 $sql .= ' AND kategori = ?';
@@ -86,7 +86,7 @@ class WhatsAppTemplateController
                 $kategori = 'umum';
             }
 
-            $sql = 'INSERT INTO whatsapp_template (kategori, nama, isi_pesan) VALUES (?, ?, ?)';
+            $sql = 'INSERT INTO whatsapp___template (kategori, nama, isi_pesan) VALUES (?, ?, ?)';
             $stmt = $this->db->prepare($sql);
             $stmt->execute([$kategori, $nama, $isiPesan]);
             $id = (int) $this->db->lastInsertId();
@@ -143,7 +143,7 @@ class WhatsAppTemplateController
                 return $this->json($response, ['success' => false, 'message' => 'Tidak ada field yang diubah'], 400);
             }
             $bind[] = $id;
-            $sql = 'UPDATE whatsapp_template SET ' . implode(', ', $updates) . ' WHERE id = ?';
+            $sql = 'UPDATE whatsapp___template SET ' . implode(', ', $updates) . ' WHERE id = ?';
             $stmt = $this->db->prepare($sql);
             $stmt->execute($bind);
 
@@ -175,7 +175,7 @@ class WhatsAppTemplateController
             if ($id < 1) {
                 return $this->json($response, ['success' => false, 'message' => 'ID template tidak valid'], 400);
             }
-            $stmt = $this->db->prepare('DELETE FROM whatsapp_template WHERE id = ?');
+            $stmt = $this->db->prepare('DELETE FROM whatsapp___template WHERE id = ?');
             $stmt->execute([$id]);
             if ($stmt->rowCount() === 0) {
                 return $this->json($response, ['success' => false, 'message' => 'Template tidak ditemukan'], 404);

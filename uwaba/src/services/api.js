@@ -517,16 +517,39 @@ export const waBackendAPI = {
 /** Pengiriman WA terpusat lewat backend (sama dengan offcanvas kwitansi/biodata UWABA). Default = WA 1 (uwaba1). */
 export const waAPI = {
   /**
-   * Kirim pesan WA lewat backend.
+   * Kirim pesan WA lewat backend. Backend sudah log ke tabel whatsapp; jangan panggil saveChat lagi setelah ini.
    * @param {string} phoneNumber - Nomor (08xxx atau 62xxx)
    * @param {string} message - Pesan teks
    * @param {string} [instance='uwaba1'] - Instance: uwaba1 (WA 1), uwaba2 (WA 2). Default WA 1.
+   * @param {{ id_santri?: string|number, id_pengurus?: number }?} options - Opsional: agar backend log ke whatsapp dengan id_santri/id_pengurus
    */
-  send: async (phoneNumber, message, instance = 'uwaba1') => {
-    const response = await api.post('/wa/send', {
+  send: async (phoneNumber, message, instance = 'uwaba1', options = null) => {
+    const body = {
       phoneNumber: phoneNumber?.trim() ?? '',
       message: message ?? '',
       ...(instance ? { instance } : {})
+    }
+    if (options && (options.id_santri != null && options.id_santri !== '')) {
+      body.id_santri = options.id_santri
+    }
+    if (options && options.id_pengurus != null && options.id_pengurus !== '') {
+      body.id_pengurus = options.id_pengurus
+    }
+    const response = await api.post('/wa/send', body)
+    return response.data
+  },
+
+  /**
+   * Edit pesan WA yang sudah dikirim (hanya dalam 15 menit setelah kirim).
+   * @param {string} phoneNumber - Nomor (08xxx atau 62xxx)
+   * @param {string} messageId - ID pesan dari WA (wa_message_id)
+   * @param {string} newMessage - Isi pesan baru
+   */
+  edit: async (phoneNumber, messageId, newMessage) => {
+    const response = await api.post('/wa/edit-message', {
+      phoneNumber: (phoneNumber || '').trim(),
+      messageId: (messageId || '').trim(),
+      newMessage: typeof newMessage === 'string' ? newMessage.trim() : ''
     })
     return response.data
   }
@@ -546,30 +569,6 @@ export const santriAPI = {
 
   update: async (id, data) => {
     const response = await api.post('/santri', { id, ...data })
-    return response.data
-  },
-
-  /** Kelas distink dari santri: mode = 'diniyah' | 'formal' (untuk halaman Rombel Santri) */
-  getDistinctKelas: async (mode = 'diniyah') => {
-    const response = await api.get(`/santri/distinct-kelas?mode=${encodeURIComponent(mode)}`)
-    return response.data
-  },
-
-  /** Santri by kelas: untuk offcanvas Cek di Rombel Santri. params = { mode, diniyah, kelas_diniyah, kel_diniyah } atau { mode, formal, kelas_formal, kel_formal } atau id_rombel */
-  getByKelas: async (mode, params) => {
-    const q = new URLSearchParams()
-    q.set('mode', mode)
-    if (params.id_rombel != null && params.id_rombel !== '') q.set('id_rombel', params.id_rombel)
-    if (mode === 'diniyah') {
-      if (params.diniyah != null) q.set('diniyah', params.diniyah)
-      if (params.kelas_diniyah != null) q.set('kelas_diniyah', params.kelas_diniyah)
-      if (params.kel_diniyah != null) q.set('kel_diniyah', params.kel_diniyah)
-    } else {
-      if (params.formal != null) q.set('formal', params.formal)
-      if (params.kelas_formal != null) q.set('kelas_formal', params.kelas_formal)
-      if (params.kel_formal != null) q.set('kel_formal', params.kel_formal)
-    }
-    const response = await api.get(`/santri/by-kelas?${q.toString()}`)
     return response.data
   },
 
@@ -809,6 +808,20 @@ export const paymentAPI = {
 
   checkRelatedPayment: async (id, mode = 'tunggakan') => {
     const response = await api.post('/payment/check-related', { id, page: mode })
+    return response.data
+  },
+
+  /** Daftar tahun ajaran UWABA (untuk riwayat pembayaran). Public endpoint. */
+  getPublicUwabaTahunList: async () => {
+    const response = await api.get('public/pembayaran/uwaba/tahun-list')
+    return response.data
+  },
+
+  /** Rincian pembayaran by santri (mode: uwaba, khusus, tunggakan). Public endpoint. */
+  getPublicRincian: async (idSantri, mode, tahunAjaran = null) => {
+    let url = `public/pembayaran/${mode}?id_santri=${encodeURIComponent(idSantri)}`
+    if (tahunAjaran) url += `&tahun_ajaran=${encodeURIComponent(tahunAjaran)}`
+    const response = await api.get(url)
     return response.data
   }
 }
@@ -1580,9 +1593,8 @@ export const chatAPI = {
   },
 
   /**
-   * Simpan log chat/WA. Data bisa berisi: id_santri, nama_santri, nomor_tujuan, pesan, page, source,
-   * status_pengiriman, admin_pengirim, nomor_uwaba (uwaba1/uwaba2/manual), via_wa ('WA 1'|'WA 2'|'Manual').
-   * Backend perlu kolom via_wa (atau simpan dari nomor_uwaba) untuk mencatat dikirim via WA mana.
+   * Simpan log chat/WA. Data: nomor_tujuan, pesan (wajib); id_santri, id_pengurus, page, source,
+   * status_pengiriman, nomor_uwaba, via_wa (opsional). Pengirim hanya pakai id_pengurus.
    */
   saveChat: async (data) => {
     const response = await api.post('/chat/save', data)
@@ -1607,16 +1619,33 @@ export const chatAPI = {
     }
   },
 
-  /** Riwayat chat berdasarkan nomor tujuan (untuk offcanvas riwayat chat). */
-  getChatByNomor: async (nomorTujuan, limit = 100) => {
+  /**
+   * Normalisasi nomor ke 62xxx (sama dengan backend) agar riwayat chat + pesan masuk cocok.
+   */
+  _normalizeNomor62(nomor) {
+    const digits = String(nomor || '').replace(/\D/g, '')
+    if (!digits) return ''
+    if (digits.startsWith('0')) return '62' + digits.slice(1)
+    if (!digits.startsWith('62')) return '62' + digits
+    return digits
+  },
+
+  /** Riwayat chat berdasarkan nomor tujuan (untuk offcanvas riwayat chat).
+   * @param {string} nomorTujuan
+   * @param {number} limit - default 30
+   * @param {string|null} beforeDate - ISO datetime untuk "load more" (ambil chat sebelum tanggal ini)
+   */
+  getChatByNomor: async (nomorTujuan, limit = 30, beforeDate = null) => {
     try {
-      const num = String(nomorTujuan || '').trim()
+      const num = chatAPI._normalizeNomor62(nomorTujuan)
       if (!num) {
         return { success: true, data: [] }
       }
-      const response = await api.get(
-        `/chat/get-all?nomor_tujuan=${encodeURIComponent(num)}&limit=${Math.min(Math.max(Number(limit) || 50, 1), 500)}`
-      )
+      let url = `/chat/get-all?nomor_tujuan=${encodeURIComponent(num)}&limit=${Math.min(Math.max(Number(limit) || 30, 1), 500)}`
+      if (beforeDate) {
+        url += `&before_date=${encodeURIComponent(beforeDate)}`
+      }
+      const response = await api.get(url)
       return response.data
     } catch (error) {
       console.error('Error in getChatByNomor:', error)
@@ -1627,6 +1656,31 @@ export const chatAPI = {
         success: false,
         message: error.message || 'Gagal mengambil riwayat chat',
         data: []
+      }
+    }
+  },
+
+  /** Sinkron pesan dari WA ke DB (pesan kirim lewat WA langsung / pesan masuk saat WA off). */
+  syncFromWa: async (nomorTujuan, limit = 50) => {
+    try {
+      const num = chatAPI._normalizeNomor62(nomorTujuan)
+      if (!num) {
+        return { success: false, message: 'Nomor tidak valid', synced_count: 0 }
+      }
+      const response = await api.post('/chat/sync-from-wa', {
+        nomor_tujuan: num,
+        limit: Math.min(Math.max(Number(limit) || 50, 1), 100)
+      })
+      return response.data
+    } catch (error) {
+      console.error('Error in syncFromWa:', error)
+      if (error.response && error.response.data) {
+        return error.response.data
+      }
+      return {
+        success: false,
+        message: error.message || 'Gagal sinkron dari WA',
+        synced_count: 0
       }
     }
   }

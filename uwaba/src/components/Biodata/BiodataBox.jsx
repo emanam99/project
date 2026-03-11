@@ -1327,7 +1327,7 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
         )}
       </div>
 
-      {/* WhatsApp Offcanvas (bawah) - pengiriman lewat backend, log dengan admin_pengirim */}
+      {/* WhatsApp Offcanvas (bawah) - pengiriman lewat backend, log chat dengan id_pengurus. santriDbId = santri.id (FK), bukan NIS. */}
       <WhatsAppOffcanvas
         isOpen={isWhatsAppModalOpen}
         onClose={() => {
@@ -1335,6 +1335,7 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
           loadRiwayatCount()
         }}
         santriId={santriId}
+        santriDbId={biodata?.id != null && biodata.id !== '' ? biodata.id : null}
         namaSantri={biodata?.nama || ''}
         noTelpon={biodata?.no_telpon || ''}
         page={getPage()}

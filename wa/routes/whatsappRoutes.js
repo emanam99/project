@@ -7,7 +7,9 @@ import {
   disconnectWhatsApp,
   logoutWhatsApp,
   sendMessage,
+  editMessage,
   checkNumber,
+  getChatMessages,
 } from '../controllers/whatsappController.js';
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch((err) => {
@@ -30,9 +32,12 @@ router.get('/status', (_req, res) => {
   }
 });
 
-// Kirim pesan & cek nomor: auth via X-API-Key (PHP) atau Bearer (UWABA). Harus di atas router.use(authUwaba).
+// Kirim pesan, cek nomor, ambil pesan chat: auth via X-API-Key (PHP) atau Bearer (UWABA). Harus di atas router.use(authUwaba).
 router.post('/send', authSendOrUwaba, wrap(sendMessage));
+router.post('/edit-message', authSendOrUwaba, wrap(editMessage));
 router.post('/check', authSendOrUwaba, wrap(checkNumber));
+router.get('/chat-messages', authSendOrUwaba, wrap(getChatMessages));
+router.post('/chat-messages', authSendOrUwaba, wrap(getChatMessages));
 
 // GET tidak perlu auth (hanya /status). POST connect/disconnect/logout wajib auth.
 router.use((req, res, next) => {

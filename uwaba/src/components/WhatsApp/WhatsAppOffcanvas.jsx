@@ -6,7 +6,7 @@ import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
 import { checkWhatsAppNumber as checkWaNumberUtil } from '../../utils/whatsappCheck'
 
-function WhatsAppOffcanvas({ isOpen, onClose, santriId, namaSantri, noTelpon, page = 'uwaba' }) {
+function WhatsAppOffcanvas({ isOpen, onClose, santriId, santriDbId, namaSantri, noTelpon, page = 'uwaba' }) {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
   const [activeTab, setActiveTab] = useState('chat')
@@ -22,6 +22,8 @@ function WhatsAppOffcanvas({ isOpen, onClose, santriId, namaSantri, noTelpon, pa
   const [riwayatCount, setRiwayatCount] = useState(0)
   const [showPortal, setShowPortal] = useState(false)
 
+  const idForChat = santriDbId != null && santriDbId !== '' ? santriDbId : santriId
+
   useEffect(() => {
     if (isOpen) setShowPortal(true)
   }, [isOpen])
@@ -34,21 +36,21 @@ function WhatsAppOffcanvas({ isOpen, onClose, santriId, namaSantri, noTelpon, pa
   }, [isOpen, noTelpon])
 
   useEffect(() => {
-    if (isOpen && santriId) loadRiwayatCount()
-  }, [isOpen, santriId])
+    if (isOpen && idForChat) loadRiwayatCount()
+  }, [isOpen, idForChat])
 
   useEffect(() => {
-    if (isOpen && activeTab === 'riwayat' && santriId) loadChatHistory()
-  }, [isOpen, activeTab, santriId])
+    if (isOpen && activeTab === 'riwayat' && idForChat) loadChatHistory()
+  }, [isOpen, activeTab, idForChat])
 
   useEffect(() => {
     if (isOpen && namaSantri) generateMessage()
   }, [isOpen, namaSantri, page])
 
   const loadRiwayatCount = async () => {
-    if (!santriId) return
+    if (!idForChat) return
     try {
-      const result = await chatAPI.getCountBySantri(santriId)
+      const result = await chatAPI.getCountBySantri(idForChat)
       if (result && result.success) {
         setRiwayatCount(result.count || result.data || 0)
       } else {
@@ -61,10 +63,10 @@ function WhatsAppOffcanvas({ isOpen, onClose, santriId, namaSantri, noTelpon, pa
   }
 
   const loadChatHistory = async () => {
-    if (!santriId) return
+    if (!idForChat) return
     setIsLoadingHistory(true)
     try {
-      const result = await chatAPI.getChatBySantri(santriId)
+      const result = await chatAPI.getChatBySantri(idForChat)
       if (result && result.success) {
         setChatHistory(Array.isArray(result.data) ? result.data : [])
       } else {
@@ -153,18 +155,18 @@ Lihat riwayat ${pageLabel}: ${publicLink}
       const result = await waAPI.send(formattedNumber, messageToSend.trim(), instance)
       const ok = result && (result.success === true || (result.success !== false && !result.message))
       if (ok) {
-        const viaWaLabel = instance === 'uwaba2' ? 'WA 2' : instance === 'uwaba1' ? 'WA 1' : 'Manual'
+        const nomorPengirim = result?.senderPhoneNumber ?? result?.data?.senderPhoneNumber
+        const viaWaLabel = nomorPengirim ? `WA ${nomorPengirim}` : (instance === 'uwaba2' ? 'WA 2' : instance === 'uwaba1' ? 'WA 1' : 'Manual')
         await chatAPI.saveChat({
-          id_santri: santriId,
-          nama_santri: namaSantri,
+          ...(santriDbId != null && santriDbId !== '' ? { id_santri: santriDbId } : {}),
           nomor_tujuan: formattedNumber,
           pesan: messageToSend.trim(),
           page: page,
           source: isEditing ? 'edited' : 'template',
           status_pengiriman: 'berhasil',
           nomor_aktif: true,
-          admin_pengirim: adminName,
-          nomor_uwaba: instance,
+          id_pengurus: user?.id_pengurus ?? user?.id ?? null,
+          nomor_uwaba: nomorPengirim || instance,
           via_wa: viaWaLabel
         })
         loadRiwayatCount()
@@ -192,18 +194,17 @@ Lihat riwayat ${pageLabel}: ${publicLink}
     const encodedMessage = encodeURIComponent(messageToSend.trim())
     const waUrl = `https://wa.me/${formattedNumber}?text=${encodedMessage}`
 
-    if (santriId && namaSantri) {
+    if (idForChat && namaSantri) {
       const adminName = user?.nama || user?.id || 'admin'
       chatAPI.saveChat({
-        id_santri: santriId,
-        nama_santri: namaSantri,
+        ...(santriDbId != null && santriDbId !== '' ? { id_santri: santriDbId } : {}),
         nomor_tujuan: formattedNumber,
         pesan: messageToSend.trim(),
         page: page,
         source: isEditing ? 'edited' : 'manual',
         status_pengiriman: 'berhasil',
         nomor_aktif: true,
-        admin_pengirim: adminName,
+        id_pengurus: user?.id_pengurus ?? user?.id ?? null,
         nomor_uwaba: 'manual',
         via_wa: 'Manual'
       }).then(() => {
@@ -360,10 +361,10 @@ Lihat riwayat ${pageLabel}: ${publicLink}
                               {chat.status_pengiriman}
                             </span>
                           </div>
-                          {chat.admin_pengirim && <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Pengirim: {chat.admin_pengirim}</div>}
+                          {chat.id_pengurus != null && <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Pengirim ID: {chat.id_pengurus}</div>}
                           {(chat.via_wa || chat.nomor_uwaba) && (
                             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                              Via: {chat.via_wa || (chat.nomor_uwaba === 'uwaba2' ? 'WA 2' : chat.nomor_uwaba === 'manual' ? 'Manual' : 'WA 1')}
+                              Via: {chat.via_wa || (/^\d+$/.test(String(chat.nomor_uwaba || '')) ? `WA ${chat.nomor_uwaba}` : (chat.nomor_uwaba === 'uwaba2' ? 'WA 2' : chat.nomor_uwaba === 'manual' ? 'Manual' : 'WA 1'))}
                             </div>
                           )}
                           <div className="text-sm text-gray-600 dark:text-gray-300 mb-1">Nomor: {chat.nomor_tujuan}</div>

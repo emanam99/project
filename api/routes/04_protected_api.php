@@ -45,9 +45,10 @@ return function (\Slim\App $app): void {
         $group->post('/wa/check', [WhatsAppController::class, 'check']);
     })->add(new AuthMiddleware());
 
-    // WhatsApp — kirim pesan: hanya staff (PSB + UWABA + super_admin). Process-pending: PSB saja
+    // WhatsApp — kirim & edit pesan: hanya staff (PSB + UWABA + super_admin). Process-pending: PSB saja
     $app->group('/api', function ($group) {
         $group->post('/wa/send', [WhatsAppController::class, 'send']);
+        $group->post('/wa/edit-message', [WhatsAppController::class, 'edit']);
     })->add(new RoleMiddleware(['super_admin', 'admin_psb', 'petugas_psb', 'admin_uwaba', 'petugas_uwaba']))->add(new AuthMiddleware());
     $app->group('/api', function ($group) {
         $group->post('/wa/process-pending', [WhatsAppController::class, 'processPending']);
@@ -58,9 +59,11 @@ return function (\Slim\App $app): void {
         $group->post('/chat/save', [ChatController::class, 'saveChat']);
         $group->post('/chat/save-all', [ChatController::class, 'saveAllChat']);
         $group->post('/chat/update-status', [ChatController::class, 'updateStatus']);
+        $group->post('/chat/update-status-by-message-id', [ChatController::class, 'updateStatusByMessageId']);
         $group->post('/chat/update-nomor-aktif', [ChatController::class, 'updateNomorAktif']);
         $group->post('/chat/count-by-santri', [ChatController::class, 'countBySantri']);
         $group->post('/chat/check-phone-status', [ChatController::class, 'checkPhoneStatus']);
+        $group->post('/chat/sync-from-wa', [ChatController::class, 'syncFromWa']);
         $group->get('/chat/get-by-santri', [ChatController::class, 'getBySantri']);
         $group->get('/chat/get-all', [ChatController::class, 'getAll']);
         $group->get('/chat/stats', [ChatController::class, 'getStats']);

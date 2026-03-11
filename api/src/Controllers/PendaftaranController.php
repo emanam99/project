@@ -379,6 +379,7 @@ class PendaftaranController
 
     /**
      * GET /api/pendaftaran/rincian - Ambil rincian pendaftaran berdasarkan id_santri
+     * Menggunakan tabel psb___registrasi (wajib, bayar, kurang).
      */
     public function getRincian(Request $request, Response $response): Response
     {
@@ -401,27 +402,35 @@ class PendaftaranController
                 ], 400);
             }
 
-            $sqlPendaftaran = "SELECT id, keterangan_1, keterangan_2, total, tahun_ajaran, lembaga FROM pendaftaran WHERE id_santri=?";
-            $stmt = $this->db->prepare($sqlPendaftaran);
+            $sql = "SELECT id, tahun_hijriyah, tahun_masehi, wajib, bayar, kurang
+                    FROM psb___registrasi
+                    WHERE id_santri = ?
+                    ORDER BY tahun_hijriyah DESC, tahun_masehi DESC, tanggal_dibuat DESC";
+            $stmt = $this->db->prepare($sql);
             $stmt->execute([$idSantri]);
-            
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
             $rincian = [];
             $totalNominal = 0;
             $totalBayar = 0;
-            
-            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-                $row['total'] = (int)$row['total'];
-                
-                // Ambil total bayar dari tabel pembayaran
-                $sqlSum = "SELECT COALESCE(SUM(nominal),0) as total_bayar FROM pendaftaran___bayar WHERE id_pendaftaran=?";
-                $stmtSum = $this->db->prepare($sqlSum);
-                $stmtSum->execute([$row['id']]);
-                $rowSum = $stmtSum->fetch(\PDO::FETCH_ASSOC);
-                $row['bayar'] = (int)$rowSum['total_bayar'];
-                $row['kurang'] = $row['total'] - $row['bayar'];
-                $totalNominal += $row['total'];
-                $totalBayar += $row['bayar'];
-                $rincian[] = $row;
+
+            foreach ($rows as $row) {
+                $wajib = (int)($row['wajib'] ?? 0);
+                $bayar = (int)($row['bayar'] ?? 0);
+                $kurang = isset($row['kurang']) ? (int)$row['kurang'] : ($wajib - $bayar);
+                $tahun = trim($row['tahun_hijriyah'] ?? '') ?: trim($row['tahun_masehi'] ?? '');
+                $rincian[] = [
+                    'id' => (int)$row['id'],
+                    'keterangan_1' => $tahun ?: null,
+                    'keterangan_2' => null,
+                    'total' => $wajib,
+                    'bayar' => $bayar,
+                    'kurang' => $kurang,
+                    'tahun_ajaran' => $tahun ?: null,
+                    'lembaga' => null
+                ];
+                $totalNominal += $wajib;
+                $totalBayar += $bayar;
             }
 
             $total = [
@@ -3927,9 +3936,10 @@ class PendaftaranController
 
             $this->db->beginTransaction();
             
+            // Tabel psb___item hanya punya: item, kategori, urutan, harga, dari, sampai (tanpa gender, status_santri, status_pendaftar, lembaga)
             $sql = "INSERT INTO psb___item 
-                    (item, kategori, urutan, harga, gender, status_santri, status_pendaftar, lembaga, dari, sampai)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    (item, kategori, urutan, harga, dari, sampai)
+                    VALUES (?, ?, ?, ?, ?, ?)";
             
             $stmt = $this->db->prepare($sql);
             $stmt->execute([
@@ -3937,10 +3947,6 @@ class PendaftaranController
                 !empty($input['kategori']) ? $input['kategori'] : null,
                 !empty($input['urutan']) ? (int)$input['urutan'] : null,
                 !empty($input['harga']) ? (int)$input['harga'] : null,
-                !empty($input['gender']) ? $input['gender'] : null,
-                !empty($input['status_santri']) ? $input['status_santri'] : null,
-                !empty($input['status_pendaftar']) ? $input['status_pendaftar'] : null,
-                !empty($input['lembaga']) ? $input['lembaga'] : null,
                 !empty($input['dari']) ? $input['dari'] : null,
                 !empty($input['sampai']) ? $input['sampai'] : null
             ]);
@@ -4015,15 +4021,12 @@ class PendaftaranController
 
             $this->db->beginTransaction();
             
+            // Tabel psb___item hanya punya: item, kategori, urutan, harga, dari, sampai (tanpa gender, status_santri, status_pendaftar, lembaga)
             $sql = "UPDATE psb___item SET
                     item = ?,
                     kategori = ?,
                     urutan = ?,
                     harga = ?,
-                    gender = ?,
-                    status_santri = ?,
-                    status_pendaftar = ?,
-                    lembaga = ?,
                     dari = ?,
                     sampai = ?
                     WHERE id = ?";
@@ -4034,10 +4037,6 @@ class PendaftaranController
                 !empty($input['kategori']) ? $input['kategori'] : null,
                 !empty($input['urutan']) ? (int)$input['urutan'] : null,
                 !empty($input['harga']) ? (int)$input['harga'] : null,
-                !empty($input['gender']) ? $input['gender'] : null,
-                !empty($input['status_santri']) ? $input['status_santri'] : null,
-                !empty($input['status_pendaftar']) ? $input['status_pendaftar'] : null,
-                !empty($input['lembaga']) ? $input['lembaga'] : null,
                 !empty($input['dari']) ? $input['dari'] : null,
                 !empty($input['sampai']) ? $input['sampai'] : null,
                 $id

@@ -34,10 +34,6 @@ export const MENU_ITEMS = [
   { path: '/dashboard-pendaftaran', label: 'Dashboard', iconKey: 'dashboard', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran', label: 'Pendaftaran', iconKey: 'document', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran/item', label: 'Item', iconKey: 'documentStack', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/manage-item-set', label: 'Manage Set', iconKey: 'squares', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/manage-kondisi', label: 'Manage Kondisi', iconKey: 'adjustment', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/kondisi-registrasi', label: 'Registrasi', iconKey: 'documentText', group: 'Pendaftaran', requiresSuperAdmin: true },
-  { path: '/pendaftaran/assign-item', label: 'Assign', iconKey: 'userAdd', group: 'Pendaftaran', requiresSuperAdmin: true },
   { path: '/pendaftaran/data-pendaftar', label: 'Data Pendaftar', iconKey: 'usersGroup', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran/padukan-data', label: 'Padukan Data', iconKey: 'link', group: 'Pendaftaran', requiresSuperAdmin: true },
   { path: '/pendaftaran/pengaturan', label: 'Pengaturan', iconKey: 'cog', group: 'Pendaftaran', requiresRole: ['super_admin'] },
@@ -90,7 +86,6 @@ export const MENU_ITEMS = [
   { path: '/santri', label: 'Santri', iconKey: 'usersGroup', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/lulusan', label: 'Lulusan', iconKey: 'academic', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/rombel', label: 'Rombel', iconKey: 'users', group: 'Lembaga', requiresSuperAdmin: true },
-  { path: '/rombel-santri', label: 'Rombel Santri', iconKey: 'usersGroup', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/manage-jabatan', label: 'Jabatan', iconKey: 'briefcase', group: 'Lembaga', requiresSuperAdmin: true },
   // ========== Setting ==========
   { path: '/dashboard-umum', label: 'Dashboard Umum', iconKey: 'dashboard', group: 'Setting', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin'] },
@@ -100,7 +95,7 @@ export const MENU_ITEMS = [
   { path: '/settings/role-akses', label: 'Role & Akses', iconKey: 'shield', group: 'Setting', requiresSuperAdmin: true },
   { path: '/settings/fitur', label: 'Fitur', iconKey: 'cube', group: 'Setting', requiresSuperAdmin: true },
   { path: '/manage-uploads', label: 'Kelola File', iconKey: 'folder', group: 'Setting', requiresSuperAdmin: true },
-  { path: '/whatsapp-koneksi', label: 'Koneksi WhatsApp', iconKey: 'whatsapp', group: 'Setting', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin'] },
+  { path: '/whatsapp-koneksi', label: 'WhatsApp', iconKey: 'whatsapp', group: 'Setting', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/juara/data-juara', label: 'Data Juara', iconKey: 'trophy', group: 'Setting', requiresSuperAdmin: true },
   // ========== Tentang ==========
   { path: '/tentang', label: 'Tentang', iconKey: 'info', group: 'Tentang' },

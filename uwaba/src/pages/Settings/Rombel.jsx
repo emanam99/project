@@ -5,7 +5,8 @@ import { rombelAPI, lembagaAPI, waliKelasAPI, pengurusAPI, santriAPI, lulusanAPI
 import { useNotification } from '../../contexts/NotificationContext'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useAuthStore } from '../../store/authStore'
-import ModalPindahRombel from '../../components/Modal/ModalPindahRombel'
+import OffcanvasPindahRombel from '../../components/Modal/OffcanvasPindahRombel'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 
 const normalizeStatus = (s) => {
   if (!s) return ''
@@ -410,7 +411,7 @@ function Rombel() {
     }
   }
 
-  const handleCloseSantriOffcanvas = () => {
+  const handleCloseSantriOffcanvas = useOffcanvasBackClose(santriOffcanvasOpen, () => {
     setSantriOffcanvasOpen(false)
     setSantriOffcanvasRombel(null)
     setSantriOffcanvasList([])
@@ -418,7 +419,7 @@ function Rombel() {
     setSelectedSantriIds(new Set())
     setPindahModalOpen(false)
     setLulusModalOpen(false)
-  }
+  })
 
   /** Update jumlah_santri rombel terkait di list & filter source agar tetap valid setelah lulus/pindah */
   const updateRombelJumlahSantri = useCallback((rombelId, delta) => {
@@ -718,128 +719,145 @@ function Rombel() {
   }
 
   return (
-    <div className="h-full overflow-hidden flex flex-col">
-      <div className="container mx-auto px-4 py-6 max-w-7xl flex-shrink-0">
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
-            <p className="text-red-800 dark:text-red-200">{error}</p>
-          </div>
-        )}
-
-        {/* Search and Filter — sama dengan page Jabatan */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
-          <div className="relative pb-2 px-4 pt-3">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-                onFocus={() => setIsInputFocused(true)}
-                onBlur={() => setIsInputFocused(false)}
-                className="w-full p-2 pr-24 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                placeholder="Cari lembaga, kelas, kel..."
-              />
-              <div className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-1 pointer-events-none">
-                <button
-                  type="button"
-                  onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 p-1.5 rounded text-xs flex items-center gap-1 transition-colors pointer-events-auto"
-                  title={isFilterOpen ? 'Sembunyikan Filter' : 'Tampilkan Filter'}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                  </svg>
-                  {isFilterOpen ? (
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                    </svg>
-                  ) : (
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { loadFilterData(); loadRombel() }}
-                  className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-700 dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 p-1.5 rounded text-xs transition-colors pointer-events-auto"
-                  title="Refresh"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>
-              </div>
+    <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
+      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
+        <div className="container mx-auto px-4 py-6 max-w-7xl">
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+              <p className="text-red-800 dark:text-red-200">{error}</p>
             </div>
-            <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-300 dark:bg-gray-600" />
-            <div className={`absolute left-0 right-0 bottom-0 h-0.5 bg-teal-500 transition-opacity ${isInputFocused ? 'opacity-100' : 'opacity-0'}`} />
-          </div>
+          )}
 
-          <AnimatePresence>
-            {isFilterOpen && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden border-b bg-gray-50 dark:bg-gray-700/50"
-              >
-                <div className="px-4 py-2">
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <span className="text-xs text-gray-600 dark:text-gray-400">Lembaga:</span>
-                    <select
-                      value={filterLembaga}
-                      onChange={(e) => handleFilterChange(setFilterLembaga, e.target.value)}
-                      className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
-                    >
-                      <option value="">Semua</option>
-                      {lembagaOptions.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-gray-600 dark:text-gray-400 ml-1">Kelas:</span>
-                    <select
-                      value={filterKelas}
-                      onChange={(e) => handleFilterChange(setFilterKelas, e.target.value)}
-                      className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[120px]"
-                    >
-                      <option value="">Semua</option>
-                      {kelasOptions.map((o) => (
-                        <option key={o.value === '' ? '__kosong__' : o.value} value={o.value}>{o.label} ({o.count})</option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-gray-600 dark:text-gray-400 ml-1">Status:</span>
-                    <select
-                      value={filterStatus}
-                      onChange={(e) => handleFilterChange(setFilterStatus, e.target.value)}
-                      className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
-                    >
-                      <option value="">Semua</option>
-                      {statusOptions.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
-                      ))}
-                    </select>
-                  </div>
+          {/* Search & Filter — sticky seperti Lembaga */}
+          <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
+            <div className="relative pb-2 px-4 pt-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+                  onFocus={() => setIsInputFocused(true)}
+                  onBlur={() => setIsInputFocused(false)}
+                  className="w-full p-2 pr-12 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                  placeholder="Cari"
+                />
+                <div className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-1 pointer-events-none">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                    className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 p-1.5 rounded text-xs flex items-center gap-1 transition-colors pointer-events-auto"
+                    title={isFilterOpen ? 'Sembunyikan Filter' : 'Tampilkan Filter'}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                    {isFilterOpen ? (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
+              <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-300 dark:bg-gray-600" />
+              <div className={`absolute left-0 right-0 bottom-0 h-0.5 bg-teal-500 transition-opacity ${isInputFocused ? 'opacity-100' : 'opacity-0'}`} />
+            </div>
 
-          <div className="px-3 py-1.5 sm:px-4 sm:py-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+            <AnimatePresence>
+              {isFilterOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden border-t bg-gray-50 dark:bg-gray-700/50"
+                >
+                  <div className="px-4 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <select
+                        value={filterLembaga}
+                        onChange={(e) => handleFilterChange(setFilterLembaga, e.target.value)}
+                        className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
+                      >
+                        <option value="">Lembaga</option>
+                        {lembagaOptions.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
+                        ))}
+                      </select>
+                      <select
+                        value={filterKelas}
+                        onChange={(e) => handleFilterChange(setFilterKelas, e.target.value)}
+                        className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[120px]"
+                      >
+                        <option value="">Kelas</option>
+                        {kelasOptions.map((o) => (
+                          <option key={o.value === '' ? '__kosong__' : o.value} value={o.value}>{o.label} ({o.count})</option>
+                        ))}
+                      </select>
+                      <select
+                        value={filterStatus}
+                        onChange={(e) => handleFilterChange(setFilterStatus, e.target.value)}
+                        className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                      >
+                        <option value="">Status</option>
+                        {statusOptions.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-600">
+                      <button
+                        type="button"
+                        onClick={() => { loadFilterData(); loadRombel() }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                        title="Refresh"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilterLembaga('')
+                          setFilterKelas('')
+                          setFilterStatus('')
+                          setSearchQuery('')
+                          setPage(1)
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                        title="Reset filter"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                        </svg>
+                        Reset filter
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="px-3 py-1.5 sm:px-4 sm:py-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-1.5">
               <span className="font-medium text-gray-800 dark:text-gray-200">{from}</span>–<span className="font-medium">{to}</span> dari <span className="font-medium">{total}</span>
               {total > 0 && (
-                <span className="ml-1 sm:ml-2">
-                  (<select
-                    value={limit}
-                    onChange={(e) => { setLimit(Number(e.target.value)); setPage(1) }}
-                    className="border rounded px-1 py-0.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
-                  >
-                    {[50, 100, 200].map((n) => (
-                      <option key={n} value={n}>{n}</option>
-                    ))}
-                  </select>/hlm)
-                </span>
+                <select
+                  value={limit}
+                  onChange={(e) => { setLimit(Number(e.target.value)); setPage(1) }}
+                  className="border rounded px-1.5 py-0.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                  aria-label="Jumlah per halaman"
+                >
+                  {[50, 100, 200].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
               )}
             </span>
             <button
@@ -854,10 +872,7 @@ function Rombel() {
             </button>
           </div>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="container mx-auto px-4 pb-6 max-w-7xl">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <AnimatePresence>
               {rombelList.map((rombel, index) => (
@@ -959,6 +974,7 @@ function Rombel() {
               </button>
             </div>
           )}
+          <div className="h-20 sm:h-0" aria-hidden="true" />
         </div>
       </div>
 
@@ -1536,8 +1552,8 @@ function Rombel() {
                 </div>
               </motion.div>
 
-              {/* Modal Pindah Rombel — tahun ajaran + pilih rombel */}
-              <ModalPindahRombel
+              {/* Offcanvas bawah Pindah Rombel — tahun ajaran + pilih rombel */}
+              <OffcanvasPindahRombel
                 isOpen={pindahModalOpen && !!santriOffcanvasRombel?.lembaga_id}
                 onClose={() => setPindahModalOpen(false)}
                 title={pindahModalBulk ? `Pindah (${selectedSantriIds.size})` : 'Pindah Rombel'}
@@ -1550,59 +1566,80 @@ function Rombel() {
                 }}
               />
 
-              {/* Modal Catat Lulusan — pilih tahun ajaran */}
+              {/* Offcanvas bawah Catat Lulusan — pilih tahun ajaran */}
               <AnimatePresence>
                 {lulusModalOpen && (
                   <>
                     <motion.div
+                      key="lulus-backdrop"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
                       onClick={() => setLulusModalOpen(false)}
                       className="fixed inset-0 bg-black/50 z-[210]"
                     />
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                      className="fixed inset-x-4 top-1/2 -translate-y-1/2 max-w-sm mx-auto max-h-[85vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-xl shadow-xl z-[211] p-5 border border-gray-200 dark:border-gray-700"
+                      key="lulus-panel"
+                      initial={{ y: '100%' }}
+                      animate={{ y: 0 }}
+                      exit={{ y: '100%' }}
+                      transition={{ type: 'tween', duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                      className="fixed bottom-0 left-0 right-0 z-[211] flex flex-col max-h-[85vh] w-full rounded-t-xl bg-white dark:bg-gray-800 shadow-xl border-t border-gray-200 dark:border-gray-700 sm:left-auto sm:right-0 sm:w-[28rem] sm:max-w-[100vw]"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-                        Catat Lulusan
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                        {selectedSantriIds.size} santri akan dicatat lulus dari lembaga ini. Pilih tahun ajaran kelulusan:
-                      </p>
-                      <form onSubmit={handleSubmitLulus}>
-                        <div className="mb-4">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Tahun Ajaran
-                          </label>
-                          <select
-                            value={lulusTahunAjaran}
-                            onChange={(e) => setLulusTahunAjaran(e.target.value)}
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                          >
-                            <option value="">— Pilih Tahun Ajaran —</option>
-                            {lulusTahunAjaranList.map((o) => (
-                              <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                          </select>
+                      <div className="flex-shrink-0 flex justify-center pt-2 pb-1 sm:pt-3">
+                        <span className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" aria-hidden="true" />
+                      </div>
+                      <div className="px-4 pb-2 flex items-center justify-between flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          Catat Lulusan
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setLulusModalOpen(false)}
+                          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-400"
+                          aria-label="Tutup"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <form onSubmit={handleSubmitLulus} className="flex flex-col flex-1 min-h-0">
+                        <div className="flex-1 overflow-y-auto p-4 pb-6 sm:pb-4">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                            {selectedSantriIds.size} santri akan dicatat lulus dari lembaga ini. Pilih tahun ajaran kelulusan:
+                          </p>
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                              Tahun Ajaran
+                            </label>
+                            <select
+                              value={lulusTahunAjaran}
+                              onChange={(e) => setLulusTahunAjaran(e.target.value)}
+                              required
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                            >
+                              <option value="">— Pilih Tahun Ajaran —</option>
+                              {lulusTahunAjaranList.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex-shrink-0 p-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => setLulusModalOpen(false)}
-                            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                           >
                             Batal
                           </button>
                           <button
                             type="submit"
                             disabled={lulusSubmitting}
-                            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm"
+                            className="px-3 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50"
                           >
                             {lulusSubmitting ? 'Menyimpan...' : 'Simpan'}
                           </button>

@@ -376,7 +376,7 @@ function ManageJabatan() {
   if (loading && jabatanList.length === 0) {
     return (
       <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-        <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
+        <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
           <div className="p-4 sm:p-6 lg:p-8">
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -389,24 +389,21 @@ function ManageJabatan() {
 
   return (
     <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-      <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
+      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
         <div className="p-4 sm:p-6 lg:p-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            
-
             {error && (
               <div className="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
                 {error}
               </div>
             )}
 
-            {/* Search and Filter */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
-              {/* Search Input dengan tombol di kanan */}
+            {/* Search & Filter — sticky seperti Pengurus/Santri */}
+            <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
               <div className="relative pb-2 px-4 pt-3">
                 <div className="relative">
                   <input
@@ -415,10 +412,9 @@ function ManageJabatan() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => setIsInputFocused(true)}
                     onBlur={() => setIsInputFocused(false)}
-                    className="w-full p-2 pr-24 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                    placeholder="Cari nama jabatan..."
+                    className="w-full p-2 pr-12 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                    placeholder="Cari"
                   />
-                  {/* Tombol Filter dan Refresh di kanan */}
                   <div className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-1 pointer-events-none">
                     <button
                       onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -438,23 +434,12 @@ function ManageJabatan() {
                         </svg>
                       )}
                     </button>
-                    <button
-                      onClick={loadJabatan}
-                      className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-700 dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 p-1.5 rounded text-xs transition-colors pointer-events-auto"
-                      title="Refresh"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                      </svg>
-                    </button>
                   </div>
                 </div>
-                {/* Border bawah yang sampai ke kanan */}
                 <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-300 dark:bg-gray-600"></div>
                 <div className={`absolute left-0 right-0 bottom-0 h-0.5 bg-teal-500 transition-opacity ${isInputFocused ? 'opacity-100' : 'opacity-0'}`}></div>
               </div>
 
-              {/* Filter Container dengan Accordion */}
               <AnimatePresence>
                 {isFilterOpen && (
                   <motion.div
@@ -462,43 +447,69 @@ function ManageJabatan() {
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="overflow-hidden border-b bg-gray-50 dark:bg-gray-700/50"
+                    className="overflow-hidden border-t bg-gray-50 dark:bg-gray-700/50"
                   >
                     <div className="px-4 py-2">
-                      <div className="flex flex-wrap gap-3 items-center">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Kategori:</span>
+                      <div className="flex flex-wrap gap-2">
                         <select
                           value={kategoriFilter}
                           onChange={(e) => setKategoriFilter(e.target.value)}
-                          className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                          className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                         >
-                          <option value="">Semua</option>
+                          <option value="">Kategori</option>
                           {kategoriOptions.map((o) => (
                             <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
                           ))}
                         </select>
-                        <span className="text-xs text-gray-600 dark:text-gray-400 ml-1">Lembaga:</span>
                         <select
                           value={lembagaFilter}
                           onChange={(e) => setLembagaFilter(e.target.value)}
-                          className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
+                          className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
                         >
-                          <option value="">Semua</option>
+                          <option value="">Lembaga</option>
                           {lembagaOptions.map((o) => (
                             <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
                           ))}
                         </select>
-                        <span className="text-xs text-gray-600 dark:text-gray-400 ml-1">Status:</span>
                         <select
                           value={statusFilter}
                           onChange={(e) => setStatusFilter(e.target.value)}
-                          className="border rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                          className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                         >
-                          <option value="">Semua</option>
+                          <option value="">Status</option>
                           {statusOptions.map((o) => (
                             <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
                           ))}
                         </select>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-600">
+                        <button
+                          type="button"
+                          onClick={loadJabatan}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                          title="Refresh"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                          </svg>
+                          Refresh
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setKategoriFilter('')
+                            setLembagaFilter('')
+                            setStatusFilter('')
+                            setSearchQuery('')
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                          title="Reset filter"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"></path>
+                          </svg>
+                          Reset filter
+                        </button>
                       </div>
                     </div>
                   </motion.div>
@@ -586,6 +597,7 @@ function ManageJabatan() {
                 </div>
               )}
             </div>
+            <div className="h-20 sm:h-0" aria-hidden="true" />
           </motion.div>
         </div>
       </div>

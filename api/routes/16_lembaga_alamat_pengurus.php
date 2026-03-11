@@ -25,9 +25,7 @@ return function (\Slim\App $app): void {
         $group->delete('/{id}', [LembagaController::class, 'deleteLembaga']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
-    // Kelas distink dan santri by kelas (untuk halaman Rombel Santri) — super_admin only
-    $app->get('/api/santri/distinct-kelas', [SantriController::class, 'getDistinctKelas'])
-        ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    // Santri by kelas (dipakai oleh page Rombel: daftar santri per rombel) — super_admin only
     $app->get('/api/santri/by-kelas', [SantriController::class, 'getSantriByKelas'])
         ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
     $app->get('/api/santri/riwayat-rombel', [SantriController::class, 'getRiwayatRombel'])

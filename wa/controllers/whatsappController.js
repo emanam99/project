@@ -153,6 +153,99 @@ function createClient() {
     syncToStore();
   });
 
+  // Pesan masuk: kirim ke API UWABA (POST /api/wa/incoming), retry sampai 200.
+  // Jika pengirim pakai @lid (bukan @c.us), coba dapatkan nomor asli (canonicalNumber) agar riwayat chat cocok dengan nomor pendaftar.
+  c.on('message', async (msg) => {
+    if (msg.fromMe) return;
+    try {
+      const fromRaw = (typeof msg.from === 'string' ? msg.from : (msg.from?.id || msg.from?.user || '')).replace(/@c\.us$/i, '').replace(/@lid\.?.*$/i, '');
+      const digits = fromRaw.replace(/\D/g, '');
+      if (digits.length < 10) return;
+      const from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
+      const isLid = (typeof msg.from === 'string' && msg.from.toLowerCase().includes('@lid')) || (msg.from?.server === 'lid');
+      let canonical62 = null;
+      if (isLid && typeof c.getContactLidAndPhone === 'function') {
+        try {
+          const resolved = await c.getContactLidAndPhone(msg.from);
+          if (resolved?.pn) {
+            const pn = String(resolved.pn).replace(/@c\.us$/i, '').replace(/\D/g, '');
+            if (pn.length >= 10) canonical62 = pn.startsWith('62') ? pn : '62' + pn;
+          }
+        } catch (_) {}
+      }
+      if (!canonical62 && isLid) {
+        try {
+          const contact = await msg.getContact();
+          const cid = contact?.id ?? contact?.id?.user ?? contact?.id?.id;
+          const cidStr = typeof cid === 'string' ? cid : (cid?.user ?? cid?.id ?? '');
+          if (cidStr && !cidStr.includes('lid')) {
+            const pn = cidStr.replace(/@c\.us$/i, '').replace(/\D/g, '');
+            if (pn.length >= 10) canonical62 = pn.startsWith('62') ? pn : '62' + pn;
+          }
+        } catch (_) {}
+      }
+      if (!canonical62) canonical62 = from62;
+      const body = typeof msg.body === 'string' ? msg.body : (msg.body || '');
+      const messageId = (msg.id && (typeof msg.id === 'string' ? msg.id : msg.id._serialized || msg.id.id)) || null;
+      const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
+      if (!apiBase) {
+        console.warn('[WA] UWABA_API_BASE_URL tidak di-set, pesan masuk tidak dikirim ke API');
+        return;
+      }
+      const waPath = apiBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming';
+      const url = apiBase + waPath;
+      const payload = { from: from62, message: body, messageId: messageId || undefined };
+      if (canonical62 && canonical62 !== from62) payload.canonicalNumber = canonical62;
+      const maxAttempts = 5;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) {
+            if (attempt > 1) console.log('[WA] Pesan masuk terkirim ke API (attempt ' + attempt + ')');
+            return;
+          }
+          const text = await res.text();
+          console.warn('[WA] API incoming non-200:', res.status, text?.slice(0, 200));
+        } catch (err) {
+          console.warn('[WA] API incoming error attempt ' + attempt + ':', err?.message || err);
+        }
+        if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 1000 * attempt));
+      }
+      console.error('[WA] Gagal mengirim pesan masuk ke API setelah ' + maxAttempts + ' percobaan');
+    } catch (err) {
+      console.error('[WA] message handler error:', err?.message || err);
+    }
+  });
+
+  // Status pesan (centang 1, 2, biru): kirim ke API agar riwayat chat bisa update (messageId harus sama dengan saat kirim = _serialized)
+  c.on('message_ack', async (msg, ack) => {
+    if (!msg?.id) return;
+    const raw = typeof msg.id === 'string' ? msg.id : (msg.id?._serialized ?? msg.id?.id);
+    const messageId = raw != null ? String(raw) : '';
+    if (!messageId) return;
+    const statusMap = { 1: 'sent', 2: 'delivered', 3: 'read' };
+    const status = statusMap[ack];
+    if (!status) return;
+    const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
+    const apiKey = (process.env.WA_API_KEY || '').trim();
+    if (!apiBase || !apiKey) return;
+    const messageStatusPath = apiBase.endsWith('/api') ? '/wa/message-status' : '/api/wa/message-status';
+    try {
+      const res = await fetch(apiBase + messageStatusPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify({ messageId, status }),
+      });
+      if (!res.ok) console.warn('[WA] message-status API:', res.status);
+    } catch (err) {
+      console.warn('[WA] message-status error:', err?.message || err);
+    }
+  });
+
   return c;
 }
 
@@ -328,21 +421,176 @@ export const sendMessage = async (req, res) => {
     const text = typeof message === 'string' ? message : '';
     const hasImage = typeof imageBase64 === 'string' && imageBase64.trim().length > 0;
 
+    let sentMsg;
     if (hasImage) {
       const mimetype = (imageMimetype || 'image/png').split(';')[0].trim();
       const base64Data = imageBase64.replace(/^data:image\/[^;]+;base64,/, '').trim();
       const media = new MessageMedia(mimetype, base64Data);
-      await client.current.sendMessage(chatId, media, { caption: text || undefined });
+      sentMsg = await client.current.sendMessage(chatId, media, { caption: text || undefined });
     } else {
-      await client.current.sendMessage(chatId, text || '(pesan kosong)');
+      sentMsg = await client.current.sendMessage(chatId, text || '(pesan kosong)');
     }
 
-    return res.json({ success: true, message: 'Pesan terkirim' });
+    const raw = sentMsg?.id?._serialized ?? sentMsg?.id?.id ?? sentMsg?.id;
+    const messageId = raw != null ? String(raw) : null;
+    let senderPhoneNumber = null;
+    if (status.phoneNumber) {
+      const digits = String(status.phoneNumber).replace(/\D/g, '');
+      if (digits.length >= 10) senderPhoneNumber = digits.startsWith('62') ? digits : '62' + digits;
+    }
+    return res.json({
+      success: true,
+      message: 'Pesan terkirim',
+      messageId: messageId || undefined,
+      senderPhoneNumber: senderPhoneNumber || undefined
+    });
   } catch (err) {
     console.error('[WA] sendMessage error:', err?.message || err);
     return res.status(500).json({
       success: false,
       message: err?.message || 'Gagal mengirim pesan',
+    });
+  }
+};
+
+/**
+ * Ambil pesan dari chat WA (untuk sinkron ke DB: pesan yang dikirim lewat WA langsung atau pesan masuk saat WA off).
+ * Body: { phoneNumber, limit? } — limit default 50, max 100.
+ * Return: { success, data: [{ id, body, fromMe, timestamp, ack }], message }
+ */
+export const getChatMessages = async (req, res) => {
+  try {
+    if (!client.current || status.status !== 'connected') {
+      return res.status(503).json({
+        success: false,
+        message: 'WhatsApp belum terhubung',
+        data: [],
+      });
+    }
+    const { phoneNumber, limit: limitParam } = req.body || req.query || {};
+    const chatId = formatPhoneToChatId(phoneNumber);
+    if (!chatId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nomor tidak valid',
+        data: [],
+      });
+    }
+    const limit = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 100);
+    const chat = await client.current.getChatById(chatId);
+    const messages = await chat.fetchMessages({ limit });
+    const nomor62 = chatId.replace('@c.us', '');
+    const out = [];
+    for (const msg of messages) {
+      const rawId = msg.id?.id ?? msg.id?._serialized ?? msg.id;
+      const id = rawId != null ? String(rawId) : null;
+      const body = typeof msg.body === 'string' ? msg.body : (msg.type === 'chat' ? '' : '[media]');
+      const fromMe = !!msg.fromMe;
+      const ts = msg.timestamp != null ? msg.timestamp : 0;
+      let ack = 0;
+      if (msg.ack != null) {
+        if (typeof msg.ack === 'number') ack = msg.ack;
+        else if (typeof msg.ack === 'object' && typeof msg.ack.ack === 'number') ack = msg.ack.ack;
+      }
+      const statusMap = { 0: 'pending', 1: 'sent', 2: 'delivered', 3: 'read' };
+      out.push({
+        id,
+        body: body || '',
+        fromMe,
+        timestamp: ts,
+        ack,
+        status: statusMap[ack] || 'sent',
+        nomor_tujuan: nomor62,
+      });
+    }
+    return res.json({
+      success: true,
+      data: out,
+      message: 'OK',
+    });
+  } catch (err) {
+    console.error('[WA] getChatMessages error:', err?.message || err);
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Gagal mengambil pesan',
+      data: [],
+    });
+  }
+};
+
+/** Batas waktu (detik) untuk mengedit pesan di WhatsApp (resmi 15 menit). */
+const EDIT_MESSAGE_WINDOW_SECONDS = 15 * 60;
+
+/**
+ * Edit pesan yang sudah dikirim (hanya dalam 15 menit setelah kirim).
+ * Body: { phoneNumber, messageId, newMessage }
+ */
+export const editMessage = async (req, res) => {
+  try {
+    if (!client.current || status.status !== 'connected') {
+      if (status.status === 'disconnected' || !client.current) {
+        initWaOnStart();
+      }
+      return res.status(503).json({
+        success: false,
+        message: status.status === 'connecting'
+          ? 'WhatsApp sedang menghubungkan. Coba lagi dalam 1–2 menit.'
+          : 'WhatsApp belum terhubung. Nyalakan koneksi WA terlebih dahulu.',
+      });
+    }
+
+    const { phoneNumber, messageId, newMessage } = req.body || {};
+    const chatId = formatPhoneToChatId(phoneNumber);
+    if (!chatId) {
+      return res.status(400).json({ success: false, message: 'Nomor tidak valid' });
+    }
+    const msgId = typeof messageId === 'string' ? messageId.trim() : '';
+    const newBody = typeof newMessage === 'string' ? newMessage.trim() : '';
+    if (!msgId) {
+      return res.status(400).json({ success: false, message: 'messageId wajib' });
+    }
+    if (newBody === '') {
+      return res.status(400).json({ success: false, message: 'Isi pesan baru tidak boleh kosong' });
+    }
+
+    const chat = await client.current.getChatById(chatId);
+    const messages = await chat.fetchMessages({ limit: 100 });
+    const nowSec = Math.floor(Date.now() / 1000);
+
+    for (const msg of messages) {
+      if (!msg.fromMe) continue;
+      const raw = msg.id?._serialized ?? msg.id?.id ?? (typeof msg.id === 'string' ? msg.id : null);
+      if (raw !== msgId) continue;
+      const ts = msg.timestamp != null ? msg.timestamp : 0;
+      if (nowSec - ts > EDIT_MESSAGE_WINDOW_SECONDS) {
+        return res.status(400).json({
+          success: false,
+          message: 'Pesan hanya bisa diedit dalam 15 menit setelah dikirim.',
+        });
+      }
+      if (typeof msg.edit !== 'function') {
+        return res.status(400).json({
+          success: false,
+          message: 'Pesan ini tidak dapat diedit (hanya pesan teks yang bisa diedit).',
+        });
+      }
+      await msg.edit(newBody);
+      return res.json({
+        success: true,
+        message: 'Pesan berhasil diedit',
+        messageId: msgId,
+      });
+    }
+
+    return res.status(404).json({
+      success: false,
+      message: 'Pesan tidak ditemukan. Pastikan pesan dikirim dari aplikasi ini dan masih dalam 15 menit.',
+    });
+  } catch (err) {
+    console.error('[WA] editMessage error:', err?.message || err);
+    return res.status(500).json({
+      success: false,
+      message: err?.message || 'Gagal mengedit pesan',
     });
   }
 };

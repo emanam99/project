@@ -144,9 +144,10 @@ function Sidebar() {
     if (path === '/dashboard-keuangan') {
       return location.pathname === '/dashboard-keuangan'
     }
-    // Untuk pendaftaran/item, cek path yang tepat
+    // Untuk pendaftaran/item: aktif juga di sub-halaman (Manage Set, Kondisi, Registrasi, Assign, Simulasi) — akses lewat Item
     if (path === '/pendaftaran/item') {
-      return location.pathname === '/pendaftaran/item'
+      const itemSubPaths = ['/pendaftaran/item', '/pendaftaran/manage-item-set', '/pendaftaran/manage-kondisi', '/pendaftaran/kondisi-registrasi', '/pendaftaran/assign-item', '/pendaftaran/simulasi']
+      return itemSubPaths.some((p) => location.pathname === p || (p !== '/pendaftaran/item' && location.pathname.startsWith(p + '/')))
     }
     // Untuk pendaftaran/data-pendaftar, cek path yang tepat
     if (path === '/pendaftaran/data-pendaftar') {
@@ -160,10 +161,11 @@ function Sidebar() {
     if (path === '/pendaftaran/pengaturan') {
       return location.pathname === '/pendaftaran/pengaturan'
     }
-    // Untuk pendaftaran: hanya aktif ketika exact /pendaftaran atau subpath yang bukan menu sendiri (bukan item, data-pendaftar, padukan-data, pengaturan)
+    // Untuk pendaftaran: hanya aktif ketika exact /pendaftaran atau subpath yang bukan menu sendiri (bukan item & sub-item, data-pendaftar, padukan-data, pengaturan)
     if (path === '/pendaftaran') {
       if (location.pathname !== '/pendaftaran' && !location.pathname.startsWith('/pendaftaran/')) return false
-      if (location.pathname === '/pendaftaran/item' || location.pathname.startsWith('/pendaftaran/item/')) return false
+      const itemAreaPaths = ['/pendaftaran/item', '/pendaftaran/manage-item-set', '/pendaftaran/manage-kondisi', '/pendaftaran/kondisi-registrasi', '/pendaftaran/assign-item', '/pendaftaran/simulasi']
+      if (itemAreaPaths.some((p) => location.pathname === p || location.pathname.startsWith(p + '/'))) return false
       if (location.pathname === '/pendaftaran/data-pendaftar' || location.pathname === '/pendaftaran/padukan-data' || location.pathname === '/pendaftaran/pengaturan') return false
       if (location.pathname === '/pendaftaran/data') return false
       return true

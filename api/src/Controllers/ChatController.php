@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -26,47 +27,6 @@ class ChatController
     }
 
     /**
-     * Helper function untuk memastikan tabel chat ada
-     */
-    private function ensureChatTableExists(): void
-    {
-        $tableCheck = $this->db->query("SHOW TABLES LIKE 'chat'");
-        if ($tableCheck->rowCount() === 0) {
-            $createTableSQL = "
-            CREATE TABLE `chat` (
-              `id` INT AUTO_INCREMENT PRIMARY KEY,
-              `id_santri` VARCHAR(20) NOT NULL,
-              `nama_santri` VARCHAR(255) NOT NULL,
-              `nomor_tujuan` VARCHAR(20) NOT NULL,
-              `pesan` TEXT NOT NULL,
-              `page` ENUM('uwaba', 'tunggakan', 'khusus') DEFAULT 'uwaba',
-              `source` ENUM('gemini', 'template', 'fallback', 'edited') DEFAULT 'template',
-              `status_pengiriman` ENUM('berhasil', 'pending', 'gagal') DEFAULT 'pending',
-              `nomor_aktif` BOOLEAN DEFAULT TRUE,
-              `admin_pengirim` VARCHAR(100) NULL,
-              `nomor_uwaba` VARCHAR(20) NULL,
-              `tanggal_dibuat` DATETIME DEFAULT CURRENT_TIMESTAMP,
-              `tanggal_update` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
-              INDEX idx_id_santri (id_santri),
-              INDEX idx_page (page),
-              INDEX idx_status (status_pengiriman),
-              INDEX idx_tanggal (tanggal_dibuat)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-            ";
-            
-            $this->db->exec($createTableSQL);
-            $this->log("TABLE_CREATED: chat table created");
-        } else {
-            // Cek apakah kolom nomor_uwaba sudah ada
-            $columnCheck = $this->db->query("SHOW COLUMNS FROM chat LIKE 'nomor_uwaba'");
-            if ($columnCheck->rowCount() === 0) {
-                $this->db->exec("ALTER TABLE chat ADD COLUMN nomor_uwaba VARCHAR(20) NULL AFTER admin_pengirim");
-                $this->log("COLUMN_ADDED: nomor_uwaba column added");
-            }
-        }
-    }
-
-    /**
      * Helper function untuk logging
      */
     private function log(string $message): void
@@ -77,66 +37,93 @@ class ChatController
     }
 
     /**
-     * POST /api/chat/save - Simpan chat data
+     * POST /api/chat/save - Simpan log pesan ke tabel whatsapp (untuk manual send / pelengkap).
+     * Jika kirim lewat API /wa/send, backend sudah log ke whatsapp; frontend tidak perlu panggil saveChat lagi.
      */
     public function saveChat(Request $request, Response $response): Response
     {
         try {
-            $this->ensureChatTableExists();
-            
             $input = $request->getParsedBody();
             $this->log('SAVE_DATA: ' . json_encode($input));
-            
-            // Validasi data yang diperlukan
-            $requiredFields = ['id_santri', 'nama_santri', 'nomor_tujuan', 'pesan'];
+
+            $requiredFields = ['nomor_tujuan', 'pesan'];
             foreach ($requiredFields as $field) {
-                if (!isset($input[$field]) || empty($input[$field])) {
+                if (!isset($input[$field]) || (is_string($input[$field]) && trim($input[$field]) === '')) {
                     return $this->jsonResponse($response, [
                         'success' => false,
                         'message' => "Field '$field' is required"
                     ], 400);
                 }
             }
-            
-            // Set default values
-            $data = [
-                'id_santri' => $input['id_santri'],
-                'nama_santri' => $input['nama_santri'],
-                'nomor_tujuan' => $input['nomor_tujuan'],
-                'pesan' => $input['pesan'],
-                'page' => $input['page'] ?? 'uwaba',
-                'source' => $input['source'] ?? 'template',
-                'status_pengiriman' => $input['status_pengiriman'] ?? 'pending',
-                'nomor_aktif' => $input['nomor_aktif'] ?? true,
-                'admin_pengirim' => $input['admin_pengirim'] ?? null,
-                'nomor_uwaba' => $input['nomor_uwaba'] ?? null
-            ];
-            
-            $sql = "INSERT INTO chat (
-                id_santri, nama_santri, nomor_tujuan, pesan, page,
-                source, status_pengiriman, nomor_aktif, admin_pengirim, nomor_uwaba
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            
+
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Tabel whatsapp tidak ada'], 500);
+            }
+
+            $messageId = isset($input['message_id']) ? trim((string) $input['message_id']) : null;
+            if ($messageId !== '' && $messageId !== null) {
+                $hasWaMsgId = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'wa_message_id'")->rowCount() > 0;
+                if ($hasWaMsgId) {
+                    $stmt = $this->db->prepare("SELECT id FROM whatsapp WHERE wa_message_id = ? AND arah = 'keluar' LIMIT 1");
+                    $stmt->execute([$messageId]);
+                    if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
+                        return $this->jsonResponse($response, ['success' => true, 'message' => 'OK (sudah tercatat)'], 200);
+                    }
+                }
+            }
+
+            $idSantri = isset($input['id_santri']) ? (trim((string) $input['id_santri']) !== '' ? $input['id_santri'] : null) : null;
+            if ($idSantri !== null && is_numeric($idSantri)) {
+                $idSantri = (int) $idSantri;
+            }
+            if ($idSantri !== null) {
+                try {
+                    $stmtCheck = $this->db->prepare("SELECT 1 FROM santri WHERE id = ?");
+                    $stmtCheck->execute([$idSantri]);
+                    if ($stmtCheck->fetch() === false) {
+                        $idSantri = null;
+                    }
+                } catch (\Throwable $e) {
+                    $idSantri = null;
+                }
+            }
+
+            $idPengurusPengirim = isset($input['id_pengurus']) ? (int) $input['id_pengurus'] : null;
+            if ($idPengurusPengirim <= 0) {
+                $idPengurusPengirim = null;
+            }
+
+            $status = $input['status_pengiriman'] ?? 'berhasil';
+            $statusWa = in_array($status, ['sent', 'delivered', 'read'], true) ? $status : 'terkirim';
+
+            $nomorTujuan = trim($input['nomor_tujuan']);
+            $nomor62 = WhatsAppService::formatPhoneNumber($nomorTujuan);
+            $sumber = in_array($input['source'] ?? 'uwaba', ['uwaba', 'daftar', 'api_wa', 'edited', 'template', 'manual'], true) ? ($input['source'] ?? 'uwaba') : 'uwaba';
+
+            $hasArah = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'arah'")->rowCount() > 0;
+            $hasWaMessageId = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'wa_message_id'")->rowCount() > 0;
+
+            $cols = ['id_santri', 'id_pengurus', 'tujuan', 'id_pengurus_pengirim', 'kategori', 'sumber', 'nomor_tujuan', 'isi_pesan', 'punya_gambar', 'status'];
+            $vals = [$idSantri, null, 'wali_santri', $idPengurusPengirim, 'custom', $sumber, $nomor62, trim($input['pesan']), 0, $statusWa];
+            if ($hasArah) {
+                $cols[] = 'arah';
+                $vals[] = 'keluar';
+            }
+            if ($hasWaMessageId && $messageId !== '' && $messageId !== null) {
+                $cols[] = 'wa_message_id';
+                $vals[] = $messageId;
+            }
+            $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+            $sql = "INSERT INTO whatsapp (" . implode(', ', $cols) . ") VALUES ($placeholders)";
             $stmt = $this->db->prepare($sql);
-            $stmt->execute([
-                $data['id_santri'],
-                $data['nama_santri'],
-                $data['nomor_tujuan'],
-                $data['pesan'],
-                $data['page'],
-                $data['source'],
-                $data['status_pengiriman'],
-                $data['nomor_aktif'] ? 1 : 0,
-                $data['admin_pengirim'],
-                $data['nomor_uwaba']
-            ]);
-            
+            $stmt->execute($vals);
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'id' => $this->db->lastInsertId(),
                 'message' => 'Chat berhasil disimpan'
             ], 200);
-            
         } catch (\Exception $e) {
             $this->log('SAVE_CHAT_ERROR: ' . $e->getMessage());
             return $this->jsonResponse($response, [
@@ -147,87 +134,59 @@ class ChatController
     }
 
     /**
-     * POST /api/chat/save-all - Simpan semua variasi chat
+     * POST /api/chat/save-all - Simpan semua variasi ke tabel whatsapp
      */
     public function saveAllChat(Request $request, Response $response): Response
     {
         try {
-            $this->ensureChatTableExists();
-            
             $input = $request->getParsedBody();
             $variations = $input['variations'] ?? [];
-            $idSantri = $input['id_santri'] ?? '';
-            $namaSantri = $input['nama_santri'] ?? '';
-            $nomorTujuan = $input['nomor_tujuan'] ?? '';
-            $adminPengirim = $input['admin_pengirim'] ?? null;
-            
-            if (empty($variations) || empty($idSantri) || empty($namaSantri) || empty($nomorTujuan)) {
+            $nomorTujuan = trim($input['nomor_tujuan'] ?? '');
+            $idSantri = isset($input['id_santri']) && trim((string) $input['id_santri']) !== '' ? (is_numeric($input['id_santri']) ? (int) $input['id_santri'] : null) : null;
+            $idPengurusPengirim = isset($input['id_pengurus']) ? (int) $input['id_pengurus'] : null;
+            if ($idPengurusPengirim <= 0) {
+                $idPengurusPengirim = null;
+            }
+            if (empty($variations) || $nomorTujuan === '') {
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Variations, id_santri, nama_santri, dan nomor_tujuan diperlukan'
+                    'message' => 'Variations dan nomor_tujuan diperlukan'
                 ], 400);
             }
-            
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Tabel whatsapp tidak ada'], 500);
+            }
+            $nomor62 = WhatsAppService::formatPhoneNumber($nomorTujuan);
+            $hasArah = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'arah'")->rowCount() > 0;
+            $cols = ['id_santri', 'id_pengurus', 'tujuan', 'id_pengurus_pengirim', 'kategori', 'sumber', 'nomor_tujuan', 'isi_pesan', 'punya_gambar', 'status'];
+            if ($hasArah) {
+                $cols[] = 'arah';
+            }
+            $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+            $sql = "INSERT INTO whatsapp (" . implode(', ', $cols) . ") VALUES ($placeholders)";
             $this->db->beginTransaction();
-            
             $results = [];
             foreach ($variations as $variation) {
-                $chatData = [
-                    'id_santri' => $idSantri,
-                    'nama_santri' => $namaSantri,
-                    'nomor_tujuan' => $nomorTujuan,
-                    'pesan' => $variation['message'] ?? '',
-                    'page' => $variation['page'] ?? 'uwaba',
-                    'source' => $variation['source'] ?? 'template',
-                    'status_pengiriman' => 'pending',
-                    'nomor_aktif' => true,
-                    'admin_pengirim' => $adminPengirim
-                ];
-                
-                $sql = "INSERT INTO chat (
-                    id_santri, nama_santri, nomor_tujuan, pesan, page,
-                    source, status_pengiriman, nomor_aktif, admin_pengirim
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                
+                $params = [$idSantri, null, 'wali_santri', $idPengurusPengirim, 'custom', 'uwaba', $nomor62, trim($variation['message'] ?? ''), 0, 'terkirim'];
+                if ($hasArah) {
+                    $params[] = 'keluar';
+                }
                 $stmt = $this->db->prepare($sql);
-                $stmt->execute([
-                    $chatData['id_santri'],
-                    $chatData['nama_santri'],
-                    $chatData['nomor_tujuan'],
-                    $chatData['pesan'],
-                    $chatData['page'],
-                    $chatData['source'],
-                    $chatData['status_pengiriman'],
-                    $chatData['nomor_aktif'] ? 1 : 0,
-                    $chatData['admin_pengirim']
-                ]);
-                
-                $results[] = [
-                    'success' => true,
-                    'id' => $this->db->lastInsertId()
-                ];
+                $stmt->execute($params);
+                $results[] = ['success' => true, 'id' => $this->db->lastInsertId()];
             }
-            
             $this->db->commit();
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'results' => $results,
-                'message' => 'Semua variasi berhasil disimpan'
-            ], 200);
-            
+            return $this->jsonResponse($response, ['success' => true, 'results' => $results, 'message' => 'Semua variasi berhasil disimpan'], 200);
         } catch (\Exception $e) {
             $this->db->rollBack();
             $this->log('SAVE_ALL_CHAT_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Gagal menyimpan semua variasi: ' . $e->getMessage()
-            ], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menyimpan: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * POST /api/chat/update-status - Update status pengiriman
+     * POST /api/chat/update-status - Update status di tabel whatsapp (id = whatsapp.id)
      */
     public function updateStatus(Request $request, Response $response): Response
     {
@@ -235,150 +194,269 @@ class ChatController
             $input = $request->getParsedBody();
             $id = $input['id'] ?? '';
             $status = $input['status'] ?? '';
-            
             if (empty($id) || empty($status)) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'ID dan status diperlukan'
-                ], 400);
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'ID dan status diperlukan'], 400);
             }
-            
-            $validStatuses = ['berhasil', 'pending', 'gagal'];
-            if (!in_array($status, $validStatuses)) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Status tidak valid'
-                ], 400);
+            $validStatuses = ['pending', 'sent', 'delivered', 'read', 'berhasil', 'gagal', 'terkirim'];
+            $statusWa = in_array($status, ['sent', 'delivered', 'read'], true) ? $status : 'terkirim';
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Tabel whatsapp tidak ada'], 500);
             }
-            
-            $sql = "UPDATE chat SET status_pengiriman = ? WHERE id = ?";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([$status, $id]);
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'message' => 'Status berhasil diupdate'
-            ], 200);
-            
+            $stmt = $this->db->prepare("UPDATE whatsapp SET status = ? WHERE id = ?");
+            $stmt->execute([$statusWa, $id]);
+            return $this->jsonResponse($response, ['success' => true, 'message' => 'Status berhasil diupdate'], 200);
         } catch (\Exception $e) {
             $this->log('UPDATE_STATUS_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Gagal mengupdate status: ' . $e->getMessage()
-            ], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengupdate status: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * POST /api/chat/update-nomor-aktif - Update status nomor aktif
+     * POST /api/chat/update-status-by-message-id - Update status by wa_message_id (dipanggil dari server WA saat message_ack).
      */
-    public function updateNomorAktif(Request $request, Response $response): Response
+    public function updateStatusByMessageId(Request $request, Response $response): Response
     {
         try {
             $input = $request->getParsedBody();
-            $id = $input['id'] ?? '';
-            $nomorAktif = $input['nomor_aktif'] ?? null;
-            
-            if (empty($id) || $nomorAktif === null) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'ID dan nomor_aktif diperlukan'
-                ], 400);
+            $messageId = isset($input['messageId']) ? trim((string) $input['messageId']) : (isset($input['message_id']) ? trim((string) $input['message_id']) : '');
+            $status = isset($input['status']) ? trim((string) $input['status']) : '';
+            if ($messageId === '') {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'messageId wajib'], 400);
             }
-            
-            $nomorAktif = (bool)$nomorAktif;
-            
-            $sql = "UPDATE chat SET nomor_aktif = ? WHERE id = ?";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([$nomorAktif ? 1 : 0, $id]);
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'message' => 'Status nomor berhasil diupdate'
-            ], 200);
-            
+            if (!in_array($status, ['sent', 'delivered', 'read'], true)) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Status harus sent, delivered, atau read'], 400);
+            }
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
+            $hasWaMessageId = $tableCheck->rowCount() > 0 && $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'wa_message_id'")->rowCount() > 0;
+            if ($hasWaMessageId) {
+                $stmt = $this->db->prepare("UPDATE whatsapp SET status = ? WHERE wa_message_id = ? AND (arah = 'keluar' OR arah IS NULL)");
+                $stmt->execute([$status, $messageId]);
+            }
+            return $this->jsonResponse($response, ['success' => true, 'message' => 'OK'], 200);
         } catch (\Exception $e) {
-            $this->log('UPDATE_NOMOR_AKTIF_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Gagal mengupdate status nomor: ' . $e->getMessage()
-            ], 500);
+            $this->log('UPDATE_STATUS_BY_MESSAGE_ID_ERROR: ' . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
     /**
-     * POST /api/chat/count-by-santri - Hitung jumlah chat berdasarkan santri
+     * POST /api/chat/update-nomor-aktif - No-op (tabel whatsapp tidak punya nomor_aktif). Tetap return success.
+     */
+    public function updateNomorAktif(Request $request, Response $response): Response
+    {
+        return $this->jsonResponse($response, ['success' => true, 'message' => 'OK'], 200);
+    }
+
+    /**
+     * POST /api/chat/count-by-santri - Hitung jumlah pesan whatsapp by id_santri
      */
     public function countBySantri(Request $request, Response $response): Response
     {
         try {
             $input = $request->getParsedBody();
             $idSantri = $input['id_santri'] ?? '';
-            
             if (empty($idSantri)) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'ID Santri diperlukan'
-                ], 400);
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'ID Santri diperlukan'], 400);
             }
-            
-            $this->ensureChatTableExists();
-            
-            $sql = "SELECT COUNT(*) as total FROM chat WHERE id_santri = ?";
-            $stmt = $this->db->prepare($sql);
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => true, 'count' => 0], 200);
+            }
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total FROM whatsapp WHERE id_santri = ?");
             $stmt->execute([$idSantri]);
             $result = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'count' => intval($result['total'])
-            ], 200);
-            
+            return $this->jsonResponse($response, ['success' => true, 'count' => (int) ($result['total'] ?? 0)], 200);
         } catch (\Exception $e) {
             $this->log('COUNT_BY_SANTRI_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Gagal menghitung riwayat: ' . $e->getMessage()
-            ], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghitung riwayat: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * GET /api/chat/get-by-santri - Ambil chat berdasarkan santri
+     * GET /api/chat/get-by-santri - Ambil riwayat whatsapp berdasarkan id_santri (format seragam dengan get-all)
      */
     public function getBySantri(Request $request, Response $response): Response
     {
         try {
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? '';
-            $limit = intval($queryParams['limit'] ?? 50);
-            
+            $limit = (int) ($queryParams['limit'] ?? 50);
             if (empty($idSantri)) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'ID Santri diperlukan'
-                ], 400);
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'ID Santri diperlukan'], 400);
             }
-            
-            $this->ensureChatTableExists();
-            
-            // Validasi limit
-            if ($limit <= 0 || $limit > 1000) {
-                $limit = 50;
+            $limit = max(1, min(1000, $limit));
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => true, 'data' => []], 200);
             }
-            
-            $sql = "SELECT * FROM chat WHERE id_santri = ? ORDER BY tanggal_dibuat DESC LIMIT ?";
+            $hasArah = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'arah'")->rowCount() > 0;
+            $hasWaMessageId = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'wa_message_id'")->rowCount() > 0;
+            $selCols = 'id, id_santri, id_pengurus_pengirim, nomor_tujuan, isi_pesan, created_at, status';
+            if ($hasArah) {
+                $selCols .= ', arah';
+            }
+            if ($hasWaMessageId) {
+                $selCols .= ', wa_message_id';
+            }
+            $sql = "SELECT $selCols FROM whatsapp WHERE id_santri = ? ORDER BY created_at DESC LIMIT ?";
             $stmt = $this->db->prepare($sql);
             $stmt->execute([$idSantri, $limit]);
-            $chats = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'data' => $chats
-            ], 200);
-            
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $data = [];
+            $idPengurusUnik = [];
+            foreach ($rows as $row) {
+                $arah = $hasArah && (($row['arah'] ?? '') === 'masuk') ? 'masuk' : 'keluar';
+                $st = $row['status'] ?? 'terkirim';
+                $statusPesan = in_array($st, ['pending', 'sent', 'delivered', 'read'], true) ? $st : (($st === 'terkirim' || $st === 'berhasil') ? 'sent' : 'sent');
+                $idPengirim = isset($row['id_pengurus_pengirim']) && (int) $row['id_pengurus_pengirim'] > 0 ? (int) $row['id_pengurus_pengirim'] : null;
+                if ($idPengirim) {
+                    $idPengurusUnik[$idPengirim] = true;
+                }
+                $data[] = [
+                    'id' => 'w_' . $row['id'],
+                    'pesan' => $row['isi_pesan'] ?? '',
+                    'tanggal_dibuat' => $row['created_at'] ?? null,
+                    'id_pengurus' => $idPengirim,
+                    'nama_pengirim' => null,
+                    'status_pengiriman' => $statusPesan,
+                    'message_id' => $hasWaMessageId ? ($row['wa_message_id'] ?? null) : null,
+                    'arah' => $arah,
+                    'id_santri' => $row['id_santri'] ?? null,
+                    'nomor_tujuan' => $row['nomor_tujuan'] ?? null,
+                ];
+            }
+            if (!empty($idPengurusUnik) && $this->db->query("SHOW TABLES LIKE 'pengurus'")->rowCount() > 0) {
+                $ids = array_keys($idPengurusUnik);
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $stmtP = $this->db->prepare("SELECT id, nama FROM pengurus WHERE id IN ($placeholders)");
+                $stmtP->execute($ids);
+                $namaById = [];
+                while (($r = $stmtP->fetch(\PDO::FETCH_ASSOC)) !== false) {
+                    $idP = isset($r['id']) ? (int) $r['id'] : null;
+                    if ($idP !== null && isset($r['nama']) && trim((string) $r['nama']) !== '') {
+                        $namaById[$idP] = trim($r['nama']);
+                    }
+                }
+                foreach ($data as &$m) {
+                    if (isset($m['id_pengurus']) && (int) $m['id_pengurus'] > 0) {
+                        $m['nama_pengirim'] = $namaById[(int) $m['id_pengurus']] ?? null;
+                    }
+                }
+                unset($m);
+            }
+            return $this->jsonResponse($response, ['success' => true, 'data' => $data], 200);
         } catch (\Exception $e) {
             $this->log('GET_CHAT_ERROR: ' . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil data chat: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * GET /api/chat/get-all - Riwayat chat dari tabel whatsapp saja (by nomor_tujuan).
+     * Format: id (w_id), pesan, tanggal_dibuat, id_pengurus (id_pengurus_pengirim), nama_pengirim, status_pengiriman (sent/delivered/read), arah.
+     */
+    public function getAll(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            $nomorTujuan = isset($queryParams['nomor_tujuan']) ? trim((string) $queryParams['nomor_tujuan']) : '';
+            $defaultLimit = $nomorTujuan !== '' ? 30 : 100;
+            $limit = isset($queryParams['limit']) ? (int) $queryParams['limit'] : $defaultLimit;
+            $limit = max(1, min(500, $limit));
+            $beforeDate = isset($queryParams['before_date']) ? trim((string) $queryParams['before_date']) : null;
+
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => true, 'data' => []], 200);
+            }
+
+            if ($nomorTujuan === '') {
+                return $this->jsonResponse($response, ['success' => true, 'data' => []], 200);
+            }
+
+            $nomor62 = WhatsAppService::formatPhoneNumber($nomorTujuan);
+            $hasArah = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'arah'")->rowCount() > 0;
+            $hasWaMessageId = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'wa_message_id'")->rowCount() > 0;
+
+            $selCols = 'id, id_santri, id_pengurus_pengirim, nomor_tujuan, isi_pesan, created_at, status';
+            if ($hasArah) {
+                $selCols .= ', arah';
+            }
+            if ($hasWaMessageId) {
+                $selCols .= ', wa_message_id';
+            }
+            $sql = "SELECT $selCols FROM whatsapp WHERE (nomor_tujuan = ? OR nomor_tujuan = ?)";
+            $params = [$nomorTujuan, $nomor62];
+            if ($beforeDate !== null && $beforeDate !== '') {
+                $sql .= " AND created_at < ?";
+                $params[] = $beforeDate;
+            }
+            $sql .= " ORDER BY created_at DESC LIMIT ?";
+            $params[] = $limit;
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $merged = [];
+            foreach ($rows as $row) {
+                $arah = $hasArah && (($row['arah'] ?? '') === 'masuk') ? 'masuk' : 'keluar';
+                $st = $row['status'] ?? 'terkirim';
+                $statusPesan = in_array($st, ['pending', 'sent', 'delivered', 'read'], true) ? $st : (($st === 'terkirim' || $st === 'berhasil') ? 'sent' : 'sent');
+                $idPengirim = isset($row['id_pengurus_pengirim']) && (int) $row['id_pengurus_pengirim'] > 0 ? (int) $row['id_pengurus_pengirim'] : null;
+                $merged[] = [
+                    'id' => 'w_' . $row['id'],
+                    'pesan' => $row['isi_pesan'] ?? '',
+                    'tanggal_dibuat' => $row['created_at'] ?? null,
+                    'id_pengurus' => $idPengirim,
+                    'nama_pengirim' => null,
+                    'status_pengiriman' => $statusPesan,
+                    'message_id' => $hasWaMessageId ? ($row['wa_message_id'] ?? null) : null,
+                    'arah' => $arah,
+                    'id_santri' => $row['id_santri'] ?? null,
+                    'nomor_tujuan' => $row['nomor_tujuan'] ?? $nomor62,
+                    'page' => null,
+                    'source' => null,
+                ];
+            }
+
+            $idPengurusUnik = [];
+            foreach ($merged as $m) {
+                if (isset($m['id_pengurus']) && (int) $m['id_pengurus'] > 0) {
+                    $idPengurusUnik[(int) $m['id_pengurus']] = true;
+                }
+            }
+            if (!empty($idPengurusUnik)) {
+                $hasTblPengurus = $this->db->query("SHOW TABLES LIKE 'pengurus'")->rowCount() > 0;
+                if ($hasTblPengurus) {
+                    $ids = array_keys($idPengurusUnik);
+                    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                    try {
+                        $stmtP = $this->db->prepare("SELECT id, nama FROM pengurus WHERE id IN ($placeholders)");
+                        $stmtP->execute($ids);
+                        $namaById = [];
+                        while (($r = $stmtP->fetch(\PDO::FETCH_ASSOC)) !== false) {
+                            $idP = isset($r['id']) ? (int) $r['id'] : null;
+                            $namaVal = isset($r['nama']) && trim((string) $r['nama']) !== '' ? trim($r['nama']) : null;
+                            if ($idP !== null) {
+                                $namaById[$idP] = $namaVal;
+                            }
+                        }
+                        foreach ($merged as &$m) {
+                            if (isset($m['id_pengurus']) && (int) $m['id_pengurus'] > 0) {
+                                $m['nama_pengirim'] = $namaById[(int) $m['id_pengurus']] ?? null;
+                            }
+                        }
+                        unset($m);
+                    } catch (\Throwable $e) {
+                        $this->log('GET_ALL_PENGURUS_LOOKUP: ' . $e->getMessage());
+                    }
+                }
+            }
+
+            return $this->jsonResponse($response, ['success' => true, 'data' => $merged], 200);
+        } catch (\Exception $e) {
+            $this->log('GET_ALL_CHAT_ERROR: ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data chat: ' . $e->getMessage()
@@ -387,85 +465,12 @@ class ChatController
     }
 
     /**
-     * GET /api/chat/get-all - Ambil semua chat dengan filter
-     */
-    public function getAll(Request $request, Response $response): Response
-    {
-        try {
-            $this->ensureChatTableExists();
-            
-            $queryParams = $request->getQueryParams();
-            
-            $sql = "SELECT c.*, s.nama as nama_santri_lengkap 
-                    FROM chat c 
-                    LEFT JOIN santri s ON c.id_santri = s.id 
-                    WHERE 1=1";
-            $params = [];
-            
-            // Filter berdasarkan parameter
-            if (!empty($queryParams['id_santri'])) {
-                $sql .= " AND c.id_santri = ?";
-                $params[] = $queryParams['id_santri'];
-            }
-            if (!empty($queryParams['nomor_tujuan'])) {
-                $sql .= " AND c.nomor_tujuan = ?";
-                $params[] = $queryParams['nomor_tujuan'];
-            }
-            if (!empty($queryParams['status_pengiriman'])) {
-                $sql .= " AND c.status_pengiriman = ?";
-                $params[] = $queryParams['status_pengiriman'];
-            }
-            if (!empty($queryParams['source'])) {
-                $sql .= " AND c.source = ?";
-                $params[] = $queryParams['source'];
-            }
-            if (isset($queryParams['nomor_aktif']) && $queryParams['nomor_aktif'] !== '') {
-                $sql .= " AND c.nomor_aktif = ?";
-                $params[] = ($queryParams['nomor_aktif'] === 'true' || $queryParams['nomor_aktif'] === '1') ? 1 : 0;
-            }
-            if (!empty($queryParams['tanggal_dari'])) {
-                $sql .= " AND DATE(c.tanggal_dibuat) >= ?";
-                $params[] = $queryParams['tanggal_dari'];
-            }
-            if (!empty($queryParams['tanggal_sampai'])) {
-                $sql .= " AND DATE(c.tanggal_dibuat) <= ?";
-                $params[] = $queryParams['tanggal_sampai'];
-            }
-            
-            $sql .= " ORDER BY c.tanggal_dibuat DESC";
-            
-            // Limit
-            $limit = isset($queryParams['limit']) ? intval($queryParams['limit']) : 100;
-            $sql .= " LIMIT ?";
-            $params[] = $limit;
-            
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $chats = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'data' => $chats
-            ], 200);
-            
-        } catch (\Exception $e) {
-            $this->log('GET_ALL_CHAT_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Gagal mengambil semua data chat: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * GET /api/chat/stats - Ambil statistik chat
+     * GET /api/chat/stats - Ambil statistik dari tabel whatsapp
      */
     public function getStats(Request $request, Response $response): Response
     {
         try {
-            $this->ensureChatTableExists();
-            
-            $tableCheck = $this->db->query("SHOW TABLES LIKE 'chat'");
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'whatsapp'");
             if ($tableCheck->rowCount() === 0) {
                 return $this->jsonResponse($response, [
                     'success' => true,
@@ -480,74 +485,123 @@ class ChatController
                     ]
                 ], 200);
             }
-            
-            $sql = "SELECT 
-                        COUNT(*) as total_pesan,
-                        COUNT(DISTINCT id_santri) as total_santri,
-                        COUNT(CASE WHEN status_pengiriman = 'berhasil' THEN 1 END) as berhasil,
-                        COUNT(CASE WHEN status_pengiriman = 'gagal' THEN 1 END) as gagal,
-                        COUNT(CASE WHEN status_pengiriman = 'pending' THEN 1 END) as pending,
-                        COUNT(CASE WHEN nomor_aktif = 1 THEN 1 END) as nomor_aktif,
-                        COUNT(CASE WHEN source = 'gemini' OR source = 'ai' THEN 1 END) as dari_ai
-                    FROM chat";
+            $sql = "SELECT
+                COUNT(*) as total_pesan,
+                COUNT(DISTINCT id_santri) as total_santri,
+                COUNT(CASE WHEN status IN ('terkirim','sent','delivered','read','berhasil') THEN 1 END) as berhasil,
+                COUNT(CASE WHEN status = 'gagal' THEN 1 END) as gagal,
+                0 as pending,
+                0 as nomor_aktif,
+                0 as dari_ai
+                FROM whatsapp";
             $stmt = $this->db->prepare($sql);
             $stmt->execute();
             $stats = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'data' => $stats
-            ], 200);
-            
+            return $this->jsonResponse($response, ['success' => true, 'data' => $stats], 200);
         } catch (\Exception $e) {
             $this->log('GET_STATS_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Gagal mengambil statistik: ' . $e->getMessage()
-            ], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil statistik: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * POST /api/chat/check-phone-status - Cek status nomor telepon
+     * POST /api/chat/check-phone-status - Cek status nomor (default aktif; tabel whatsapp tidak punya nomor_aktif)
      */
     public function checkPhoneStatus(Request $request, Response $response): Response
     {
         try {
             $input = $request->getParsedBody();
             $nomorTujuan = $input['nomor_tujuan'] ?? '';
-            
             if (empty($nomorTujuan)) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Nomor tujuan diperlukan'
-                ], 400);
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Nomor tujuan diperlukan'], 400);
             }
-            
-            $this->ensureChatTableExists();
-            
-            // Cek status nomor terakhir berdasarkan nomor_tujuan
-            $sql = "SELECT nomor_aktif FROM chat WHERE nomor_tujuan = ? ORDER BY tanggal_dibuat DESC LIMIT 1";
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([$nomorTujuan]);
-            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
-            // Jika tidak ada data, default aktif (true)
-            $isActive = $result ? (bool)$result['nomor_aktif'] : true;
-            
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'is_active' => $isActive
-            ], 200);
-            
+            return $this->jsonResponse($response, ['success' => true, 'is_active' => true], 200);
         } catch (\Exception $e) {
             $this->log('CHECK_PHONE_STATUS_ERROR: ' . $e->getMessage());
-            // Fallback ke default aktif jika ada error
+            return $this->jsonResponse($response, ['success' => true, 'is_active' => true], 200);
+        }
+    }
+
+    /**
+     * POST /api/chat/sync-from-wa - Muat pesan yang belum ada di DB dari server WA
+     * (pesan kirim lewat WA langsung atau pesan masuk saat WA off).
+     * Body: { nomor_tujuan, limit? } — limit default 50, max 100.
+     * Response: { success, synced_count, message }
+     */
+    public function syncFromWa(Request $request, Response $response): Response
+    {
+        try {
+            $input = $request->getParsedBody() ?? [];
+            $nomorTujuan = trim((string) ($input['nomor_tujuan'] ?? ''));
+            if ($nomorTujuan === '') {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'nomor_tujuan diperlukan'], 400);
+            }
+            $limit = isset($input['limit']) ? (int) $input['limit'] : 50;
+            $limit = max(1, min(100, $limit));
+
+            $result = WhatsAppService::fetchChatMessagesFromWa($nomorTujuan, $limit);
+            if (!$result['success']) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $result['message'],
+                    'synced_count' => 0,
+                ], 200);
+            }
+
+            $nomor62 = WhatsAppService::formatPhoneNumber($nomorTujuan);
+            $existingIds = [];
+            $stmt = $this->db->prepare('SELECT wa_message_id FROM whatsapp WHERE nomor_tujuan = ? AND wa_message_id IS NOT NULL');
+            $stmt->execute([$nomor62]);
+            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                $existingIds[$row['wa_message_id']] = true;
+            }
+
+            $syncedCount = 0;
+            $insertSql = 'INSERT INTO whatsapp (arah, nomor_tujuan, isi_pesan, wa_message_id, tujuan, kategori, sumber, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            $insertStmt = $this->db->prepare($insertSql);
+            $statusMap = ['pending' => 'pending', 'sent' => 'sent', 'delivered' => 'delivered', 'read' => 'read'];
+            foreach ($result['data'] as $msg) {
+                $waId = isset($msg['id']) && (string) $msg['id'] !== '' ? (string) $msg['id'] : null;
+                if ($waId !== null && isset($existingIds[$waId])) {
+                    continue;
+                }
+                $arah = !empty($msg['fromMe']) ? 'keluar' : 'masuk';
+                $isi = isset($msg['body']) ? trim((string) $msg['body']) : '';
+                if ($isi === '' && $arah === 'masuk') {
+                    $isi = '(tanpa teks)';
+                }
+                $status = $statusMap[$msg['status'] ?? 'sent'] ?? 'sent';
+                $ts = isset($msg['timestamp']) ? (int) $msg['timestamp'] : 0;
+                $createdAt = $ts > 0 ? date('Y-m-d H:i:s', $ts) : null;
+                $insertStmt->execute([
+                    $arah,
+                    $msg['nomor_tujuan'] ?? $nomor62,
+                    $isi,
+                    $waId,
+                    'wali_santri',
+                    'sync_wa',
+                    'api_wa',
+                    $status,
+                    $createdAt,
+                ]);
+                $syncedCount++;
+                if ($waId !== null) {
+                    $existingIds[$waId] = true;
+                }
+            }
+
             return $this->jsonResponse($response, [
                 'success' => true,
-                'is_active' => true,
-                'message' => 'Error: ' . $e->getMessage()
+                'synced_count' => $syncedCount,
+                'message' => $syncedCount > 0 ? "Berhasil menyinkronkan {$syncedCount} pesan" : 'Tidak ada pesan baru',
             ], 200);
+        } catch (\Exception $e) {
+            $this->log('SYNC_FROM_WA_ERROR: ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal sinkron: ' . $e->getMessage(),
+                'synced_count' => 0,
+            ], 500);
         }
     }
 }

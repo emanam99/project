@@ -177,52 +177,44 @@ function Lembaga() {
   }
 
   return (
-    <div className="h-full overflow-hidden flex flex-col">
-      <div className="container mx-auto px-4 py-6 max-w-7xl flex-shrink-0">
-        {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
-            <p className="text-red-800 dark:text-red-200">{error}</p>
-          </div>
-        )}
+    <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
+      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
+        <div className="container mx-auto px-4 py-6 max-w-7xl">
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+              <p className="text-red-800 dark:text-red-200">{error}</p>
+            </div>
+          )}
 
-        {/* Search and Add Button */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
-          {/* Search Input dengan tombol di kanan */}
-          <div className="relative pb-2 px-4 pt-3">
-            <div className="relative">
+          {/* Search and Add — sticky seperti Pengurus/Santri */}
+          <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
+            <div className="relative pb-2 px-4 pt-3">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsInputFocused(true)}
                 onBlur={() => setIsInputFocused(false)}
-                className="w-full p-2 pr-24 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                placeholder="Cari lembaga..."
+                className="w-full p-2 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                placeholder="Cari"
               />
+              <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-300 dark:bg-gray-600"></div>
+              <div className={`absolute left-0 right-0 bottom-0 h-0.5 bg-teal-500 transition-opacity ${isInputFocused ? 'opacity-100' : 'opacity-0'}`}></div>
             </div>
-            {/* Border bawah yang sampai ke kanan */}
-            <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-300 dark:bg-gray-600"></div>
-            <div className={`absolute left-0 right-0 bottom-0 h-0.5 bg-teal-500 transition-opacity ${isInputFocused ? 'opacity-100' : 'opacity-0'}`}></div>
+            <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+              <button
+                onClick={() => handleOpenModal()}
+                className="px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-1.5 text-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                </svg>
+                Tambah Lembaga
+              </button>
+            </div>
           </div>
 
-          {/* Create Button */}
-          <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-            <button
-              onClick={() => handleOpenModal()}
-              className="px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-1.5 text-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-              </svg>
-              Tambah Lembaga
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Lembaga List - Scrollable */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="container mx-auto px-4 pb-6 max-w-7xl">
+          {/* Lembaga List */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <AnimatePresence>
           {filteredLembaga.map((lembaga, index) => (
@@ -279,6 +271,7 @@ function Lembaga() {
               </p>
             </div>
           )}
+          <div className="h-20 sm:h-0" aria-hidden="true" />
         </div>
       </div>
 

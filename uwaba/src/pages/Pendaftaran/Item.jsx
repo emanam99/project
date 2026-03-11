@@ -108,7 +108,8 @@ function Item() {
       }
     } catch (error) {
       console.error('Error creating item:', error)
-      showNotification('Gagal menambahkan item', 'error')
+      const msg = error.response?.data?.message || error.message || 'Gagal menambahkan item'
+      showNotification(msg, 'error')
     }
   }
 

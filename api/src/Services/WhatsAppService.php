@@ -81,6 +81,61 @@ class WhatsAppService
     }
 
     /**
+     * Ambil pesan chat dari server WA (pesan yang dikirim lewat WA langsung atau pesan masuk saat WA off).
+     *
+     * @param string $phoneNumber Nomor 08xxx atau 62xxx
+     * @param int $limit Jumlah pesan (default 50, max 100)
+     * @return array ['success' => bool, 'data' => array of ['id','body','fromMe','timestamp','status','nomor_tujuan'], 'message' => string]
+     */
+    public static function fetchChatMessagesFromWa(string $phoneNumber, int $limit = 50): array
+    {
+        $phone = self::formatPhoneNumber($phoneNumber);
+        if (strlen($phone) < 10) {
+            return ['success' => false, 'data' => [], 'message' => 'Nomor tidak valid'];
+        }
+        $cfg = self::getConfig();
+        $apiKey = $cfg['api_key'];
+        $apiUrl = $cfg['api_url'];
+        if (empty($apiKey) || empty($apiUrl)) {
+            return ['success' => false, 'data' => [], 'message' => 'Backend WA belum dikonfigurasi'];
+        }
+        $baseUrl = preg_replace('#/send$#', '', $apiUrl);
+        $chatMessagesUrl = rtrim($baseUrl, '/') . '/chat-messages';
+        $limit = max(1, min(100, $limit));
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 30]);
+            $response = $client->post($chatMessagesUrl, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-API-Key' => $apiKey,
+                ],
+                'json' => [
+                    'phoneNumber' => $phone,
+                    'limit' => $limit,
+                ],
+            ]);
+            $code = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            $data = json_decode($body, true);
+            if ($code >= 200 && $code < 300 && !empty($data['success']) && isset($data['data'])) {
+                return [
+                    'success' => true,
+                    'data' => is_array($data['data']) ? $data['data'] : [],
+                    'message' => $data['message'] ?? 'OK',
+                ];
+            }
+            return [
+                'success' => false,
+                'data' => [],
+                'message' => $data['message'] ?? $data['error'] ?? "HTTP {$code}",
+            ];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::fetchChatMessagesFromWa: ' . $e->getMessage());
+            return ['success' => false, 'data' => [], 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Cek apakah nomor terdaftar/aktif di WhatsApp (backend WA baru).
      * Return format sama dengan response backend: success, data: { phoneNumber, isRegistered }, message.
      *
@@ -206,11 +261,12 @@ class WhatsAppService
 
     /**
      * Simpan log pesan WA ke tabel whatsapp.
+     * Jika wa_message_id diset, nanti message_ack dari server WA bisa update status (sent/delivered/read).
      *
      * @param string $nomorTujuan Nomor (08xxx/62xxx); disimpan dalam format 62xxx
      * @param string $isiPesan Isi pesan
      * @param int $punyaGambar 0 atau 1
-     * @param string $status terkirim|gagal
+     * @param string $status terkirim|gagal|sent|delivered|read
      * @param string|null $responseMessage Pesan dari API
      * @param int|null $idSantri id santri (konteks) ketika tujuan=santri atau wali_santri
      * @param int|null $idPengurus pengurus sebagai PENERIMA (tujuan) ketika tujuan=pengurus
@@ -218,17 +274,28 @@ class WhatsAppService
      * @param int|null $idPengurusPengirim pengurus yang memicu mengirim (manual); null = system
      * @param string $kategori biodata_terdaftar, verifikasi, pembayaran_*, dll
      * @param string $sumber system, daftar, uwaba, manage_users, auth, api_wa
+     * @param string|null $waMessageId ID pesan dari WA (untuk sinkronisasi status sent/delivered/read via message_ack)
      */
-    private static function logSentMessage(string $nomorTujuan, string $isiPesan, int $punyaGambar, string $status, ?string $responseMessage, ?int $idSantri, ?int $idPengurus, string $tujuan, ?int $idPengurusPengirim, string $kategori, string $sumber): void
+    private static function logSentMessage(string $nomorTujuan, string $isiPesan, int $punyaGambar, string $status, ?string $responseMessage, ?int $idSantri, ?int $idPengurus, string $tujuan, ?int $idPengurusPengirim, string $kategori, string $sumber, ?string $waMessageId = null): void
     {
         $nomorNormal = self::formatPhoneNumber($nomorTujuan);
         try {
             $db = Database::getInstance()->getConnection();
-            $stmt = $db->prepare(
-                'INSERT INTO whatsapp (id_santri, id_pengurus, tujuan, id_pengurus_pengirim, kategori, sumber, nomor_tujuan, isi_pesan, punya_gambar, status, response_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-            );
-            $resp = $responseMessage !== null ? substr($responseMessage, 0, 500) : null;
-            $stmt->execute([$idSantri, $idPengurus, $tujuan, $idPengurusPengirim, $kategori, $sumber, $nomorNormal, $isiPesan, $punyaGambar, $status, $resp]);
+            $cols = ['id_santri', 'id_pengurus', 'tujuan', 'id_pengurus_pengirim', 'kategori', 'sumber', 'nomor_tujuan', 'isi_pesan', 'punya_gambar', 'status', 'response_message'];
+            $vals = [$idSantri, $idPengurus, $tujuan, $idPengurusPengirim, $kategori, $sumber, $nomorNormal, $isiPesan, $punyaGambar, $status, $responseMessage !== null ? substr($responseMessage, 0, 500) : null];
+            $hasArah = $db->query("SHOW COLUMNS FROM whatsapp LIKE 'arah'")->rowCount() > 0;
+            $hasWaMessageId = $db->query("SHOW COLUMNS FROM whatsapp LIKE 'wa_message_id'")->rowCount() > 0;
+            if ($hasArah) {
+                $cols[] = 'arah';
+                $vals[] = 'keluar';
+            }
+            if ($hasWaMessageId && $waMessageId !== null && trim($waMessageId) !== '') {
+                $cols[] = 'wa_message_id';
+                $vals[] = trim($waMessageId);
+            }
+            $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+            $stmt = $db->prepare('INSERT INTO whatsapp (' . implode(', ', $cols) . ') VALUES (' . $placeholders . ')');
+            $stmt->execute($vals);
         } catch (\Throwable $e) {
             error_log('WhatsAppService::logSentMessage: ' . $e->getMessage());
         }
@@ -326,20 +393,27 @@ class WhatsAppService
             $data = json_decode($body, true);
 
             if ($code >= 200 && $code < 300 && !empty($data['success'])) {
-                $result = ['success' => true, 'message' => $data['message'] ?? 'OK'];
+                $messageId = isset($data['messageId']) && trim((string) $data['messageId']) !== '' ? trim((string) $data['messageId']) : null;
+                $result = [
+                    'success' => true,
+                    'message' => $data['message'] ?? 'OK',
+                    'messageId' => $messageId,
+                    'senderPhoneNumber' => !empty($data['senderPhoneNumber']) ? trim((string) $data['senderPhoneNumber']) : null,
+                ];
                 if ($logContext !== null) {
                     self::logSentMessage(
                         $phone,
                         $message,
                         0,
-                        'terkirim',
-                        $result['message'],
+                        'sent',
+                        $data['message'] ?? null,
                         $logContext['id_santri'] ?? null,
                         $logContext['id_pengurus'] ?? null,
                         $logContext['tujuan'] ?? 'wali_santri',
                         $logContext['id_pengurus_pengirim'] ?? null,
                         $logContext['kategori'] ?? 'custom',
-                        $logContext['sumber'] ?? 'system'
+                        $logContext['sumber'] ?? 'system',
+                        $messageId
                     );
                 }
                 return $result;
@@ -383,6 +457,77 @@ class WhatsAppService
                 );
             }
             return $result;
+        }
+    }
+
+    /**
+     * Edit pesan WA yang sudah dikirim (hanya dalam 15 menit setelah kirim).
+     *
+     * @param string $noWa Nomor WA (08xxx atau 62xxx)
+     * @param string $messageId ID pesan dari WA (wa_message_id)
+     * @param string $newMessage Isi pesan baru
+     * @return array ['success' => bool, 'message' => string, 'messageId' => string|null]
+     */
+    public static function editMessage(string $noWa, string $messageId, string $newMessage): array
+    {
+        $phone = self::formatPhoneNumber($noWa);
+        if (strlen($phone) < 10) {
+            return ['success' => false, 'message' => 'Nomor tidak valid', 'messageId' => null];
+        }
+        $msgId = trim($messageId);
+        $newBody = trim($newMessage);
+        if ($msgId === '') {
+            return ['success' => false, 'message' => 'messageId wajib', 'messageId' => null];
+        }
+        if ($newBody === '') {
+            return ['success' => false, 'message' => 'Isi pesan baru tidak boleh kosong', 'messageId' => null];
+        }
+
+        $cfg = self::getConfig();
+        $apiUrl = $cfg['api_url'];
+        $apiKey = $cfg['api_key'];
+        $baseUrl = preg_replace('#/send$#', '', $apiUrl);
+        $editUrl = rtrim($baseUrl, '/') . '/edit-message';
+
+        if (empty($apiKey) || empty($editUrl)) {
+            return [
+                'success' => false,
+                'message' => 'Backend WhatsApp belum dikonfigurasi',
+                'messageId' => null,
+            ];
+        }
+
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 15]);
+            $response = $client->post($editUrl, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-API-Key' => $apiKey,
+                ],
+                'json' => [
+                    'phoneNumber' => $phone,
+                    'messageId' => $msgId,
+                    'newMessage' => $newBody,
+                ],
+            ]);
+
+            $code = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            $data = json_decode($body, true);
+
+            if ($code >= 200 && $code < 300 && !empty($data['success'])) {
+                return [
+                    'success' => true,
+                    'message' => $data['message'] ?? 'Pesan berhasil diedit',
+                    'messageId' => $msgId,
+                ];
+            }
+
+            $errMsg = $data['message'] ?? $data['error'] ?? "HTTP {$code}";
+            return ['success' => false, 'message' => $errMsg, 'messageId' => null];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::editMessage: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage(), 'messageId' => null];
         }
     }
 
@@ -486,7 +631,11 @@ class WhatsAppService
             $data = json_decode($body, true);
 
             if ($code >= 200 && $code < 300 && !empty($data['success'])) {
-                $result = ['success' => true, 'message' => $data['message'] ?? 'OK'];
+                $result = [
+                    'success' => true,
+                    'message' => $data['message'] ?? 'OK',
+                    'senderPhoneNumber' => !empty($data['senderPhoneNumber']) ? trim((string) $data['senderPhoneNumber']) : null,
+                ];
                 if ($logContext !== null) {
                     self::logSentMessage(
                         $phone,

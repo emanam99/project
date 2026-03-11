@@ -14,6 +14,7 @@ use App\Controllers\PengaturanController;
 use App\Controllers\VersionChangelogController;
 use App\Controllers\KalenderController;
 use App\Controllers\HariPentingController;
+use App\Controllers\WhatsAppController;
 
 return function (\Slim\App $app): void {
     // Public endpoint untuk cek NIK (tanpa auth)
@@ -60,4 +61,9 @@ return function (\Slim\App $app): void {
     // Kalender & Hari Penting - Public GET
     $app->get('/api/kalender', [KalenderController::class, 'get']);
     $app->get('/api/hari-penting', [HariPentingController::class, 'getList']);
+
+    // Webhook pesan masuk WA (tanpa auth). WA kirim ke sini, retry sampai 200. Simpan ke tabel whatsapp (arah=masuk).
+    $app->post('/api/wa/incoming', [WhatsAppController::class, 'incoming']);
+    // Update status pesan (sent/delivered/read) dari server WA. Header X-API-Key wajib (sama dengan WA_API_KEY).
+    $app->post('/api/wa/message-status', [WhatsAppController::class, 'messageStatus']);
 };

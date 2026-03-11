@@ -2,16 +2,25 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 
+const sizeToMaxWidth = {
+  sm: 'max-w-md',
+  md: 'max-w-xl',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl'
+}
+
 function Modal({ 
   isOpen, 
   onClose, 
   title, 
   children, 
-  maxWidth = 'max-w-2xl',
+  size,
+  maxWidth,
   showCloseButton = true,
   closeOnBackdropClick = true,
   zIndex = 99999
 }) {
+  const resolvedMaxWidth = maxWidth || (size && sizeToMaxWidth[size]) || 'max-w-2xl'
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -84,7 +93,7 @@ function Modal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className={`bg-white dark:bg-gray-800 rounded-2xl shadow-2xl ${maxWidth} w-full relative flex flex-col max-h-[90vh] overflow-hidden`}
+            className={`bg-white dark:bg-gray-800 rounded-2xl shadow-2xl ${resolvedMaxWidth} w-full relative flex flex-col max-h-[90vh] overflow-hidden`}
             onClick={(e) => e.stopPropagation()}
             style={{
               position: 'relative',
@@ -111,7 +120,7 @@ function Modal({
             )}
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
               {children}
             </div>
           </motion.div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { lulusanAPI } from '../../services/api'
@@ -21,6 +21,10 @@ function DataLulusan() {
   const [lembagaFilter, setLembagaFilter] = useState('')
   const [rombelFilter, setRombelFilter] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' })
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
   const [isExportOffcanvasOpen, setIsExportOffcanvasOpen] = useState(false)
   const [detailOffcanvasRow, setDetailOffcanvasRow] = useState(null)
   const closeExportOffcanvas = useOffcanvasBackClose(isExportOffcanvasOpen, () => setIsExportOffcanvasOpen(false))
@@ -178,6 +182,45 @@ function DataLulusan() {
     setSortConfig({ key, direction })
   }
 
+  useEffect(() => {
+    if (!menuOpen) return
+    const onOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false)
+    }
+    document.addEventListener('click', onOutside)
+    return () => document.removeEventListener('click', onOutside)
+  }, [menuOpen])
+
+  const exportData = selectionMode && selectedIds.size > 0
+    ? filteredList.filter((r) => selectedIds.has(r.id))
+    : filteredList
+
+  const toggleSelectAllPage = () => {
+    if (selectedIds.size >= paginatedList.length) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        paginatedList.forEach((r) => next.delete(r.id))
+        return next
+      })
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        paginatedList.forEach((r) => next.add(r.id))
+        return next
+      })
+    }
+  }
+
+  const toggleSelectOne = (id, e) => {
+    e.stopPropagation()
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   const SortIcon = ({ columnKey }) => {
     if (sortConfig.key !== columnKey) {
       return (
@@ -200,7 +243,7 @@ function DataLulusan() {
   if (loading) {
     return (
       <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-        <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
+        <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
           <div className="p-4 sm:p-6 lg:p-8">
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
@@ -214,7 +257,7 @@ function DataLulusan() {
   if (error) {
     return (
       <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-        <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
+        <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
           <div className="p-4 sm:p-6 lg:p-8">
             <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
               {error}
@@ -227,16 +270,16 @@ function DataLulusan() {
 
   return (
     <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-      <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
+      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
         <div className="p-4 sm:p-6 lg:p-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            {/* Search & Filter */}
-            <div className="mb-6">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+            {/* Search & Filter — sticky seperti Pengurus/Santri */}
+            <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
+              <div className="rounded-xl overflow-hidden">
                 <div className="relative pb-2 px-4 pt-3">
                   <div className="relative">
                     <input
@@ -245,8 +288,8 @@ function DataLulusan() {
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onFocus={() => setIsInputFocused(true)}
                       onBlur={() => setIsInputFocused(false)}
-                      className="w-full p-2 pr-28 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
-                      placeholder="Cari nama, NIS, NIK, atau lembaga..."
+                      className="w-full p-2 pr-12 focus:outline-none bg-transparent dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                      placeholder="Cari"
                     />
                     <div className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-1 pointer-events-none">
                       <button
@@ -266,16 +309,6 @@ function DataLulusan() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                           </svg>
                         )}
-                      </button>
-                      <button
-                        onClick={loadLulusanData}
-                        className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-700 dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 p-1.5 rounded text-xs transition-colors pointer-events-auto"
-                        title="Refresh"
-                        disabled={loading}
-                      >
-                        <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
                       </button>
                     </div>
                   </div>
@@ -335,6 +368,38 @@ function DataLulusan() {
                             ))}
                           </select>
                         </div>
+                        <div className="flex flex-wrap items-center justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-600">
+                          <button
+                            type="button"
+                            onClick={loadLulusanData}
+                            disabled={loading}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+                            title="Refresh"
+                          >
+                            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Refresh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTahunAjaranFilter('')
+                              setKategoriFilter('')
+                              setLembagaFilter('')
+                              setRombelFilter('')
+                              setSearchQuery('')
+                              setCurrentPage(1)
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                            title="Reset filter"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                            </svg>
+                            Reset filter
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   )}
@@ -342,30 +407,19 @@ function DataLulusan() {
               </div>
             </div>
 
-            {/* Tabel Lulusan */}
+            {/* Tabel Lulusan — style sama dengan page Santri */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
               <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Daftar Lulusan ({filteredList.length})
+                <div className="flex flex-row items-center justify-between gap-2 min-w-0">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-500 dark:text-gray-400 shrink-0">
+                    {filteredList.length}
                   </h2>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsExportOffcanvasOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
-                      title="Eksport data"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Eksport
-                    </button>
-                    <label className="text-sm text-gray-700 dark:text-gray-300">Tampilkan:</label>
+                  <div className="flex items-center gap-2 shrink-0" ref={menuRef}>
                     <select
                       value={itemsPerPage >= filteredList.length ? 'all' : itemsPerPage}
                       onChange={(e) => handleItemsPerPageChange(e.target.value)}
-                      className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      className="h-8 pr-6 pl-1 py-1 text-xs bg-transparent border-none text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-0 min-w-0 w-14 sm:w-16 cursor-pointer appearance-none bg-[length:12px] bg-[right_2px_center] bg-no-repeat [background-image:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%236b7280%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')] dark:[background-image:url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2024%2024%22%20stroke%3D%22%239ca3af%22%3E%3Cpath%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22M19%209l-7%207-7-7%22%2F%3E%3C%2Fsvg%3E')]"
+                      aria-label="Jumlah per halaman"
                     >
                       <option value="25">25</option>
                       <option value="50">50</option>
@@ -374,7 +428,74 @@ function DataLulusan() {
                       <option value="500">500</option>
                       <option value="all">Semua</option>
                     </select>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">per halaman</span>
+                    <div className="hidden sm:flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsExportOffcanvasOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 h-8 text-xs font-medium rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                        title="Eksport data"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Eksport
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectionMode((m) => { if (m) setSelectedIds(new Set()); return !m })}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 h-8 text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/50 ${selectionMode ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {selectionMode ? 'Selesai Pilih' : 'Pilih Check'}
+                      </button>
+                    </div>
+                    <div className="relative sm:hidden">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                        title="Menu"
+                        aria-expanded={menuOpen}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                      </button>
+                      <AnimatePresence>
+                        {menuOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute right-0 top-full mt-1 py-1 w-44 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 shadow-lg z-50"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => { setMenuOpen(false); setIsExportOffcanvasOpen(true) }}
+                              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              Eksport
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setSelectionMode((m) => { if (m) setSelectedIds(new Set()); return !m }); setMenuOpen(false) }}
+                              className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 ${selectionMode ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {selectionMode ? 'Selesai Pilih' : 'Pilih Check'}
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -391,6 +512,17 @@ function DataLulusan() {
                   <table className="w-full">
                     <thead className="bg-gray-50 dark:bg-gray-900">
                       <tr>
+                        {selectionMode && (
+                          <th className="px-2 sm:px-4 py-3 w-10">
+                            <input
+                              type="checkbox"
+                              checked={paginatedList.length > 0 && paginatedList.every((r) => selectedIds.has(r.id))}
+                              onChange={toggleSelectAllPage}
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                            />
+                          </th>
+                        )}
                         <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">No</th>
                         <th onClick={() => handleSort('nama')} className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors whitespace-nowrap">
                           <div className="flex items-center gap-2">Nama <SortIcon columnKey="nama" /></div>
@@ -429,6 +561,16 @@ function DataLulusan() {
                           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailOffcanvasRow(row) } }}
                           className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150 cursor-pointer"
                         >
+                          {selectionMode && (
+                            <td className="px-2 sm:px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(row.id)}
+                                onChange={(e) => toggleSelectOne(row.id, e)}
+                                className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                              />
+                            </td>
+                          )}
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-200">
                             {startIndex + index + 1}
                           </td>
@@ -504,7 +646,7 @@ function DataLulusan() {
               <ExportLulusanOffcanvas
                 isOpen={isExportOffcanvasOpen}
                 onClose={closeExportOffcanvas}
-                filteredData={filteredList}
+                filteredData={exportData}
               />,
               document.body
             )}
@@ -516,6 +658,7 @@ function DataLulusan() {
               />,
               document.body
             )}
+            <div className="h-20 sm:h-0" aria-hidden="true" />
           </motion.div>
         </div>
       </div>
