@@ -95,7 +95,7 @@ return [
     ],
     'cors' => [
         // Daftar eksplisit (localhost, port dev). Semua domain alutsmani.id + subdomain otomatis diizinkan (lihat cors_origin_is_alutsmani_id).
-        'allowed_origins' => env('CORS_ALLOWED_ORIGINS', 'http://localhost,http://127.0.0.1,http://localhost:5173,http://localhost:5174,http://localhost:5175,https://mybeddian2.alutsmani.id,https://uwaba2.alutsmani.id'),
+        'allowed_origins' => env('CORS_ALLOWED_ORIGINS', 'http://localhost,http://127.0.0.1,http://localhost:5173,http://localhost:5174,http://localhost:5175,https://mybeddian2.alutsmani.id,https://ebeddien2.alutsmani.id,https://ebeddien.alutsmani.id'),
         // true = izin semua origin (hanya untuk development).
         'allow_all' => filter_var(env('CORS_ALLOW_ALL', 'false'), FILTER_VALIDATE_BOOLEAN)
     ],
