@@ -112,14 +112,15 @@ class CorsMiddleware implements MiddlewareInterface
                 ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Max-Age', '3600');
 
-            // Set origin header agar preflight lulus CORS
+            // Set origin header agar preflight lulus CORS — selalu echo origin request jika diizinkan (bukan nilai dari list)
+            $originToSend = ($origin !== '' && $origin !== '*') ? $origin : null;
             if ($allowedOrigin !== null && $allowedOrigin !== '*') {
                 $response = $response
-                    ->withHeader('Access-Control-Allow-Origin', $allowedOrigin)
+                    ->withHeader('Access-Control-Allow-Origin', $originToSend ?? $allowedOrigin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
             } elseif ($this->allowAll || $origin !== '') {
                 $response = $response
-                    ->withHeader('Access-Control-Allow-Origin', $origin ?: '*')
+                    ->withHeader('Access-Control-Allow-Origin', $originToSend ?? $origin ?: '*')
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
             } else {
                 $response = $response->withHeader('Access-Control-Allow-Origin', '*');
@@ -164,9 +165,11 @@ class CorsMiddleware implements MiddlewareInterface
                     ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
             }
         } elseif ($allowedOrigin !== null) {
-            // Jika allowAll tidak aktif, hanya set jika origin diizinkan
+            // Selalu pakai origin dari request (bukan dari list) agar tidak salah kirim origin lain (e.g. ebeddien2 harus dapat ebeddien2, bukan uwaba2)
+            $originFromRequest = $request->getHeaderLine('Origin');
+            $valueToSet = ($originFromRequest !== '' && $originFromRequest !== '*') ? $originFromRequest : $allowedOrigin;
             $response = $response
-                ->withHeader('Access-Control-Allow-Origin', $allowedOrigin)
+                ->withHeader('Access-Control-Allow-Origin', $valueToSet)
                 ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
                 ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Allow-Credentials', 'true');

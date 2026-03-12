@@ -26,18 +26,27 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5175';
 
-const allowedOrigins = [
-  'http://localhost:5175',
-  'http://localhost:5173',
-  'http://127.0.0.1:5175',
-  'http://127.0.0.1:5173',
-  FRONTEND_URL,
-  process.env.UWABA_ORIGIN,
-].filter(Boolean);
+/** Izinkan origin: localhost, 127.0.0.1, atau host berakhiran .alutsmani.id / persis alutsmani.id */
+function isAllowedOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  try {
+    const u = new URL(origin);
+    const host = u.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+    if (host === 'alutsmani.id' || host.endsWith('.alutsmani.id')) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // same-origin / curl
+      if (isAllowedOrigin(origin)) return callback(null, origin); // echo origin agar header ter-set
+      return callback(null, false);
+    },
     credentials: true,
   })
 );
@@ -70,6 +79,6 @@ app.listen(PORT, () => {
   const uwabaBase = process.env.UWABA_API_BASE_URL?.trim() || (process.env.NODE_ENV === 'production' ? '(belum di-set)' : 'http://localhost/api/public/api (default dev)');
   console.log(`[WA] http://localhost:${PORT}`);
   console.log(`[WA] UWABA_API_BASE_URL: ${uwabaBase}`);
-  console.log(`[WA] CORS: ${allowedOrigins.join(', ')}`);
+  console.log('[WA] CORS: *.alutsmani.id + localhost');
   initWaOnStart();
 });

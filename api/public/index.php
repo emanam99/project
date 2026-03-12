@@ -1,6 +1,7 @@
 <?php
 
 use Slim\Factory\AppFactory;
+use App\Middleware\CorsForceOriginMiddleware;
 use App\Middleware\CorsMiddleware;
 use App\Middleware\SecurityHeadersMiddleware;
 use App\Middleware\RateLimitMiddleware;
@@ -182,10 +183,12 @@ if ($basePath !== '/') {
     error_log("Using root base path (/)");
 }
 
-// Middleware (urutan penting!)
+// Middleware (urutan penting! First added = outermost = terakhir sentuh response)
+// Paksa CORS origin = origin request (jalan terakhir agar overwrite nilai salah dari cache/env)
+$app->add(new CorsForceOriginMiddleware());
 // HTTPS redirect di production (sebelum CORS)
 $app->add(new HttpsMiddleware());
-// CORS harus pertama untuk handle preflight
+// CORS handle preflight + tambah header
 $app->add(new CorsMiddleware());
 
 // Security Headers - tambahkan setelah CORS untuk semua response

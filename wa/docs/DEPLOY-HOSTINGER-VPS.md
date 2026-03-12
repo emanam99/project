@@ -6,7 +6,7 @@ Backend WA **harus jalan di VPS** (bukan shared hosting), karena memakai Puppete
 
 ## Step-by-step dengan skrip (wa + wa2, HTTPS)
 
-Jika Anda pakai VPS yang sama dengan deploy uwaba (148.230.96.1) dan ingin **wa.alutsmani.id** (production) + **wa2.alutsmani.id** (staging) dengan **HTTPS** dan **auto-renew sertifikat**:
+Jika Anda pakai VPS yang sama dengan deploy ebeddien/uwaba (148.230.96.1) dan ingin **wa.alutsmani.id** (production) + **wa2.alutsmani.id** (staging) dengan **HTTPS** dan **auto-renew sertifikat**:
 
 1. **DNS**  
    Di Hostinger (Domain → alutsmani.id → DNS), tambah **A record**:

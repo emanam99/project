@@ -1,4 +1,9 @@
-# CORS hanya di-handle oleh PHP (CorsMiddleware). Jangan set CORS di sini agar tidak duplikat (browser menolak "multiple values").
+# CORS hanya di-handle oleh PHP (CorsMiddleware + CorsForceOriginMiddleware). Jangan set CORS di sini.
+# Hapus header CORS yang mungkin di-set oleh folder parent agar hanya PHP yang mengontrol.
+<IfModule mod_headers.c>
+  Header unset Access-Control-Allow-Origin
+  Header unset Access-Control-Allow-Credentials
+</IfModule>
 # Preflight OPTIONS harus sampai ke index.php agar CorsMiddleware return 200.
 RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f

@@ -83,19 +83,21 @@ Backend WA sudah bisa **terhubung** (scan QR) dan **kirim pesan teks + gambar**.
 
 ---
 
-## 1c. Frontend UWABA — URL backend WA (staging vs production)
+## 1c. Frontend eBeddien / UWABA — URL backend WA (staging vs production)
 
 Agar halaman **Kelola Koneksi WA** bisa memanggil backend:
 
-- **Staging (uwaba2.alutsmani.id):** backend WA di **https://wa2.alutsmani.id** (tanpa port).
-- **Production (uwaba / mybeddian):** backend WA di **https://wa.alutsmani.id** (tanpa port).
+- **Staging (ebeddien2.alutsmani.id / uwaba2):** backend WA di **https://wa2.alutsmani.id** (tanpa port).
+- **Production (ebeddien.alutsmani.id / uwaba / mybeddian):** backend WA di **https://wa.alutsmani.id** (tanpa port).
 
-Di build UWABA, Anda bisa set **VITE_WA_BACKEND_URL**:
+CORS backend WA sudah mengizinkan origin **https://ebeddien.alutsmani.id** dan **https://ebeddien2.alutsmani.id** (dan localhost untuk development).
+
+Di build eBeddien, set **VITE_WA_BACKEND_URL**:
 
 - Staging: `VITE_WA_BACKEND_URL=https://wa2.alutsmani.id`
 - Production: `VITE_WA_BACKEND_URL=https://wa.alutsmani.id`
 
-Jika tidak di-set, kode akan otomatis memakai **https://wa2.alutsmani.id** saat dibuka dari **uwaba2.alutsmani.id**, dan **https://wa.alutsmani.id** untuk domain production. **Jangan** pakai `:3001` atau `:3002` di URL — port hanya di dalam VPS (Apache yang proxy ke backend).
+Jika tidak di-set, kode akan otomatis memakai **https://wa2.alutsmani.id** saat dibuka dari **ebeddien2.alutsmani.id** (atau uwaba2), dan **https://wa.alutsmani.id** untuk domain production. **Jangan** pakai `:3001` atau `:3002` di URL — port hanya di dalam VPS (Nginx yang proxy ke backend).
 
 **Jika muncul error Service Worker (bad-precaching-response 404):** itu cache lama. Buka **DevTools → Application → Service Workers → Unregister**, lalu **hard refresh** (Ctrl+Shift+R) atau hapus data situs untuk domain tersebut.
 
