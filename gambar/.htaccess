@@ -1,15 +1,16 @@
-# CORS untuk /gambar/ — agar uwaba2.alutsmani.id, daftar2.alutsmani.id, daftar.alutsmani.id, dll. bisa fetch icon/gambar dari alutsmani.id/gambar/
+# CORS untuk /gambar/ — agar ebeddien2, uwaba2, daftar2, dll. bisa fetch icon/gambar dari alutsmani.id/gambar/
 # WAJIB: Letakkan file ini di folder yang dilayani sebagai https://alutsmani.id/gambar/ (biasanya public_html/gambar/)
 
 <IfModule mod_headers.c>
-    # Izinkan request dari alutsmani.id dan semua subdomain; nilai header = Origin peminta (dinamis)
-    SetEnvIf Origin "^(https?://([a-z0-9.-]+\.)?alutsmani\.id)$" CORS_ORIGIN=$1
-    Header always set Access-Control-Allow-Origin "%{CORS_ORIGIN}e" env=CORS_ORIGIN
-    Header always set Access-Control-Allow-Methods "GET, HEAD, OPTIONS" env=CORS_ORIGIN
-    Header always set Access-Control-Allow-Credentials "true" env=CORS_ORIGIN
-    Header always set Access-Control-Max-Age "86400" env=CORS_ORIGIN
-    # Penting: agar cache/CDN tidak mengirim respons CORS satu origin ke origin lain
-    Header always set Vary "Origin" env=CORS_ORIGIN
+    # Izinkan alutsmani.id + subdomain (ebeddien2, ebeddien, uwaba2, daftar, ...); echo Origin peminta
+    SetEnvIf Origin "^https?://([a-z0-9.-]+\.)?alutsmani\.id$" CORS_ALLOWED=1
+    SetEnvIf Origin "^https?://([a-z0-9.-]+\.)?alutsmani\.my\.id$" CORS_ALLOWED=1
+    SetEnvIf Origin "^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$" CORS_ALLOWED=1
+    Header always set Access-Control-Allow-Origin "%{HTTP_ORIGIN}e" env=CORS_ALLOWED
+    Header always set Access-Control-Allow-Methods "GET, HEAD, OPTIONS" env=CORS_ALLOWED
+    Header always set Access-Control-Allow-Credentials "true" env=CORS_ALLOWED
+    Header always set Access-Control-Max-Age "86400" env=CORS_ALLOWED
+    Header always set Vary "Origin" env=CORS_ALLOWED
 </IfModule>
 
 # Preflight OPTIONS: kembalikan 204 dan header CORS

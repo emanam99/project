@@ -26,6 +26,7 @@ export default function KoneksiWa() {
     qrCode: null,
     phoneNumber: null
   })
+  const [backendUnavailable, setBackendUnavailable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
   const [testPhone, setTestPhone] = useState('')
@@ -47,15 +48,21 @@ export default function KoneksiWa() {
   const fetchStatus = useCallback(async () => {
     try {
       const res = await waBackendAPI.getStatus()
+      setBackendUnavailable(false)
       if (res?.success && res?.data) {
         setData({
           status: res.data.status || 'disconnected',
           qrCode: res.data.qrCode || null,
           phoneNumber: res.data.phoneNumber || null
         })
+      } else if (res?.statusCode === 503 || res?.statusCode >= 500) {
+        setBackendUnavailable(true)
+        setData({ status: 'disconnected', qrCode: null, phoneNumber: null })
       }
     } catch (e) {
       console.error('KoneksiWa fetchStatus:', e)
+      setBackendUnavailable(true)
+      setData({ status: 'disconnected', qrCode: null, phoneNumber: null })
     } finally {
       setLoading(false)
     }
@@ -332,6 +339,11 @@ export default function KoneksiWa() {
                 className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden"
               >
               <div className="p-4 space-y-4">
+                {backendUnavailable && (
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+                    Layanan status WA tidak terjangkau (503 / CORS). Pastikan server wa2 berjalan dan proxy mengizinkan origin ini.
+                  </div>
+                )}
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                   <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Status</span>
                   <span

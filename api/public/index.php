@@ -1,5 +1,34 @@
 <?php
 
+// Preflight OPTIONS: tangani paling awal (sebelum require apa pun) agar CORS selalu ada
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+    $origin = isset($_SERVER['HTTP_ORIGIN']) ? trim($_SERVER['HTTP_ORIGIN']) : '';
+    $allow = '*';
+    if ($origin !== '') {
+        $h = parse_url($origin, PHP_URL_HOST);
+        $h = $h ? strtolower($h) : '';
+        $ok = ($h === 'alutsmani.id' || (strlen($h) >= 13 && substr($h, -13) === '.alutsmani.id')
+            || $h === 'alutsmani.my.id' || (strlen($h) >= 16 && substr($h, -16) === '.alutsmani.my.id')
+            || $h === 'localhost' || $h === '127.0.0.1'
+            || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false);
+        if ($ok) {
+            $allow = $origin;
+        }
+    } else {
+        // Origin kosong (proxy/strip): izinkan dev origin agar localhost:5173 bisa login
+        $allow = 'http://localhost:5173';
+    }
+    header('Access-Control-Allow-Origin: ' . $allow);
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma');
+    header('Access-Control-Max-Age: 3600');
+    if ($allow !== '*') {
+        header('Access-Control-Allow-Credentials: true');
+    }
+    http_response_code(200);
+    exit(0);
+}
+
 use Slim\Factory\AppFactory;
 use App\Middleware\CorsForceOriginMiddleware;
 use App\Middleware\CorsMiddleware;
@@ -59,36 +88,6 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 require __DIR__ . '/../vendor/autoload.php';
-
-// Preflight OPTIONS: return 200 + CORS sebelum bootstrap agar login dari localhost:5173/5174/5175 / IP LAN tidak kena CORS
-if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
-    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $allow = '*';
-    if ($origin !== '') {
-        $host = parse_url($origin, PHP_URL_HOST);
-        $host = $host ? strtolower($host) : '';
-        $isAlutsmani = ($host === 'alutsmani.id' || (strlen($host) > 13 && substr($host, -13) === '.alutsmani.id'));
-        $isLocal = ($host && (strpos($host, 'localhost') !== false || $host === '127.0.0.1' || $isAlutsmani));
-        $isDevPort = (strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false);
-        $isPrivateIp = false;
-        if ($host && filter_var($host, FILTER_VALIDATE_IP)) {
-            $ip = $host;
-            $isPrivateIp = (strpos($ip, '10.') === 0) || (strpos($ip, '192.168.') === 0) || (preg_match('/^172\.(1[6-9]|2[0-9]|3[0-1])\./', $ip) === 1);
-        }
-        if ($isLocal || $isPrivateIp || $isDevPort) {
-            $allow = $origin;
-        }
-    }
-    header('Access-Control-Allow-Origin: ' . $allow);
-    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma');
-    header('Access-Control-Max-Age: 3600');
-    if ($allow !== '*') {
-        header('Access-Control-Allow-Credentials: true');
-    }
-    http_response_code(200);
-    exit(0);
-}
 
 // Helper: redact data sensitif dari pesan error sebelum log
 if (!function_exists('sanitizeErrorMessage')) {

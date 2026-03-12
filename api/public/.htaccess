@@ -1,10 +1,6 @@
-# CORS hanya di-handle oleh PHP (CorsMiddleware + CorsForceOriginMiddleware). Jangan set CORS di sini.
-# Hapus header CORS yang mungkin di-set oleh folder parent agar hanya PHP yang mengontrol.
-<IfModule mod_headers.c>
-  Header unset Access-Control-Allow-Origin
-  Header unset Access-Control-Allow-Credentials
-</IfModule>
-# Preflight OPTIONS harus sampai ke index.php agar CorsMiddleware return 200.
+# CORS di-handle oleh PHP (blok OPTIONS di index.php + CorsForceOriginMiddleware). Jangan set CORS di sini.
+# Jangan Header unset — akan hapus header yang PHP kirim dan bikin login dari localhost:5173 / ebeddien2 gagal.
+# Preflight OPTIONS harus sampai ke index.php.
 RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

@@ -405,11 +405,11 @@ export const getWaBackendUrl = () => {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:3001'
   }
-  // Staging (uwaba2): backend WA di wa2.alutsmani.id (Apache proxy, tanpa port)
-  if (hostname.includes('uwaba2') || hostname === 'wa2.alutsmani.id') {
+  // Staging (ebeddien2, uwaba2, daftar2, mybeddian2): backend WA di wa2.alutsmani.id
+  if (hostname.includes('ebeddien2') || hostname.includes('uwaba2') || hostname.includes('daftar2') || hostname.includes('mybeddian2') || hostname === 'wa2.alutsmani.id') {
     return 'https://wa2.alutsmani.id'
   }
-  // Production (uwaba, mybeddian, dll.): backend WA di wa.alutsmani.id
+  // Production: backend WA di wa.alutsmani.id
   if (hostname.includes('alutsmani.id') || hostname.includes('alutsmani.my.id')) {
     return 'https://wa.alutsmani.id'
   }
@@ -424,7 +424,15 @@ export const waBackendAPI = {
   getStatus: async () => {
     const base = getWaBackendUrl()
     const res = await fetch(`${base}/api/whatsapp/status`, { method: 'GET', credentials: 'omit' })
-    const data = await res.json().catch(() => ({}))
+    const isJson = (res.headers.get('Content-Type') || '').toLowerCase().includes('application/json')
+    const data = isJson ? await res.json().catch(() => ({})) : {}
+    if (!res.ok) {
+      return {
+        success: false,
+        data: { status: 'disconnected', qrCode: null, phoneNumber: null },
+        statusCode: res.status
+      }
+    }
     return data
   },
   connect: async () => {
