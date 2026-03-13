@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Database;
 use App\Auth\PasswordHelper;
 use App\Helpers\AuditLogger;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -57,6 +58,7 @@ class UserController
     {
         try {
             $input = $request->getParsedBody();
+            $input = TextSanitizer::sanitizeStringValues($input ?? [], []);
             $userId = $input['user_id'] ?? '';
             
             if (empty($userId)) {
@@ -64,6 +66,23 @@ class UserController
                     'success' => false,
                     'message' => 'User ID required'
                 ], 400);
+            }
+
+            $currentUser = $request->getAttribute('user');
+            $currentPengurusId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : 0;
+            $targetPengurusId = (int) $userId;
+            $roleKey = strtolower(trim((string)($currentUser['role_key'] ?? $currentUser['user_role'] ?? '')));
+            $allRoles = is_array($currentUser['all_roles'] ?? null)
+                ? array_map('strtolower', array_map('trim', $currentUser['all_roles']))
+                : [];
+            $isSuperAdmin = ($roleKey === 'super_admin') || in_array('super_admin', $allRoles);
+            $isAdminUgt = ($roleKey === 'admin_ugt') || in_array('admin_ugt', $allRoles);
+            $canEditAny = $isSuperAdmin || $isAdminUgt;
+            if ($targetPengurusId !== $currentPengurusId && !$canEditAny) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak. Hanya dapat mengedit profil sendiri atau butuh role super_admin/admin_ugt.'
+                ], 403);
             }
             
             // Check if user exists
@@ -132,7 +151,7 @@ class UserController
                 $rowU = $stmtU->fetch(\PDO::FETCH_ASSOC);
                 if ($rowU && !empty($rowU['id_user'])) {
                     $idUser = (int) $rowU['id_user'];
-                    $emailVal = trim($input['email'] ?? '') !== '' ? trim($input['email']) : null;
+                    $emailVal = TextSanitizer::cleanText($input['email'] ?? '') ?: null;
                     $this->db->prepare("UPDATE users SET email = ? WHERE id = ?")->execute([$emailVal, $idUser]);
                     $emailUpdated = true;
                 }
@@ -377,7 +396,7 @@ class UserController
 
     /**
      * GET /api/user/{id} - Get user data by ID
-     * Hanya boleh akses profil sendiri (id = pengurus id user saat ini) atau jika role super_admin.
+     * Boleh akses: profil sendiri (id = pengurus id user saat ini), super_admin, atau admin_ugt (untuk edit pengurus/koordinator).
      */
     public function getUserById(Request $request, Response $response, array $args): Response
     {
@@ -395,12 +414,16 @@ class UserController
             $currentPengurusId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : 0;
             $requestedId = (int) $id;
             $roleKey = strtolower(trim((string)($currentUser['role_key'] ?? $currentUser['user_role'] ?? '')));
-            $isSuperAdmin = ($roleKey === 'super_admin')
-                || (is_array($currentUser['all_roles'] ?? null) && in_array('super_admin', array_map('strtolower', array_map('trim', $currentUser['all_roles']))));
-            if ($requestedId !== $currentPengurusId && !$isSuperAdmin) {
+            $allRoles = is_array($currentUser['all_roles'] ?? null)
+                ? array_map('strtolower', array_map('trim', $currentUser['all_roles']))
+                : [];
+            $isSuperAdmin = ($roleKey === 'super_admin') || in_array('super_admin', $allRoles);
+            $isAdminUgt = ($roleKey === 'admin_ugt') || in_array('admin_ugt', $allRoles);
+            $canViewAny = $isSuperAdmin || $isAdminUgt;
+            if ($requestedId !== $currentPengurusId && !$canViewAny) {
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Akses ditolak. Hanya dapat melihat profil sendiri atau butuh role super_admin.'
+                    'message' => 'Akses ditolak. Hanya dapat melihat profil sendiri atau butuh role super_admin/admin_ugt.'
                 ], 403);
             }
             

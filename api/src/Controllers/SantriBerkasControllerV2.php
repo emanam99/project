@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\SantriHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -103,6 +104,7 @@ class SantriBerkasControllerV2
             $idAdmin = (isset($user['role_key']) && $user['role_key'] === 'santri') ? null : ($user['user_id'] ?? $user['id'] ?? null);
 
             $parsedBody = $request->getParsedBody();
+            $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
             $idSantri = $parsedBody['id_santri'] ?? null;
             $jenisBerkas = $parsedBody['jenis_berkas'] ?? null;
             $keterangan = $parsedBody['keterangan'] ?? null;
@@ -383,6 +385,7 @@ class SantriBerkasControllerV2
             $idAdmin = (isset($user['role_key']) && $user['role_key'] === 'santri') ? null : ($user['user_id'] ?? $user['id'] ?? null);
 
             $parsedBody = $request->getParsedBody();
+            $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
             $idBerkas = $parsedBody['id'] ?? null;
             $keterangan = $parsedBody['keterangan'] ?? null;
 
@@ -479,6 +482,7 @@ class SantriBerkasControllerV2
             $idAdmin = $user['id'] ?? null;
 
             $parsedBody = $request->getParsedBody();
+            $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
             $idSantri = $parsedBody['id_santri'] ?? null;
             $jenisBerkas = $parsedBody['jenis_berkas'] ?? null;
             $idBerkasSource = $parsedBody['id_berkas_source'] ?? null;

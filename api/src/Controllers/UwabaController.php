@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\SantriHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -376,6 +377,15 @@ class UwabaController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
+            if (!empty($input['payment_data']) && is_array($input['payment_data'])) {
+                $input['payment_data'] = TextSanitizer::sanitizeStringValues($input['payment_data'], []);
+            }
+            if (!empty($input['uwaba_data']) && is_array($input['uwaba_data'])) {
+                $input['uwaba_data'] = array_map(function ($row) {
+                    return is_array($row) ? TextSanitizer::sanitizeStringValues($row, []) : $row;
+                }, $input['uwaba_data']);
+            }
             
             // Validasi data yang diperlukan
             if (!isset($input['payment_data']) || !isset($input['uwaba_data'])) {
@@ -602,6 +612,7 @@ class UwabaController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
             
             $required = ['id_santri', 'tahun_ajaran', 'nominal', 'via', 'admin', 'id_admin', 'hijriyah'];
             foreach ($required as $f) {
@@ -683,6 +694,12 @@ class UwabaController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
+            if (!empty($input['bulan_data']) && is_array($input['bulan_data'])) {
+                $input['bulan_data'] = array_map(function ($row) {
+                    return is_array($row) ? TextSanitizer::sanitizeStringValues($row, []) : $row;
+                }, $input['bulan_data']);
+            }
             
             // Log input untuk debugging
             error_log("Save uwaba refresh input: " . json_encode($input));
@@ -882,6 +899,10 @@ class UwabaController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
+            if (!empty($input['form_data']) && is_array($input['form_data'])) {
+                $input['form_data'] = TextSanitizer::sanitizeStringValues($input['form_data'], []);
+            }
             
             if (!isset($input['id_santri']) || !isset($input['tahun_ajaran'])) {
                 return $this->jsonResponse($response, [

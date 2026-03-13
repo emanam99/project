@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Services\PaymentGateway\PaymentGatewayConfig;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -123,6 +124,7 @@ class PaymentGatewayController
         try {
             $id = $args['id'] ?? null;
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
 
             if (!$id) {
                 return $this->jsonResponse($response, [
@@ -161,6 +163,7 @@ class PaymentGatewayController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
             $productionMode = isset($input['production_mode']) ? (int)$input['production_mode'] : null;
 
             if ($productionMode === null) {

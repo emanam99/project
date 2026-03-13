@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -217,10 +218,10 @@ class JabatanController
             
             $stmt = $this->db->prepare($sql);
             $stmt->execute([
-                trim($data['nama']),
+                TextSanitizer::cleanText($data['nama'] ?? ''),
                 $kategori,
                 $data['lembaga_id'] ?? null,
-                $data['deskripsi'] ?? null,
+                TextSanitizer::cleanTextOrNull($data['deskripsi'] ?? null),
                 isset($data['urutan']) ? (int)$data['urutan'] : 0,
                 $status
             ]);
@@ -313,7 +314,7 @@ class JabatanController
             
             if (isset($data['nama'])) {
                 $updateFields[] = "nama = ?";
-                $updateParams[] = trim($data['nama']);
+                $updateParams[] = TextSanitizer::cleanText($data['nama'] ?? '');
             }
             
             if (isset($data['kategori'])) {
@@ -328,7 +329,7 @@ class JabatanController
             
             if (isset($data['deskripsi'])) {
                 $updateFields[] = "deskripsi = ?";
-                $updateParams[] = $data['deskripsi'] ?: null;
+                $updateParams[] = TextSanitizer::cleanTextOrNull($data['deskripsi']) ?: null;
             }
             
             if (isset($data['urutan'])) {

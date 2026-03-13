@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -122,9 +123,9 @@ class DaerahController
                 ], 400);
             }
 
-            $kategori = trim($data['kategori']);
-            $daerah = trim($data['daerah']);
-            $keterangan = $data['keterangan'] ?? null;
+            $kategori = TextSanitizer::cleanText($data['kategori'] ?? '');
+            $daerah = TextSanitizer::cleanText($data['daerah'] ?? '');
+            $keterangan = TextSanitizer::cleanTextOrNull($data['keterangan'] ?? null);
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : 'aktif';
 
@@ -190,9 +191,9 @@ class DaerahController
             }
 
             $data = $request->getParsedBody();
-            $kategori = isset($data['kategori']) ? trim($data['kategori']) : $old['kategori'];
-            $daerah = isset($data['daerah']) ? trim($data['daerah']) : $old['daerah'];
-            $keterangan = array_key_exists('keterangan', $data) ? $data['keterangan'] : $old['keterangan'];
+            $kategori = isset($data['kategori']) ? TextSanitizer::cleanText($data['kategori']) : $old['kategori'];
+            $daerah = isset($data['daerah']) ? TextSanitizer::cleanText($data['daerah']) : $old['daerah'];
+            $keterangan = array_key_exists('keterangan', $data) ? TextSanitizer::cleanTextOrNull($data['keterangan']) : $old['keterangan'];
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : $old['status'];
 

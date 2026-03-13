@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -129,10 +130,10 @@ class DaerahPengurusController
             $idDaerah = (int) $data['id_daerah'];
             $idPengurus = isset($data['id_pengurus']) && $data['id_pengurus'] !== '' ? (int) $data['id_pengurus'] : null;
             $idJabatan = isset($data['id_jabatan']) && $data['id_jabatan'] !== '' ? (int) $data['id_jabatan'] : null;
-            $tahunAjaran = $data['tahun_ajaran'] ?? null;
+            $tahunAjaran = TextSanitizer::cleanTextOrNull($data['tahun_ajaran'] ?? null);
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : 'aktif';
-            $keterangan = $data['keterangan'] ?? null;
+            $keterangan = TextSanitizer::cleanTextOrNull($data['keterangan'] ?? null);
 
             $waktu = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
             $stmt = $this->db->prepare("
@@ -201,10 +202,10 @@ class DaerahPengurusController
             $idDaerah = isset($data['id_daerah']) ? (int) $data['id_daerah'] : (int) $old['id_daerah'];
             $idPengurus = array_key_exists('id_pengurus', $data) && $data['id_pengurus'] !== '' ? (int) $data['id_pengurus'] : null;
             $idJabatan = array_key_exists('id_jabatan', $data) && $data['id_jabatan'] !== '' ? (int) $data['id_jabatan'] : null;
-            $tahunAjaran = $data['tahun_ajaran'] ?? $old['tahun_ajaran'];
+            $tahunAjaran = array_key_exists('tahun_ajaran', $data) ? TextSanitizer::cleanTextOrNull($data['tahun_ajaran']) : $old['tahun_ajaran'];
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : $old['status'];
-            $keterangan = array_key_exists('keterangan', $data) ? $data['keterangan'] : $old['keterangan'];
+            $keterangan = array_key_exists('keterangan', $data) ? TextSanitizer::cleanTextOrNull($data['keterangan']) : $old['keterangan'];
 
             $stmt = $this->db->prepare("
                 UPDATE daerah___pengurus

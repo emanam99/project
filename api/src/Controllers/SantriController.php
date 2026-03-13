@@ -6,6 +6,7 @@ use App\Database;
 use App\Helpers\SantriHelper;
 use App\Helpers\SantriRombelHelper;
 use App\Helpers\SantriKamarHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -210,8 +211,13 @@ class SantriController
     {
         try {
             $data = $request->getParsedBody();
+            if (!$data) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Data wajib diisi'], 400);
+            }
+            // Sanitasi teks dari ebeddien agar data tersimpan aman (UTF-8 bersih)
+            $data = TextSanitizer::sanitizeStringValues($data, []);
 
-            if (!$data || !isset($data['id'])) {
+            if (!isset($data['id'])) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'ID santri wajib diisi'

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -165,9 +166,9 @@ class RombelController
             }
 
             $lembagaId = $data['lembaga_id'];
-            $kelas = isset($data['kelas']) ? (string) $data['kelas'] : '';
-            $kel = isset($data['kel']) ? (string) $data['kel'] : '';
-            $keterangan = $data['keterangan'] ?? null;
+            $kelas = isset($data['kelas']) ? TextSanitizer::cleanText((string) $data['kelas']) : '';
+            $kel = isset($data['kel']) ? TextSanitizer::cleanText((string) $data['kel']) : '';
+            $keterangan = TextSanitizer::cleanTextOrNull($data['keterangan'] ?? null);
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : 'aktif';
 
@@ -271,9 +272,9 @@ class RombelController
 
             $data = $request->getParsedBody();
             $lembagaId = $data['lembaga_id'] ?? $old['lembaga_id'];
-            $kelas = $data['kelas'] ?? $old['kelas'];
-            $kel = $data['kel'] ?? $old['kel'];
-            $keterangan = $data['keterangan'] ?? $old['keterangan'];
+            $kelas = isset($data['kelas']) ? TextSanitizer::cleanText((string) ($data['kelas'] ?? '')) : ($old['kelas'] ?? '');
+            $kel = isset($data['kel']) ? TextSanitizer::cleanText((string) ($data['kel'] ?? '')) : ($old['kel'] ?? '');
+            $keterangan = array_key_exists('keterangan', $data) ? TextSanitizer::cleanTextOrNull($data['keterangan']) : ($old['keterangan'] ?? null);
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : $old['status'];
 

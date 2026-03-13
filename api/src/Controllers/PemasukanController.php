@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -59,7 +60,7 @@ class PemasukanController
             $user = $request->getAttribute('user');
             
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
-            $keterangan = $data['keterangan'] ?? '';
+            $keterangan = TextSanitizer::cleanText($data['keterangan'] ?? '');
             $kategori = $data['kategori'] ?? 'Lainnya';
             $status = $data['status'] ?? 'Cash';
             $nominal = $data['nominal'] ?? 0;
@@ -308,7 +309,8 @@ class PemasukanController
             $params = [];
 
             if ($keterangan !== null) {
-                if (empty($keterangan)) {
+                $keterangan = TextSanitizer::cleanText((string) $keterangan);
+                if ($keterangan === '') {
                     return $this->jsonResponse($response, [
                         'success' => false,
                         'message' => 'Keterangan tidak boleh kosong'

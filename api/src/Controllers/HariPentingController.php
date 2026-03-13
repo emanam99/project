@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -101,15 +102,15 @@ class HariPentingController
                 }
                 return $this->json($response, ['message' => 'Hari penting berhasil dihapus']);
             }
-            $nama_event = $data['nama_event'] ?? '';
+            $nama_event = TextSanitizer::cleanText($data['nama_event'] ?? '');
             $kategori = $data['kategori'] ?? 'hijriyah';
             $tipe = $data['tipe'] ?? 'per_tahun';
             $hari_pekan = isset($data['hari_pekan']) ? (int) $data['hari_pekan'] : null;
             $tanggal = isset($data['tanggal']) ? (int) $data['tanggal'] : null;
             $bulan = isset($data['bulan']) ? (int) $data['bulan'] : null;
             $tahun = isset($data['tahun']) ? (int) $data['tahun'] : null;
-            $warna_label = $data['warna_label'] ?? null;
-            $keterangan = $data['keterangan'] ?? null;
+            $warna_label = TextSanitizer::cleanTextOrNull($data['warna_label'] ?? null);
+            $keterangan = TextSanitizer::cleanTextOrNull($data['keterangan'] ?? null);
             $aktif = isset($data['aktif']) ? (int) $data['aktif'] : 1;
 
             $user = $request->getAttribute('user');

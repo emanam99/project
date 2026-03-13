@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\PengurusHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -210,6 +211,7 @@ class MadrasahController
             $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : null;
 
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $nama = trim((string) ($data['nama'] ?? ''));
             if ($nama === '') {
                 return $this->jsonResponse($response, [
@@ -405,6 +407,7 @@ class MadrasahController
             }
 
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $nama = trim((string) ($data['nama'] ?? ''));
             if ($nama === '') {
                 return $this->jsonResponse($response, [

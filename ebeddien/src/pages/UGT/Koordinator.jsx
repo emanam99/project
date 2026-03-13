@@ -2,13 +2,12 @@ import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { manageUsersAPI, jabatanAPI } from '../../services/api'
+import { manageUsersAPI } from '../../services/api'
 import api from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
-import { useAuthStore } from '../../store/authStore'
 import ExportPengurusOffcanvas from '../Settings/Pengurus/components/ExportPengurusOffcanvas'
 import CariPengurusOffcanvas from '../../components/CariPengurusOffcanvas'
-import Modal from '../../components/Modal/Modal'
+import DetailPengurusOffcanvas from '../../components/DetailPengurusOffcanvas'
 
 // Koordinator: role key yang dianggap "koordinator" (case-insensitive)
 const KOORDINATOR_ROLE_KEYS = ['koordinator_ugt', 'koordinator']
@@ -16,449 +15,6 @@ const KOORDINATOR_ROLE_KEYS = ['koordinator_ugt', 'koordinator']
 function isCoordinatorRole(role) {
   const key = (role?.role_key || role?.key || role?.role_label || role?.label || '').toLowerCase()
   return KOORDINATOR_ROLE_KEYS.some((k) => key.includes(k))
-}
-
-function formatAlamat(p) {
-  if (!p) return ''
-  const parts = [
-    p.dusun,
-    p.rt ? `RT ${p.rt}` : '',
-    p.rw ? `RW ${p.rw}` : '',
-    p.desa,
-    p.kecamatan,
-    p.kabupaten,
-    p.provinsi,
-    p.kode_pos
-  ].filter(Boolean)
-  return parts.join(', ') || '-'
-}
-
-// Offcanvas edit cepat: nama, alamat, WA & username, jabatan (tambah/status/hapus), reset password, login aktif, nonaktifkan
-function EditKoordinatorOffcanvas({
-  isOpen,
-  onClose,
-  pengurus,
-  userInfo,
-  userInfoLoading,
-  onNonaktifkan,
-  removing,
-  onResetPassword,
-  resettingPassword,
-  sessions = [],
-  sessionsLoading,
-  lembagaList = [],
-  onSuccess
-}) {
-  const { showNotification } = useNotification()
-  const { user } = useAuthStore()
-  const isSuperAdmin = user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin'
-
-  const [userJabatan, setUserJabatan] = useState([])
-  const [availableJabatan, setAvailableJabatan] = useState([])
-  const [showAddJabatanModal, setShowAddJabatanModal] = useState(false)
-  const [newJabatan, setNewJabatan] = useState({
-    jabatan_id: '',
-    lembaga_id: '',
-    tanggal_mulai: '',
-    tanggal_selesai: '',
-    status: 'aktif'
-  })
-  const [jabatanStatusSavingId, setJabatanStatusSavingId] = useState(null)
-
-  useEffect(() => {
-    if (!isOpen) setShowAddJabatanModal(false)
-    if (!isOpen || !pengurus?.id) {
-      setUserJabatan([])
-      return
-    }
-    let cancelled = false
-    manageUsersAPI.getById(pengurus.id).then((res) => {
-      if (cancelled) return
-      if (res.success && res.data?.user?.jabatan) {
-        setUserJabatan(Array.isArray(res.data.user.jabatan) ? res.data.user.jabatan : [])
-      } else {
-        setUserJabatan(Array.isArray(pengurus.jabatan) ? pengurus.jabatan : [])
-      }
-    }).catch(() => {
-      if (!cancelled) setUserJabatan(Array.isArray(pengurus.jabatan) ? pengurus.jabatan : [])
-    })
-    return () => { cancelled = true }
-  }, [isOpen, pengurus?.id, pengurus?.jabatan])
-
-  useEffect(() => {
-    if (!isOpen) return
-    jabatanAPI.getList({ status: 'aktif' }).then((res) => {
-      if (res.success && Array.isArray(res.data)) setAvailableJabatan(res.data)
-      else setAvailableJabatan([])
-    }).catch(() => setAvailableJabatan([]))
-  }, [isOpen])
-
-  const handleAddJabatan = useCallback(async () => {
-    if (!pengurus?.id || !newJabatan.lembaga_id || !newJabatan.jabatan_id) {
-      showNotification('Pilih lembaga dan jabatan', 'error')
-      return
-    }
-    try {
-      const res = await manageUsersAPI.addUserJabatan(pengurus.id, newJabatan)
-      if (res.success) {
-        const again = await manageUsersAPI.getById(pengurus.id)
-        if (again.success && again.data?.user?.jabatan) {
-          setUserJabatan(again.data.user.jabatan)
-        }
-        setShowAddJabatanModal(false)
-        setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
-        showNotification('Jabatan berhasil ditambahkan', 'success')
-        onSuccess?.()
-      } else {
-        showNotification(res.message || 'Gagal menambahkan jabatan', 'error')
-      }
-    } catch (err) {
-      showNotification(err.response?.data?.message || 'Gagal menambahkan jabatan', 'error')
-    }
-  }, [pengurus?.id, newJabatan, showNotification, onSuccess])
-
-  const handleJabatanStatusToggle = useCallback(async (pengurusJabatanId, currentStatus) => {
-    if (!pengurus?.id || jabatanStatusSavingId !== null) return
-    const newStatus = (currentStatus || '').toLowerCase() === 'aktif' ? 'nonaktif' : 'aktif'
-    setJabatanStatusSavingId(pengurusJabatanId)
-    try {
-      const res = await manageUsersAPI.updateJabatanStatus(pengurus.id, pengurusJabatanId, newStatus)
-      if (res.success) {
-        setUserJabatan((prev) =>
-          prev.map((j) =>
-            j.pengurus_jabatan_id === pengurusJabatanId ? { ...j, jabatan_status: newStatus } : j
-          )
-        )
-        showNotification('Status jabatan berhasil diperbarui', 'success')
-        onSuccess?.()
-      } else {
-        showNotification(res.message || 'Gagal memperbarui status jabatan', 'error')
-      }
-    } catch (err) {
-      showNotification(err.response?.data?.message || 'Gagal memperbarui status jabatan', 'error')
-    } finally {
-      setJabatanStatusSavingId(null)
-    }
-  }, [pengurus?.id, jabatanStatusSavingId, showNotification, onSuccess])
-
-  const handleRemoveJabatan = useCallback(async (pengurusJabatanId) => {
-    if (!window.confirm('Hapus jabatan ini?')) return
-    try {
-      const res = await manageUsersAPI.removeUserJabatan(pengurus.id, pengurusJabatanId)
-      if (res.success) {
-        setUserJabatan((prev) => prev.filter((j) => j.pengurus_jabatan_id !== pengurusJabatanId))
-        showNotification('Jabatan berhasil dihapus', 'success')
-        onSuccess?.()
-      } else {
-        showNotification(res.message || 'Gagal menghapus jabatan', 'error')
-      }
-    } catch (err) {
-      showNotification(err.response?.data?.message || 'Gagal menghapus jabatan', 'error')
-    }
-  }, [pengurus?.id, showNotification, onSuccess])
-
-  const getLembagaNama = (id) => (lembagaList || []).find((l) => String(l.id) === String(id))?.nama || id
-
-  if (!isOpen) return null
-  const nama = pengurus?.nama || '-'
-  const alamat = formatAlamat(pengurus)
-  const usernameFromUsers = userInfo?.username != null ? String(userInfo.username).trim() : ''
-  const noWaFromUsers = userInfo?.no_wa != null ? String(userInfo.no_wa).trim() : ''
-  const hasUsername = usernameFromUsers !== ''
-  const usernameDisplay = hasUsername ? `@${usernameFromUsers}` : '–'
-  const waDisplay = noWaFromUsers || pengurus?.whatsapp || '–'
-
-  return (
-    <AnimatePresence>
-      <motion.div
-        key="backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-black/50 z-[100000]"
-        aria-hidden="true"
-      />
-      <motion.div
-        key="panel"
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'tween', duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }}
-        className="fixed inset-y-0 right-0 w-full sm:w-96 max-w-full bg-white dark:bg-gray-800 shadow-xl flex flex-col z-[100001]"
-      >
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-teal-600 dark:text-teal-400">Edit Cepat</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-              aria-label="Tutup"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nama</label>
-            <p className="text-sm text-gray-900 dark:text-gray-100">{nama}</p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Username (tabel users)</label>
-            {userInfoLoading ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Memuat...</p>
-            ) : (
-              <>
-                <p className="text-sm text-gray-900 dark:text-gray-100">{usernameDisplay}</p>
-                {!hasUsername && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Belum mengaktifkan aplikasi.</p>
-                )}
-              </>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">WhatsApp (tabel users)</label>
-            {userInfoLoading ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Memuat...</p>
-            ) : (
-              <p className="text-sm text-gray-900 dark:text-gray-100">{waDisplay}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Alamat</label>
-            <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{alamat}</p>
-          </div>
-
-          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Jabatan</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
-                  setShowAddJabatanModal(true)
-                }}
-                className="text-xs px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-              >
-                + Tambah Jabatan
-              </button>
-            </div>
-            {userJabatan.length === 0 ? (
-              <p className="text-xs text-gray-500 dark:text-gray-400 py-1">Belum ada jabatan.</p>
-            ) : (
-              <ul className="space-y-2">
-                {userJabatan.map((j) => {
-                  const jabatanInfo = availableJabatan.find((x) => x.id === j.jabatan_id)
-                  const isJabatanAktif = (j.jabatan_status || '').toLowerCase() === 'aktif'
-                  const saving = jabatanStatusSavingId === j.pengurus_jabatan_id
-                  return (
-                    <li
-                      key={j.pengurus_jabatan_id}
-                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600"
-                    >
-                      <span className="text-sm text-gray-800 dark:text-gray-200 min-w-0 flex-1">
-                        {jabatanInfo ? jabatanInfo.nama : j.jabatan_nama || `Jabatan #${j.jabatan_id}`}
-                        {j.lembaga_id && (
-                          <span className="text-gray-500 dark:text-gray-400 ml-1">
-                            ({getLembagaNama(j.lembaga_id)})
-                          </span>
-                        )}
-                      </span>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                          {saving ? '...' : (isJabatanAktif ? 'Aktif' : 'Nonaktif')}
-                        </span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={isJabatanAktif}
-                          disabled={saving}
-                          onClick={() => handleJabatanStatusToggle(j.pengurus_jabatan_id, j.jabatan_status)}
-                          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            isJabatanAktif ? 'bg-teal-600' : 'bg-gray-300 dark:bg-gray-600'
-                          }`}
-                        >
-                          <span
-                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
-                              isJabatanAktif ? 'translate-x-4' : 'translate-x-0.5'
-                            }`}
-                          />
-                        </button>
-                        {isSuperAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveJabatan(j.pengurus_jabatan_id)}
-                            className="p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                            aria-label="Hapus jabatan"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
-
-          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Reset password (jika lupa)</label>
-            {hasUsername ? (
-              <button
-                type="button"
-                onClick={() => onResetPassword?.(pengurus)}
-                disabled={resettingPassword}
-                className="w-full py-2 px-4 rounded-lg text-sm font-medium bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 hover:bg-teal-200 dark:hover:bg-teal-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {resettingPassword ? 'Mengirim...' : 'Kirim link reset password via WA'}
-              </button>
-            ) : (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Aktifkan akun terlebih dahulu (admin mengaktifkan aplikasi untuk pengurus ini).</p>
-            )}
-          </div>
-
-          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Login aktif</label>
-            {!hasUsername ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Belum ada (akun belum diaktifkan).</p>
-            ) : sessionsLoading ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Memuat...</p>
-            ) : sessions.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Belum ada session aktif.</p>
-            ) : (
-              <ul className="space-y-2">
-                {sessions.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex items-center justify-between gap-2 p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/30 text-sm"
-                  >
-                    <span className="min-w-0 truncate text-gray-800 dark:text-gray-200">
-                      {s.current && <span className="text-teal-600 dark:text-teal-400 font-medium mr-2">Perangkat ini</span>}
-                      {s.device_type || '–'} · {s.browser_name || '–'}
-                      {s.os_name ? ` · ${s.os_name}` : ''}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
-                      {s.last_activity_at ? new Date(s.last_activity_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '–'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <button
-            type="button"
-            onClick={() => onNonaktifkan?.(pengurus)}
-            disabled={removing}
-            className="w-full py-2.5 px-4 rounded-lg text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {removing ? 'Memproses...' : 'Nonaktifkan (hapus role koordinator)'}
-          </button>
-        </div>
-      </motion.div>
-
-      <Modal
-        isOpen={showAddJabatanModal}
-        onClose={() => {
-          setShowAddJabatanModal(false)
-          setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
-        }}
-        title="Tambah Jabatan"
-        maxWidth="max-w-md"
-        zIndex={100002}
-      >
-        <div className="p-6">
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Lembaga *</label>
-            <select
-              value={newJabatan.lembaga_id}
-              onChange={(e) => setNewJabatan({ ...newJabatan, lembaga_id: e.target.value, jabatan_id: '' })}
-              required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 dark:bg-gray-700 dark:text-gray-200"
-            >
-              <option value="">-- Pilih Lembaga --</option>
-              {(lembagaList || []).map((lem) => (
-                <option key={lem.id} value={lem.id}>{lem.nama || lem.id}</option>
-              ))}
-            </select>
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Jabatan *</label>
-            <select
-              value={newJabatan.jabatan_id}
-              onChange={(e) => setNewJabatan({ ...newJabatan, jabatan_id: e.target.value })}
-              disabled={!newJabatan.lembaga_id}
-              required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 dark:bg-gray-700 dark:text-gray-200 disabled:opacity-50"
-            >
-              <option value="">
-                {newJabatan.lembaga_id ? '-- Pilih Jabatan --' : '-- Pilih Lembaga dulu --'}
-              </option>
-              {availableJabatan
-                .filter(
-                  (j) =>
-                    (j.lembaga_id === newJabatan.lembaga_id || !j.lembaga_id) &&
-                    !userJabatan.some((uj) => uj.jabatan_id === j.id && (uj.jabatan_status || '').toLowerCase() === 'aktif')
-                )
-                .map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.nama} {j.kategori ? `(${j.kategori})` : ''}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tanggal Mulai</label>
-              <input
-                type="date"
-                value={newJabatan.tanggal_mulai}
-                onChange={(e) => setNewJabatan({ ...newJabatan, tanggal_mulai: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-200"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tanggal Selesai</label>
-              <input
-                type="date"
-                value={newJabatan.tanggal_selesai}
-                onChange={(e) => setNewJabatan({ ...newJabatan, tanggal_selesai: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-gray-200"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddJabatanModal(false)
-                setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
-              }}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={handleAddJabatan}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-            >
-              Tambah
-            </button>
-          </div>
-        </div>
-      </Modal>
-    </AnimatePresence>
-  )
 }
 
 // Section: Cari + Menu (Tambah, Export) + Filter
@@ -676,17 +232,15 @@ function Koordinator() {
   const [showExportOffcanvas, setShowExportOffcanvas] = useState(false)
   const [showCariPengurusOffcanvas, setShowCariPengurusOffcanvas] = useState(false)
   const [addingRole, setAddingRole] = useState(false)
-  const [selectedKoordinator, setSelectedKoordinator] = useState(null)
-  const [removingRole, setRemovingRole] = useState(false)
-  const [resettingPassword, setResettingPassword] = useState(false)
-  const [sessionsList, setSessionsList] = useState([])
-  const [sessionsLoading, setSessionsLoading] = useState(false)
-  /** Username & no_wa dari tabel users (di-fetch saat offcanvas dibuka via getById) */
-  const [selectedKoordinatorUserInfo, setSelectedKoordinatorUserInfo] = useState(null)
-  /** users.id (id_user) untuk panggilan getSessionsForUser - endpoint pakai users.id bukan pengurus.id */
-  const [selectedKoordinatorUserId, setSelectedKoordinatorUserId] = useState(null)
-  const [userInfoLoading, setUserInfoLoading] = useState(false)
+  /** ID pengurus yang detail-nya dibuka (klik list → buka DetailPengurusOffcanvas umum) */
+  const [detailPengurusId, setDetailPengurusId] = useState(null)
+  const [showDetailEditPanel, setShowDetailEditPanel] = useState(false)
   const navigate = useNavigate()
+
+  const closeDetailOffcanvas = useCallback(() => {
+    setDetailPengurusId(null)
+    setShowDetailEditPanel(false)
+  }, [])
   const { showNotification } = useNotification()
 
   useEffect(() => {
@@ -759,94 +313,6 @@ function Koordinator() {
     loadKoordinator()
   }, [loadKoordinator])
 
-  // Fetch username & no_wa dari tabel users: pakai user_id dari list atau getById -> getByIdV2(users.id)
-  useEffect(() => {
-    if (!selectedKoordinator?.id) {
-      setSelectedKoordinatorUserInfo(null)
-      setSelectedKoordinatorUserId(null)
-      setUserInfoLoading(false)
-      return
-    }
-    let cancelled = false
-    setUserInfoLoading(true)
-    setSelectedKoordinatorUserInfo(null)
-    setSelectedKoordinatorUserId(null)
-
-    const fetchUserInfo = (userId) => {
-      if (userId == null) return Promise.resolve(null)
-      if (!cancelled) setSelectedKoordinatorUserId(userId)
-      return manageUsersAPI.getByIdV2(userId).then((v2Res) => {
-        if (cancelled) return null
-        const u = v2Res?.data?.user
-        if (u) return { username: (u.username ?? '').trim(), no_wa: (u.no_wa ?? '').trim() }
-        return { username: '', no_wa: '' }
-      })
-    }
-
-    const user_id_from_list = selectedKoordinator.user_id ?? selectedKoordinator.users_id ?? selectedKoordinator.id_user
-    if (user_id_from_list != null) {
-      fetchUserInfo(user_id_from_list)
-        .then((info) => { if (!cancelled && info) setSelectedKoordinatorUserInfo(info) })
-        .catch(() => { if (!cancelled) setSelectedKoordinatorUserInfo({ username: '', no_wa: '' }) })
-        .finally(() => { if (!cancelled) setUserInfoLoading(false) })
-    } else {
-      manageUsersAPI.getById(selectedKoordinator.id)
-        .then((res) => {
-          if (cancelled) return
-          const d = res?.data ?? {}
-          const pengurusRow = d.user ?? d
-          const user_id = pengurusRow?.id_user ?? pengurusRow?.user_id ?? d?.id_user ?? d?.user_id ?? pengurusRow?.users_id ?? d?.users_id
-          if (user_id != null) {
-            return fetchUserInfo(user_id).then((info) => {
-              if (!cancelled && info) setSelectedKoordinatorUserInfo(info)
-            })
-          }
-          const usersRow = d.users ?? d.account ?? d.user_account ?? pengurusRow
-          const username = (usersRow?.username ?? usersRow?.user_username ?? pengurusRow?.username ?? '').trim()
-          const no_wa = (usersRow?.no_wa ?? usersRow?.user_no_wa ?? pengurusRow?.no_wa ?? pengurusRow?.whatsapp ?? '').trim()
-          setSelectedKoordinatorUserInfo({ username, no_wa })
-        })
-        .catch(() => {
-          if (!cancelled) setSelectedKoordinatorUserInfo({ username: '', no_wa: '' })
-        })
-        .finally(() => {
-          if (!cancelled) setUserInfoLoading(false)
-        })
-    }
-    return () => { cancelled = true }
-  }, [selectedKoordinator?.id, selectedKoordinator?.id_user, selectedKoordinator?.user_id, selectedKoordinator?.users_id])
-
-  useEffect(() => {
-    if (!selectedKoordinator?.id) {
-      setSessionsList([])
-      setSessionsLoading(false)
-      return
-    }
-    const username = selectedKoordinatorUserInfo?.username ?? selectedKoordinator?.username
-    const hasUsername = username != null && String(username).trim() !== ''
-    const userIdForSessions = selectedKoordinatorUserId ?? selectedKoordinator?.id_user ?? selectedKoordinator?.user_id ?? selectedKoordinator?.users_id
-    if (!hasUsername || userIdForSessions == null) {
-      setSessionsList([])
-      setSessionsLoading(false)
-      return
-    }
-    let cancelled = false
-    setSessionsLoading(true)
-    manageUsersAPI.getSessionsForUser(userIdForSessions)
-      .then((res) => {
-        if (cancelled) return
-        if (res?.success && Array.isArray(res.data)) setSessionsList(res.data)
-        else setSessionsList([])
-      })
-      .catch(() => {
-        if (!cancelled) setSessionsList([])
-      })
-      .finally(() => {
-        if (!cancelled) setSessionsLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [selectedKoordinator?.id, selectedKoordinator?.id_user, selectedKoordinatorUserId, selectedKoordinatorUserInfo?.username, selectedKoordinator?.username])
-
   useEffect(() => {
     if (allKoordinator.length === 0) {
       setFilteredKoordinator([])
@@ -903,38 +369,8 @@ function Koordinator() {
   }, [])
 
   const handleItemClick = useCallback((pengurus) => {
-    if (pengurus) setSelectedKoordinator(pengurus)
+    if (pengurus?.id != null) setDetailPengurusId(pengurus.id)
   }, [])
-
-  const handleNonaktifkan = useCallback(async (pengurus) => {
-    if (!pengurus?.id) return
-    const coordinatorRole = (pengurus.roles || []).find((r) => isCoordinatorRole(r) || r.role_id === coordinatorRoleId)
-    const pengurusRoleId = coordinatorRole?.pengurus_role_id
-    if (!pengurusRoleId) {
-      showNotification('Role koordinator tidak ditemukan pada pengurus ini.', 'error')
-      return
-    }
-    if (!window.confirm(`Nonaktifkan koordinator "${pengurus.nama || pengurus.id}"? Role koordinator akan dihapus.`)) {
-      return
-    }
-    setRemovingRole(true)
-    try {
-      const response = await manageUsersAPI.removeUserRole(pengurus.id, pengurusRoleId)
-      if (response?.success) {
-        showNotification('Role koordinator berhasil dihapus.', 'success')
-        setSelectedKoordinator(null)
-        loadKoordinator()
-      } else {
-        showNotification(response?.message || 'Gagal menghapus role koordinator', 'error')
-      }
-    } catch (err) {
-      console.error('Error removing coordinator role:', err)
-      const msg = err.response?.data?.message || 'Terjadi kesalahan saat menghapus role koordinator'
-      showNotification(msg, 'error')
-    } finally {
-      setRemovingRole(false)
-    }
-  }, [coordinatorRoleId, showNotification, loadKoordinator])
 
   const handleSelectPengurus = useCallback(async (pengurus) => {
     if (pengurus?.id == null) return
@@ -960,24 +396,6 @@ function Koordinator() {
       setAddingRole(false)
     }
   }, [coordinatorRoleId, showNotification, loadKoordinator])
-
-  const handleResetPassword = useCallback(async (pengurus) => {
-    if (!pengurus?.id) return
-    setResettingPassword(true)
-    try {
-      const response = await manageUsersAPI.sendResetPasswordLink(pengurus.id)
-      if (response?.success) {
-        showNotification(response.message || 'Link reset password telah dikirim ke WhatsApp.', 'success')
-      } else {
-        showNotification(response?.message || 'Gagal mengirim link reset password', 'error')
-      }
-    } catch (err) {
-      console.error('Error sending reset password link:', err)
-      showNotification(err.response?.data?.message || 'Terjadi kesalahan saat mengirim link', 'error')
-    } finally {
-      setResettingPassword(false)
-    }
-  }, [showNotification])
 
   if (loading) {
     return (
@@ -1118,20 +536,15 @@ function Koordinator() {
         document.body
       )}
       {createPortal(
-        <EditKoordinatorOffcanvas
-          isOpen={selectedKoordinator != null}
-          onClose={() => { setSelectedKoordinator(null); setSelectedKoordinatorUserInfo(null) }}
-          pengurus={selectedKoordinator}
-          userInfo={selectedKoordinatorUserInfo}
-          userInfoLoading={userInfoLoading}
-          onNonaktifkan={handleNonaktifkan}
-          removing={removingRole}
-          onResetPassword={handleResetPassword}
-          resettingPassword={resettingPassword}
-          sessions={sessionsList}
-          sessionsLoading={sessionsLoading}
+        <DetailPengurusOffcanvas
+          isOpen={detailPengurusId != null}
+          onClose={closeDetailOffcanvas}
+          pengurusId={detailPengurusId}
           lembagaList={lembagaList}
-          onSuccess={loadKoordinator}
+          onPengurusPatch={() => loadKoordinator()}
+          showEditPanel={showDetailEditPanel}
+          onOpenEdit={() => setShowDetailEditPanel(true)}
+          onCloseEdit={() => setShowDetailEditPanel(false)}
         />,
         document.body
       )}

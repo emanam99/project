@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -189,6 +190,12 @@ class UmrohPengeluaranController
             $this->db->beginTransaction();
 
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            if (!empty($data['details']) && is_array($data['details'])) {
+                $data['details'] = array_map(function ($row) {
+                    return is_array($row) ? TextSanitizer::sanitizeStringValues($row, []) : $row;
+                }, $data['details']);
+            }
             $user = $request->getAttribute('user');
             
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
@@ -349,6 +356,12 @@ class UmrohPengeluaranController
 
             $id = $args['id'] ?? null;
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            if (!empty($data['details']) && is_array($data['details'])) {
+                $data['details'] = array_map(function ($row) {
+                    return is_array($row) ? TextSanitizer::sanitizeStringValues($row, []) : $row;
+                }, $data['details']);
+            }
 
             if (!$id) {
                 return $this->jsonResponse($response, [

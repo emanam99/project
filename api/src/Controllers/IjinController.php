@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -88,7 +89,7 @@ class IjinController
                 $data['id_santri'],
                 $data['urutan'] ?? null,
                 $data['tahun_ajaran'],
-                $data['alasan'] ?? null,
+                TextSanitizer::cleanTextOrNull($data['alasan'] ?? null),
                 $data['dari'] ?? null,
                 $data['sampai'] ?? null,
                 $data['perpanjang'] ?? null,
@@ -152,7 +153,7 @@ class IjinController
             }
             if (isset($data['alasan'])) {
                 $fields[] = "alasan = ?";
-                $params[] = $data['alasan'];
+                $params[] = TextSanitizer::cleanTextOrNull($data['alasan']);
             }
             if (isset($data['dari'])) {
                 $fields[] = "dari = ?";

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -105,6 +106,7 @@ class MybeddianBarangController
                 return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk toko'], 403);
             }
             $data = $request->getParsedBody() ?? [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $namaBarang = trim((string) ($data['nama_barang'] ?? ''));
             $harga = isset($data['harga']) ? (float) $data['harga'] : null;
             $kodeBarang = isset($data['kode_barang']) ? trim((string) $data['kode_barang']) : '';
@@ -154,6 +156,7 @@ class MybeddianBarangController
                 return $this->json($response, ['success' => false, 'message' => 'ID tidak valid'], 400);
             }
             $data = $request->getParsedBody() ?? [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $chk = $this->db->prepare("SELECT id FROM cashless___barang WHERE id = ? AND pedagang_id = ? LIMIT 1");
             $chk->execute([$id, $pedagangId]);
             if (!$chk->fetch()) {

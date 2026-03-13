@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\SantriHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -251,6 +252,7 @@ class PaymentController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
             $pageMode = $input['page'] ?? $request->getQueryParams()['page'] ?? 'tunggakan';
 
             $config = $this->getTableConfig($pageMode);
@@ -510,6 +512,7 @@ class PaymentController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
             $pageMode = $input['page'] ?? $request->getQueryParams()['page'] ?? 'tunggakan';
             
             $tabel = $pageMode === 'khusus' ? 'uwaba___khusus' : 'uwaba___tunggakan';
@@ -577,6 +580,7 @@ class PaymentController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
             $pageMode = $input['page'] ?? $request->getQueryParams()['page'] ?? 'tunggakan';
             
             $tabel = $pageMode === 'khusus' ? 'uwaba___khusus' : 'uwaba___tunggakan';
@@ -886,6 +890,7 @@ class PaymentController
     {
         try {
             $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
             $idSantriParam = $input['id_santri'] ?? '';
             $nominal = $input['nominal'] ?? 0;
             $via = $input['via'] ?? 'Cash';

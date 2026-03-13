@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
 import { manageUsersAPI } from '../../../services/api'
 import api from '../../../services/api'
-import AddUserModal from '../../../components/Modal/AddUserModal'
 import ExportPengurusOffcanvas from './components/ExportPengurusOffcanvas'
-import DetailPengurusOffcanvas from './components/DetailPengurusOffcanvas'
+import TambahPengurusOffcanvas from './components/TambahPengurusOffcanvas'
+import DetailPengurusOffcanvas from '../../../components/DetailPengurusOffcanvas'
 import * as XLSX from 'xlsx'
 
 // Memoized Search and Filter Section - Menu (Tambah, Export, Import, Template) + Filter
@@ -380,6 +380,7 @@ function Pengurus() {
   const pushCountRef = useRef(0)
 
   const closeExportOffcanvas = useOffcanvasBackClose(showExportOffcanvas, () => setShowExportOffcanvas(false))
+  const closeTambahOffcanvas = useOffcanvasBackClose(showAddModal, () => setShowAddModal(false))
 
   // History: detail open → push state 'detail'; edit open → push state 'edit'. Back: jika state 'detail' → tutup edit saja; else → tutup detail.
   useEffect(() => {
@@ -874,7 +875,15 @@ const handleDownloadTemplate = useCallback(() => {
           </motion.div>
         </div>
       </div>
-      <AddUserModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} onSuccess={handleAddUserSuccess} />
+      {/* Offcanvas Tambah Pengurus Baru (bawah) */}
+      {createPortal(
+        <TambahPengurusOffcanvas
+          isOpen={showAddModal}
+          onClose={closeTambahOffcanvas}
+          onSuccess={handleAddUserSuccess}
+        />,
+        document.body
+      )}
       {/* Offcanvas Eksport - render via portal ke document.body agar overlay menutup seluruh layar (sidebar + nav) seperti Cari Santri */}
       {createPortal(
         <ExportPengurusOffcanvas

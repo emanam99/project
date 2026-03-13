@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -72,9 +73,9 @@ class WhatsAppTemplateController
             if (!is_array($body)) {
                 $body = json_decode((string) $request->getBody(), true) ?? [];
             }
-            $kategori = trim((string) ($body['kategori'] ?? 'umum'));
-            $nama = trim((string) ($body['nama'] ?? ''));
-            $isiPesan = trim((string) ($body['isi_pesan'] ?? $body['isiPesan'] ?? ''));
+            $kategori = TextSanitizer::cleanText($body['kategori'] ?? 'umum') ?: 'umum';
+            $nama = TextSanitizer::cleanText($body['nama'] ?? '');
+            $isiPesan = TextSanitizer::cleanText($body['isi_pesan'] ?? $body['isiPesan'] ?? '');
 
             if ($nama === '') {
                 return $this->json($response, ['success' => false, 'message' => 'Nama template wajib diisi'], 400);
@@ -117,9 +118,9 @@ class WhatsAppTemplateController
                 $body = json_decode((string) $request->getBody(), true) ?? [];
             }
             $id = isset($body['id']) ? (int) $body['id'] : 0;
-            $kategori = isset($body['kategori']) ? trim((string) $body['kategori']) : null;
-            $nama = isset($body['nama']) ? trim((string) $body['nama']) : null;
-            $isiPesan = isset($body['isi_pesan']) ? trim((string) $body['isi_pesan']) : (isset($body['isiPesan']) ? trim((string) $body['isiPesan']) : null);
+            $kategori = isset($body['kategori']) ? TextSanitizer::cleanText((string) $body['kategori']) : null;
+            $nama = isset($body['nama']) ? TextSanitizer::cleanText((string) $body['nama']) : null;
+            $isiPesan = isset($body['isi_pesan']) ? TextSanitizer::cleanText((string) $body['isi_pesan']) : (isset($body['isiPesan']) ? TextSanitizer::cleanText((string) $body['isiPesan']) : null);
 
             if ($id < 1) {
                 return $this->json($response, ['success' => false, 'message' => 'ID template tidak valid'], 400);

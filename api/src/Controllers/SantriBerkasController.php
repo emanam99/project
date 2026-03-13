@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\SantriHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -235,6 +236,7 @@ class SantriBerkasController
 
             // Get form data
             $parsedBody = $request->getParsedBody();
+            $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
             $idSantri = $parsedBody['id_santri'] ?? null;
             $jenisBerkas = $parsedBody['jenis_berkas'] ?? null;
             $keterangan = $parsedBody['keterangan'] ?? null;
@@ -685,6 +687,7 @@ class SantriBerkasController
     {
         try {
             $parsedBody = $request->getParsedBody();
+            $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
             $idBerkas = $parsedBody['id'] ?? null;
 
             if (!$idBerkas) {
@@ -756,6 +759,7 @@ class SantriBerkasController
 
             // Get form data
             $parsedBody = $request->getParsedBody();
+            $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
             $idBerkas = $parsedBody['id'] ?? null;
             $keterangan = $parsedBody['keterangan'] ?? null;
 
@@ -951,6 +955,7 @@ class SantriBerkasController
 
             // Get form data
             $parsedBody = $request->getParsedBody();
+            $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
             $idSantri = $parsedBody['id_santri'] ?? null;
             $jenisBerkas = $parsedBody['jenis_berkas'] ?? null;
             $idBerkasSource = $parsedBody['id_berkas_source'] ?? null; // ID berkas yang akan di-link

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -117,6 +118,7 @@ class TahunAjaranController
     {
         try {
             $data = $request->getParsedBody() ?? [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $tahunAjaran = isset($data['tahun_ajaran']) ? trim((string) $data['tahun_ajaran']) : '';
             $kategori = isset($data['kategori']) ? trim((string) $data['kategori']) : '';
             $dari = $data['dari'] ?? null;
@@ -206,6 +208,7 @@ class TahunAjaranController
             }
 
             $data = $request->getParsedBody() ?? [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $newTahunAjaran = isset($data['tahun_ajaran']) && trim((string) $data['tahun_ajaran']) !== ''
                 ? trim((string) $data['tahun_ajaran'])
                 : $old['tahun_ajaran'];

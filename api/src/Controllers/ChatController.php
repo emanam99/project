@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -44,6 +45,9 @@ class ChatController
     {
         try {
             $input = $request->getParsedBody();
+            if (is_array($input) && isset($input['pesan']) && is_string($input['pesan'])) {
+                $input['pesan'] = TextSanitizer::cleanText($input['pesan']);
+            }
             $this->log('SAVE_DATA: ' . json_encode($input));
 
             $requiredFields = ['nomor_tujuan', 'pesan'];
@@ -105,7 +109,7 @@ class ChatController
             $hasWaMessageId = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'wa_message_id'")->rowCount() > 0;
 
             $cols = ['id_santri', 'id_pengurus', 'tujuan', 'id_pengurus_pengirim', 'kategori', 'sumber', 'nomor_tujuan', 'isi_pesan', 'punya_gambar', 'status'];
-            $vals = [$idSantri, null, 'wali_santri', $idPengurusPengirim, 'custom', $sumber, $nomor62, trim($input['pesan']), 0, $statusWa];
+            $vals = [$idSantri, null, 'wali_santri', $idPengurusPengirim, 'custom', $sumber, $nomor62, TextSanitizer::cleanText($input['pesan'] ?? ''), 0, $statusWa];
             if ($hasArah) {
                 $cols[] = 'arah';
                 $vals[] = 'keluar';
@@ -168,7 +172,7 @@ class ChatController
             $this->db->beginTransaction();
             $results = [];
             foreach ($variations as $variation) {
-                $params = [$idSantri, null, 'wali_santri', $idPengurusPengirim, 'custom', 'uwaba', $nomor62, trim($variation['message'] ?? ''), 0, 'terkirim'];
+                $params = [$idSantri, null, 'wali_santri', $idPengurusPengirim, 'custom', 'uwaba', $nomor62, TextSanitizer::cleanText($variation['message'] ?? $variation['isi_pesan'] ?? ''), 0, 'terkirim'];
                 if ($hasArah) {
                     $params[] = 'keluar';
                 }

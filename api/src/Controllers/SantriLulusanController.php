@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -84,7 +85,7 @@ class SantriLulusanController
 
             $body = $request->getParsedBody() ?? [];
             $idRombel = isset($body['id_rombel']) ? (int) $body['id_rombel'] : 0;
-            $tahunAjaran = isset($body['tahun_ajaran']) ? trim((string) $body['tahun_ajaran']) : '';
+            $tahunAjaran = isset($body['tahun_ajaran']) ? TextSanitizer::cleanText((string) $body['tahun_ajaran']) : '';
             $idSantriList = isset($body['id_santri_list']) && is_array($body['id_santri_list'])
                 ? array_map('intval', array_filter($body['id_santri_list'], function ($v) { return is_numeric($v); }))
                 : [];

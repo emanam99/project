@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Database;
 use App\Helpers\PengurusHelper;
 use App\Helpers\RoleHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use App\Helpers\SantriHelper;
 use App\Services\WhatsAppService;
@@ -251,6 +252,7 @@ class ManageUsersController
     {
         try {
             $data = $request->getParsedBody();
+            $data = TextSanitizer::sanitizeStringValues($data ?? [], []);
             
             // NIP: bisa diisi manual atau di-generate (sama seperti NIS santri; digit 1 = 3 L / 4 P, 2–3 = tahun hijriyah, 4–7 = urutan)
             $nip = isset($data['nip']) ? trim((string)$data['nip']) : (isset($data['id']) ? trim((string)$data['id']) : null);
@@ -405,6 +407,7 @@ class ManageUsersController
         try {
             $userId = $args['id'] ?? '';
             $data = $request->getParsedBody();
+            $data = TextSanitizer::sanitizeStringValues($data ?? [], []);
             
             // Log untuk debugging
             error_log("Update user request - User ID: $userId");
@@ -457,7 +460,7 @@ class ManageUsersController
                 ], 400);
             }
             $updateFields[] = "nama = ?";
-            $params[] = trim($data['nama']);
+            $params[] = TextSanitizer::cleanText($data['nama'] ?? '');
             
             // Validate and add status (required)
             if (!isset($data['status']) || $data['status'] === '') {
@@ -496,11 +499,11 @@ class ManageUsersController
                 $userParams = [];
                 if (isset($data['email'])) {
                     $userUpdates[] = "email = ?";
-                    $userParams[] = trim($data['email']) !== '' ? trim($data['email']) : null;
+                    $userParams[] = TextSanitizer::cleanText($data['email'] ?? '') ?: null;
                 }
                 if (isset($data['whatsapp'])) {
                     $userUpdates[] = "no_wa = ?";
-                    $userParams[] = trim($data['whatsapp']) !== '' ? trim($data['whatsapp']) : null;
+                    $userParams[] = TextSanitizer::cleanText($data['whatsapp'] ?? '') ?: null;
                 }
                 if (!empty($userUpdates)) {
                     $userParams[] = $idUser;
@@ -1678,8 +1681,8 @@ class ManageUsersController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'ID tidak valid'], 400);
             }
             $data = $request->getParsedBody();
-            $noWa = isset($data['no_wa']) ? trim($data['no_wa']) : null;
-            $email = isset($data['email']) ? trim($data['email']) : null;
+            $noWa = isset($data['no_wa']) ? TextSanitizer::cleanText($data['no_wa']) : null;
+            $email = isset($data['email']) ? TextSanitizer::cleanText($data['email']) : null;
 
             $stmt = $this->db->prepare("SELECT id FROM users WHERE id = ?");
             $stmt->execute([$userId]);

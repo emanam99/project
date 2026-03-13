@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -97,6 +98,7 @@ class BoyongController
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $user = $request->getAttribute('user');
             $idPengurus = $user !== null ? (int)($user['user_id'] ?? $user['id'] ?? 0) : null;
             if ($idPengurus <= 0) {
@@ -174,6 +176,7 @@ class BoyongController
             }
 
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $fields = [];
             $params = [];
 

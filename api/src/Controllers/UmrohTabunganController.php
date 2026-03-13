@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -228,6 +229,7 @@ class UmrohTabunganController
             $this->db->beginTransaction();
 
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $user = $request->getAttribute('user');
             
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
@@ -409,6 +411,7 @@ class UmrohTabunganController
         try {
             $id = $args['id'] ?? null;
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
 
             if (!$id) {
                 return $this->jsonResponse($response, [

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -151,9 +152,9 @@ class WaliKelasController
             $idWakil = isset($data['id_wakil']) && $data['id_wakil'] !== '' ? (int) $data['id_wakil'] : null;
             $idSekretaris = isset($data['id_sekretaris']) && $data['id_sekretaris'] !== '' ? (int) $data['id_sekretaris'] : null;
             $idBendahara = isset($data['id_bendahara']) && $data['id_bendahara'] !== '' ? (int) $data['id_bendahara'] : null;
-            $tahunAjaran = $data['tahun_ajaran'] ?? null;
-            $gedung = $data['gedung'] ?? null;
-            $ruang = $data['ruang'] ?? null;
+            $tahunAjaran = TextSanitizer::cleanTextOrNull($data['tahun_ajaran'] ?? null);
+            $gedung = TextSanitizer::cleanTextOrNull($data['gedung'] ?? null);
+            $ruang = TextSanitizer::cleanTextOrNull($data['ruang'] ?? null);
 
             // Wali baru selalu aktif; yang lama untuk rombel yang sama otomatis jadi nonaktif
             $waktu = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
@@ -246,10 +247,10 @@ class WaliKelasController
             $tahunAjaranSent = array_key_exists('tahun_ajaran', $data) || array_key_exists('tahunAjaran', $data);
             $tahunAjaranVal = $data['tahun_ajaran'] ?? $data['tahunAjaran'] ?? '';
             $tahunAjaran = $tahunAjaranSent
-                ? (trim((string) $tahunAjaranVal) !== '' ? trim((string) $tahunAjaranVal) : null)
+                ? (TextSanitizer::cleanText((string) $tahunAjaranVal) ?: null)
                 : $old['tahun_ajaran'];
-            $gedung = $data['gedung'] ?? $old['gedung'];
-            $ruang = $data['ruang'] ?? $old['ruang'];
+            $gedung = array_key_exists('gedung', $data) ? TextSanitizer::cleanTextOrNull($data['gedung']) : $old['gedung'];
+            $ruang = array_key_exists('ruang', $data) ? TextSanitizer::cleanTextOrNull($data['ruang']) : $old['ruang'];
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : $old['status'];
 

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -131,10 +132,10 @@ class DaerahKamarController
             }
 
             $idDaerah = (int) $data['id_daerah'];
-            $kamar = trim($data['kamar']);
+            $kamar = TextSanitizer::cleanText($data['kamar'] ?? '');
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : 'aktif';
-            $keterangan = $data['keterangan'] ?? null;
+            $keterangan = TextSanitizer::cleanTextOrNull($data['keterangan'] ?? null);
 
             $waktu = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
             $stmt = $this->db->prepare("
@@ -199,10 +200,10 @@ class DaerahKamarController
 
             $data = $request->getParsedBody();
             $idDaerah = isset($data['id_daerah']) ? (int) $data['id_daerah'] : (int) $old['id_daerah'];
-            $kamar = isset($data['kamar']) ? trim($data['kamar']) : $old['kamar'];
+            $kamar = isset($data['kamar']) ? TextSanitizer::cleanText($data['kamar']) : $old['kamar'];
             $status = isset($data['status']) && in_array($data['status'], ['aktif', 'nonaktif'], true)
                 ? $data['status'] : $old['status'];
-            $keterangan = array_key_exists('keterangan', $data) ? $data['keterangan'] : $old['keterangan'];
+            $keterangan = array_key_exists('keterangan', $data) ? TextSanitizer::cleanTextOrNull($data['keterangan']) : $old['keterangan'];
 
             $stmt = $this->db->prepare("
                 UPDATE daerah___kamar SET id_daerah = ?, kamar = ?, status = ?, keterangan = ? WHERE id = ?

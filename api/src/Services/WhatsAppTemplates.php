@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Helpers\TextSanitizer;
+
 /**
  * Template pesan WhatsApp per fungsi.
  * Satu method = satu template. Isi pesan dirapikan per kegunaan.
+ * Semua data dari pendaftar (nama, nik, dll) di-sanitasi agar teks selalu bersih di WA.
  */
 class WhatsAppTemplates
 {
@@ -20,15 +23,15 @@ class WhatsAppTemplates
      */
     public static function biodataTerdaftar(array $santriData, string $linkPendaftaran): string
     {
-        $nama = $santriData['nama'] ?? '-';
-        $nik = $santriData['nik'] ?? '-';
+        $nama = TextSanitizer::cleanText($santriData['nama'] ?? '') ?: '-';
+        $nik = TextSanitizer::cleanText($santriData['nik'] ?? '') ?: '-';
         $nisRaw = $santriData['nis'] ?? $santriData['id'] ?? '';
         $nis = (trim((string) $nisRaw) !== '') ? (string) $nisRaw : (string) ($santriData['id'] ?? '-');
-        $email = $santriData['email'] ?? '-';
-        $statusPendaftar = trim((string) ($santriData['status_pendaftar'] ?? ''));
-        $daftarFormal = trim((string) ($santriData['daftar_formal'] ?? ''));
-        $daftarDiniyah = trim((string) ($santriData['daftar_diniyah'] ?? ''));
-        $statusMurid = trim((string) ($santriData['status_murid'] ?? ''));
+        $email = TextSanitizer::cleanText($santriData['email'] ?? '') ?: '-';
+        $statusPendaftar = TextSanitizer::cleanText($santriData['status_pendaftar'] ?? '');
+        $daftarFormal = TextSanitizer::cleanText($santriData['daftar_formal'] ?? '');
+        $daftarDiniyah = TextSanitizer::cleanText($santriData['daftar_diniyah'] ?? '');
+        $statusMurid = TextSanitizer::cleanText($santriData['status_murid'] ?? '');
 
         $isSantriLama = strtolower($statusPendaftar) === 'lama';
         if ($isSantriLama && strtoupper($daftarFormal) === 'STAI') {
@@ -81,7 +84,7 @@ class WhatsAppTemplates
      */
     public static function berkasLengkap(array $santriData, array $listAda, array $listTidakAda): string
     {
-        $nama = $santriData['nama'] ?? '-';
+        $nama = TextSanitizer::cleanText($santriData['nama'] ?? '') ?: '-';
         $nis = $santriData['nis'] ?? $santriData['id'] ?? '-';
 
         $msg = "📁 *Berkas Pendaftaran Lengkap*\n\n";
@@ -90,7 +93,7 @@ class WhatsAppTemplates
         $msg .= "*Berkas yang ada:*\n";
         if (!empty($listAda)) {
             foreach ($listAda as $item) {
-                $msg .= "✓ " . $item . "\n";
+                $msg .= "✓ " . TextSanitizer::cleanText((string) $item) . "\n";
             }
         } else {
             $msg .= "—\n";
@@ -98,7 +101,7 @@ class WhatsAppTemplates
         $msg .= "\n*Berkas tidak ada (dicentang):*\n";
         if (!empty($listTidakAda)) {
             foreach ($listTidakAda as $item) {
-                $msg .= "○ " . $item . "\n";
+                $msg .= "○ " . TextSanitizer::cleanText((string) $item) . "\n";
             }
         } else {
             $msg .= "—\n";
@@ -115,7 +118,7 @@ class WhatsAppTemplates
      */
     public static function pembayaranLink(string $nama, string $link): string
     {
-        $sapaan = $nama !== '' ? $nama : 'Calon Santri';
+        $sapaan = TextSanitizer::cleanText($nama) ?: 'Calon Santri';
         $msg = "💳 *Pembayaran Pendaftaran*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
         $msg .= "Anda dapat menyelesaikan pembayaran atau melihat status di aplikasi pendaftaran.\n\n";
@@ -130,7 +133,7 @@ class WhatsAppTemplates
      */
     public static function pembayaranBerhasil(string $nama, string $nominalFormatted): string
     {
-        $sapaan = $nama !== '' ? $nama : 'Calon Santri';
+        $sapaan = TextSanitizer::cleanText($nama) ?: 'Calon Santri';
         $msg = "✅ *Pembayaran Diterima*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
         $msg .= "Pembayaran Anda sebesar *" . $nominalFormatted . "* telah tercatat, silahkan menunggu, Admin Akan mengecek DATA dan KELENGKAPAN BERKAS. Setelah selesai dicek oleh admin, anda akan mendapatkan notifikasi veriifikasi.\n\n";
@@ -157,7 +160,7 @@ class WhatsAppTemplates
      */
     public static function pembayaranIpaymuOrder(string $nama, string $amountFormatted, ?string $adminFeeFormatted, ?string $totalFormatted, string $channelLabel, string $vaOrCode, string $instruksi, string $link = ''): string
     {
-        $sapaan = $nama !== '' ? $nama : 'Calon Santri';
+        $sapaan = TextSanitizer::cleanText($nama) ?: 'Calon Santri';
         $msg = "💳 *Pesanan Pembayaran Berhasil Dibuat*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
         $msg .= "Nominal: *" . $amountFormatted . "*\n";
@@ -187,7 +190,7 @@ class WhatsAppTemplates
      */
     public static function pembayaranIpaymuQris(string $nama, string $amountFormatted, ?string $adminFeeFormatted, ?string $totalFormatted, string $link = ''): string
     {
-        $sapaan = $nama !== '' ? $nama : 'Calon Santri';
+        $sapaan = TextSanitizer::cleanText($nama) ?: 'Calon Santri';
         $msg = "💳 *Pesanan Pembayaran QRIS Berhasil Dibuat*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
         $msg .= "Nominal: *" . $amountFormatted . "*\n";
@@ -207,7 +210,7 @@ class WhatsAppTemplates
      */
     public static function pembayaranDibatalkan(string $nama): string
     {
-        $sapaan = $nama !== '' ? $nama : 'Calon Santri';
+        $sapaan = TextSanitizer::cleanText($nama) ?: 'Calon Santri';
         $msg = "❌ *Pesanan Pembayaran Dibatalkan*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
         $msg .= "Pesanan pembayaran Anda telah dibatalkan. Jika ingin melanjutkan, silakan buat pesanan pembayaran baru di aplikasi pendaftaran.";
@@ -221,7 +224,7 @@ class WhatsAppTemplates
      */
     public static function pembayaranGagal(string $nama): string
     {
-        $sapaan = $nama !== '' ? $nama : 'Calon Santri';
+        $sapaan = TextSanitizer::cleanText($nama) ?: 'Calon Santri';
         $msg = "❌ *Pembayaran Gagal*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
         $msg .= "Transaksi pembayaran Anda tidak berhasil. Silakan coba lagi atau gunakan metode pembayaran lain di aplikasi pendaftaran.";
@@ -235,7 +238,7 @@ class WhatsAppTemplates
      */
     public static function pembayaranKadaluarsa(string $nama): string
     {
-        $sapaan = $nama !== '' ? $nama : 'Calon Santri';
+        $sapaan = TextSanitizer::cleanText($nama) ?: 'Calon Santri';
         $msg = "⏱ *Pesanan Pembayaran Kadaluarsa*\n\n";
         $msg .= "Hai, " . $sapaan . ".\n\n";
         $msg .= "Waktu pembayaran pesanan Anda telah habis. Silakan buat pesanan pembayaran baru di aplikasi pendaftaran jika masih ingin melanjutkan.";
@@ -252,9 +255,9 @@ class WhatsAppTemplates
      */
     public static function sudahDiverifikasi(array $biodata): string
     {
-        $nama = $biodata['nama'] ?? 'Calon Santri';
+        $nama = TextSanitizer::cleanText($biodata['nama'] ?? '') ?: 'Calon Santri';
         $nis = $biodata['nis'] ?? $biodata['id'] ?? '-';
-        $daftarFormal = trim((string) ($biodata['formal'] ?? ''));
+        $daftarFormal = TextSanitizer::cleanText($biodata['formal'] ?? '');
         $isStai = strtoupper($daftarFormal) === 'STAI';
 
         if ($isStai) {

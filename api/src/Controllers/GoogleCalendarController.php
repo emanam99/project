@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use App\Services\GoogleCalendarService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -99,6 +100,7 @@ class GoogleCalendarController
             if (!is_array($body)) {
                 return $this->json($response, ['success' => false, 'error' => 'Body harus JSON.'], 400);
             }
+            $body = TextSanitizer::sanitizeStringValues($body, []);
             $slug = $body['slug'] ?? 'pesantren';
             $summary = trim($body['summary'] ?? '');
             $description = trim($body['description'] ?? '');
@@ -137,6 +139,7 @@ class GoogleCalendarController
             if (!is_array($body)) {
                 return $this->json($response, ['success' => false, 'error' => 'Body harus JSON.'], 400);
             }
+            $body = TextSanitizer::sanitizeStringValues($body, []);
             $slug = $body['slug'] ?? 'pesantren';
             $summary = trim($body['summary'] ?? '');
             $description = trim($body['description'] ?? '');
@@ -199,6 +202,7 @@ class GoogleCalendarController
         try {
             $slug = $args['slug'] ?? '';
             $body = $request->getParsedBody();
+            $body = is_array($body) ? TextSanitizer::sanitizeStringValues($body, []) : [];
             if (is_array($body) && isset($body['slug'])) {
                 $slug = $body['slug'];
             }

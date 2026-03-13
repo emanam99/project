@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -110,6 +111,7 @@ class CashlessController
     {
         try {
             $data = $request->getParsedBody() ?? [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $namaToko = trim((string) ($data['nama_toko'] ?? ''));
             $kodeToko = trim((string) ($data['kode_toko'] ?? ''));
             if ($namaToko === '') {
@@ -280,6 +282,7 @@ class CashlessController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'ID toko tidak valid'], 400);
             }
             $data = $request->getParsedBody() ?? [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $namaToko = isset($data['nama_toko']) ? trim((string) $data['nama_toko']) : null;
             $kodeToko = isset($data['kode_toko']) ? trim((string) $data['kode_toko']) : null;
             $fotoPath = array_key_exists('foto_path', $data) ? (trim((string) $data['foto_path']) ?: null) : null;

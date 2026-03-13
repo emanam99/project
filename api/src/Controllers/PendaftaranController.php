@@ -6,6 +6,7 @@ use App\Database;
 use App\Helpers\SantriHelper;
 use App\Helpers\SantriKamarHelper;
 use App\Helpers\SantriRombelHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -668,12 +669,12 @@ class PendaftaranController
             }
             
             $idSantri = $input['id_santri'];
-            $keterangan1 = $input['keterangan_1'];
-            $keterangan2 = $input['keterangan_2'] ?? null;
+            $keterangan1 = TextSanitizer::cleanText($input['keterangan_1'] ?? '');
+            $keterangan2 = TextSanitizer::cleanTextOrNull($input['keterangan_2'] ?? null);
             $total = (float)$input['total'];
             $tahunAjaran = $input['tahun_ajaran'] ?? null;
-            $lembaga = $input['lembaga'] ?? null;
-            $admin = $input['admin'] ?? null;
+            $lembaga = TextSanitizer::cleanTextOrNull($input['lembaga'] ?? null);
+            $admin = TextSanitizer::cleanTextOrNull($input['admin'] ?? null);
             $idAdmin = $input['id_admin'] ?? null;
             $hijriyah = $input['hijriyah'] ?? null;
             $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
@@ -712,14 +713,14 @@ class PendaftaranController
             }
             
             $id = $input['id'];
-            $keterangan1 = $input['keterangan_1'];
-            $keterangan2 = $input['keterangan_2'] ?? null;
+            $keterangan1 = TextSanitizer::cleanText($input['keterangan_1'] ?? '');
+            $keterangan2 = TextSanitizer::cleanTextOrNull($input['keterangan_2'] ?? null);
             $total = (float)$input['total'];
             $tahunAjaran = $input['tahun_ajaran'] ?? null;
-            $lembaga = $input['lembaga'] ?? null;
-            $admin = $input['admin'] ?? null;
+            $lembaga = TextSanitizer::cleanTextOrNull($input['lembaga'] ?? null);
+            $admin = TextSanitizer::cleanTextOrNull($input['admin'] ?? null);
             $idAdmin = $input['id_admin'] ?? null;
-            $hijriyah = $input['hijriyah'] ?? null;
+            $hijriyah = TextSanitizer::cleanTextOrNull($input['hijriyah'] ?? null);
             
             $sqlUpdate = "UPDATE pendaftaran SET keterangan_1=?, keterangan_2=?, total=?, tahun_ajaran=?, lembaga=?, admin=?, id_admin=?, hijriyah=? WHERE id=?";
             $stmtUpdate = $this->db->prepare($sqlUpdate);
@@ -820,9 +821,9 @@ class PendaftaranController
                 ], 400);
             }
 
-            $nama = $input['nama'];
+            $nama = TextSanitizer::cleanText($input['nama'] ?? '');
             $nik = $input['nik'] ?? null;
-            $admin = $input['admin'] ?? null;
+            $admin = TextSanitizer::cleanTextOrNull($input['admin'] ?? null);
             $idAdmin = isset($input['id_admin']) && $input['id_admin'] !== null && $input['id_admin'] !== '' ? (int)$input['id_admin'] : null;
 
             // Cek apakah NIK sudah terdaftar
@@ -1019,6 +1020,9 @@ class PendaftaranController
                 $idPengurusPengirim = (int) ($user['id_pengurus'] ?? $user['pengurus_id'] ?? $user['id'] ?? 0) ?: null;
             }
             $waLogOptions = ['sumber' => $appSource, 'id_pengurus_pengirim' => $idPengurusPengirim];
+
+            // Pastikan semua teks dari pendaftar bersih (UTF-8 valid, tanpa karakter font/encoding aneh)
+            $input = TextSanitizer::sanitizeStringValues($input, []);
 
             $id = null;
             $isNewSantri = false;
@@ -1875,30 +1879,30 @@ class PendaftaranController
                 ], 404);
             }
 
-            // Field yang bisa disimpan ke psb___registrasi
-            $statusPendaftar = $input['status_pendaftar'] ?? null;
-            $daftarDiniyah = $input['daftar_diniyah'] ?? null;
-            $daftarFormal = $input['daftar_formal'] ?? null;
-            $statusMurid = $input['status_murid'] ?? null;
-            $prodi = $input['prodi'] ?? null;
-            $statusSantri = $input['status_santri'] ?? null;
+            // Field yang bisa disimpan ke psb___registrasi (teks disanitasi agar selalu bersih)
+            $statusPendaftar = TextSanitizer::cleanTextOrNull($input['status_pendaftar'] ?? null);
+            $daftarDiniyah = TextSanitizer::cleanTextOrNull($input['daftar_diniyah'] ?? null);
+            $daftarFormal = TextSanitizer::cleanTextOrNull($input['daftar_formal'] ?? null);
+            $statusMurid = TextSanitizer::cleanTextOrNull($input['status_murid'] ?? null);
+            $prodi = TextSanitizer::cleanTextOrNull($input['prodi'] ?? null);
+            $statusSantri = TextSanitizer::cleanTextOrNull($input['status_santri'] ?? null);
             $gender = $input['gender'] ?? null;
             
             // Riwayat Madrasah
-            $madrasah = $input['madrasah'] ?? null;
-            $namaMadrasah = $input['nama_madrasah'] ?? null;
-            $alamatMadrasah = $input['alamat_madrasah'] ?? null;
-            $lulusMadrasah = $input['lulus_madrasah'] ?? null;
+            $madrasah = TextSanitizer::cleanTextOrNull($input['madrasah'] ?? null);
+            $namaMadrasah = TextSanitizer::cleanTextOrNull($input['nama_madrasah'] ?? null);
+            $alamatMadrasah = TextSanitizer::cleanTextOrNull($input['alamat_madrasah'] ?? null);
+            $lulusMadrasah = TextSanitizer::cleanTextOrNull($input['lulus_madrasah'] ?? null);
             
             // Riwayat Sekolah
-            $sekolah = $input['sekolah'] ?? null;
-            $namaSekolah = $input['nama_sekolah'] ?? null;
-            $alamatSekolah = $input['alamat_sekolah'] ?? null;
-            $lulusSekolah = $input['lulus_sekolah'] ?? null;
-            $npsn = $input['npsn'] ?? null;
-            $nsm = $input['nsm'] ?? null;
-            $jurusan = $input['jurusan'] ?? null;
-            $programSekolah = $input['program_sekolah'] ?? null;
+            $sekolah = TextSanitizer::cleanTextOrNull($input['sekolah'] ?? null);
+            $namaSekolah = TextSanitizer::cleanTextOrNull($input['nama_sekolah'] ?? null);
+            $alamatSekolah = TextSanitizer::cleanTextOrNull($input['alamat_sekolah'] ?? null);
+            $lulusSekolah = TextSanitizer::cleanTextOrNull($input['lulus_sekolah'] ?? null);
+            $npsn = TextSanitizer::cleanTextOrNull($input['npsn'] ?? null);
+            $nsm = TextSanitizer::cleanTextOrNull($input['nsm'] ?? null);
+            $jurusan = TextSanitizer::cleanTextOrNull($input['jurusan'] ?? null);
+            $programSekolah = TextSanitizer::cleanTextOrNull($input['program_sekolah'] ?? null);
             
             $idAdmin = isset($input['id_admin']) && $input['id_admin'] !== null && $input['id_admin'] !== '' ? (int)$input['id_admin'] : null;
             

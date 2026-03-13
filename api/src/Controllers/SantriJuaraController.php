@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\SantriHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -190,6 +191,7 @@ class SantriJuaraController
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
 
             // Validasi (id_santri bisa berisi id numerik atau NIS 7 digit)
             if (empty($data['id_santri'])) {
@@ -284,6 +286,7 @@ class SantriJuaraController
             }
 
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $tahunAjaran = $data['tahun_ajaran'] ?? null;
             $lembaga = $data['lembaga'] ?? null;
             $kelas = $data['kelas'] ?? null;

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -23,8 +24,9 @@ class WhatsAppController
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $phoneNumber = trim($data['phoneNumber'] ?? $data['phone_number'] ?? '');
-            $message = $data['message'] ?? '';
+            $message = TextSanitizer::cleanText($data['message'] ?? '');
             $instance = isset($data['instance']) ? trim($data['instance']) : null;
 
             if ($phoneNumber === '') {
@@ -39,7 +41,6 @@ class WhatsAppController
             if ($user !== null && (isset($user['id_pengurus']) || isset($user['pengurus_id']) || isset($user['id']))) {
                 $logContext['id_pengurus_pengirim'] = (int) ($user['id_pengurus'] ?? $user['pengurus_id'] ?? $user['id']);
             }
-            $data = $request->getParsedBody();
             if (isset($data['tujuan']) && in_array($data['tujuan'], ['pengurus', 'santri', 'wali_santri'], true)) {
                 $logContext['tujuan'] = $data['tujuan'];
             }

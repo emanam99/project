@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -205,11 +206,11 @@ class DashboardController
     {
         try {
             $data = $request->getParsedBody();
-            
+
             $tipe = $data['tipe'] ?? '';
             $groupBy = $data['group_by'] ?? 'keterangan_1';
-            $newValue = $data['new_value'] ?? '';
-            $oldKeterangan1 = $data['old_keterangan_1'] ?? '';
+            $newValue = TextSanitizer::cleanText($data['new_value'] ?? '');
+            $oldKeterangan1 = TextSanitizer::cleanText($data['old_keterangan_1'] ?? '');
             $ids = $data['id'] ?? null;
 
             if (!$tipe || !$newValue || !$groupBy) {

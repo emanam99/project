@@ -906,23 +906,28 @@ export default function Beranda() {
                 animate="visible"
                 className="p-4 sm:p-5 space-y-3"
               >
-                <motion.div variants={paymentStaggerItem} className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div className="rounded-lg bg-gray-50 dark:bg-gray-700/40 p-3 text-center">
+                <motion.div
+                  layout
+                  variants={paymentStaggerItem}
+                  transition={{ layout: { type: 'tween', duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } }}
+                  className={`grid grid-cols-2 gap-2 ${sidebarCollapsed ? 'sm:grid-cols-4' : 'sm:grid-cols-2 xl:grid-cols-4'}`}
+                >
+                  <motion.div layout className="rounded-lg bg-gray-50 dark:bg-gray-700/40 p-3 text-center">
                     <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-0.5">Saldo Awal</p>
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{formatCurrency(ringkasanKeuangan.saldo_awal_tahun)}</p>
-                  </div>
-                  <div className="rounded-lg bg-emerald-50/80 dark:bg-emerald-900/20 p-3 text-center">
+                  </motion.div>
+                  <motion.div layout className="rounded-lg bg-emerald-50/80 dark:bg-emerald-900/20 p-3 text-center">
                     <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Pemasukan</p>
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{formatCurrency(ringkasanKeuangan.total_pemasukan)}</p>
-                  </div>
-                  <div className="rounded-lg bg-rose-50/80 dark:bg-rose-900/20 p-3 text-center">
+                  </motion.div>
+                  <motion.div layout className="rounded-lg bg-rose-50/80 dark:bg-rose-900/20 p-3 text-center">
                     <p className="text-[10px] font-medium text-rose-600 dark:text-rose-400 uppercase tracking-wider mb-0.5">Pengeluaran</p>
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{formatCurrency(ringkasanKeuangan.total_pengeluaran)}</p>
-                  </div>
-                  <div className="rounded-lg bg-teal-50/80 dark:bg-teal-900/20 p-3 text-center">
+                  </motion.div>
+                  <motion.div layout className="rounded-lg bg-teal-50/80 dark:bg-teal-900/20 p-3 text-center">
                     <p className="text-[10px] font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-0.5">Sisa Saldo</p>
                     <p className="text-sm font-semibold text-teal-700 dark:text-teal-300 tabular-nums">{formatCurrency(ringkasanKeuangan.sisa_saldo)}</p>
-                  </div>
+                  </motion.div>
                 </motion.div>
                 {(tahunAjaran || tahunAjaranMasehi) && (
                   <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center">

@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\PengurusHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\RoleHelper;
 use App\Helpers\UserAktivitasLogger;
 use App\Services\WhatsAppService;
@@ -48,6 +49,12 @@ class PengeluaranController
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            if (!empty($data['details']) && is_array($data['details'])) {
+                $data['details'] = array_map(function ($row) {
+                    return is_array($row) ? TextSanitizer::sanitizeStringValues($row, []) : $row;
+                }, $data['details']);
+            }
             $user = $request->getAttribute('user');
             
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
@@ -488,6 +495,7 @@ class PengeluaranController
             if (!is_array($input)) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Body harus JSON'], 400);
             }
+            $input = TextSanitizer::sanitizeStringValues($input, []);
             $rencanaId = isset($input['rencana_id']) ? (int) $input['rencana_id'] : 0;
             $message = trim($input['message'] ?? '');
             $recipients = $input['recipients'] ?? [];
@@ -586,6 +594,7 @@ class PengeluaranController
             if (!is_array($input)) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Body harus JSON'], 400);
             }
+            $input = TextSanitizer::sanitizeStringValues($input, []);
             $pengeluaranId = isset($input['pengeluaran_id']) ? (int) $input['pengeluaran_id'] : 0;
             $message = trim($input['message'] ?? '');
             $recipients = $input['recipients'] ?? [];
@@ -677,6 +686,12 @@ class PengeluaranController
         try {
             $idRencana = $args['id'] ?? null;
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            if (!empty($data['details']) && is_array($data['details'])) {
+                $data['details'] = array_map(function ($row) {
+                    return is_array($row) ? TextSanitizer::sanitizeStringValues($row, []) : $row;
+                }, $data['details']);
+            }
             $user = $request->getAttribute('user');
             
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
@@ -1473,6 +1488,7 @@ class PengeluaranController
         try {
             $idRencana = $args['id'] ?? null;
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $user = $request->getAttribute('user');
             
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
@@ -2481,6 +2497,7 @@ class PengeluaranController
         try {
             $idPengeluaran = $args['id'] ?? null;
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $user = $request->getAttribute('user');
 
             if (!$idPengeluaran) {
@@ -2683,6 +2700,7 @@ class PengeluaranController
         try {
             $id = $args['id'] ?? null;
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $deleteRencana = $data['delete_rencana'] ?? false;
             $user = $request->getAttribute('user');
 

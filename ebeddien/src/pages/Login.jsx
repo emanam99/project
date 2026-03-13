@@ -142,15 +142,21 @@ function Login() {
             className="max-w-md"
           >
             <motion.img
-              src={getGambarUrl('/icon/ebeddien192.png')}
+              src={getGambarUrl('/icon/ebeddienlogoputih.png')}
               alt="eBeddien"
               className="max-w-xs w-auto h-24 mb-6 drop-shadow-2xl object-contain"
               whileHover={{ scale: 1.05 }}
               transition={{ type: "spring", stiffness: 300 }}
             />
-            <p className="text-xl text-primary-100 mb-2 drop-shadow-md">Sistem Pembayaran Digital</p>
+            <motion.img
+              src={getGambarUrl('/icon/ebeddientextputih.png')}
+              alt="eBeddientext"
+              className="max-w-xs w-auto h-24 mb-6 drop-shadow-2xl object-contain"
+              whileHover={{ scale: 1.05 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            />
             <p className="text-primary-200 text-lg drop-shadow-sm">
-              Kelola pembayaran dengan mudah dan efisien
+              Kelola data pesantren dengan mudah dan efisien
             </p>
           </motion.div>
         </div>
@@ -202,13 +208,37 @@ function Login() {
           >
             {/* Logo untuk mobile */}
             <div className="md:hidden text-center mb-6">
-              <motion.img
-                src={getGambarUrl('/icon/ebeddien192.png')}
-                alt="eBeddien"
-                className="max-w-[120px] w-auto h-16 mx-auto mb-3 object-contain"
-                whileHover={{ scale: 1.05 }}
-              />
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Digital Service Center</p>
+                {theme === 'dark' ? (
+                  <>
+                    <motion.img
+                      src={getGambarUrl('/icon/ebeddienlogoputih.png')}
+                      alt="eBeddien"
+                      className="max-w-[120px] w-auto h-16 mx-auto mb-1 object-contain" // mb-1 agar jarak lebih dekat
+                      whileHover={{ scale: 1.05 }}
+                    />
+                    <motion.img
+                      src={getGambarUrl('/icon/ebeddientextputih.png')}
+                      alt="eBeddientext"
+                      className="max-w-[120px] w-auto h-16 mx-auto mb-3 object-contain"
+                      whileHover={{ scale: 1.05 }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <motion.img
+                      src={getGambarUrl('/icon/ebeddienlogo.png')}
+                      alt="eBeddien"
+                      className="max-w-[120px] w-auto h-16 mx-auto mb-1 object-contain" // mb-1 agar jarak lebih dekat
+                      whileHover={{ scale: 1.05 }}
+                    />
+                    <motion.img
+                      src={getGambarUrl('/icon/ebeddientext.png')}
+                      alt="eBeddientext"
+                      className="max-w-[120px] w-auto h-16 mx-auto mb-3 object-contain"
+                      whileHover={{ scale: 1.05 }}
+                    />
+                  </>
+                )}
               <div className="flex items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                 <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7a1 1 0 011-1h8a1 1 0 011 1v8a1 1 0 01-1 1H8a1 1 0 01-1-1V7z" />

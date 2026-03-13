@@ -6,6 +6,7 @@ use App\Database;
 use App\Auth\JwtAuth;
 use App\Auth\PasswordHelper;
 use App\Helpers\LoginSuspiciousHelper;
+use App\Helpers\TextSanitizer;
 use App\Helpers\RoleHelper;
 use App\Helpers\ViewAsHelper;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -41,6 +42,7 @@ class AuthController
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id', 'username', 'role_key', 'nik']) : [];
             
             // Log untuk debugging
             error_log("Login request received");
@@ -311,6 +313,7 @@ class AuthController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody() ?? [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id', 'username', 'role_key', 'nik']) : [];
             $viewAsRole = isset($data['role_key']) ? trim((string) $data['role_key']) : null;
             if ($viewAsRole === '') {
                 $viewAsRole = null;
@@ -363,6 +366,7 @@ class AuthController
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id', 'username', 'role_key', 'nik']) : [];
             
             // Validasi input
             $nik = $data['nik'] ?? '';

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -104,9 +105,9 @@ class LembagaController
             }
 
             $id = $data['id'];
-            $nama = $data['nama'] ?? null;
-            $kategori = $data['kategori'] ?? null;
-            $deskripsi = $data['deskripsi'] ?? null;
+            $nama = TextSanitizer::cleanTextOrNull($data['nama'] ?? null);
+            $kategori = TextSanitizer::cleanTextOrNull($data['kategori'] ?? null);
+            $deskripsi = TextSanitizer::cleanTextOrNull($data['deskripsi'] ?? null);
 
             // Cek apakah ID sudah ada
             $stmt = $this->db->prepare("SELECT id FROM lembaga WHERE id = ?");
@@ -168,9 +169,9 @@ class LembagaController
             }
 
             $data = $request->getParsedBody();
-            $nama = $data['nama'] ?? null;
-            $kategori = $data['kategori'] ?? null;
-            $deskripsi = $data['deskripsi'] ?? null;
+            $nama = TextSanitizer::cleanTextOrNull($data['nama'] ?? null);
+            $kategori = TextSanitizer::cleanTextOrNull($data['kategori'] ?? null);
+            $deskripsi = TextSanitizer::cleanTextOrNull($data['deskripsi'] ?? null);
 
             $stmt = $this->db->prepare("SELECT * FROM lembaga WHERE id = ?");
             $stmt->execute([$id]);

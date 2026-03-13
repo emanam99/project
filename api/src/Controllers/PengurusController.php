@@ -29,7 +29,7 @@ class PengurusController
      * Query:
      *   role_keys (opsional) = comma-separated role keys.
      *   lembaga_id (opsional) = hanya pengurus yang punya pengurus___jabatan di lembaga ini dan status aktif.
-     * Return id, nama, whatsapp, dusun, rt, rw, desa, kecamatan, kabupaten, provinsi, kode_pos.
+     * Return id, nip, nama, whatsapp, alamat, plus lembaga[] dan jabatan[] dari tabel pengurus___jabatan.
      */
     public function getList(Request $request, Response $response): Response
     {
@@ -38,68 +38,94 @@ class PengurusController
             $roleKeysRaw = isset($params['role_keys']) ? trim((string) $params['role_keys']) : '';
             $lembagaId = isset($params['lembaga_id']) ? trim((string) $params['lembaga_id']) : '';
 
-            $baseFrom = "
-                FROM pengurus p
-                LEFT JOIN users u ON u.id = p.id_user
-            ";
-            $orderBy = " ORDER BY p.nama ASC";
+            $joinUsers = "LEFT JOIN users u ON u.id = p.id_user";
+            $joinJabatan = "LEFT JOIN pengurus___jabatan pj ON pj.pengurus_id = p.id AND pj.status = 'aktif'
+                    LEFT JOIN jabatan j ON pj.jabatan_id = j.id
+                    LEFT JOIN lembaga l ON l.id = COALESCE(pj.lembaga_id, j.lembaga_id)";
+            $whereConditions = ["1=1"];
+            $paramsBind = [];
 
             if ($lembagaId !== '') {
-                // Filter by lembaga: pengurus yang punya pengurus___jabatan dengan lembaga ini dan status aktif
-                $baseFrom .= "
-                    INNER JOIN pengurus___jabatan pj ON pj.pengurus_id = p.id AND pj.status = 'aktif'
-                    LEFT JOIN jabatan j ON j.id = pj.jabatan_id
-                ";
-                $whereLembaga = " AND (pj.lembaga_id = ? OR (pj.lembaga_id IS NULL AND j.lembaga_id = ?))";
-            } else {
-                $whereLembaga = '';
+                $whereConditions[] = "(pj.lembaga_id = ? OR (pj.lembaga_id IS NULL AND j.lembaga_id = ?))";
+                $paramsBind[] = $lembagaId;
+                $paramsBind[] = $lembagaId;
             }
 
+            $joinRole = '';
             if ($roleKeysRaw !== '') {
                 $roleKeys = array_map('trim', array_filter(explode(',', $roleKeysRaw)));
                 $roleKeys = array_map('strtolower', $roleKeys);
                 if (!empty($roleKeys)) {
                     $placeholders = implode(',', array_fill(0, count($roleKeys), '?'));
-                    $sql = "
-                        SELECT DISTINCT p.id, p.nip, p.nama, COALESCE(u.no_wa, '') AS whatsapp, p.dusun, p.rt, p.rw, p.desa, p.kecamatan, p.kabupaten, p.provinsi, p.kode_pos
-                        " . $baseFrom . "
-                        INNER JOIN pengurus___role pr ON pr.pengurus_id = p.id
-                        INNER JOIN role r ON r.id = pr.role_id AND LOWER(TRIM(r.`key`)) IN ($placeholders)
-                        WHERE 1=1 " . $whereLembaga . $orderBy;
-                    $stmt = $this->db->prepare($sql);
-                    if ($lembagaId !== '') {
-                        $stmt->execute(array_merge($roleKeys, [$lembagaId, $lembagaId]));
-                    } else {
-                        $stmt->execute($roleKeys);
-                    }
-                    $list = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-                } else {
-                    $sql = "
-                        SELECT DISTINCT p.id, p.nip, p.nama, COALESCE(u.no_wa, '') AS whatsapp, p.dusun, p.rt, p.rw, p.desa, p.kecamatan, p.kabupaten, p.provinsi, p.kode_pos
-                        " . $baseFrom . "
-                        WHERE 1=1 " . $whereLembaga . $orderBy;
-                    if ($lembagaId !== '') {
-                        $stmt = $this->db->prepare($sql);
-                        $stmt->execute([$lembagaId, $lembagaId]);
-                        $list = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-                    } else {
-                        $stmt = $this->db->query("SELECT p.id, p.nip, p.nama, COALESCE(u.no_wa, '') AS whatsapp, p.dusun, p.rt, p.rw, p.desa, p.kecamatan, p.kabupaten, p.provinsi, p.kode_pos FROM pengurus p LEFT JOIN users u ON u.id = p.id_user " . $orderBy);
-                        $list = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $joinRole = "INNER JOIN pengurus___role pr ON pr.pengurus_id = p.id
+                        INNER JOIN role r ON r.id = pr.role_id AND LOWER(TRIM(r.`key`)) IN ($placeholders)";
+                    foreach ($roleKeys as $rk) {
+                        $paramsBind[] = $rk;
                     }
                 }
-            } else {
-                $sql = "
-                    SELECT DISTINCT p.id, p.nip, p.nama, COALESCE(u.no_wa, '') AS whatsapp, p.dusun, p.rt, p.rw, p.desa, p.kecamatan, p.kabupaten, p.provinsi, p.kode_pos
-                    " . $baseFrom . "
-                    WHERE 1=1 " . $whereLembaga . $orderBy;
-                if ($lembagaId !== '') {
-                    $stmt = $this->db->prepare($sql);
-                    $stmt->execute([$lembagaId, $lembagaId]);
-                    $list = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-                } else {
-                    $stmt = $this->db->query("SELECT p.id, p.nip, p.nama, COALESCE(u.no_wa, '') AS whatsapp, p.dusun, p.rt, p.rw, p.desa, p.kecamatan, p.kabupaten, p.provinsi, p.kode_pos FROM pengurus p LEFT JOIN users u ON u.id = p.id_user " . $orderBy);
-                    $list = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            }
+
+            $whereClause = implode(' AND ', $whereConditions);
+            $sql = "SELECT
+                        p.id, p.nip, p.nama, COALESCE(u.no_wa, '') AS whatsapp,
+                        p.dusun, p.rt, p.rw, p.desa, p.kecamatan, p.kabupaten, p.provinsi, p.kode_pos,
+                        GROUP_CONCAT(DISTINCT CASE WHEN l.id IS NOT NULL THEN CONCAT(l.id, '|', COALESCE(l.nama, ''), '|', COALESCE(l.kategori, '')) END SEPARATOR '||') AS lembaga_data,
+                        GROUP_CONCAT(DISTINCT CONCAT(COALESCE(pj.lembaga_id, ''), ':', j.id, ':', j.nama) SEPARATOR '||') AS jabatan_data
+                    FROM pengurus p
+                    {$joinUsers}
+                    {$joinRole}
+                    {$joinJabatan}
+                    WHERE {$whereClause}
+                    GROUP BY p.id, p.nip, p.nama, u.no_wa, p.dusun, p.rt, p.rw, p.desa, p.kecamatan, p.kabupaten, p.provinsi, p.kode_pos
+                    ORDER BY p.nama ASC";
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($paramsBind);
+            $list = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            foreach ($list as &$row) {
+                $lembagaList = [];
+                if (!empty($row['lembaga_data'])) {
+                    $arr = array_filter(explode('||', $row['lembaga_data']));
+                    foreach ($arr as $s) {
+                        $parts = explode('|', $s, 3);
+                        if (!empty($parts[0])) {
+                            $lembagaList[] = [
+                                'id' => $parts[0],
+                                'nama' => $parts[1] ?? '',
+                                'kategori' => $parts[2] ?? ''
+                            ];
+                        }
+                    }
                 }
+                $row['lembaga'] = $lembagaList;
+                $row['lembaga_ids'] = array_map(function ($l) {
+                    return (string) $l['id'];
+                }, $lembagaList);
+
+                $jabatanList = [];
+                if (!empty($row['jabatan_data'])) {
+                    $arr = explode('||', $row['jabatan_data']);
+                    foreach ($arr as $s) {
+                        if ($s === '') continue;
+                        $parts = explode(':', $s, 3);
+                        if (count($parts) >= 3 && $parts[1] !== '') {
+                            $jabatanList[] = [
+                                'lembaga_id' => $parts[0] ?: null,
+                                'jabatan_id' => (int) $parts[1],
+                                'jabatan_nama' => $parts[2]
+                            ];
+                        } elseif (count($parts) >= 2) {
+                            $jabatanList[] = [
+                                'lembaga_id' => $parts[0] ?: null,
+                                'jabatan_id' => null,
+                                'jabatan_nama' => $parts[1]
+                            ];
+                        }
+                    }
+                }
+                $row['jabatan'] = $jabatanList;
+                unset($row['lembaga_data'], $row['jabatan_data']);
             }
 
             return $this->jsonResponse($response, [

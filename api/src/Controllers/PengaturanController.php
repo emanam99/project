@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -195,12 +196,12 @@ class PengaturanController
                 ], 400);
             }
 
-            $key = $input['key'];
-            $value = $input['value'] ?? null;
+            $key = TextSanitizer::cleanText($input['key'] ?? '');
+            $value = isset($input['value']) ? (is_string($input['value']) ? TextSanitizer::cleanText($input['value']) : $input['value']) : null;
             $type = $input['type'] ?? 'text';
-            $label = $input['label'];
-            $keterangan = $input['keterangan'] ?? null;
-            $kategori = $input['kategori'] ?? null;
+            $label = TextSanitizer::cleanText($input['label'] ?? '');
+            $keterangan = TextSanitizer::cleanTextOrNull($input['keterangan'] ?? null);
+            $kategori = TextSanitizer::cleanTextOrNull($input['kategori'] ?? null);
             $urutan = isset($input['urutan']) ? (int)$input['urutan'] : 0;
 
             // Cek apakah key sudah ada (jika tabel ada)
@@ -294,13 +295,13 @@ class PengaturanController
                 ], 404);
             }
 
-            // Build update fields
+            // Build update fields (teks disanitasi)
             $updateFields = [];
             $updateValues = [];
 
             if (isset($input['value'])) {
                 $updateFields[] = "`value` = ?";
-                $updateValues[] = $input['value'];
+                $updateValues[] = is_string($input['value']) ? TextSanitizer::cleanText($input['value']) : $input['value'];
             }
 
             if (isset($input['type'])) {
@@ -310,17 +311,17 @@ class PengaturanController
 
             if (isset($input['label'])) {
                 $updateFields[] = "`label` = ?";
-                $updateValues[] = $input['label'];
+                $updateValues[] = TextSanitizer::cleanText($input['label'] ?? '');
             }
 
             if (isset($input['keterangan'])) {
                 $updateFields[] = "`keterangan` = ?";
-                $updateValues[] = $input['keterangan'];
+                $updateValues[] = TextSanitizer::cleanTextOrNull($input['keterangan']);
             }
 
             if (isset($input['kategori'])) {
                 $updateFields[] = "`kategori` = ?";
-                $updateValues[] = $input['kategori'];
+                $updateValues[] = TextSanitizer::cleanTextOrNull($input['kategori']);
             }
 
             if (isset($input['urutan'])) {
@@ -391,13 +392,13 @@ class PengaturanController
                 ], 404);
             }
 
-            // Build update fields
+            // Build update fields (teks disanitasi)
             $updateFields = [];
             $updateValues = [];
 
             if (isset($input['value'])) {
                 $updateFields[] = "`value` = ?";
-                $updateValues[] = $input['value'];
+                $updateValues[] = is_string($input['value']) ? TextSanitizer::cleanText($input['value']) : $input['value'];
             }
 
             if (isset($input['type'])) {
@@ -407,17 +408,17 @@ class PengaturanController
 
             if (isset($input['label'])) {
                 $updateFields[] = "`label` = ?";
-                $updateValues[] = $input['label'];
+                $updateValues[] = TextSanitizer::cleanText($input['label'] ?? '');
             }
 
             if (isset($input['keterangan'])) {
                 $updateFields[] = "`keterangan` = ?";
-                $updateValues[] = $input['keterangan'];
+                $updateValues[] = TextSanitizer::cleanTextOrNull($input['keterangan']);
             }
 
             if (isset($input['kategori'])) {
                 $updateFields[] = "`kategori` = ?";
-                $updateValues[] = $input['kategori'];
+                $updateValues[] = TextSanitizer::cleanTextOrNull($input['kategori']);
             }
 
             if (isset($input['urutan'])) {

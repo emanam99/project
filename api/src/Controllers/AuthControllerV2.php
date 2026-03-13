@@ -6,6 +6,7 @@ use App\Database;
 use App\Auth\JwtAuth;
 use App\Auth\PasswordHelper;
 use App\Helpers\AuditLogger;
+use App\Helpers\TextSanitizer;
 use App\Helpers\LoginSuspiciousHelper;
 use App\Helpers\NikHelper;
 use App\Helpers\PengurusHelper;
@@ -58,6 +59,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $idPengurus = trim($data['id_pengurus'] ?? '');
             $nik = trim($data['nik'] ?? '');
             $noWa = trim($data['no_wa'] ?? '');
@@ -127,6 +129,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $idPengurus = trim($data['id_pengurus'] ?? '');
             $nik = trim($data['nik'] ?? '');
             $noWa = trim($data['no_wa'] ?? '');
@@ -216,6 +219,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $idPengurus = trim($data['id_pengurus'] ?? '');
             $nik = trim($data['nik'] ?? '');
             $noWa = trim($data['no_wa'] ?? '');
@@ -365,6 +369,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $token = trim($data['token'] ?? '');
             $username = trim($data['username'] ?? '');
             $password = $data['password'] ?? '';
@@ -456,6 +461,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $nis = trim((string)($data['nis'] ?? ''));
             $nik = trim((string)($data['nik'] ?? ''));
             $noWa = trim((string)($data['no_wa'] ?? ''));
@@ -519,6 +525,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $nis = trim((string)($data['nis'] ?? ''));
             $nik = trim((string)($data['nik'] ?? ''));
             $noWa = trim((string)($data['no_wa'] ?? ''));
@@ -656,6 +663,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $token = trim($data['token'] ?? '');
             $username = trim($data['username'] ?? '');
             $password = $data['password'] ?? '';
@@ -747,6 +755,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $username = trim($data['username'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -1291,6 +1300,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaBaru = trim($data['no_wa_baru'] ?? '');
             $noWaBaruNorm = preg_replace('/\D/', '', $noWaBaru);
             if (strlen($noWaBaruNorm) < 10) {
@@ -1337,6 +1347,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaBaru = trim($data['no_wa_baru'] ?? '');
             $otp = trim($data['otp'] ?? '');
             $noWaBaruNorm = preg_replace('/\D/', '', $noWaBaru);
@@ -1382,6 +1393,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaKonfirmasi = preg_replace('/\D/', '', trim($data['no_wa_konfirmasi'] ?? ''));
             if ($noWaKonfirmasi === '') {
                 return $this->json($response, ['success' => false, 'message' => 'Masukkan nomor WA untuk konfirmasi'], 400);
@@ -1498,6 +1510,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $token = trim($data['token'] ?? '');
             $passwordBaru = $data['password_baru'] ?? '';
             if ($token === '') {
@@ -1574,6 +1587,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $usernameBaru = trim($data['username_baru'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -1633,6 +1647,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $usernameBaru = trim($data['username_baru'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -1734,6 +1749,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $token = trim($data['token'] ?? '');
             $usernameBaru = trim($data['username_baru'] ?? '');
             $password = $data['password'] ?? '';
