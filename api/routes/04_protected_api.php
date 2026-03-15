@@ -12,6 +12,7 @@ use App\Controllers\PaymentController;
 use App\Controllers\ChatController;
 use App\Controllers\SubscriptionController;
 use App\Controllers\WhatsAppTemplateController;
+use App\Controllers\WarmerController;
 
 return function (\Slim\App $app): void {
     // Daftar user (sensitif) — hanya super_admin
@@ -77,6 +78,24 @@ return function (\Slim\App $app): void {
         $group->post('/whatsapp-template/create', [WhatsAppTemplateController::class, 'create']);
         $group->put('/whatsapp-template/update', [WhatsAppTemplateController::class, 'update']);
         $group->post('/whatsapp-template/delete', [WhatsAppTemplateController::class, 'delete']);
+    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    // Warmer — list pairs & messages: role akses chat; create/update/delete: super_admin
+    $app->group('/api', function ($group) {
+        $group->get('/warmer/pairs', [WarmerController::class, 'listPairs']);
+        $group->get('/warmer/categories', [WarmerController::class, 'listCategories']);
+        $group->get('/warmer/themes', [WarmerController::class, 'listThemes']);
+        $group->get('/warmer/messages', [WarmerController::class, 'listMessages']);
+        $group->get('/warmer/examples', [WarmerController::class, 'examples']);
+        $group->get('/warmer/pick-message', [WarmerController::class, 'pickMessage']);
+    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+    $app->group('/api', function ($group) {
+        $group->post('/warmer/pairs', [WarmerController::class, 'createPair']);
+        $group->put('/warmer/pairs', [WarmerController::class, 'updatePair']);
+        $group->post('/warmer/pairs/delete', [WarmerController::class, 'deletePair']);
+        $group->post('/warmer/themes/delete', [WarmerController::class, 'deleteTheme']);
+        $group->post('/warmer/messages/import', [WarmerController::class, 'importMessages']);
+        $group->post('/warmer/messages/delete', [WarmerController::class, 'deleteMessage']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // User profil (sendiri) & subscription — cukup login; GET /user/{id} di controller harus cek: own id atau super_admin

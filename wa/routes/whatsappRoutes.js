@@ -19,15 +19,16 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch((er
 
 const router = express.Router();
 
-// GET /status — tanpa auth (untuk polling dari frontend). Harus sebelum router.use(authUwaba).
-router.get('/status', (_req, res) => {
+// GET /status — tanpa auth. Query ?sessionId= untuk satu session; tanpa query = semua sessions.
+router.get('/status', (req, res) => {
   try {
-    const data = getWaStatus();
+    const sessionId = req.query?.sessionId;
+    const data = getWaStatus(sessionId || undefined);
     res.json({ success: true, data });
   } catch (e) {
     res.json({
       success: true,
-      data: { status: 'disconnected', qrCode: null, phoneNumber: null },
+      data: { sessions: {}, status: 'disconnected', qrCode: null, phoneNumber: null },
     });
   }
 });

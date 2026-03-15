@@ -429,13 +429,14 @@ export const waBackendAPI = {
     if (!res.ok) {
       return {
         success: false,
-        data: { status: 'disconnected', qrCode: null, phoneNumber: null },
+        data: { sessions: {}, status: 'disconnected', qrCode: null, phoneNumber: null },
         statusCode: res.status
       }
     }
     return data
   },
-  connect: async () => {
+  /** @param {string} [sessionId] - default, wa2, wa3, ... (max 10) */
+  connect: async (sessionId = 'default') => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
     const res = await fetch(`${base}/api/whatsapp/connect`, {
@@ -444,11 +445,12 @@ export const waBackendAPI = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({})
+      body: JSON.stringify({ sessionId: sessionId || 'default' })
     })
     return res.json().catch(() => ({ success: false, message: 'Network error' }))
   },
-  disconnect: async () => {
+  /** @param {string} [sessionId] */
+  disconnect: async (sessionId = 'default') => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
     const res = await fetch(`${base}/api/whatsapp/disconnect`, {
@@ -457,11 +459,12 @@ export const waBackendAPI = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({})
+      body: JSON.stringify({ sessionId: sessionId || 'default' })
     })
     return res.json().catch(() => ({ success: false, message: 'Network error' }))
   },
-  logout: async () => {
+  /** @param {string} [sessionId] */
+  logout: async (sessionId = 'default') => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
     const res = await fetch(`${base}/api/whatsapp/logout`, {
@@ -470,7 +473,7 @@ export const waBackendAPI = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({})
+      body: JSON.stringify({ sessionId: sessionId || 'default' })
     })
     return res.json().catch(() => ({ success: false, message: 'Network error' }))
   },
@@ -481,13 +484,14 @@ export const waBackendAPI = {
    * @param {string} [imageBase64] - Base64 gambar (opsional)
    * @param {string} [imageMimetype] - image/png, image/jpeg, dll.
    */
-  send: async (phoneNumber, message, imageBase64 = null, imageMimetype = 'image/png') => {
+  send: async (phoneNumber, message, imageBase64 = null, imageMimetype = 'image/png', sessionId = null) => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
     const body = {
       phoneNumber: (phoneNumber || '').trim(),
       message: message || ''
     }
+    if (sessionId) body.sessionId = sessionId
     if (imageBase64) {
       body.imageBase64 = imageBase64
       body.imageMimetype = imageMimetype || 'image/png'
@@ -500,24 +504,71 @@ export const waBackendAPI = {
       },
       body: JSON.stringify(body)
     })
-    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+    const data = await res.json().catch(() => ({ success: false, message: 'Network error' }))
+    if (!res.ok && !data.message) data.message = res.status === 503 ? 'Layanan WA sibuk. Coba lagi atau scan QR Baileys di tab Koneksi.' : 'Gagal mengirim pesan.'
+    return data
   },
 
   /**
    * Cek apakah nomor terdaftar/aktif di WhatsApp (sama seperti fitur di wa lama).
    * @param {string} phoneNumber - Nomor 08xxx atau 62xxx
    */
-  checkNumber: async (phoneNumber) => {
+  checkNumber: async (phoneNumber, sessionId = null) => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
+    const body = { phoneNumber: (phoneNumber || '').trim() }
+    if (sessionId) body.sessionId = sessionId
     const res = await fetch(`${base}/api/whatsapp/check`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({ phoneNumber: (phoneNumber || '').trim() })
+      body: JSON.stringify(body)
     })
+    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+  }
+}
+
+/**
+ * Warmer: data pairs & pesan dari API PHP (Slim). Hanya role chat+.
+ */
+export const warmerAPI = {
+  getPairs: () => api.get('/warmer/pairs').then((r) => r.data),
+  getCategories: () => api.get('/warmer/categories').then((r) => r.data),
+  getThemes: () => api.get('/warmer/themes').then((r) => r.data),
+  deleteTheme: (theme) => api.post('/warmer/themes/delete', { theme }).then((r) => r.data),
+  createPair: (body) => api.post('/warmer/pairs', body).then((r) => r.data),
+  updatePair: (body) => api.put('/warmer/pairs', body).then((r) => r.data),
+  deletePair: (id) => api.post('/warmer/pairs/delete', { id }).then((r) => r.data),
+  getMessages: (params) => api.get('/warmer/messages', { params }).then((r) => r.data),
+  importMessages: (body) => api.post('/warmer/messages/import', body).then((r) => r.data),
+  deleteMessage: (id) => api.post('/warmer/messages/delete', { id }).then((r) => r.data),
+  getExamples: (format) => api.get('/warmer/examples', { params: { format: format || 'txt' } }).then((r) => r.data)
+}
+
+/**
+ * Warmer: start/stop/status di backend Node (WA).
+ */
+export const warmerNodeAPI = {
+  getStatus: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`${base}/api/warmer/status`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    })
+    return res.json().catch(() => ({ success: false, data: { running: false } }))
+  },
+  start: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`${base}/api/warmer/start`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+  },
+  stop: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const res = await fetch(`${base}/api/warmer/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
     return res.json().catch(() => ({ success: false, message: 'Network error' }))
   }
 }

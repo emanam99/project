@@ -5,3 +5,4 @@ node_modules/
 whatsapp-sessions/
 .wwebjs_cache/
 *.log
+proxy-config.json

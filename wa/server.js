@@ -20,7 +20,8 @@ import { fileURLToPath } from 'url';
 import { getWaStatus } from './store/waStatus.js';
 import authRoutes from './routes/authRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
-import { initWaOnStart } from './controllers/whatsappController.js';
+import warmerRoutes from './routes/warmerRoutes.js';
+import { initWaOnStart, getSessionIdsFromDisk } from './controllers/whatsappController.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -52,18 +53,29 @@ app.use(
 );
 app.use(express.json());
 
-// GET status WA — tanpa auth (polling dari frontend). Jangan pindah ke bawah app.use('/api/whatsapp').
-app.get('/api/whatsapp/status', (_req, res) => {
+// GET status WA — tanpa auth (polling dari frontend). Mengembalikan data.sessions (multi-WA) + backward compat.
+// Semua slot yang punya folder di disk ikut dikembalikan agar saat load pertama frontend tampil semua.
+app.get('/api/whatsapp/status', (req, res) => {
   res.setHeader('X-WA-Endpoint', 'status-public');
   try {
-    const data = getWaStatus();
+    const sessionId = req.query?.sessionId;
+    const data = getWaStatus(sessionId || undefined);
+    const diskIds = getSessionIdsFromDisk();
+    if (data.sessions && typeof data.sessions === 'object') {
+      const empty = { status: 'disconnected', qrCode: null, phoneNumber: null, baileysStatus: 'disconnected', baileysQrCode: null, baileysPhoneNumber: null };
+      for (const id of diskIds) {
+        if (!Object.prototype.hasOwnProperty.call(data.sessions, id)) {
+          data.sessions[id] = { ...empty };
+        }
+      }
+    }
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ success: true, data }));
   } catch (e) {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({
       success: true,
-      data: { status: 'disconnected', qrCode: null, phoneNumber: null },
+      data: { sessions: {}, status: 'disconnected', qrCode: null, phoneNumber: null },
     }));
   }
 });
@@ -74,6 +86,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/warmer', warmerRoutes);
 
 app.listen(PORT, () => {
   const uwabaBase = process.env.UWABA_API_BASE_URL?.trim() || (process.env.NODE_ENV === 'production' ? '(belum di-set)' : 'http://localhost/api/public/api (default dev)');
