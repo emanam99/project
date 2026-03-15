@@ -46,9 +46,9 @@ export default defineConfig(({ mode }) => {
         dir: 'ltr',
         categories: ['finance', 'productivity', 'utilities'],
         icons: [
-          { src: `${GAMBAR_BASE}/icon/ebeddien128.png`, sizes: '128x128', type: 'image/png', purpose: 'any' },
-          { src: `${GAMBAR_BASE}/icon/ebeddien192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: `${GAMBAR_BASE}/icon/ebeddien512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+          { src: `${GAMBAR_BASE}/icon/ebeddienicon128.png`, sizes: '128x128', type: 'image/png', purpose: 'any' },
+          { src: `${GAMBAR_BASE}/icon/ebeddienicon192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: `${GAMBAR_BASE}/icon/ebeddienicon512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
         ],
         screenshots: [
           { src: `${GAMBAR_BASE}/ss/ss1.jpg`, sizes: '512x1024', type: 'image/jpeg' },
@@ -62,7 +62,7 @@ export default defineConfig(({ mode }) => {
         ],
         shortcuts: [
           { name: 'Dashboard', short_name: 'Dashboard', description: 'Pantau Perkembangan Pembayaran', url: '/', icons: [{ src: `${GAMBAR_BASE}/icon/dashboard.png`, sizes: '96x96', type: 'image/png' }] },
-          { name: 'Pembayaran', short_name: 'Pembayaran', description: 'Lihat riwayat pembayaran', url: '/uwaba', icons: [{ src: `${GAMBAR_BASE}/icon/ebeddien192.png`, sizes: '96x96', type: 'image/png' }] }
+          { name: 'Pembayaran', short_name: 'Pembayaran', description: 'Lihat riwayat pembayaran', url: '/uwaba', icons: [{ src: `${GAMBAR_BASE}/icon/icon96.png`, sizes: '96x96', type: 'image/png' }] }
         ]
       },
       workbox: {
