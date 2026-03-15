@@ -16,6 +16,7 @@ use App\Controllers\KalenderController;
 use App\Controllers\HariPentingController;
 use App\Controllers\WhatsAppController;
 use App\Controllers\WarmerController;
+use App\Controllers\WatzapController;
 
 return function (\Slim\App $app): void {
     // Public endpoint untuk cek NIK (tanpa auth)
@@ -62,6 +63,9 @@ return function (\Slim\App $app): void {
     // Kalender & Hari Penting - Public GET
     $app->get('/api/kalender', [KalenderController::class, 'get']);
     $app->get('/api/hari-penting', [HariPentingController::class, 'getList']);
+
+    // Webhook WatZap (tanpa auth). WatZap mengirim event ke sini. URL: API_PUBLIC_URL atau WATZAP_WEBHOOK_URL di .env.
+    $app->post('/api/watzap/webhook', [WatzapController::class, 'webhook']);
 
     // Webhook pesan masuk WA (tanpa auth). WA kirim ke sini, retry sampai 200. Simpan ke tabel whatsapp (arah=masuk).
     $app->post('/api/wa/incoming', [WhatsAppController::class, 'incoming']);

@@ -79,7 +79,7 @@ if (strlen($jwtSecret) < 32 && (env('APP_ENV') === 'production')) {
 
 return [
     // Versi backend (API) saat ini — dipakai endpoint GET /api/version dan tampilan frontend (uwaba BACKEND_VERSION)
-    'api_version' => '2.3.0',
+    'api_version' => '2.5.0',
     'database' => [
         // Baca dari environment variables, fallback ke default untuk development
         'host' => env('DB_HOST', 'localhost'),
@@ -127,6 +127,16 @@ return [
         'api_key' => env('WA_API_KEY', ''),
         'instance' => env('WA_INSTANCE', 'uwaba1'), // Tidak dikirim ke backend baru (satu sesi); tetap dipakai untuk log/sumber jika perlu.
     ],
+    // WatZap (api.watzap.id) — untuk notifikasi WA via WatZap. Dipakai bila notification_provider = watzap.
+    // Dokumentasi: https://api-docs.watzap.id/ | number_key "ALL" = pakai semua nomor terhubung.
+    'watzap' => [
+        'api_url' => rtrim(env('WATZAP_API_URL', 'https://api.watzap.id/v1'), '/'),
+        'api_key' => env('WATZAP_API_KEY', ''),
+        'number_key' => env('WATZAP_NUMBER_KEY', 'ALL'),
+    ],
+    // Base URL API ini (untuk webhook WatZap). Staging: https://api2.alutsmani.id, production: https://api.alutsmani.id.
+    // Di .env set API_PUBLIC_URL; atau WATZAP_WEBHOOK_URL (full URL) untuk override.
+    'api_public_url' => rtrim((string) env('API_PUBLIC_URL', ''), '/'),
     // Base URL aplikasi FRONTEND (UWABA), bukan backend. Link WA (setup akun pengurus) dibuka di frontend UWABA.
     // Dev: http://localhost:5173 (Vite UWABA). Production: https://uwaba.alutsmani.id
     'app' => [

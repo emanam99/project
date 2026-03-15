@@ -124,6 +124,13 @@ const api = axios.create({
 // Export untuk debugging
 export const getApiBaseUrl = () => apiBaseUrl
 
+/**
+ * Cek nomor WhatsApp lewat backend API (satu jalur: ikut setting notifikasi WatZap/WA server).
+ * Response: { success, data: { phoneNumber, isRegistered }, message }
+ */
+export const checkWhatsAppNumberViaAPI = (phoneNumber) =>
+  api.post('/wa/check', { phoneNumber: String(phoneNumber || '').trim() }).then((r) => r.data)
+
 // Request interceptor untuk menambahkan auth token dan CSRF token
 api.interceptors.request.use(
   async (config) => {
@@ -2050,6 +2057,57 @@ export const settingsAPI = {
   },
   getFeaturesConfig: async () => {
     const response = await api.get('/settings/features-config')
+    return response.data
+  }
+}
+
+// Notifikasi (Super Admin only) - pilih provider: wa_sendiri (server WA sendiri) atau watzap
+export const notificationConfigAPI = {
+  getConfig: async () => {
+    const response = await api.get('/settings/notification-config')
+    return response.data
+  },
+  saveConfig: async (data) => {
+    const response = await api.put('/settings/notification-config', data)
+    return response.data
+  },
+  getNotificationGroups: async () => {
+    const response = await api.get('/settings/notification-groups')
+    return response.data
+  },
+  getNotificationMessages: async (kategori, page = 1, limit = 50) => {
+    const response = await api.get('/settings/notification-messages', {
+      params: { kategori, page, limit }
+    })
+    return response.data
+  }
+}
+
+// WatZap (Super Admin only) - kirim via WatZap API. Backend proxy ke https://api.watzap.id/v1/
+// Body WatZap: api_key, number_key ("ALL"), phone_no, message. Tidak pakai device_id.
+export const watzapAPI = {
+  getStatus: async () => {
+    const response = await api.get('/watzap/status')
+    return response.data
+  },
+  getDevices: async () => {
+    const response = await api.get('/watzap/devices')
+    return response.data
+  },
+  getWebhookUrl: async () => {
+    const response = await api.get('/watzap/webhook-url')
+    return response.data
+  },
+  getWebhooks: async () => {
+    const response = await api.get('/watzap/webhooks')
+    return response.data
+  },
+  setWebhook: async (url = null) => {
+    const response = await api.post('/watzap/set-webhook', url != null ? { url } : {})
+    return response.data
+  },
+  sendMessage: async (phoneNumber, message, numberKey = '') => {
+    const response = await api.post('/watzap/send', { phone: phoneNumber, message, ...(numberKey ? { number_key: numberKey } : {}) })
     return response.data
   }
 }

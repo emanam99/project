@@ -56,6 +56,7 @@ class CsrfMiddleware implements MiddlewareInterface
         'api/wa/edit-message', // POST edit pesan WA — dilindungi Bearer
         'api/wa/incoming', // POST webhook pesan masuk dari server WA (tanpa session browser)
         'api/wa/message-status', // POST update status pesan (sent/delivered/read) dari server WA
+        'api/watzap/webhook', // POST webhook pesan masuk dari WatZap (tanpa session browser)
     ];
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface

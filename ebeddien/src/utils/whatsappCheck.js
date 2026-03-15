@@ -1,9 +1,9 @@
 /**
  * Utility functions untuk cek nomor WhatsApp
- * Memakai backend WA baru lewat API: POST /api/wa/check (API meneruskan ke wa.alutsmani.id / lokal).
+ * Satu jalur lewat backend API (POST /api/wa/check). API mengikuti setting notifikasi (WatZap atau WA server).
  */
 
-import { getApiBaseUrl } from '../services/api'
+import { checkWhatsAppNumberViaAPI } from '../services/api'
 
 /**
  * Format nomor telepon untuk WhatsApp API
@@ -43,23 +43,7 @@ export const checkWhatsAppNumber = async (phoneNumber) => {
 
   try {
     const formattedNumber = formatPhoneNumber(phoneNumber.trim())
-    const apiBase = getApiBaseUrl()
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null
-
-    const response = await fetch(`${apiBase}/wa/check`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({ phoneNumber: formattedNumber })
-    })
-
-    const result = await response.json().catch(() => ({}))
-
-    if (!response.ok) {
-      throw new Error(result.message || result.error || `HTTP ${response.status}`)
-    }
+    const result = await checkWhatsAppNumberViaAPI(formattedNumber)
 
     const data = result.data || {}
     const isRegistered = !!data.isRegistered
@@ -71,10 +55,11 @@ export const checkWhatsAppNumber = async (phoneNumber) => {
     }
   } catch (error) {
     console.error('Error checking WhatsApp number:', error)
+    const msg = error.response?.data?.message || error.message || 'Gagal mengecek nomor WhatsApp'
     return {
       success: false,
       isRegistered: false,
-      message: error.message || 'Gagal mengecek nomor WhatsApp',
+      message: msg,
       error: error
     }
   }

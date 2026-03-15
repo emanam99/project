@@ -100,6 +100,8 @@ const CetakKartuCashless = lazy(() => import('./pages/Cashless/CetakKartuCashles
 const RoleAkses = lazy(() => import('./pages/Settings/RoleAkses'))
 const Fitur = lazy(() => import('./pages/Settings/Fitur'))
 const TahunAjaranPage = lazy(() => import('./pages/Settings/TahunAjaran'))
+const Notifikasi = lazy(() => import('./pages/Settings/Notifikasi'))
+const Watzap = lazy(() => import('./pages/Settings/Watzap'))
 const DataSantri = lazy(() => import('./pages/Santri/DataSantri'))
 const DataLulusan = lazy(() => import('./pages/Lulusan/DataLulusan'))
 const Daerah = lazy(() => import('./pages/Domisili/Daerah'))
@@ -854,6 +856,22 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Fitur />
+                </Suspense>
+              } 
+            />
+            <Route 
+              path="/settings/notifikasi" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Notifikasi />
+                </Suspense>
+              } 
+            />
+            <Route 
+              path="/settings/watzap" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Watzap />
                 </Suspense>
               } 
             />

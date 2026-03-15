@@ -154,4 +154,152 @@ class SettingsController
             ], 500);
         }
     }
+
+    /**
+     * GET /api/settings/notification-config - Provider notifikasi WA: wa_sendiri | watzap. Hanya super_admin.
+     */
+    public function getNotificationConfig(Request $request, Response $response): Response
+    {
+        try {
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'data' => ['provider' => 'wa_sendiri'],
+                ], 200);
+            }
+            $stmt = $this->db->prepare("SELECT `value` FROM app___settings WHERE `key` = 'notification_provider' LIMIT 1");
+            $stmt->execute();
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $provider = ($row && isset($row['value']) && trim((string) $row['value']) !== '') ? trim((string) $row['value']) : 'wa_sendiri';
+            if ($provider !== 'watzap') {
+                $provider = 'wa_sendiri';
+            }
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => ['provider' => $provider],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getNotificationConfig ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil pengaturan notifikasi',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/settings/notification-config - Simpan provider: wa_sendiri | watzap. Hanya super_admin.
+     */
+    public function saveNotificationConfig(Request $request, Response $response): Response
+    {
+        try {
+            $body = (array) $request->getParsedBody();
+            $provider = isset($body['provider']) ? trim((string) $body['provider']) : '';
+            if ($provider !== 'watzap') {
+                $provider = 'wa_sendiri';
+            }
+
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tabel app___settings belum ada. Jalankan migration 20260315000001_app_settings_watzap.',
+                ], 500);
+            }
+
+            $stmt = $this->db->prepare("INSERT INTO app___settings (`key`, `value`) VALUES ('notification_provider', ?) ON DUPLICATE KEY UPDATE `value` = ?, updated_at = NOW()");
+            $stmt->execute([$provider, $provider]);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => ['provider' => $provider],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::saveNotificationConfig ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan pengaturan notifikasi',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/settings/notification-groups - Daftar kelompok notifikasi terkirim (kategori + jumlah). Hanya super_admin.
+     * Pesan keluar (arah=keluar atau arah null) dari tabel whatsapp, dikelompokkan per kategori.
+     */
+    public function getNotificationGroups(Request $request, Response $response): Response
+    {
+        try {
+            $hasArah = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'arah'")->rowCount() > 0;
+            $where = $hasArah ? "WHERE (arah = 'keluar' OR arah IS NULL)" : '';
+            $stmt = $this->db->query(
+                "SELECT kategori, COUNT(*) as total FROM whatsapp {$where} GROUP BY kategori ORDER BY total DESC"
+            );
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $data = array_map(function ($r) {
+                return [
+                    'kategori' => (string) ($r['kategori'] ?? 'custom'),
+                    'total' => (int) ($r['total'] ?? 0),
+                ];
+            }, $rows);
+            return $this->jsonResponse($response, ['success' => true, 'data' => $data], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getNotificationGroups ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil kelompok notifikasi',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/settings/notification-messages?kategori=xxx&page=1&limit=50 - Daftar pesan terkirim per kategori. Hanya super_admin.
+     */
+    public function getNotificationMessages(Request $request, Response $response): Response
+    {
+        try {
+            $kategori = trim((string) ($request->getQueryParams()['kategori'] ?? ''));
+            if ($kategori === '') {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'kategori wajib'], 400);
+            }
+            $page = max(1, (int) ($request->getQueryParams()['page'] ?? 1));
+            $limit = max(1, min(100, (int) ($request->getQueryParams()['limit'] ?? 50)));
+            $offset = ($page - 1) * $limit;
+
+            $hasArah = $this->db->query("SHOW COLUMNS FROM whatsapp LIKE 'arah'")->rowCount() > 0;
+            $where = $hasArah
+                ? "WHERE (arah = 'keluar' OR arah IS NULL) AND kategori = ?"
+                : "WHERE kategori = ?";
+            $countStmt = $this->db->prepare("SELECT COUNT(*) FROM whatsapp {$where}");
+            $countStmt->execute([$kategori]);
+            $total = (int) $countStmt->fetchColumn();
+
+            $cols = 'id, nomor_tujuan, isi_pesan, status, created_at';
+            $order = 'ORDER BY created_at DESC';
+            $listStmt = $this->db->prepare("SELECT {$cols} FROM whatsapp {$where} {$order} LIMIT {$limit} OFFSET {$offset}");
+            $listStmt->execute([$kategori]);
+            $list = $listStmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'items' => $list,
+                    'total' => $total,
+                    'page' => $page,
+                    'limit' => $limit,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getNotificationMessages ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil pesan notifikasi',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
 import api, { waBackendAPI, whatsappTemplateAPI, warmerAPI, warmerNodeAPI } from '../../services/api'
+import { checkWhatsAppNumber } from '../../utils/whatsappCheck'
 
 const POLL_INTERVAL_CONNECTING = 2000
 const POLL_INTERVAL_IDLE = 5000
@@ -585,15 +586,15 @@ export default function KoneksiWa() {
     setChecking(true)
     setCheckResult(null)
     try {
-      const res = await waBackendAPI.checkNumber(phone, effectiveTestSessionId || undefined)
-      if (res?.success && res?.data) {
+      const result = await checkWhatsAppNumber(phone)
+      if (result.success) {
         setCheckResult({
-          isRegistered: res.data.isRegistered,
-          phoneNumber: res.data.phoneNumber ?? phone
+          isRegistered: result.isRegistered,
+          phoneNumber: phone
         })
-        showNotification(res?.message ?? (res.data.isRegistered ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar'), res.data.isRegistered ? 'success' : 'info')
+        showNotification(result.message ?? (result.isRegistered ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar'), result.isRegistered ? 'success' : 'info')
       } else {
-        showNotification(res?.message || 'Gagal mengecek nomor', 'error')
+        showNotification(result.message || 'Gagal mengecek nomor', 'error')
       }
     } catch (e) {
       showNotification('Gagal mengecek: ' + (e?.message || 'Network error'), 'error')

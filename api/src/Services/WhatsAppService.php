@@ -153,6 +153,10 @@ class WhatsAppService
             ];
         }
 
+        if (self::getNotificationProvider() === 'watzap') {
+            return \App\Services\WatzapService::checkNumber($noWa);
+        }
+
         $cfg = self::getConfig();
         $apiUrl = $cfg['api_url'];
         $apiKey = $cfg['api_key'];
@@ -302,8 +306,30 @@ class WhatsAppService
     }
 
     /**
+     * Baca provider notifikasi WA dari app___settings: wa_sendiri | watzap.
+     */
+    public static function getNotificationProvider(): string
+    {
+        try {
+            $db = Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return 'wa_sendiri';
+            }
+            $stmt = $db->prepare("SELECT `value` FROM app___settings WHERE `key` = 'notification_provider' LIMIT 1");
+            $stmt->execute();
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $provider = ($row && isset($row['value']) && trim((string) $row['value']) === 'watzap') ? 'watzap' : 'wa_sendiri';
+            return $provider;
+        } catch (\Throwable $e) {
+            return 'wa_sendiri';
+        }
+    }
+
+    /**
      * Kirim pesan teks ke nomor WA.
      * Menggunakan API yang sama dengan offcanvas kwitansi/biodata UWABA.
+     * Jika pengaturan notifikasi = watzap, kirim lewat WatZap (api_key + number_key "ALL").
      * Jika $logContext diset, pesan dicatat di tabel whatsapp.
      *
      * @param string $noWa Nomor WA (08xxx atau 62xxx)
@@ -361,6 +387,42 @@ class WhatsAppService
                 }
                 return ['success' => true, 'message' => 'OK (duplicate, skipped - sudah dikirim dalam ' . self::THROTTLE_DAYS . ' hari)'];
             }
+        }
+
+        if (self::getNotificationProvider() === 'watzap') {
+            $res = \App\Services\WatzapService::sendMessage($phone, $message, '');
+            if ($res['success'] && $logContext !== null) {
+                self::logSentMessage(
+                    $phone,
+                    $message,
+                    0,
+                    'sent',
+                    $res['message'] ?? null,
+                    $logContext['id_santri'] ?? null,
+                    $logContext['id_pengurus'] ?? null,
+                    $logContext['tujuan'] ?? 'wali_santri',
+                    $logContext['id_pengurus_pengirim'] ?? null,
+                    $logContext['kategori'] ?? 'custom',
+                    $logContext['sumber'] ?? 'system',
+                    null
+                );
+            }
+            if (!$res['success'] && $logContext !== null) {
+                self::logSentMessage(
+                    $phone,
+                    $message,
+                    0,
+                    'gagal',
+                    $res['message'] ?? null,
+                    $logContext['id_santri'] ?? null,
+                    $logContext['id_pengurus'] ?? null,
+                    $logContext['tujuan'] ?? 'wali_santri',
+                    $logContext['id_pengurus_pengirim'] ?? null,
+                    $logContext['kategori'] ?? 'custom',
+                    $logContext['sumber'] ?? 'system'
+                );
+            }
+            return ['success' => $res['success'], 'message' => $res['message']];
         }
 
         $cfg = self::getConfig();

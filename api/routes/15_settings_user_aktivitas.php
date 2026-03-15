@@ -8,10 +8,25 @@ use App\Controllers\SettingsController;
 use App\Controllers\UserAktivitasController;
 use App\Controllers\TahunAjaranController;
 
+use App\Controllers\WatzapController;
+
 return function (\Slim\App $app): void {
     $app->group('/api/settings', function ($group) {
         $group->get('/roles-config', [SettingsController::class, 'getRolesConfig']);
         $group->get('/features-config', [SettingsController::class, 'getFeaturesConfig']);
+        $group->get('/notification-config', [SettingsController::class, 'getNotificationConfig']);
+        $group->put('/notification-config', [SettingsController::class, 'saveNotificationConfig']);
+        $group->get('/notification-groups', [SettingsController::class, 'getNotificationGroups']);
+        $group->get('/notification-messages', [SettingsController::class, 'getNotificationMessages']);
+    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    $app->group('/api/watzap', function ($group) {
+        $group->get('/status', [WatzapController::class, 'getStatus']);
+        $group->get('/devices', [WatzapController::class, 'getDevices']);
+        $group->get('/webhook-url', [WatzapController::class, 'getWebhookUrl']);
+        $group->get('/webhooks', [WatzapController::class, 'getWebhooks']);
+        $group->post('/set-webhook', [WatzapController::class, 'setWebhook']);
+        $group->post('/send', [WatzapController::class, 'send']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // Master Tahun Ajaran: GET bisa diakses semua user yang login; create/update hanya super_admin

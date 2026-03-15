@@ -87,21 +87,21 @@ function PublicLayout() {
       }
     }
 
-    // Update semua ukuran favicon dengan icon santri
-    updateFavicon('32x32', getGambarUrl('/icon/santri128.png'))
-    updateFavicon('128x128', getGambarUrl('/icon/santri128.png'))
-    updateFavicon('192x192', getGambarUrl('/icon/santri192.png'))
-    updateFavicon('512x512', getGambarUrl('/icon/santri512.png'))
+    // Update semua ukuran favicon dengan icon ebeddien
+    updateFavicon('32x32', getGambarUrl('/icon/ebeddienicon32.png'))
+    updateFavicon('128x128', getGambarUrl('/icon/ebeddienicon128.png'))
+    updateFavicon('192x192', getGambarUrl('/icon/ebeddienicon192.png'))
+    updateFavicon('512x512', getGambarUrl('/icon/ebeddienicon512.png'))
     
     // Update favicon default (tanpa sizes)
     const defaultFavicon = document.querySelector('link[rel="icon"]:not([sizes])')
     if (defaultFavicon) {
-      defaultFavicon.setAttribute('href', getGambarUrl('/icon/santri192.png'))
+      defaultFavicon.setAttribute('href', getGambarUrl('/icon/ebeddienicon192.png'))
     } else {
       const link = document.createElement('link')
       link.setAttribute('rel', 'icon')
       link.setAttribute('type', 'image/png')
-      link.setAttribute('href', getGambarUrl('/icon/santri192.png'))
+      link.setAttribute('href', getGambarUrl('/icon/ebeddienicon192.png'))
       document.head.appendChild(link)
     }
 
@@ -120,13 +120,13 @@ function PublicLayout() {
       link.setAttribute('href', href)
     }
 
-    updateAppleIcon(null, getGambarUrl('/icon/santri192.png'))
-    updateAppleIcon('152x152', getGambarUrl('/icon/santri192.png'))
-    updateAppleIcon('180x180', getGambarUrl('/icon/santri192.png'))
-    updateAppleIcon('167x167', getGambarUrl('/icon/santri192.png'))
+    updateAppleIcon(null, getGambarUrl('/icon/ebeddienicon192.png'))
+    updateAppleIcon('152x152', getGambarUrl('/icon/ebeddienicon192.png'))
+    updateAppleIcon('180x180', getGambarUrl('/icon/ebeddienicon192.png'))
+    updateAppleIcon('167x167', getGambarUrl('/icon/ebeddienicon192.png'))
 
     // Update Microsoft Tile
-    updateMetaTag('msapplication-TileImage', getGambarUrl('/icon/santri192.png'))
+    updateMetaTag('msapplication-TileImage', getGambarUrl('/icon/ebeddienicon192.png'))
 
     // Register service worker untuk PWA
     registerSantriPWA({

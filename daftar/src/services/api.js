@@ -112,6 +112,13 @@ const api = axios.create({
 
 export const getApiBaseUrl = () => apiBaseUrl
 
+/**
+ * Cek nomor WhatsApp lewat backend API (satu jalur: ikut setting notifikasi WatZap/WA server).
+ * Response: { success, data: { phoneNumber, isRegistered }, message }
+ */
+export const checkWhatsAppNumberViaAPI = (phoneNumber) =>
+  api.post('/wa/check', { phoneNumber: String(phoneNumber || '').trim() }).then((r) => r.data)
+
 // Request interceptor
 api.interceptors.request.use(
   async (config) => {

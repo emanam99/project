@@ -94,6 +94,8 @@ export const MENU_ITEMS = [
   { path: '/settings/tahun-ajaran', label: 'Tahun Ajaran', iconKey: 'calendar', group: 'Setting', requiresSuperAdmin: true },
   { path: '/settings/role-akses', label: 'Role & Akses', iconKey: 'shield', group: 'Setting', requiresSuperAdmin: true },
   { path: '/settings/fitur', label: 'Fitur', iconKey: 'cube', group: 'Setting', requiresSuperAdmin: true },
+  { path: '/settings/notifikasi', label: 'Notifikasi', iconKey: 'bell', group: 'Setting', requiresSuperAdmin: true },
+  { path: '/settings/watzap', label: 'WatZap', iconKey: 'whatsapp', group: 'Setting', requiresSuperAdmin: true },
   { path: '/manage-uploads', label: 'Kelola File', iconKey: 'folder', group: 'Setting', requiresSuperAdmin: true },
   { path: '/whatsapp-koneksi', label: 'WhatsApp', iconKey: 'whatsapp', group: 'Setting', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/juara/data-juara', label: 'Data Juara', iconKey: 'trophy', group: 'Setting', requiresSuperAdmin: true },
