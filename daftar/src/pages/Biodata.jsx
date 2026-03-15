@@ -21,6 +21,15 @@ import { useUnsavedChanges } from '../contexts/UnsavedChangesContext'
 import RequiredFieldsModal from '../components/Modal/RequiredFieldsModal'
 import Modal from '../components/Modal/Modal'
 
+const NOMOR_DAFTAR_NOTIF = '6285123123399'
+function normalizeNomor(v) {
+  if (!v) return ''
+  const digits = String(v).replace(/\D/g, '')
+  if (digits.startsWith('0')) return '62' + digits.slice(1)
+  if (!digits.startsWith('62')) return '62' + digits
+  return digits
+}
+
 function Biodata() {
   const { user } = useAuthStore()
   const { tahunHijriyah, tahunMasehi, loadTahunAjaran } = useTahunAjaranStore()
@@ -160,6 +169,10 @@ function Biodata() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [focusedField, setFocusedField] = useState(null)
   const [justSaved, setJustSaved] = useState(false) // Flag untuk skip validasi setelah save
+  const [showPostSaveNotifModal, setShowPostSaveNotifModal] = useState(false)
+  const [postSaveNotifNumbers, setPostSaveNotifNumbers] = useState([]) // [{ field: 'telpon'|'wa_santri', number, label }]
+  const [showWaMeModal, setShowWaMeModal] = useState(false)
+  const [waMeModalFor, setWaMeModalFor] = useState(null) // 'telpon' | 'wa_santri'
   const { showNotification } = useNotification()
   const waCheck = useWhatsAppCheck(showNotification)
   // Daftar kondisi: dari API (semua field yang punya value di DB), di-filter ke field yang disimpan di registrasi
@@ -295,6 +308,21 @@ function Biodata() {
       isLoadingDataRef.current = true
 
       try {
+        // Jika ada draft di localStorage (perubahan yang belum disimpan ke server), pakai itu dulu
+        const draftRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('daftar_biodata_draft') : null
+        if (draftRaw) {
+          try {
+            const parsed = JSON.parse(draftRaw)
+            if (parsed && typeof parsed === 'object' && (parsed.nik || parsed.nama)) {
+              setFormData(parsed)
+              setHasChanges(true)
+              setIsLoading(false)
+              isLoadingDataRef.current = false
+              return
+            }
+          } catch (_) {}
+        }
+
         const biodataResponse = await pendaftaranAPI.getBiodata(user.id)
 
         if (biodataResponse.success && biodataResponse.data) {
@@ -488,6 +516,25 @@ function Biodata() {
     }
   }, [user?.id, tahunHijriyah, tahunMasehi])
 
+  // Muat draft dari localStorage untuk santri baru (belum punya user.id) saat buka halaman
+  const hasLoadedDraftRef = useRef(false)
+  useEffect(() => {
+    if (hasLoadedDraftRef.current) return
+    if (!tahunHijriyah || !tahunMasehi) return
+    if (isValidId(user?.id)) return // Yang punya id di-handle di loadDataFromUser (draft diprioritaskan di sana)
+    hasLoadedDraftRef.current = true
+    try {
+      const draftRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('daftar_biodata_draft') : null
+      if (draftRaw) {
+        const parsed = JSON.parse(draftRaw)
+        if (parsed && typeof parsed === 'object' && (parsed.nik || parsed.nama)) {
+          setFormData(parsed)
+          setHasChanges(true)
+        }
+      }
+    } catch (_) {}
+  }, [tahunHijriyah, tahunMasehi, user?.id])
+
   // Santri baru (belum punya id): isi dari localStorage sekali saja, jangan overwrite saat user mengetik
   const hasFilledFromStorageRef = useRef(false)
   useEffect(() => {
@@ -526,10 +573,17 @@ function Biodata() {
     } catch (e) { /* ignore */ }
   }, [user?.id])
 
-  // Simpan formData ke sessionStorage setiap kali ada perubahan (untuk validasi di halaman Berkas)
+  const DRAFT_STORAGE_KEY = 'daftar_biodata_draft'
+
+  // Simpan formData ke sessionStorage (validasi Berkas) dan localStorage (tetap ada saat ditinggal/masuk lagi)
   useEffect(() => {
     if (formData.nik || formData.nama) {
       sessionStorage.setItem('pendaftaranData', JSON.stringify(formData))
+      try {
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(formData))
+      } catch (e) {
+        // quota / private mode
+      }
     }
   }, [formData])
 
@@ -878,6 +932,7 @@ function Biodata() {
       clearUnsavedChanges()
       showNotification('Data pendaftaran berhasil disimpan!', 'success')
       try {
+        localStorage.removeItem('daftar_biodata_draft')
         localStorage.removeItem('daftar_status_pendaftar')
         localStorage.removeItem('daftar_diniyah')
         localStorage.removeItem('daftar_formal')
@@ -885,6 +940,28 @@ function Biodata() {
         localStorage.removeItem('daftar_status_murid')
         localStorage.removeItem('daftar_prodi')
       } catch (e) { /* ignore */ }
+
+      // Setelah simpan, cek nomor yang bisa diaktifkan notifikasi WA (belum di kontak atau notif off)
+      const noTelpon = normalizeNomor(formData.no_telpon)
+      const noWaSantri = normalizeNomor(formData.no_wa_santri)
+      const toCheck = []
+      if (noTelpon.length >= 10) toCheck.push({ field: 'telpon', number: noTelpon, label: 'No. Telpon (Wali)' })
+      if (noWaSantri.length >= 10 && noWaSantri !== noTelpon) toCheck.push({ field: 'wa_santri', number: noWaSantri, label: 'No. WA Santri' })
+      if (toCheck.length > 0) {
+        const results = await Promise.all(toCheck.map(async (item) => {
+          try {
+            const res = await pendaftaranAPI.getWhatsAppKontakStatus(item.number)
+            if (res?.success && (!res.exists || !res.siap_terima_notif)) return item
+          } catch { /* skip */ }
+          return null
+        }))
+        const needActivation = results.filter(Boolean)
+        if (needActivation.length > 0) {
+          setPostSaveNotifNumbers(needActivation)
+          setShowPostSaveNotifModal(true)
+          pendaftaranAPI.getWaWake().catch(() => {})
+        }
+      }
 
       // Reset flag setelah 3 detik (cukup waktu untuk semua state ter-update)
       setTimeout(() => {
@@ -948,6 +1025,16 @@ function Biodata() {
     }
   }, [hasChanges, setUnsavedChanges, clearUnsavedChanges, handleSave, checkRequiredFields])
 
+  // Notif saat pindah tab browser: ingatkan simpan jika ada perubahan yang belum disimpan ke server
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && hasChanges) {
+        showNotification('Ada perubahan yang belum disimpan. Simpan ke server?', 'warning')
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [hasChanges, showNotification])
 
   return (
     <div className="h-full overflow-hidden bg-white dark:bg-gray-900 rounded-lg shadow-sm flex flex-col relative">
@@ -1206,6 +1293,93 @@ function Biodata() {
         onClose={() => setShowRequiredFieldsModal(false)}
         requiredFields={missingRequiredFields}
       />
+
+      {/* Modal setelah Simpan: opsi aktifkan notifikasi WA untuk nomor yang belum notif on */}
+      <Modal
+        isOpen={showPostSaveNotifModal}
+        onClose={() => setShowPostSaveNotifModal(false)}
+        title="Aktifkan notifikasi WhatsApp"
+        maxWidth="max-w-md"
+      >
+        <div className="p-6">
+          <p className="text-gray-600 dark:text-gray-300 mb-4">
+            Data berhasil disimpan. Ingin mengaktifkan notifikasi WhatsApp untuk nomor berikut?
+          </p>
+          <ul className="space-y-3 mb-6">
+            {postSaveNotifNumbers.map((item) => (
+              <li key={item.field} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{item.label}</span>
+                  <span className="block text-sm text-gray-500 dark:text-gray-400">{item.number}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPostSaveNotifModal(false)
+                    setWaMeModalFor(item.field)
+                    setShowWaMeModal(true)
+                  }}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  Aktifkan notifikasi WA
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowPostSaveNotifModal(false)}
+              className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 rounded-lg font-medium transition-colors"
+            >
+              Lewati
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal wa.me: Aktifkan notifikasi untuk nomor saya (setelah pilih dari modal atas) */}
+      <Modal
+        isOpen={showWaMeModal}
+        onClose={() => { setShowWaMeModal(false); setWaMeModalFor(null) }}
+        title="Aktifkan notifikasi WhatsApp"
+        maxWidth="max-w-sm"
+      >
+        <div className="p-5">
+          <p className="text-gray-600 dark:text-gray-300 mb-4">
+            Aktifkan notifikasi whatsapp untuk nomor saya.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                pendaftaranAPI.getWaWake().catch(() => {})
+                const lines = ['Daftar Notifikasi']
+                if (formData.nama) lines.push(`Nama: ${formData.nama}`)
+                if (formData.nik) lines.push(`NIK: ${formData.nik}`)
+                const num = waMeModalFor === 'telpon' ? String(formData.no_telpon || '').replace(/\D/g, '') : String(formData.no_wa_santri || '').replace(/\D/g, '')
+                const nomor62 = num.startsWith('0') ? '62' + num.slice(1) : (num.startsWith('62') ? num : '62' + num)
+                if (nomor62.length >= 12) lines.push(`No WA: ${nomor62}`)
+                const text = lines.join('\n')
+                const url = `https://wa.me/${NOMOR_DAFTAR_NOTIF}?text=${encodeURIComponent(text)}`
+                window.open(url, '_blank', 'noopener,noreferrer')
+                setShowWaMeModal(false)
+                setWaMeModalFor(null)
+              }}
+              className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
+            >
+              Aktifkan via WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowWaMeModal(false); setWaMeModalFor(null) }}
+              className="flex-1 px-4 py-2.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

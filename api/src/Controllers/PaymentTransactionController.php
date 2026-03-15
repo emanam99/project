@@ -38,6 +38,24 @@ class PaymentTransactionController
     }
 
     /**
+     * Keterangan label untuk iPayMu (product/deskripsi) sesuai jenis pembayaran.
+     * @param string $jenis Pendaftaran|Uwaba|Tunggakan|Khusus|Tabungan|Umroh
+     * @return string
+     */
+    private function getKeteranganLabelForJenis(string $jenis): string
+    {
+        $map = [
+            'Pendaftaran' => 'Pembayaran Pendaftaran',
+            'Uwaba' => 'Pembayaran UWABA',
+            'Tunggakan' => 'Pembayaran Tunggakan',
+            'Khusus' => 'Pembayaran Khusus',
+            'Tabungan' => 'Tabungan',
+            'Umroh' => 'Pembayaran Umroh',
+        ];
+        return $map[$jenis] ?? ('Pembayaran ' . $jenis);
+    }
+
+    /**
      * GET /api/payment-transaction/mode - Cek mode aktif (sandbox/production)
      * Jika header X-Frontend-Env = staging, kembalikan is_sandbox sesuai mode staging (sandbox iPayMu).
      */
@@ -274,6 +292,37 @@ class PaymentTransactionController
 
                 $referenceId = $input['reference_id'] ?? 'PAY-' . time() . '-' . $idPayment;
 
+                // Ambil jenis_pembayaran untuk keterangan/product iPayMu (agar email/notifikasi menampilkan tipe pembayaran)
+                $stmtJenis = $this->db->prepare("SELECT jenis_pembayaran FROM payment WHERE id = ? LIMIT 1");
+                $stmtJenis->execute([$idPayment]);
+                $rowJenis = $stmtJenis->fetch(\PDO::FETCH_ASSOC);
+                $jenisForProduct = $rowJenis['jenis_pembayaran'] ?? 'Pendaftaran';
+
+                // Jika product/keterangan kosong, isi dari jenis pembayaran (Pendaftaran, UWABA, Tunggakan, Khusus, Tabungan, Umroh)
+                $keteranganLabel = $this->getKeteranganLabelForJenis($jenisForProduct);
+                if (empty($product) || !is_array($product)) {
+                    $product = [
+                        'product' => [$keteranganLabel],
+                        'quantity' => ['1'],
+                        'price' => [(string)(int)$amount]
+                    ];
+                }
+
+                // Keterangan untuk iPayMu (parameter "comments") — dipakai di email/halaman iPayMu
+                $comments = $input['comments'] ?? null;
+                if ($comments === null || $comments === '') {
+                    if (!empty($product) && is_array($product)) {
+                        if (isset($product['product'][0])) {
+                            $comments = $product['product'][0];
+                        } elseif (isset($product[0]) && is_string($product[0])) {
+                            $comments = $product[0];
+                        }
+                    }
+                    if ($comments === null || $comments === '') {
+                        $comments = $keteranganLabel;
+                    }
+                }
+
                 // Cek apakah sudah ada transaction untuk payment ini
                 $stmtCheck = $this->db->prepare("SELECT id FROM payment___transaction WHERE id_payment = ? AND status IN ('pending', 'paid') LIMIT 1");
                 $stmtCheck->execute([$idPayment]);
@@ -317,8 +366,7 @@ class PaymentTransactionController
 
                 $transactionId = $this->db->lastInsertId();
 
-                // Panggil iPaymu API
-                // Hanya kirim payment_channel jika tidak kosong (iPayMu akan reject jika channel tidak valid)
+                // Panggil iPaymu API (comments = keterangan di iPayMu; return_url/cancel_url untuk redirect setelah bayar/batal)
                 $ipaymuData = [
                     'name' => $name,
                     'phone' => $phone,
@@ -326,14 +374,19 @@ class PaymentTransactionController
                     'amount' => $amount,
                     'reference_id' => $referenceId,
                     'payment_method' => $paymentMethod,
-                    'product' => $product
+                    'product' => $product,
+                    'comments' => $comments
                 ];
-                
-                // Hanya tambahkan payment_channel jika tidak kosong
                 if (!empty($paymentChannel) && trim($paymentChannel) !== '') {
                     $ipaymuData['payment_channel'] = trim($paymentChannel);
                 }
-                
+                if (!empty($input['return_url'])) {
+                    $ipaymuData['return_url'] = trim($input['return_url']);
+                }
+                if (!empty($input['cancel_url'])) {
+                    $ipaymuData['cancel_url'] = trim($input['cancel_url']);
+                }
+
                 $ipaymuResponse = $ipaymuService->createPayment($ipaymuData);
 
                 // Update transaction dengan response dari iPaymu
@@ -412,10 +465,22 @@ class PaymentTransactionController
                         WHERE id = ?";
 
                     $status = $this->mapStatusFromResponse($ipaymuData);
+                    // expired_at: prioritas dari response iPayMu (ExpiredDate), else hitung dari rule per method/channel
                     $expiredAt = null;
-                    if (isset($ipaymuData['expired'])) {
-                        $expiredHours = (int)($ipaymuData['expired'] ?? 24);
-                        $expiredAt = date('Y-m-d H:i:s', strtotime("+{$expiredHours} hours"));
+                    $expiredDateFromResponse = $ipaymuDataInner['ExpiredDate'] ?? $ipaymuDataInner['expiredDate'] ?? $ipaymuDataInner['expired_at'] ?? $ipaymuData['ExpiredDate'] ?? $ipaymuData['expiredDate'] ?? null;
+                    if ($expiredDateFromResponse !== null && $expiredDateFromResponse !== '') {
+                        $ts = is_numeric($expiredDateFromResponse) ? (int)$expiredDateFromResponse : strtotime($expiredDateFromResponse);
+                        if ($ts !== false) {
+                            $expiredAt = date('Y-m-d H:i:s', $ts);
+                        }
+                    }
+                    if ($expiredAt === null) {
+                        $expiredRule = $this->ipaymuService->getExpiredForChannel($paymentMethod, trim((string)($paymentChannel ?? '')), []);
+                        if ($expiredRule['expiredType'] === 'minutes') {
+                            $expiredAt = date('Y-m-d H:i:s', strtotime('+' . (int)$expiredRule['expired'] . ' minutes'));
+                        } else {
+                            $expiredAt = date('Y-m-d H:i:s', strtotime('+' . (int)$expiredRule['expired'] . ' hours'));
+                        }
                     }
 
                     // Ambil data dari Data object jika ada, atau langsung dari ipaymuData

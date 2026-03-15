@@ -41,18 +41,33 @@ function formatPhoneForWwebjs(phone) {
   return n || null;
 }
 
-export async function sendMessagePuppeteer(sessionId, phoneNumber, text) {
+export async function sendMessagePuppeteer(sessionId, phoneNumber, text, chatIdOverride = null) {
   const id = sessionId || DEFAULT_SESSION;
   const c = clientsBySession[id];
   if (!c || !c.info) return { ok: false, error: 'Puppeteer belum siap' };
-  const num = formatPhoneForWwebjs(phoneNumber);
-  if (!num || num.length < 10) return { ok: false, error: 'Nomor tidak valid' };
-  const chatId = num.includes('@') ? num : num + '@c.us';
+  let chatId = chatIdOverride && typeof chatIdOverride === 'string' && chatIdOverride.includes('@') ? chatIdOverride : null;
+  if (!chatId) {
+    const num = formatPhoneForWwebjs(phoneNumber);
+    if (!num || num.length < 10) return { ok: false, error: 'Nomor tidak valid' };
+    chatId = num.includes('@') ? num : num + '@c.us';
+  }
+  const isLid = /@lid$/i.test(chatId);
   try {
-    const msg = await c.sendMessage(chatId, text || '(pesan kosong)');
+    let msg;
+    if (isLid && typeof c.getChatById === 'function') {
+      const chat = await c.getChatById(chatId);
+      if (chat && typeof chat.sendMessage === 'function') {
+        msg = await chat.sendMessage(text || '(pesan kosong)');
+      } else {
+        msg = await c.sendMessage(chatId, text || '(pesan kosong)');
+      }
+    } else {
+      msg = await c.sendMessage(chatId, text || '(pesan kosong)');
+    }
     const senderNumber = c.info?.wid?.user || c.info?.wid?.id?.split(':')[0] || null;
     return { ok: true, messageId: msg?.id?._serialized || msg?.id || null, senderPhoneNumber: senderNumber };
   } catch (err) {
+    console.error('[WA Puppeteer] sendMessage error chatId=' + chatId + ': ' + (err?.message || err));
     return { ok: false, error: err?.message || String(err) };
   }
 }
@@ -195,6 +210,45 @@ function createClient(sessionId) {
     delete clientsBySession[id];
   });
 
+  // Pesan masuk: Puppeteer (whatsapp-web.js) yang terhubung via QR menerima pesan di sini.
+  // Baileys messages.upsert hanya dapat pesan jika Baileys yang "aktif"; kebanyakan pesan masuk lewat event ini.
+  c.on('message', async (msg) => {
+    try {
+      if (msg.fromMe) {
+        console.log('[WA Puppeteer] skip: pesan fromMe');
+        return;
+      }
+      const fromRaw = (msg.from || '').replace(/@c\.us$/i, '').replace(/@s\.whatsapp\.net$/i, '').trim();
+      const digits = fromRaw.replace(/\D/g, '');
+      if (digits.length < 10) {
+        console.log('[WA Puppeteer] skip: nomor terlalu pendek', fromRaw);
+        return;
+      }
+      const from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
+      const body = typeof msg.body === 'string' ? msg.body : (msg.body || '');
+      const messageId = (msg.id && (msg.id._serialized || msg.id)) || null;
+      const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
+      if (!apiBase) {
+        console.warn('[WA Puppeteer] UWABA_API_BASE_URL belum di-set, pesan masuk tidak diforward');
+        return;
+      }
+      const waPath = apiBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming';
+      const url = apiBase + waPath;
+      const fromJid = (typeof msg.from === 'string' && msg.from.includes('@')) ? msg.from : null;
+      const payload = { from: from62, message: body, messageId: messageId || undefined, sessionId: id, from_jid: fromJid || undefined };
+      console.log('[WA Puppeteer] Pesan masuk dari ' + from62 + (fromJid ? ' jid=' + fromJid : '') + ' len=' + body.length + ', forward ke API ' + url);
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok) {
+        const waPort = process.env.PORT || '3001';
+        console.log('[WA Puppeteer] Forward OK. Jika tidak dapat balasan: cek error_log PHP; pastikan api/.env punya WA_API_URL=http://127.0.0.1:' + waPort + '/api/whatsapp/send dan WA_API_KEY.');
+      } else {
+        console.error('[WA Puppeteer] Forward gagal: HTTP ' + res.status);
+      }
+    } catch (err) {
+      console.error('[WA Puppeteer] message handler error:', err?.message);
+    }
+  });
+
   return c;
 }
 
@@ -252,6 +306,39 @@ export function initWaOnStart() {
   });
   console.log('[WA] Restore sesi default (Puppeteer)...');
 }
+
+/** Trigger koneksi WA jika sedang off. Dipanggil dari API PHP saat pendaftar menekan "Aktifkan notifikasi". */
+export const wakeWhatsApp = async (req, res) => {
+  try {
+    const sessionId = (req.body?.sessionId || req.query?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
+    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    if (isBaileysConnected(safeId)) {
+      return res.json({ success: true, message: 'WA sudah aktif.', data: { status: 'connected' } });
+    }
+    const st = getWaStatus(safeId);
+    if (st.status === 'connecting' || st.baileysStatus === 'connecting') {
+      return res.json({ success: true, message: 'WA sedang menghubungkan...', data: { status: 'connecting' } });
+    }
+    if (clientsBySession[safeId]) {
+      return res.json({ success: true, message: 'Koneksi WA sedang dipersiapkan...', data: { status: 'connecting' } });
+    }
+    if (countSessions() >= MAX_SESSIONS) {
+      return res.status(200).json({ success: true, message: 'Slot WA penuh. Coba lagi nanti.', data: { status: 'busy' } });
+    }
+    setWaStatus(safeId, { status: 'connecting', qrCode: null, baileysStatus: 'disconnected', baileysQrCode: null });
+    const c = createClient(safeId);
+    clientsBySession[safeId] = c;
+    c.initialize().catch((err) => {
+      console.error('[WA] Puppeteer initialize error:', err?.message || err);
+      setWaStatus(safeId, { status: 'disconnected', qrCode: null });
+      delete clientsBySession[safeId];
+    });
+    console.log('[WA] Wake: memulai koneksi untuk session', safeId);
+    return res.json({ success: true, message: 'Memulai koneksi WA...', data: { status: 'connecting' } });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Gagal memicu koneksi: ' + (err?.message || String(err)) });
+  }
+};
 
 export const connectWhatsApp = async (req, res) => {
   try {
@@ -409,17 +496,22 @@ export const sendMessage = async (req, res) => {
   try {
     const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
     const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
-    const { phoneNumber, message, imageBase64, imageMimetype } = req.body || {};
+    const { phoneNumber, message, imageBase64, imageMimetype, chatId: bodyChatId } = req.body || {};
     const text = typeof message === 'string' ? message : '';
+    const chatIdOverride = typeof bodyChatId === 'string' && bodyChatId.trim() ? bodyChatId.trim() : null;
+    console.log('[WA] POST /send to ' + (phoneNumber || '') + (chatIdOverride ? ' chatId=' + chatIdOverride : '') + ' len=' + text.length);
     let result;
     if (isBaileysConnected(safeId)) {
       result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype);
+      console.log('[WA] send via Baileys: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
     } else if (isPuppeteerReady(safeId)) {
       if (imageBase64) {
         return res.status(200).json({ success: false, message: 'Kirim gambar hanya didukung setelah scan Langkah 2 (Baileys). Kirim teks saja untuk tes.' });
       }
-      result = await sendMessagePuppeteer(safeId, phoneNumber, text);
+      result = await sendMessagePuppeteer(safeId, phoneNumber, text, chatIdOverride);
+      console.log('[WA] send via Puppeteer: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
     } else {
+      console.log('[WA] send: belum login (Baileys/Puppeteer tidak siap)');
       return res.status(200).json({
         success: false,
         message: 'Belum login untuk session ini. Scan QR Langkah 1 di tab Koneksi WA.',

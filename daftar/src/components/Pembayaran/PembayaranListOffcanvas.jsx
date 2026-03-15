@@ -452,9 +452,10 @@ function PembayaranListOffcanvas({
         setTransactionStatus(null)
         
         // Waktu kadaluwarsa: dari API jika ada, else 24 jam dari sekarang
+        // expired_at dari API/DB (sesuai method); fallback dari tanggal_dibuat + 24j jika data lama
         const expiredAt = pendingTransaction.expired_at
           ? new Date(pendingTransaction.expired_at).getTime()
-          : (pendingTransaction.created_at ? new Date(pendingTransaction.created_at).getTime() + 24 * 60 * 60 * 1000 : Date.now() + 24 * 60 * 60 * 1000)
+          : (pendingTransaction.tanggal_dibuat || pendingTransaction.created_at ? new Date(pendingTransaction.tanggal_dibuat || pendingTransaction.created_at).getTime() + 24 * 60 * 60 * 1000 : Date.now() + 24 * 60 * 60 * 1000)
         const amt = pendingTransaction.amount ?? 0
         const fee = pendingTransaction.admin_fee ?? 0
         // Set VA info dari transaksi pending
@@ -573,12 +574,15 @@ function PembayaranListOffcanvas({
         email = registrasi.email || ''
       }
 
-      // Jika phone atau email masih kosong, ambil dari biodata santri via endpoint PUBLIC.
+      // Jika nama/phone/email masih kosong, ambil dari biodata santri via endpoint PUBLIC.
       // GET /api/santri hanya untuk admin → 403 di aplikasi daftar; pakai /api/public/santri.
-      if ((!phone || !email) && idSantri) {
+      if ((!namaPembayar || namaPembayar === 'Pembayar Pendaftaran' || !phone || !email) && idSantri) {
         try {
           const biodataResult = await santriAPI.getByIdPublic(idSantri)
           if (biodataResult.success && biodataResult.data) {
+            if (!namaPembayar || namaPembayar === 'Pembayar Pendaftaran') {
+              namaPembayar = (biodataResult.data.wali || biodataResult.data.nama || namaPembayar).trim() || namaPembayar
+            }
             if (!phone) {
               phone = biodataResult.data.no_telpon || biodataResult.data.no_wa_santri || ''
             }
@@ -587,7 +591,7 @@ function PembayaranListOffcanvas({
             }
           }
         } catch (err) {
-          console.error('Error fetching biodata for phone/email:', err)
+          console.error('Error fetching biodata for payment:', err)
         }
       }
 
@@ -624,23 +628,27 @@ function PembayaranListOffcanvas({
         return
       }
 
+      // URL untuk redirect setelah bayar/batal di iPayMu — user kembali ke halaman pembayaran daftar
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin + (pathname || '/pembayaran') : ''
+      const sep = baseUrl && baseUrl.includes('?') ? '&' : '?'
+      const returnCancelUrl = baseUrl ? `${baseUrl}${sep}payment=open` : ''
+
       // Prepare payment data untuk iPayMu
       const paymentData = {
-        // id_payment tidak wajib, backend akan membuat payment record baru jika tidak ada
         amount: amount,
         name: namaPembayar,
         phone: phone,
         email: email,
-        payment_method: paymentMethod, // va, cstore, qris, cod
+        payment_method: paymentMethod,
         reference_id: `PAY-PSB-${Date.now()}-${idSantri || registrasi?.id || 'NEW'}`,
-        // Data untuk membuat payment record baru jika belum ada
         jenis_pembayaran: 'Pendaftaran',
         id_registrasi: registrasi?.id || null,
         id_santri: idSantri || null,
-        tabel_referensi: 'psb___registrasi'
+        tabel_referensi: 'psb___registrasi',
+        return_url: returnCancelUrl,
+        cancel_url: returnCancelUrl
       }
 
-      // Tambahkan payment_channel hanya jika ada
       if (paymentChannel) {
         paymentData.payment_channel = paymentChannel
       }
@@ -729,6 +737,11 @@ function PembayaranListOffcanvas({
 
         console.log('VA Number Found:', finalVaNumber) // Debug log
 
+        // Waktu kadaluwarsa dari backend (sesuai method/channel: BRI 2j, BSI 3j, QRIS 5m, dll) — jangan pakai 24 jam tetap
+        const expiredAtTs = responseData.expired_at
+          ? new Date(responseData.expired_at).getTime()
+          : (Date.now() + 24 * 60 * 60 * 1000)
+
         // Jika VA number tidak ada di response, coba ambil dari database menggunakan transaction_id
         let finalVaNumberWithFallback = finalVaNumber
         if (!finalVaNumberWithFallback && transaction_id) {
@@ -789,7 +802,7 @@ function PembayaranListOffcanvas({
             session_id,
             transaction_id,
             ipaymu_transaction_id: ipaymu_transaction_id || transaction_id,
-            expired_at: Date.now() + 24 * 60 * 60 * 1000
+            expired_at: expiredAtTs
           })
           
           // Pindah ke step 3 (status pending)
@@ -816,7 +829,7 @@ function PembayaranListOffcanvas({
             session_id,
             transaction_id,
             ipaymu_transaction_id: ipaymu_transaction_id || transaction_id,
-            expired_at: Date.now() + 24 * 60 * 60 * 1000
+            expired_at: expiredAtTs
           })
           
           // Pindah ke step 3 (status pending)
@@ -837,7 +850,7 @@ function PembayaranListOffcanvas({
             qr_code: null,
             session_id,
             transaction_id,
-            expired_at: Date.now() + 24 * 60 * 60 * 1000
+            expired_at: expiredAtTs
           })
           
           // Pindah ke step 3 (status pending)
@@ -859,7 +872,7 @@ function PembayaranListOffcanvas({
             qr_code: null,
             session_id,
             transaction_id,
-            expired_at: Date.now() + 24 * 60 * 60 * 1000
+            expired_at: expiredAtTs
           })
           
           // Pindah ke step 3 (status pending)
@@ -1060,7 +1073,10 @@ function PembayaranListOffcanvas({
                 }
               }
               
-              const expiredAtUpdate = pendingTransaction.expired_at ? new Date(pendingTransaction.expired_at).getTime() : (pendingTransaction.created_at ? new Date(pendingTransaction.created_at).getTime() + 24 * 60 * 60 * 1000 : Date.now() + 24 * 60 * 60 * 1000)
+              // Pakai expired_at dari API/DB (sesuai method: BRI 2j, BSI 3j, QRIS 5m, dll); fallback 24j hanya jika data lama
+              const expiredAtUpdate = pendingTransaction.expired_at
+                ? new Date(pendingTransaction.expired_at).getTime()
+                : (pendingTransaction.tanggal_dibuat ? new Date(pendingTransaction.tanggal_dibuat).getTime() + 24 * 60 * 60 * 1000 : Date.now() + 24 * 60 * 60 * 1000)
               // Set VA info dari transaksi baru dan buka flow iPayMu step 1
               setVaInfo({
                 va_number: pendingTransaction.va_number || null,
@@ -1653,7 +1669,8 @@ function PembayaranListOffcanvas({
                                   bankName = 'QRIS'
                                 }
                                 
-                                const expiredAtFromTx = (txData.expired_at && new Date(txData.expired_at).getTime()) || (payment.created_at ? new Date(payment.created_at).getTime() + 24 * 60 * 60 * 1000 : null) || Date.now() + 24 * 60 * 60 * 1000
+                                // Prioritas: expired_at dari transaksi (API/DB); fallback 24j jika data lama
+                                const expiredAtFromTx = (txData.expired_at && new Date(txData.expired_at).getTime()) || (payment.expired_at && new Date(payment.expired_at).getTime()) || (payment.created_at ? new Date(payment.created_at).getTime() + 24 * 60 * 60 * 1000 : null) || Date.now() + 24 * 60 * 60 * 1000
                                 // Set vaInfo untuk menampilkan di modal
                                 setVaInfo({
                                   va_number: txData.va_number || payment.va_number || null,
@@ -1707,7 +1724,7 @@ function PembayaranListOffcanvas({
                                 transaction_id: payment.ipaymu_transaction_id || null,
                                 ipaymu_transaction_id: payment.ipaymu_transaction_id || null,
                                 amount: payment.nominal || null,
-                                expired_at: payment.created_at ? new Date(payment.created_at).getTime() + 24 * 60 * 60 * 1000 : Date.now() + 24 * 60 * 60 * 1000
+                                expired_at: (payment.expired_at && new Date(payment.expired_at).getTime()) || (payment.created_at ? new Date(payment.created_at).getTime() + 24 * 60 * 60 * 1000 : Date.now() + 24 * 60 * 60 * 1000)
                               })
                               const statusFromPayment = payment.transaction_status || 'paid'
                               setTransactionStatus(statusFromPayment)
@@ -1744,7 +1761,7 @@ function PembayaranListOffcanvas({
                               transaction_id: null,
                               ipaymu_transaction_id: null,
                               amount: payment.nominal || null,
-                              expired_at: Date.now() + 24 * 60 * 60 * 1000
+                              expired_at: (payment.expired_at && new Date(payment.expired_at).getTime()) || (payment.created_at ? new Date(payment.created_at).getTime() + 24 * 60 * 60 * 1000 : Date.now() + 24 * 60 * 60 * 1000)
                             })
                               const statusFromPayment = payment.transaction_status || 'paid'
                               setTransactionStatus(statusFromPayment)

@@ -2083,11 +2083,27 @@ export const notificationConfigAPI = {
   }
 }
 
+// Kontak WA (whatsapp___kontak, Super Admin only) - daftar nomor, siap/tidak terima notif
+export const kontakAPI = {
+  getList: async (params = {}) => {
+    const response = await api.get('/kontak', { params: { page: params.page, limit: params.limit, search: params.search } })
+    return response.data
+  },
+  updateSiapTerimaNotif: async (id, siapTerimaNotif) => {
+    const response = await api.patch(`/kontak/${id}`, { siap_terima_notif: siapTerimaNotif })
+    return response.data
+  }
+}
+
 // WatZap (Super Admin only) - kirim via WatZap API. Backend proxy ke https://api.watzap.id/v1/
 // Body WatZap: api_key, number_key ("ALL"), phone_no, message. Tidak pakai device_id.
 export const watzapAPI = {
   getStatus: async () => {
     const response = await api.get('/watzap/status')
+    return response.data
+  },
+  putConfig: async (data) => {
+    const response = await api.put('/watzap/config', data)
     return response.data
   },
   getDevices: async () => {

@@ -109,7 +109,7 @@ class CorsMiddleware implements MiddlewareInterface
             $response = $response
                 ->withStatus(200)
                 ->withHeader('Access-Control-Allow-Headers', $allowHeaders)
-                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Max-Age', '3600');
 
             // Set origin header agar preflight lulus CORS — selalu echo origin request jika diizinkan (bukan nilai dari list)
@@ -148,21 +148,21 @@ class CorsMiddleware implements MiddlewareInterface
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
             } elseif ($allowedOrigin && $allowedOrigin !== '*') {
                 // Fallback: jika allowedOrigin adalah origin spesifik
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $allowedOrigin)
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
             } else {
                 // Jika tidak ada origin, gunakan '*' (tidak bisa pakai credentials dengan '*')
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', '*')
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
             }
         } elseif ($allowedOrigin !== null) {
             // Selalu pakai origin dari request (bukan dari list) agar tidak salah kirim origin lain (e.g. ebeddien2 harus dapat ebeddien2, bukan uwaba2)
@@ -171,7 +171,7 @@ class CorsMiddleware implements MiddlewareInterface
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $valueToSet)
                 ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
         } else {
             // Fallback: jika tidak ada origin yang diizinkan tapi allowAll false,
@@ -191,7 +191,7 @@ class CorsMiddleware implements MiddlewareInterface
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin ?: '*')
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
             } else {
                 // Respons 4xx/5xx tanpa CORS = browser blokir (tampil CORS error). Pastikan error tetap terbaca.
@@ -200,7 +200,7 @@ class CorsMiddleware implements MiddlewareInterface
                     $response = $response
                         ->withHeader('Access-Control-Allow-Origin', '*')
                         ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+                        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
                 }
             }
         }

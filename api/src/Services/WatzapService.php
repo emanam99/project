@@ -13,11 +13,59 @@ class WatzapService
     {
         $config = require __DIR__ . '/../../config.php';
         $watzap = $config['watzap'] ?? [];
+        $numberKey = self::getNumberKeyFromSettings();
+        if ($numberKey === null) {
+            $numberKey = getenv('WATZAP_NUMBER_KEY') ?: ($watzap['number_key'] ?? 'ALL');
+        }
         return [
             'api_url' => rtrim(getenv('WATZAP_API_URL') ?: ($watzap['api_url'] ?? 'https://api.watzap.id/v1'), '/'),
             'api_key' => getenv('WATZAP_API_KEY') ?: ($watzap['api_key'] ?? ''),
-            'number_key' => getenv('WATZAP_NUMBER_KEY') ?: ($watzap['number_key'] ?? 'ALL'),
+            'number_key' => $numberKey,
         ];
+    }
+
+    /**
+     * Baca number_key dari app___settings (pengaturan WatZap di aplikasi). Return null jika belum di-set.
+     */
+    private static function getNumberKeyFromSettings(): ?string
+    {
+        try {
+            $db = \App\Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return null;
+            }
+            $stmt = $db->prepare("SELECT `value` FROM app___settings WHERE `key` = 'watzap_number_key' LIMIT 1");
+            $stmt->execute();
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row === false || $row['value'] === null || trim((string) $row['value']) === '') {
+                return null;
+            }
+            return trim((string) $row['value']);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Simpan number_key ke app___settings (pengaturan WatZap di aplikasi). Prioritas di atas .env.
+     *
+     * @param string $numberKey Nilai number key (kosong = pakai default dari .env)
+     */
+    public static function setNumberKey(string $numberKey): void
+    {
+        $value = trim($numberKey);
+        try {
+            $db = \App\Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return;
+            }
+            $stmt = $db->prepare("INSERT INTO app___settings (`key`, `value`) VALUES ('watzap_number_key', ?) ON DUPLICATE KEY UPDATE `value` = ?, updated_at = NOW()");
+            $stmt->execute([$value, $value]);
+        } catch (\Throwable $e) {
+            error_log('WatzapService::setNumberKey: ' . $e->getMessage());
+        }
     }
 
     private static function request(string $method, string $path, array $body = []): array

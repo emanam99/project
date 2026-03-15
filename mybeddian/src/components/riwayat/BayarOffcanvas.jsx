@@ -283,6 +283,11 @@ export default function BayarOffcanvas({
     }
 
     try {
+      // URL untuk redirect setelah bayar/batal di iPayMu — user kembali ke aplikasi MyBeddian
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const path = typeof window !== 'undefined' ? (window.location.pathname || '') : ''
+      const returnCancelUrl = origin && path ? `${origin}${path}` : ''
+
       const paymentData = {
         amount,
         name: nama,
@@ -294,6 +299,8 @@ export default function BayarOffcanvas({
         id_referensi: idReferensi ?? null,
         tabel_referensi: tabelReferensi,
         id_santri: idSantri ?? null,
+        return_url: returnCancelUrl,
+        cancel_url: returnCancelUrl,
       }
       if (isPendaftaran && idReg) paymentData.id_registrasi = idReg
       if (paymentChannel) paymentData.payment_channel = paymentChannel

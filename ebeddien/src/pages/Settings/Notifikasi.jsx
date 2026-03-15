@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
-import { notificationConfigAPI } from '../../services/api'
+import { notificationConfigAPI, kontakAPI } from '../../services/api'
 
 const PROVIDERS = [
   { value: 'wa_sendiri', label: 'WA server sendiri', description: 'Pakai koneksi WhatsApp yang dikelola di halaman WhatsApp (scan QR, multi-session).' },
@@ -49,6 +49,12 @@ export default function Notifikasi() {
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [messagesPage, setMessagesPage] = useState(1)
   const limit = 30
+  const [kontakItems, setKontakItems] = useState([])
+  const [kontakTotal, setKontakTotal] = useState(0)
+  const [kontakPage, setKontakPage] = useState(1)
+  const [kontakLoading, setKontakLoading] = useState(false)
+  const [kontakSearch, setKontakSearch] = useState('')
+  const kontakLimit = 20
 
   useEffect(() => {
     let cancelled = false
@@ -77,6 +83,33 @@ export default function Notifikasi() {
       })
     return () => { cancelled = true }
   }, [showNotification])
+
+  useEffect(() => {
+    if (activeTab !== 'kontak') return
+    let cancelled = false
+    setKontakLoading(true)
+    kontakAPI.getList({ page: kontakPage, limit: kontakLimit, search: kontakSearch || undefined })
+      .then((res) => {
+        if (cancelled) return
+        if (res?.success && res?.data) {
+          setKontakItems(res.data.items || [])
+          setKontakTotal(res.data.total ?? 0)
+        } else {
+          setKontakItems([])
+          setKontakTotal(0)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setKontakItems([])
+          setKontakTotal(0)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setKontakLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [activeTab, kontakPage, kontakSearch])
 
   useEffect(() => {
     if (activeTab !== 'riwayat') return
@@ -193,11 +226,9 @@ export default function Notifikasi() {
 
   return (
     <div className="h-full min-h-0 flex flex-col overflow-hidden">
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-        <div className="max-w-2xl mx-auto p-4 pb-8">
-          <h1 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Notifikasi</h1>
-
-          <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
+      <div className="shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <div className="max-w-2xl mx-auto px-4 pt-4">
+          <div className="flex border-b border-gray-200 dark:border-gray-700 -mb-px">
             <button
               type="button"
               onClick={() => setActiveTab('pengaturan')}
@@ -220,13 +251,29 @@ export default function Notifikasi() {
             >
               Riwayat terkirim
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('kontak')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === 'kontak'
+                  ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              Kontak
+            </button>
           </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-800 dark:text-red-200">
-              {error}
-            </div>
-          )}
+        </div>
+      </div>
+      {error && (
+        <div className="shrink-0 max-w-2xl mx-auto w-full px-4 pt-4">
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-800 dark:text-red-200">
+            {error}
+          </div>
+        </div>
+      )}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+        <div className="max-w-2xl mx-auto p-4 pb-8">
 
           {activeTab === 'pengaturan' && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
@@ -276,6 +323,101 @@ export default function Notifikasi() {
                   <Link to="/settings/watzap" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
                     Buka halaman WatZap →
                   </Link>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'kontak' && (
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+              <div className="p-5 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Daftar kontak WA</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Nomor yang pernah menerima notifikasi. Matikan &quot;Siap terima notif&quot; agar nomor tersebut tidak lagi dikirimi notifikasi. Nomor unik (tidak double).</p>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={kontakSearch}
+                    onChange={(e) => { setKontakSearch(e.target.value); setKontakPage(1) }}
+                    placeholder="Cari nomor..."
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm w-48"
+                  />
+                </div>
+                {kontakLoading ? (
+                  <div className="flex justify-center py-12">
+                    <div className="animate-spin rounded-full h-9 w-9 border-2 border-teal-500 border-t-transparent" />
+                  </div>
+                ) : kontakItems.length === 0 ? (
+                  <div className="text-center py-12 px-4">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Belum ada kontak. Kontak akan muncul otomatis saat notifikasi pertama kali dikirim ke nomor baru.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400">
+                          <tr>
+                            <th className="px-4 py-3 font-medium">Nomor</th>
+                            <th className="px-4 py-3 font-medium">Siap terima notif</th>
+                            <th className="px-4 py-3 font-medium">Terakhir diubah</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          {kontakItems.map((k) => (
+                            <tr key={k.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              <td className="px-4 py-3 font-mono text-gray-800 dark:text-gray-200">{k.nomor}</td>
+                              <td className="px-4 py-3">
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={k.siap_terima_notif}
+                                  onClick={() => {
+                                    kontakAPI.updateSiapTerimaNotif(k.id, !k.siap_terima_notif)
+                                      .then((res) => {
+                                        if (res?.success) {
+                                          setKontakItems((prev) => prev.map((x) => x.id === k.id ? { ...x, siap_terima_notif: !k.siap_terima_notif } : x))
+                                          showNotification('Pengaturan kontak diperbarui', 'success')
+                                        } else showNotification(res?.message || 'Gagal', 'error')
+                                      })
+                                      .catch(() => showNotification('Gagal memperbarui kontak', 'error'))
+                                  }}
+                                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${k.siap_terima_notif ? 'bg-teal-600' : 'bg-gray-200 dark:bg-gray-600'}`}
+                                >
+                                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${k.siap_terima_notif ? 'translate-x-5' : 'translate-x-1'}`} />
+                                </button>
+                              </td>
+                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{k.updated_at ? new Date(k.updated_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {kontakTotal > kontakLimit && (
+                      <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                        <span>Total {kontakTotal} kontak</span>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={kontakPage <= 1}
+                            onClick={() => setKontakPage((p) => Math.max(1, p - 1))}
+                            className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50"
+                          >
+                            Sebelumnya
+                          </button>
+                          <span>Halaman {kontakPage}</span>
+                          <button
+                            type="button"
+                            disabled={kontakPage * kontakLimit >= kontakTotal}
+                            onClick={() => setKontakPage((p) => p + 1)}
+                            className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50"
+                          >
+                            Selanjutnya
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

@@ -19,6 +19,8 @@ export default function Watzap() {
   const [webhookUrl, setWebhookUrl] = useState('')
   const [webhookSetting, setWebhookSetting] = useState(false)
   const [webhooksList, setWebhooksList] = useState([])
+  const [configNumberKey, setConfigNumberKey] = useState('')
+  const [configSaving, setConfigSaving] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -27,8 +29,10 @@ export default function Watzap() {
     Promise.all([watzapAPI.getStatus(), watzapAPI.getDevices(), watzapAPI.getWebhookUrl(), watzapAPI.getWebhooks()])
       .then(([statusRes, devicesRes, webhookRes, webhooksRes]) => {
         if (cancelled) return
-        if (statusRes?.success && statusRes?.data) setStatus(statusRes.data)
-        else setStatus(null)
+        if (statusRes?.success && statusRes?.data) {
+          setStatus(statusRes.data)
+          setConfigNumberKey(statusRes.data?.number_key ?? '')
+        } else setStatus(null)
         if (devicesRes?.success && Array.isArray(devicesRes?.data)) {
           setDevices(devicesRes.data)
         } else {
@@ -79,6 +83,21 @@ export default function Watzap() {
     }
   }
 
+  const handleSaveConfig = async () => {
+    setConfigSaving(true)
+    try {
+      const res = await watzapAPI.putConfig({ number_key: configNumberKey })
+      showNotification(res?.message ?? 'Pengaturan disimpan', 'success')
+      if (status != null && res?.data?.number_key !== undefined) {
+        setStatus((prev) => (prev ? { ...prev, number_key: res.data.number_key } : null))
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || 'Gagal menyimpan pengaturan', 'error')
+    } finally {
+      setConfigSaving(false)
+    }
+  }
+
   const handleSendTest = async (e) => {
     e.preventDefault()
     const phone = sendPhone.trim().replace(/^0/, '62')
@@ -116,10 +135,7 @@ export default function Watzap() {
     <div className="h-full min-h-0 flex flex-col overflow-hidden">
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         <div className="max-w-2xl mx-auto p-4 pb-8">
-      <h1 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-1">WatZap</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-        Kelola koneksi WhatsApp melalui WatZap (api.watzap.id). API key dikonfigurasi di backend. Halaman ini hanya dapat diakses Super Admin.
-      </p>
+      <h1 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">WatZap</h1>
 
       {error && (
         <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
@@ -128,6 +144,33 @@ export default function Watzap() {
       )}
 
       <div className="space-y-6">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Pengaturan WatZap</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Number key dari dashboard WatZap (untuk kirim pesan). Kosongkan atau isi &quot;ALL&quot; untuk pakai semua nomor. Bisa juga di-set di .env backend: WATZAP_NUMBER_KEY.</p>
+          </div>
+          <div className="p-4 space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number key</label>
+              <input
+                type="text"
+                value={configNumberKey}
+                onChange={(e) => setConfigNumberKey(e.target.value)}
+                placeholder="ALL atau key dari dashboard WatZap (mis. 7gp463pjj5X5znd5)"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm font-mono"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveConfig}
+              disabled={configSaving}
+              className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {configSaving ? 'Menyimpan...' : 'Simpan pengaturan'}
+            </button>
+          </div>
+        </div>
+
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Status WatZap</h2>

@@ -275,19 +275,46 @@ function PembayaranOffcanvas({
     setError(null)
 
     try {
-      // Get data pendaftar untuk payment
-      // Untuk pendaftaran, kita perlu mendapatkan data pendaftar dari idRegistrasi
-      // TODO: Implement get pendaftar data dari idRegistrasi
-      // Untuk sementara, kita akan menggunakan data default
-      
-      // Prepare payment data untuk iPayMu
+      // Ambil nama asli & kontak dari biodata santri (agar email/notif iPayMu pakai nama asli)
+      let namaPembayar = 'Pembayar Pendaftaran'
+      let phone = ''
+      let email = ''
+
+      if (santriId) {
+        try {
+          const res = await santriAPI.getById(santriId)
+          const data = res?.data ?? res
+          if (data) {
+            namaPembayar = (data.nama || data.nama_santri || namaPembayar).trim() || namaPembayar
+            phone = (data.no_telpon || data.no_wa_santri || data.no_telpon_wali || '').toString().trim()
+            email = (data.email || '').toString().trim()
+          }
+        } catch (err) {
+          console.error('Error fetching biodata for iPayMu:', err)
+        }
+      }
+
+      if (!phone) {
+        showNotification('Nomor telepon wali/santri belum diisi. Silakan lengkapi biodata santri terlebih dahulu.', 'error')
+        setProcessingIPaymu(false)
+        return
+      }
+      if (!email) {
+        email = 'alutsmanipps@gmail.com'
+      }
+
+      // Prepare payment data untuk iPayMu (jenis_pembayaran agar keterangan di email iPayMu = Pembayaran Pendaftaran)
       const paymentData = {
         amount: totals.kurang, // Bayar sisa kurang
-        name: 'Pembayar Pendaftaran',
-        phone: '',
-        email: '',
+        name: namaPembayar,
+        phone,
+        email,
         payment_method: 'va', // Virtual Account
-        reference_id: `PAY-PSB-${Date.now()}-${idRegistrasi || 'NEW'}`
+        reference_id: `PAY-PSB-${Date.now()}-${idRegistrasi || 'NEW'}`,
+        jenis_pembayaran: 'Pendaftaran',
+        id_registrasi: idRegistrasi || null,
+        tabel_referensi: 'psb___registrasi',
+        id_santri: santriId || null
       }
 
       // Create transaction di iPayMu

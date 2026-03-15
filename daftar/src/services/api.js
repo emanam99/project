@@ -331,6 +331,20 @@ export const pendaftaranAPI = {
     const response = await api.get(url)
     return response.data
   },
+
+  /** GET status kontak WA (exists, siap_terima_notif) untuk toggle notifikasi di form daftar */
+  getWhatsAppKontakStatus: async (nomor) => {
+    const params = new URLSearchParams()
+    if (nomor) params.append('nomor', String(nomor).trim())
+    const response = await api.get(`/pendaftaran/whatsapp-kontak-status?${params.toString()}`)
+    return response.data
+  },
+
+  /** GET wa-wake: nyalakan koneksi WA server jika sedang off (agar siap terima pesan Daftar Notifikasi) */
+  getWaWake: async () => {
+    const response = await api.get('/pendaftaran/wa-wake')
+    return response.data
+  },
   
   getKondisiValues: async (idField = null, fieldName = null) => {
     const params = new URLSearchParams()

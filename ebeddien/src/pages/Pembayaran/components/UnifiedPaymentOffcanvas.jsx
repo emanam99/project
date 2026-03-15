@@ -331,16 +331,22 @@ function UnifiedPaymentOffcanvas({
       // Untuk sementara, kita akan membuat payment record baru dengan status Pending
       // TODO: Query payment record berdasarkan id_referensi dan tabel_referensi
       
-      // Prepare payment data untuk iPayMu
-      // Note: id_payment akan dibuat di backend saat create transaction
+      // Prepare payment data untuk iPayMu (jenis_pembayaran agar keterangan di email iPayMu sesuai tipe: UWABA, Tunggakan, Khusus)
+      const jenisPembayaran = isUwaba ? 'Uwaba' : (mode === 'khusus' ? 'Khusus' : 'Tunggakan')
+      const tabelReferensi = isUwaba ? 'uwaba___bayar' : (mode === 'khusus' ? 'uwaba___khusus' : 'uwaba___tunggakan')
       const paymentData = {
-        amount: totals.kurang, // Bayar sisa kurang
+        amount: totals.kurang,
         name: santriData.nama || 'Pembayar',
         phone: santriData.no_hp || santriData.no_telp || santriData.no_wa || '',
         email: santriData.email || '',
-        payment_method: 'va', // Virtual Account
-        reference_id: `PAY-${Date.now()}-${isUwaba ? 'UWABA' : mode.toUpperCase()}-${santriId || item?.id || 'NEW'}`
+        payment_method: 'va',
+        reference_id: `PAY-${Date.now()}-${isUwaba ? 'UWABA' : mode.toUpperCase()}-${santriId || item?.id || 'NEW'}`,
+        jenis_pembayaran: jenisPembayaran,
+        tabel_referensi: tabelReferensi,
+        id_referensi: isUwaba ? tahunAjaran : (item?.id ?? null),
+        id_santri: santriId || item?.id_santri || null
       }
+      if (isUwaba && tahunAjaran) paymentData.tahun_ajaran = tahunAjaran
 
       // Create transaction di iPayMu
       const result = await paymentTransactionAPI.createTransaction(paymentData)

@@ -19,7 +19,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
         $allow = 'http://localhost:5173';
     }
     header('Access-Control-Allow-Origin: ' . $allow);
-    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma');
     header('Access-Control-Max-Age: 3600');
     if ($allow !== '*') {
@@ -145,7 +145,7 @@ register_shutdown_function(function() {
                 header('Access-Control-Allow-Origin: *');
             }
             header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma');
-            header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+            header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
         }
         http_response_code(500);
         $clientMessage = $isProduction ? 'Internal Server Error.' : ('Internal Server Error: ' . ($error['message'] ?? ''));
@@ -249,7 +249,7 @@ $errorMiddleware->setErrorHandler(
             
             $response = $response
                 ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Max-Age', '3600');
             
             return $response;
@@ -314,21 +314,21 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
             } else {
                 // Jika tidak ada origin, gunakan '*'
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', '*')
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
             }
         } elseif ($origin && (in_array($origin, $allowedOrigins, true) || cors_origin_is_alutsmani_id($origin))) {
             // Jika origin diizinkan (list atau *.alutsmani.id), gunakan origin tersebut dengan credentials
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
                 ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source')
-                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
         } else {
             // Fallback: untuk development (localhost) dan production (*.alutsmani.id)
@@ -336,7 +336,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin ?: '*')
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
             } else {
                 // Jika tidak ada origin yang cocok, tetap tambahkan '*' untuk development
@@ -344,7 +344,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', '*')
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source')
-                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+                    ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
             }
         }
         
@@ -367,7 +367,7 @@ $errorMiddleware->setErrorHandler(
             $response = $response
                 ->withStatus(200)
                 ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Max-Age', '3600');
             
             // Set origin dan credentials
@@ -472,7 +472,7 @@ $errorMiddleware->setErrorHandler(
             
             $response = $response
                 ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
                 ->withHeader('Access-Control-Max-Age', '3600');
             
             return $response;
@@ -523,7 +523,7 @@ $errorMiddleware->setErrorHandler(
         
         $response = $response
             ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, Cache-Control, Pragma')
-            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
         
         return $response;
     }

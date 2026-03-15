@@ -1026,29 +1026,67 @@ class PendaftaranController
 
             $id = null;
             $isNewSantri = false;
-            
-            // Jika ID tidak ada atau null, atau client mengirim string 7 digit (bisa NIS lama dari form), anggap santri baru
+
             $idFromInputRaw = $input['id'] ?? null;
-            // Role santri: untuk UPDATE hanya boleh mengubah data sendiri (gunakan id dari token, abaikan id dari body)
             $allowedIdForSantri = null;
             if ($roleKey === 'santri') {
                 $allowedIdForSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
             }
-            $isLikelyNisFromForm = is_string($idFromInputRaw) && preg_match('/^\d{7}$/', trim($idFromInputRaw));
-            if (!isset($input['id']) || $input['id'] === null || $input['id'] === '' || $isLikelyNisFromForm) {
+
+            // Cek dulu: jika client mengirim id (termasuk NIS 7 digit), resolve ke PK. Kalau ketemu = update.
+            $resolvedId = null;
+            if (isset($input['id']) && $input['id'] !== null && trim((string) $input['id']) !== '') {
+                $resolvedId = SantriHelper::resolveId($this->db, $idFromInputRaw);
+            }
+
+            if ($resolvedId !== null) {
+                // ID/NIS sudah ada di DB → update biodata (bukan santri baru)
+                $id = $resolvedId;
+                $isNewSantri = false;
+
+                // Keamanan: role santri hanya boleh mengubah biodata sendiri
+                if ($roleKey === 'santri' && $allowedIdForSantri !== null) {
+                    $allowedResolved = SantriHelper::resolveId($this->db, $allowedIdForSantri);
+                    if ($allowedResolved === null || (int) $id !== (int) $allowedResolved) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Anda hanya dapat menyimpan biodata sendiri'
+                        ], 403);
+                    }
+                }
+
+                // Validasi: NIK tidak boleh dipakai santri lain (boleh sama dengan milik diri sendiri)
+                if (isset($input['nik']) && trim((string) $input['nik']) !== '') {
+                    $stmtCheckNik = $this->db->prepare("SELECT id, nis, nama, nik FROM santri WHERE nik = ? AND id != ?");
+                    $stmtCheckNik->execute([trim($input['nik']), $id]);
+                    $existingNik = $stmtCheckNik->fetch(\PDO::FETCH_ASSOC);
+                    if ($existingNik) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'NIK sudah terdaftar untuk santri lain',
+                            'error_type' => 'duplicate_nik',
+                            'data' => [
+                                'nik' => $existingNik['nik'],
+                                'nama' => $existingNik['nama'],
+                                'id' => $existingNik['id'],
+                                'nis' => $existingNik['nis'] ?? null
+                            ]
+                        ], 409);
+                    }
+                }
+            } else {
+                // Tidak ada id atau id tidak resolve ke santri mana pun → santri baru
                 $isNewSantri = true;
-                
-                // Validasi: NIK wajib diisi untuk generate ID
-                if (!isset($input['nik']) || empty($input['nik']) || strlen($input['nik']) !== 16) {
+
+                if (!isset($input['nik']) || empty(trim((string) ($input['nik'] ?? ''))) || strlen(trim($input['nik'])) !== 16) {
                     return $this->jsonResponse($response, [
                         'success' => false,
                         'message' => 'NIK wajib diisi 16 digit untuk santri baru'
                     ], 400);
                 }
-                
-                // Validasi: Cek apakah NIK sudah terdaftar untuk santri baru
+
                 $stmtCheckNik = $this->db->prepare("SELECT id, nis, nama, nik FROM santri WHERE nik = ?");
-                $stmtCheckNik->execute([$input['nik']]);
+                $stmtCheckNik->execute([trim($input['nik'])]);
                 $existingNik = $stmtCheckNik->fetch(\PDO::FETCH_ASSOC);
                 if ($existingNik) {
                     return $this->jsonResponse($response, [
@@ -1064,73 +1102,29 @@ class PendaftaranController
                     ], 409);
                 }
 
-                // Validasi: Tahun ajaran hijriyah wajib diisi untuk santri baru
-                if (!isset($input['tahun_hijriyah']) || trim((string)($input['tahun_hijriyah'] ?? '')) === '') {
+                if (!isset($input['tahun_hijriyah']) || trim((string) ($input['tahun_hijriyah'] ?? '')) === '') {
                     return $this->jsonResponse($response, [
                         'success' => false,
                         'message' => 'Tahun ajaran hijriyah wajib diisi untuk generate ID santri baru (contoh: 1447-1448)'
                     ], 400);
                 }
 
-                // Validasi: Gender wajib diisi untuk santri baru
-                if (!isset($input['gender']) || trim((string)($input['gender'] ?? '')) === '') {
+                if (!isset($input['gender']) || trim((string) ($input['gender'] ?? '')) === '') {
                     return $this->jsonResponse($response, [
                         'success' => false,
                         'message' => 'Gender wajib diisi untuk santri baru (Laki-laki atau Perempuan / L atau P)'
                     ], 400);
                 }
-                $genderNormalized = SantriHelper::normalizeGender((string)$input['gender']);
+                $genderNormalized = SantriHelper::normalizeGender((string) $input['gender']);
                 if ($genderNormalized === null) {
                     return $this->jsonResponse($response, [
                         'success' => false,
                         'message' => 'Gender tidak valid. Gunakan Laki-laki (L) atau Perempuan (P).'
                     ], 400);
                 }
-                $tahunHijriyah = trim((string)$input['tahun_hijriyah']);
-                $grup = SantriHelper::parsePrefixFromGenderAndTahun($genderNormalized, $tahunHijriyah);
-                // Santri baru: id nanti dari AUTO_INCREMENT (lastInsertId), tidak generate manual
+                $tahunHijriyah = trim((string) $input['tahun_hijriyah']);
+                SantriHelper::parsePrefixFromGenderAndTahun($genderNormalized, $tahunHijriyah);
                 $id = 0;
-            } else {
-                // Terima id santri (bisa PK numerik atau NIS 7 digit); resolve ke PK untuk query
-                $idFromInput = $input['id'];
-                $id = SantriHelper::resolveId($this->db, $idFromInput);
-                if ($id === null) {
-                    return $this->jsonResponse($response, [
-                        'success' => false,
-                        'message' => 'ID santri tidak ditemukan atau tidak valid'
-                    ], 400);
-                }
-                // Keamanan: role santri hanya boleh mengubah biodata sendiri
-                if ($roleKey === 'santri' && $allowedIdForSantri !== null) {
-                    $allowedResolved = SantriHelper::resolveId($this->db, $allowedIdForSantri);
-                    if ($allowedResolved === null || (int) $id !== (int) $allowedResolved) {
-                        return $this->jsonResponse($response, [
-                            'success' => false,
-                            'message' => 'Anda hanya dapat menyimpan biodata sendiri'
-                        ], 403);
-                    }
-                }
-                
-                // Validasi: Cek apakah NIK sudah terdaftar untuk santri lain (bukan dirinya sendiri)
-                if (isset($input['nik']) && !empty($input['nik'])) {
-                    $stmtCheckNik = $this->db->prepare("SELECT id, nis, nama, nik FROM santri WHERE nik = ? AND id != ?");
-                    $stmtCheckNik->execute([$input['nik'], $id]);
-                    $existingNik = $stmtCheckNik->fetch(\PDO::FETCH_ASSOC);
-                    
-                    if ($existingNik) {
-                        return $this->jsonResponse($response, [
-                            'success' => false,
-                            'message' => 'NIK sudah terdaftar untuk santri lain',
-                            'error_type' => 'duplicate_nik',
-                            'data' => [
-                                'nik' => $existingNik['nik'],
-                                'nama' => $existingNik['nama'],
-                                'id' => $existingNik['id'],
-                                'nis' => $existingNik['nis'] ?? null
-                            ]
-                        ], 409); // 409 Conflict
-                    }
-                }
             }
 
             // Daftar semua field yang bisa diupdate (sesuai kolom di tabel santri)
@@ -2582,6 +2576,42 @@ class PendaftaranController
         }
 
         return $allCovered ? 'Belum Bayar' : 'Belum Upload';
+    }
+
+    /**
+     * GET /api/pendaftaran/whatsapp-kontak-status?nomor=62xxx - Status kontak WA untuk toggle notifikasi di form daftar.
+     * Returns: { success, exists, siap_terima_notif }.
+     */
+    public function getWhatsAppKontakStatus(Request $request, Response $response): Response
+    {
+        $params = $request->getQueryParams();
+        $nomor = isset($params['nomor']) ? trim((string) $params['nomor']) : '';
+        if ($nomor === '') {
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'exists' => false,
+                'siap_terima_notif' => false,
+            ], 200);
+        }
+        $status = WhatsAppService::getKontakStatusForNomor($nomor);
+        return $this->jsonResponse($response, [
+            'success' => true,
+            'exists' => $status['exists'],
+            'siap_terima_notif' => $status['siap_terima_notif'],
+        ], 200);
+    }
+
+    /**
+     * GET /api/pendaftaran/wa-wake - Nyalakan koneksi WA server jika sedang off.
+     * Dipanggil saat pendaftar menekan tombol aktifkan notifikasi agar WA siap menerima pesan.
+     */
+    public function getWaWake(Request $request, Response $response): Response
+    {
+        $result = WhatsAppService::wakeWaServer();
+        return $this->jsonResponse($response, [
+            'success' => $result['success'],
+            'message' => $result['message'],
+        ], 200);
     }
 
     /**

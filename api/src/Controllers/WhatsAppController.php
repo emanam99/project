@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\TextSanitizer;
+use App\Services\DaftarNotifFlow;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -208,6 +209,7 @@ class WhatsAppController
             $message = trim((string) ($body['message'] ?? $body['body'] ?? $body['text'] ?? $body['content'] ?? ''));
             $messageId = isset($body['messageId']) ? trim((string) $body['messageId']) : null;
             $canonicalNumber = trim((string) ($body['canonicalNumber'] ?? $body['canonical_number'] ?? $body['phone'] ?? ''));
+            $fromJid = isset($body['from_jid']) ? trim((string) $body['from_jid']) : '';
 
             if ($from === '') {
                 error_log('WhatsAppController::incoming rejected: from kosong. Body keys: ' . implode(',', array_keys($body)));
@@ -253,6 +255,17 @@ class WhatsAppController
             ]);
             $id = (int) $db->lastInsertId();
             error_log('WhatsAppController::incoming saved id=' . $id . ' from=' . $nomorTujuan);
+
+            $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $fromJid !== '' ? $fromJid : null);
+            if ($reply !== null && $reply !== '') {
+                $logContext = ['id_santri' => null, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'daftar_notif', 'sumber' => 'api_wa'];
+                error_log('WhatsAppController::incoming daftar_notif reply to ' . $nomorTujuan . ' len=' . strlen($reply) . ($fromJid !== '' ? ' jid=' . $fromJid : ''));
+                $sendResult = WhatsAppService::sendMessage($nomorTujuan, $reply, null, $logContext, $fromJid !== '' ? $fromJid : null);
+                error_log('WhatsAppController::incoming sendMessage result: success=' . ($sendResult['success'] ? '1' : '0') . ' msg=' . ($sendResult['message'] ?? ''));
+            } else {
+                error_log('WhatsAppController::incoming daftar_notif: no reply (handle returned null). from=' . $nomorTujuan . ' message_preview=' . substr($message, 0, 60));
+            }
+
             return $this->json($response, ['success' => true, 'message' => 'OK', 'id' => $id], 200);
         } catch (\Throwable $e) {
             error_log('WhatsAppController::incoming ' . $e->getMessage());

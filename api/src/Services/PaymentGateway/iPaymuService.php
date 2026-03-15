@@ -337,9 +337,52 @@ class iPaymuService
     }
 
     /**
-     * Create payment/transaction di iPaymu
+     * Expired (nilai + tipe) per method/channel sesuai ketentuan iPayMu.
+     * BSI VA max 3 jam, BRI VA max 2 jam, BCA VA default 12 jam (tak bisa ubah),
+     * CStore Alfamart/Indomaret default 24 jam, QRIS default 5 menit.
+     * Ref: https://documenter.getpostman.com/view/40296808/2sB3WtseBT
+     *
+     * @param string $paymentMethod va|cstore|qris|cod
+     * @param string $paymentChannel bca|bri|bsi|alfamart|indomaret|...
+     * @param array $paymentData data asli (untuk override expired dari input/config)
+     * @return array { expired: int, expiredType: 'hours'|'minutes' }
+     */
+    public function getExpiredForChannel(string $paymentMethod, string $paymentChannel, array $paymentData = []): array
+    {
+        $channel = strtolower(trim($paymentChannel));
+        if ($paymentMethod === 'qris') {
+            return ['expired' => 5, 'expiredType' => 'minutes'];
+        }
+        if ($paymentMethod === 'cstore') {
+            return ['expired' => 24, 'expiredType' => 'hours'];
+        }
+        if ($paymentMethod === 'va') {
+            if ($channel === 'bri') {
+                return ['expired' => 2, 'expiredType' => 'hours'];
+            }
+            if ($channel === 'bsi') {
+                return ['expired' => 3, 'expiredType' => 'hours'];
+            }
+            if ($channel === 'bca') {
+                return ['expired' => 12, 'expiredType' => 'hours'];
+            }
+            return ['expired' => (int)($paymentData['expired'] ?? $this->config['expired'] ?? 24), 'expiredType' => 'hours'];
+        }
+        return ['expired' => (int)($paymentData['expired'] ?? $this->config['expired'] ?? 24), 'expiredType' => 'hours'];
+    }
+
+    /**
+     * Create payment/transaction di iPayMu (Payment Direct).
+     * Request body mengikuti iPayMu Public API v2 (camelCase):
+     * https://documenter.getpostman.com/view/40296808/2sB3WtseBT?version=latest
+     *
+     * Body yang dikirim (setelah ksort): amount, cancelUrl?, comments?, email, expired, expiredType,
+     * name, notifyUrl, paymentChannel?, paymentMethod, phone, price?, product?, quantity?,
+     * referenceId, returnUrl?
+     * Header: Accept, Content-Type, va, signature, timestamp (signature = HMAC-SHA256).
+     *
      * @param array $paymentData Data pembayaran
-     * @return array Response dari iPaymu
+     * @return array Response dari iPayMu
      */
     public function createPayment(array $paymentData): array
     {
@@ -431,12 +474,16 @@ class iPaymuService
 
         // Build request data - urutkan sesuai abjad untuk konsistensi signature
         $paymentMethod = $paymentData['payment_method'] ?? 'va'; // va, cstore, qris, cod
-        
+        $paymentChannel = trim((string)($paymentData['payment_channel'] ?? ''));
+
+        // Expired sesuai ketentuan iPayMu per method/channel (Ref: dokumentasi iPayMu API v2)
+        // BSI VA max 3 jam, BRI VA max 2 jam, BCA VA default 12 jam (tak bisa ubah), CStore default 24 jam, QRIS default 5 menit
+        $expiredRule = $this->getExpiredForChannel($paymentMethod, $paymentChannel, $paymentData);
         $requestData = [
             'amount' => $amount,
             'email' => $email,
-            'expired' => (int)($paymentData['expired'] ?? $this->config['expired'] ?? 24),
-            'expiredType' => 'hours',
+            'expired' => $expiredRule['expired'],
+            'expiredType' => $expiredRule['expiredType'],
             'name' => $paymentData['name'] ?? 'Pembayaran',
             'paymentMethod' => $paymentMethod,
             'phone' => $phone,
@@ -520,7 +567,6 @@ class iPaymuService
         // - CStore: alfamart, indomaret (lowercase)
         // Jika paymentMethod adalah "va" dan payment_channel kosong, 
         // jangan kirim paymentChannel (biarkan iPayMu yang menentukan)
-        $paymentChannel = $paymentData['payment_channel'] ?? '';
         if ($paymentMethod === 'va') {
             // Jika paymentMethod adalah "va", paymentChannel harus valid atau tidak dikirim sama sekali
             if (!empty($paymentChannel) && trim($paymentChannel) !== '') {
@@ -561,12 +607,24 @@ class iPaymuService
             }
         }
 
-        // Tambahkan product hanya jika ada
-        if (!empty($paymentData['product']) && is_array($paymentData['product'])) {
-            $requestData['product'] = $paymentData['product'];
+        // Parameter "comments" — keterangan transaksi (ditampilkan di email/halaman iPayMu)
+        if (isset($paymentData['comments']) && (string)$paymentData['comments'] !== '') {
+            $requestData['comments'] = trim((string)$paymentData['comments']);
         }
 
+        // Product/keterangan (array product, quantity, price) — opsional, bisa dipakai bersama/selain comments
+        if (!empty($paymentData['product']) && is_array($paymentData['product'])) {
+            if (isset($paymentData['product']['product']) && is_array($paymentData['product']['product'])) {
+                $requestData['product'] = $paymentData['product']['product'];
+                $requestData['quantity'] = $paymentData['product']['quantity'] ?? ['1'];
+                $requestData['price'] = $paymentData['product']['price'] ?? [(string)(int)($amount)];
+            } else {
+                $requestData['product'] = $paymentData['product'];
+            }
+        }
 
+        // returnUrl = redirect setelah pembayaran berhasil; cancelUrl = redirect saat user klik Batal di iPayMu
+        // Penting untuk aplikasi daftar/mybeddian yang punya tombol cancel agar user kembali ke app
         // Tambahkan returnUrl dan cancelUrl hanya jika tidak kosong
         $returnUrl = $paymentData['return_url'] ?? $this->config['return_url'] ?? '';
         if (!empty($returnUrl)) {

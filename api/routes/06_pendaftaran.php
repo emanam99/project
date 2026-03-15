@@ -24,6 +24,8 @@ return function (\Slim\App $app): void {
         $group->post('/delete-item', [PendaftaranController::class, 'deletePendaftaran']);
         $group->post('/save-biodata', [PendaftaranController::class, 'saveBiodata']);
         $group->get('/get-biodata', [PendaftaranController::class, 'getBiodata']);
+        $group->get('/whatsapp-kontak-status', [PendaftaranController::class, 'getWhatsAppKontakStatus']);
+        $group->get('/wa-wake', [PendaftaranController::class, 'getWaWake']);
         $group->get('/get-registrasi', [PendaftaranController::class, 'getRegistrasi']);
         $group->get('/get-registrasi-by-id', [PendaftaranController::class, 'getRegistrasiById']);
         $group->get('/get-registrasi-detail', [PendaftaranController::class, 'getRegistrasiDetail']);

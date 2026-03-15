@@ -7,8 +7,8 @@ use App\Middleware\RoleMiddleware;
 use App\Controllers\SettingsController;
 use App\Controllers\UserAktivitasController;
 use App\Controllers\TahunAjaranController;
-
 use App\Controllers\WatzapController;
+use App\Controllers\KontakController;
 
 return function (\Slim\App $app): void {
     $app->group('/api/settings', function ($group) {
@@ -22,11 +22,17 @@ return function (\Slim\App $app): void {
 
     $app->group('/api/watzap', function ($group) {
         $group->get('/status', [WatzapController::class, 'getStatus']);
+        $group->put('/config', [WatzapController::class, 'putConfig']);
         $group->get('/devices', [WatzapController::class, 'getDevices']);
         $group->get('/webhook-url', [WatzapController::class, 'getWebhookUrl']);
         $group->get('/webhooks', [WatzapController::class, 'getWebhooks']);
         $group->post('/set-webhook', [WatzapController::class, 'setWebhook']);
         $group->post('/send', [WatzapController::class, 'send']);
+    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    $app->group('/api/kontak', function ($group) {
+        $group->get('', [KontakController::class, 'getList']);
+        $group->patch('/{id}', [KontakController::class, 'update']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // Master Tahun Ajaran: GET bisa diakses semua user yang login; create/update hanya super_admin

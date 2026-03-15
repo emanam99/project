@@ -449,7 +449,7 @@ class RateLimitMiddleware implements MiddlewareInterface
         $headers = [
             'Access-Control-Allow-Origin' => $allowOrigin,
             'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-App-Source, Cache-Control, Pragma',
-            'Access-Control-Allow-Methods' => 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Methods' => 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         ];
         if ($allowOrigin !== '*') {
             $headers['Access-Control-Allow-Credentials'] = 'true';

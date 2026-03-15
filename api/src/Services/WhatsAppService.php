@@ -44,6 +44,50 @@ class WhatsAppService
     }
 
     /**
+     * Panggil endpoint wake di server WA agar koneksi dinyalakan jika sedang off.
+     * Dipanggil saat pendaftar menekan "Aktifkan notifikasi" agar WA siap menerima pesan Daftar Notifikasi.
+     * Hanya dipanggil jika notification_provider = wa_sendiri.
+     *
+     * @return array ['success' => bool, 'message' => string]
+     */
+    public static function wakeWaServer(): array
+    {
+        if (self::getNotificationProvider() !== 'wa_sendiri') {
+            return ['success' => true, 'message' => 'Provider bukan WA server sendiri.'];
+        }
+        $cfg = self::getConfig();
+        $apiUrl = $cfg['api_url'];
+        $apiKey = $cfg['api_key'];
+        if (empty($apiUrl) || empty($apiKey)) {
+            return ['success' => false, 'message' => 'Backend WA belum dikonfigurasi.'];
+        }
+        $wakeUrl = preg_replace('#/send$#', '/wake', rtrim($apiUrl, '/'));
+        if ($wakeUrl === $apiUrl) {
+            $wakeUrl = rtrim($apiUrl, '/') . '/wake';
+        }
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 10]);
+            $response = $client->post($wakeUrl, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-API-Key' => $apiKey,
+                ],
+                'json' => (object) [],
+            ]);
+            $body = (string) $response->getBody();
+            $data = is_string($body) ? json_decode($body, true) : [];
+            $ok = $response->getStatusCode() >= 200 && $response->getStatusCode() < 300;
+            return [
+                'success' => $ok,
+                'message' => is_array($data) && isset($data['message']) ? (string) $data['message'] : ($ok ? 'OK' : 'Request gagal'),
+            ];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::wakeWaServer: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Base URL aplikasi pendaftaran (untuk link di WA notifikasi PSB).
      */
     public static function getDaftarAppUrl(): string
@@ -306,6 +350,197 @@ class WhatsAppService
     }
 
     /**
+     * Status kontak di whatsapp___kontak untuk cek sebelum kirim notif.
+     * Semua notifikasi harus melewati cek ini.
+     *
+     * @return array ['exists' => bool, 'siap_terima_notif' => bool] exists=false berarti nomor belum ada (boleh kirim, lalu insert dengan default tidak menerima)
+     */
+    private static function getKontakStatus(string $nomorNormal): array
+    {
+        if (strlen($nomorNormal) < 10) {
+            return ['exists' => false, 'siap_terima_notif' => true];
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'whatsapp___kontak'");
+            if ($tableCheck->rowCount() === 0) {
+                return ['exists' => false, 'siap_terima_notif' => true];
+            }
+            $stmt = $db->prepare('SELECT siap_terima_notif FROM whatsapp___kontak WHERE nomor = ? LIMIT 1');
+            $stmt->execute([$nomorNormal]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row === false) {
+                return ['exists' => false, 'siap_terima_notif' => true];
+            }
+            return [
+                'exists' => true,
+                'siap_terima_notif' => (int) ($row['siap_terima_notif'] ?? 0) === 1,
+            ];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::getKontakStatus: ' . $e->getMessage());
+            return ['exists' => false, 'siap_terima_notif' => true];
+        }
+    }
+
+    /**
+     * Status kontak untuk dipanggil dari luar (mis. endpoint pendaftaran).
+     * @return array ['exists' => bool, 'siap_terima_notif' => bool]
+     */
+    public static function getKontakStatusForNomor(string $nomor): array
+    {
+        $nomorNormal = self::formatPhoneNumber($nomor);
+        return self::getKontakStatus($nomorNormal);
+    }
+
+    /**
+     * Insert kontak ke whatsapp___kontak (hanya jika belum ada). Nomor unik.
+     * Dipanggil setelah berhasil kirim notif ke nomor baru, atau saat flow Daftar Notifikasi dapat "No WA:" (simpan nomor kanonik di kontak).
+     *
+     * @param int $siapTerimaNotif 0 = tidak menerima, 1 = menerima (default 0 untuk kontak baru)
+     */
+    public static function ensureKontak(string $nomorNormal, int $siapTerimaNotif = 0): void
+    {
+        if (strlen($nomorNormal) < 10) {
+            return;
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'whatsapp___kontak'");
+            if ($tableCheck->rowCount() === 0) {
+                return;
+            }
+            $stmt = $db->prepare('INSERT IGNORE INTO whatsapp___kontak (nomor, siap_terima_notif) VALUES (?, ?)');
+            $stmt->execute([$nomorNormal, $siapTerimaNotif]);
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::ensureKontak: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Set status notifikasi kontak: insert atau update whatsapp___kontak.
+     * Dipakai oleh flow Daftar Notifikasi (balas otomatis).
+     *
+     * @param int $siapTerimaNotif 0 = tidak menerima, 1 = menerima
+     * @param string|null $nomorKanonik Nomor dari form (No WA di pesan); jika ada, disimpan di kolom nomor_kanonik
+     */
+    public static function setKontakNotif(string $nomor, int $siapTerimaNotif, ?string $nomorKanonik = null): void
+    {
+        $nomorNormal = self::formatPhoneNumber($nomor);
+        if (strlen($nomorNormal) < 10) {
+            return;
+        }
+        $kanonikNormal = $nomorKanonik !== null && $nomorKanonik !== '' ? self::formatPhoneNumber($nomorKanonik) : null;
+        if ($kanonikNormal !== null && strlen($kanonikNormal) < 10) {
+            $kanonikNormal = null;
+        }
+        $value = $siapTerimaNotif === 1 ? 1 : 0;
+        try {
+            $db = Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'whatsapp___kontak'");
+            if ($tableCheck->rowCount() === 0) {
+                error_log('WhatsAppService::setKontakNotif: tabel whatsapp___kontak tidak ada');
+                return;
+            }
+            $hasKanonikCol = self::kontakTableHasNomorKanonik($db);
+            // Cari baris yang nomor-nya (setelah dinormalisasi di PHP) sama, lalu update by id (paling pasti)
+            $stmt = $db->prepare('SELECT id, nomor FROM whatsapp___kontak WHERE nomor = ? OR nomor LIKE ?');
+            $stmt->execute([$nomorNormal, '%' . substr($nomorNormal, -10) . '%']); // exact atau mengandung 10 digit terakhir
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $idToUpdate = null;
+            foreach ($rows as $row) {
+                $storedNormal = self::formatPhoneNumber((string) ($row['nomor'] ?? ''));
+                if ($storedNormal !== '' && $storedNormal === $nomorNormal) {
+                    $idToUpdate = (int) $row['id'];
+                    break;
+                }
+            }
+            if ($idToUpdate !== null) {
+                if ($hasKanonikCol && $kanonikNormal !== null) {
+                    $stmt = $db->prepare('UPDATE whatsapp___kontak SET siap_terima_notif = ?, nomor_kanonik = ?, updated_at = NOW() WHERE id = ?');
+                    $stmt->execute([$value, $kanonikNormal, $idToUpdate]);
+                } else {
+                    $stmt = $db->prepare('UPDATE whatsapp___kontak SET siap_terima_notif = ?, updated_at = NOW() WHERE id = ?');
+                    $stmt->execute([$value, $idToUpdate]);
+                }
+                $updated = $stmt->rowCount();
+                error_log('WhatsAppService::setKontakNotif: id=' . $idToUpdate . ' nomor=' . $nomorNormal . ($kanonikNormal ? ' nomor_kanonik=' . $kanonikNormal : '') . ' siap_terima_notif=' . $value . ' rows_updated=' . $updated);
+            } else {
+                // Fallback: update by nomor exact, lalu by nomor dinormalisasi (strip spasi/dash)
+                $stmt = $db->prepare('UPDATE whatsapp___kontak SET siap_terima_notif = ?, updated_at = NOW() WHERE nomor = ?');
+                $stmt->execute([$value, $nomorNormal]);
+                $updated = $stmt->rowCount();
+                if ($updated === 0) {
+                    $stmt = $db->prepare("UPDATE whatsapp___kontak SET siap_terima_notif = ?, updated_at = NOW() WHERE REPLACE(REPLACE(REPLACE(nomor, ' ', ''), '-', ''), '+', '') = ?");
+                    $stmt->execute([$value, $nomorNormal]);
+                    $updated = $stmt->rowCount();
+                }
+                if ($updated > 0 && $hasKanonikCol && $kanonikNormal !== null) {
+                    $stmt = $db->prepare('UPDATE whatsapp___kontak SET nomor_kanonik = ?, updated_at = NOW() WHERE nomor = ?');
+                    $stmt->execute([$kanonikNormal, $nomorNormal]);
+                }
+                if ($updated > 0) {
+                    error_log('WhatsAppService::setKontakNotif: fallback UPDATE by nomor=' . $nomorNormal . ' rows_updated=' . $updated);
+                } else {
+                    $cols = $hasKanonikCol && $kanonikNormal !== null ? 'nomor, siap_terima_notif, nomor_kanonik' : 'nomor, siap_terima_notif';
+                    $vals = $hasKanonikCol && $kanonikNormal !== null ? '?, ?, ?' : '?, ?';
+                    $dup = $hasKanonikCol && $kanonikNormal !== null ? 'ON DUPLICATE KEY UPDATE siap_terima_notif = VALUES(siap_terima_notif), nomor_kanonik = VALUES(nomor_kanonik), updated_at = NOW()' : 'ON DUPLICATE KEY UPDATE siap_terima_notif = VALUES(siap_terima_notif), updated_at = NOW()';
+                    $stmt = $db->prepare("INSERT INTO whatsapp___kontak ({$cols}) VALUES ({$vals}) {$dup}");
+                    if ($hasKanonikCol && $kanonikNormal !== null) {
+                        $stmt->execute([$nomorNormal, $value, $kanonikNormal]);
+                    } else {
+                        $stmt->execute([$nomorNormal, $value]);
+                    }
+                    error_log('WhatsAppService::setKontakNotif: insert/upsert nomor=' . $nomorNormal . ' siap_terima_notif=' . $value);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::setKontakNotif: ' . $e->getMessage());
+        }
+    }
+
+    private static function kontakTableHasNomorKanonik(\PDO $db): bool
+    {
+        try {
+            $stmt = $db->query("SHOW COLUMNS FROM whatsapp___kontak LIKE 'nomor_kanonik'");
+            return $stmt !== false && $stmt->rowCount() > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Resolve nomor tujuan pengiriman: jika kontak punya nomor_kanonik (nomor yang dipakai user saat daftar),
+     * kirim ke nomor itu agar notifikasi sampai di HP yang dipakai.
+     * Jadi jika biodata = B tapi user daftar dari nomor A → kirim ke A.
+     *
+     * @return array ['nomor' => string, 'chatId' => ?string] nomor untuk kirim (bisa beda dari input)
+     */
+    public static function resolveDeliveryTarget(string $nomor): array
+    {
+        $phone = self::formatPhoneNumber($nomor);
+        if (strlen($phone) < 10) {
+            return ['nomor' => $phone, 'chatId' => null];
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            if (self::kontakTableHasNomorKanonik($db)) {
+                $stmt = $db->prepare('SELECT nomor_kanonik FROM whatsapp___kontak WHERE nomor = ? AND nomor_kanonik IS NOT NULL AND TRIM(nomor_kanonik) != "" LIMIT 1');
+                $stmt->execute([$phone]);
+                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                if ($row !== false) {
+                    $kanonik = self::formatPhoneNumber(trim((string) $row['nomor_kanonik']));
+                    if (strlen($kanonik) >= 10 && $kanonik !== $phone) {
+                        return ['nomor' => $kanonik, 'chatId' => null];
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+        return ['nomor' => $phone, 'chatId' => null];
+    }
+
+    /**
      * Baca provider notifikasi WA dari app___settings: wa_sendiri | watzap.
      */
     public static function getNotificationProvider(): string
@@ -336,14 +571,42 @@ class WhatsAppService
      * @param string $message Pesan teks
      * @param string|null $instance Instance (default dari config, biasanya uwaba1)
      * @param array|null $logContext ['id_santri'=>?, 'id_pengurus'=>? (penerima), 'tujuan'=>pengurus|santri|wali_santri, 'id_pengurus_pengirim'=>?, 'kategori'=>?, 'sumber'=>?]
+     * @param string|null $chatId JID asli dari WA (mis. xxx@c.us atau xxx@lid) untuk balas ke chat yang sama; jika ada, server WA pakai ini sebagai target
      * @return array ['success' => bool, 'message' => string]
      */
-    public static function sendMessage(string $noWa, string $message, ?string $instance = null, ?array $logContext = null): array
+    public static function sendMessage(string $noWa, string $message, ?string $instance = null, ?array $logContext = null, ?string $chatId = null): array
     {
-        $phone = self::formatPhoneNumber($noWa);
-        if (strlen($phone) < 10) {
+        $originalPhone = self::formatPhoneNumber($noWa);
+        if (strlen($originalPhone) < 10) {
             return ['success' => false, 'message' => 'Nomor tidak valid'];
         }
+        // Cek siap_terima_notif untuk nomor kontak (biodata), bukan nomor tujuan kirim
+        $kontakStatus = self::getKontakStatus($originalPhone);
+        $isDaftarNotifReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'daftar_notif';
+        // Balasan flow "Daftar Notifikasi" harus tetap dikirim ke user (mereka sedang daftar); skip cek siap_terima hanya untuk kiriman lain.
+        if (!$isDaftarNotifReply && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
+            if ($logContext !== null) {
+                self::logSentMessage(
+                    $originalPhone,
+                    $message,
+                    0,
+                    'skip_kontak_tidak_siap',
+                    'Kontak tidak menerima notifikasi (pengaturan di Daftar Kontak)',
+                    $logContext['id_santri'] ?? null,
+                    $logContext['id_pengurus'] ?? null,
+                    $logContext['tujuan'] ?? 'wali_santri',
+                    $logContext['id_pengurus_pengirim'] ?? null,
+                    $logContext['kategori'] ?? 'custom',
+                    $logContext['sumber'] ?? 'system'
+                );
+            }
+            return ['success' => true, 'message' => 'Kontak tidak menerima notifikasi (diatur di Daftar Kontak)'];
+        }
+
+        // Resolve tujuan kirim: jika kontak punya nomor_kanonik (user daftar dari nomor lain), kirim ke nomor itu
+        $delivery = self::resolveDeliveryTarget($originalPhone);
+        $phone = $delivery['nomor'];
+        $chatId = $chatId ?? $delivery['chatId'];
 
         $kategori = $logContext !== null ? ($logContext['kategori'] ?? null) : null;
         $idSantri = $logContext['id_santri'] ?? null;
@@ -390,6 +653,9 @@ class WhatsAppService
         }
 
         if (self::getNotificationProvider() === 'watzap') {
+            if ($logContext !== null && ($logContext['kategori'] ?? '') === 'daftar_notif') {
+                error_log('WhatsAppService: daftar_notif kirim via WatZap (bukan WA server). Tidak ada POST ke Node.');
+            }
             $res = \App\Services\WatzapService::sendMessage($phone, $message, '');
             if ($res['success'] && $logContext !== null) {
                 self::logSentMessage(
@@ -422,6 +688,9 @@ class WhatsAppService
                     $logContext['sumber'] ?? 'system'
                 );
             }
+            if ($res['success'] && !$kontakStatus['exists']) {
+                self::ensureKontak($phone, 0);
+            }
             return ['success' => $res['success'], 'message' => $res['message']];
         }
 
@@ -437,6 +706,10 @@ class WhatsAppService
             ];
         }
 
+        if ($logContext !== null && ($logContext['kategori'] ?? '') === 'daftar_notif') {
+            error_log('WhatsAppService: daftar_notif POST ke WA server url=' . $apiUrl);
+        }
+
         try {
             $client = new \GuzzleHttp\Client(['timeout' => 15]);
             $response = $client->post($apiUrl, [
@@ -444,10 +717,10 @@ class WhatsAppService
                     'Content-Type' => 'application/json',
                     'X-API-Key' => $apiKey,
                 ],
-                'json' => [
+                'json' => array_merge([
                     'phoneNumber' => $phone,
                     'message' => $message,
-                ],
+                ], ($chatId !== null && $chatId !== '' ? ['chatId' => $chatId] : [])),
             ]);
 
             $code = $response->getStatusCode();
@@ -477,6 +750,9 @@ class WhatsAppService
                         $logContext['sumber'] ?? 'system',
                         $messageId
                     );
+                }
+                if (!$kontakStatus['exists']) {
+                    self::ensureKontak($phone, 0);
                 }
                 return $result;
             }
@@ -608,10 +884,33 @@ class WhatsAppService
      */
     public static function sendMessageWithImage(string $noWa, string $message, string $imageBase64, string $imageMimetype = 'image/png', ?string $instance = null, ?array $logContext = null): array
     {
-        $phone = self::formatPhoneNumber($noWa);
-        if (strlen($phone) < 10) {
+        $originalPhone = self::formatPhoneNumber($noWa);
+        if (strlen($originalPhone) < 10) {
             return ['success' => false, 'message' => 'Nomor tidak valid'];
         }
+
+        $kontakStatus = self::getKontakStatus($originalPhone);
+        if ($kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
+            if ($logContext !== null) {
+                self::logSentMessage(
+                    $originalPhone,
+                    $message,
+                    1,
+                    'skip_kontak_tidak_siap',
+                    'Kontak tidak menerima notifikasi (pengaturan di Daftar Kontak)',
+                    $logContext['id_santri'] ?? null,
+                    $logContext['id_pengurus'] ?? null,
+                    $logContext['tujuan'] ?? 'wali_santri',
+                    $logContext['id_pengurus_pengirim'] ?? null,
+                    $logContext['kategori'] ?? 'custom',
+                    $logContext['sumber'] ?? 'system'
+                );
+            }
+            return ['success' => true, 'message' => 'Kontak tidak menerima notifikasi (diatur di Daftar Kontak)'];
+        }
+
+        $delivery = self::resolveDeliveryTarget($originalPhone);
+        $phone = $delivery['nomor'];
 
         $kategori = $logContext !== null ? ($logContext['kategori'] ?? null) : null;
         $idSantri = $logContext['id_santri'] ?? null;
@@ -712,6 +1011,9 @@ class WhatsAppService
                         $logContext['kategori'] ?? 'custom',
                         $logContext['sumber'] ?? 'system'
                     );
+                }
+                if (!$kontakStatus['exists']) {
+                    self::ensureKontak($phone, 0);
                 }
                 return $result;
             }

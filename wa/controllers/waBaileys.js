@@ -126,15 +126,34 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
   });
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-    for (const msg of messages) {
-      if (msg.key.fromMe) continue;
+    const list = Array.isArray(messages) ? messages : [];
+    console.log('[WA Baileys] messages.upsert type="' + type + '" count=' + list.length + ' (setiap pesan masuk/update akan log ini)');
+    if (type !== 'notify') {
+      console.log('[WA Baileys] skip: type bukan "notify" (nilai: ' + type + '), tidak diforward');
+      return;
+    }
+    const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
+    if (!apiBase) {
+      console.warn('[WA Baileys] Pesan masuk tidak diforward: UWABA_API_BASE_URL belum di-set di .env');
+      return;
+    }
+    for (const msg of list) {
+      if (msg.key && msg.key.fromMe) {
+        console.log('[WA Baileys] skip: pesan fromMe (dari nomor ini), tidak diforward');
+        continue;
+      }
       try {
-        const remoteJid = msg.key.remoteJid || '';
-        if (!remoteJid.endsWith('@s.whatsapp.net') && !remoteJid.endsWith('@c.us')) continue;
+        const remoteJid = (msg.key && msg.key.remoteJid) || '';
+        if (!remoteJid.endsWith('@s.whatsapp.net') && !remoteJid.endsWith('@c.us')) {
+          console.log('[WA Baileys] skip: remoteJid tidak valid: ' + (remoteJid || '(kosong)'));
+          continue;
+        }
         const fromRaw = remoteJid.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '');
         const digits = fromRaw.replace(/\D/g, '');
-        if (digits.length < 10) continue;
+        if (digits.length < 10) {
+          console.log('[WA Baileys] skip: nomor terlalu pendek: ' + fromRaw);
+          continue;
+        }
         const from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
         const messageId = msg.key.id || null;
         let body = '';
@@ -142,17 +161,28 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
         else if (msg.message?.extendedTextMessage?.text) body = msg.message.extendedTextMessage.text;
         else if (msg.message?.imageMessage?.caption) body = msg.message.imageMessage.caption;
         else body = '[media]';
-        const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
-        if (!apiBase) return;
         const waPath = apiBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming';
         const url = apiBase + waPath;
         const payload = { from: from62, message: body, messageId: messageId || undefined, sessionId: id };
+        let lastOk = false;
+        let lastErr = null;
         for (let attempt = 1; attempt <= 5; attempt++) {
           try {
             const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (res.ok) return;
-          } catch (_) {}
+            lastOk = res.ok;
+            if (res.ok) break;
+            lastErr = `HTTP ${res.status}`;
+            const text = await res.text();
+            if (text && text.length < 200) lastErr = text;
+          } catch (e) {
+            lastErr = e?.message || String(e);
+          }
           if (attempt < 5) await new Promise((r) => setTimeout(r, 1000 * attempt));
+        }
+        if (lastOk) {
+          console.log('[WA Baileys] Pesan masuk diforward ke API: from=' + from62 + ' len=' + body.length);
+        } else {
+          console.error('[WA Baileys] Gagal forward pesan masuk ke API: from=' + from62 + ' error=' + (lastErr || 'timeout'));
         }
       } catch (err) {
         console.error('[WA Baileys] message handler error:', err?.message);

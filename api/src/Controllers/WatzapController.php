@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Services\DaftarNotifFlow;
 use App\Services\WatzapService;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -74,6 +75,23 @@ class WatzapController
     }
 
     /**
+     * PUT /api/watzap/config - Simpan pengaturan WatZap (number_key). Body: { "number_key": "..." }
+     */
+    public function putConfig(Request $request, Response $response): Response
+    {
+        $body = (array) $request->getParsedBody();
+        $numberKey = isset($body['number_key']) ? trim((string) $body['number_key']) : '';
+        WatzapService::setNumberKey($numberKey);
+        $cfg = WatzapService::getStatus();
+        $effective = ($cfg['success'] && is_array($cfg['data'])) ? ($cfg['data']['number_key'] ?? '') : '';
+        return $this->jsonResponse($response, [
+            'success' => true,
+            'message' => 'Pengaturan WatZap disimpan',
+            'data' => ['number_key' => $effective],
+        ], 200);
+    }
+
+    /**
      * POST /api/watzap/set-webhook - Daftarkan webhook ke WatZap (jika API mendukung; else set manual di dashboard).
      */
     public function setWebhook(Request $request, Response $response): Response
@@ -103,13 +121,19 @@ class WatzapController
         }
 
         $logPrefix = 'WatZap webhook: ';
-        error_log($logPrefix . substr(json_encode($data, JSON_UNESCAPED_UNICODE), 0, 500));
+        error_log($logPrefix . substr(json_encode($data, JSON_UNESCAPED_UNICODE), 0, 800));
 
-        $payload = isset($data['data']) && is_array($data['data']) ? $data['data'] : $data;
-        $from = trim((string) ($payload['from'] ?? $payload['sender'] ?? $payload['phone'] ?? $payload['phone_number'] ?? $payload['phoneNo'] ?? $payload['phone_no'] ?? ''));
+        $payload = isset($data['payload']) && is_array($data['payload']) ? $data['payload']
+            : (isset($data['data']) && is_array($data['data']) ? $data['data'] : $data);
+        $from = trim((string) ($payload['from'] ?? $payload['sender'] ?? $payload['phone'] ?? $payload['phone_number'] ?? $payload['phoneNo'] ?? $payload['phone_no'] ?? $payload['jid'] ?? ''));
         $message = trim((string) ($payload['message'] ?? $payload['body'] ?? $payload['text'] ?? $payload['content'] ?? ''));
         $messageId = isset($payload['messageId']) ? trim((string) $payload['messageId']) : (isset($payload['message_id']) ? trim((string) $payload['message_id']) : (isset($payload['id']) ? trim((string) $payload['id']) : null));
+        $fromMe = isset($payload['fromMe']) ? (bool) $payload['fromMe'] : false;
+        error_log($logPrefix . 'parsed from=' . $from . ' message_len=' . strlen($message) . ' msg_preview=' . substr($message, 0, 80) . ' fromMe=' . ($fromMe ? '1' : '0'));
 
+        if ($fromMe) {
+            return $this->jsonResponse($response, ['success' => true], 200);
+        }
         if ($from !== '' && strlen(WhatsAppService::formatPhoneNumber($from)) >= 10) {
             try {
                 $nomorTujuan = WhatsAppService::formatPhoneNumber($from);
@@ -138,6 +162,16 @@ class WatzapController
                     'terkirim',
                 ]);
                 error_log($logPrefix . 'saved from=' . $nomorTujuan);
+
+                $reply = DaftarNotifFlow::handle($nomorTujuan, $message);
+                if ($reply !== null && $reply !== '') {
+                    $logContext = ['id_santri' => null, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'daftar_notif', 'sumber' => 'watzap'];
+                    error_log($logPrefix . 'daftar_notif reply to ' . $nomorTujuan . ' len=' . strlen($reply));
+                    $sendResult = WhatsAppService::sendMessage($nomorTujuan, $reply, null, $logContext);
+                    error_log($logPrefix . 'sendMessage result: success=' . ($sendResult['success'] ? '1' : '0') . ' msg=' . ($sendResult['message'] ?? ''));
+                } else {
+                    error_log($logPrefix . 'daftar_notif no reply (handle returned null/empty)');
+                }
             } catch (\Throwable $e) {
                 error_log($logPrefix . 'save error: ' . $e->getMessage());
             }

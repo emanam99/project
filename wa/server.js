@@ -89,9 +89,11 @@ app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/warmer', warmerRoutes);
 
 app.listen(PORT, () => {
-  const uwabaBase = process.env.UWABA_API_BASE_URL?.trim() || (process.env.NODE_ENV === 'production' ? '(belum di-set)' : 'http://localhost/api/public/api (default dev)');
+  const uwabaBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
+  const incomingUrl = uwabaBase ? (uwabaBase + (uwabaBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming')) : '(belum di-set)';
   console.log(`[WA] http://localhost:${PORT}`);
-  console.log(`[WA] UWABA_API_BASE_URL: ${uwabaBase}`);
+  console.log(`[WA] UWABA_API_BASE_URL: ${uwabaBase || '(tidak di-set — pesan masuk tidak akan diforward ke API)'}`);
+  console.log(`[WA] Webhook pesan masuk: POST ${incomingUrl}`);
   console.log('[WA] CORS: *.alutsmani.id + localhost');
   initWaOnStart();
 });
