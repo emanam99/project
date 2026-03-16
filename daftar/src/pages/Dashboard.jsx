@@ -54,10 +54,84 @@ function Dashboard() {
     window.open(url, '_blank', 'noopener,noreferrer')
     setNotifWaLoading(null)
   }
+
+  const openNotifOffcanvas = () => {
+    setNotifOffcanvasStep('pilih')
+    setNotifOffcanvasChoice(null)
+    setNotifOffcanvasNomor('')
+    setNotifOffcanvasError('')
+    setShowNotifOffcanvas(true)
+  }
+
+  const chooseNotifType = (type) => {
+    setNotifOffcanvasChoice(type)
+    const existing = type === 'telpon' ? waFromBiodata.noTelpon : waFromBiodata.noWaSantri
+    setNotifOffcanvasNomor(existing ? existing.replace(/^62/, '0') : '')
+    setNotifOffcanvasStep('input')
+  }
+
+  const submitNotifNomor = async () => {
+    const nomor = normalizeNomor(notifOffcanvasNomor)
+    if (nomor.length < 10) {
+      setNotifOffcanvasError('Nomor minimal 10 digit')
+      return
+    }
+    if (!user?.id) return
+    setNotifOffcanvasError('')
+    setNotifOffcanvasSaving(true)
+    try {
+      const res = await pendaftaranAPI.getBiodata(user.id)
+      if (!res?.success || !res?.data) throw new Error('Gagal mengambil biodata')
+      const biodata = res.data
+      const payload = {
+        ...biodata,
+        id: String(user.id),
+        email: (biodata.email || '').trim() || (user.email || ''),
+        tahun_hijriyah: tahunHijriyah || '',
+        tahun_masehi: tahunMasehi || ''
+      }
+      if (notifOffcanvasChoice === 'telpon') payload.no_telpon = nomor
+      else payload.no_wa_santri = nomor
+      const saveRes = await pendaftaranAPI.saveBiodata(payload)
+      if (!saveRes?.success) throw new Error(saveRes?.message || 'Gagal menyimpan')
+      setWaFromBiodata(prev => ({
+        ...prev,
+        noTelpon: notifOffcanvasChoice === 'telpon' ? nomor : prev.noTelpon,
+        noWaSantri: notifOffcanvasChoice === 'wa_santri' ? nomor : prev.noWaSantri
+      }))
+      pendaftaranAPI.getWaWake().catch(() => {})
+      const lines = ['Daftar Notifikasi']
+      if (waFromBiodata.nama || biodata.nama) lines.push(`Nama: ${(biodata.nama || waFromBiodata.nama || '').trim()}`)
+      if (waFromBiodata.nik || biodata.nik) lines.push(`NIK: ${(biodata.nik || waFromBiodata.nik || '').trim()}`)
+      lines.push(`No WA: ${nomor}`)
+      const text = lines.join('\n')
+      const url = `https://wa.me/${NOMOR_WA_PENDAFTARAN}?text=${encodeURIComponent(text)}`
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setShowNotifOffcanvas(false)
+      setNotifOffcanvasStep('pilih')
+      setNotifOffcanvasChoice(null)
+      setNotifOffcanvasNomor('')
+      setNotifOffcanvasError('')
+      const next = { ...kontakStatus }
+      if (notifOffcanvasChoice === 'telpon') next.telpon = { exists: true, siap_terima_notif: false }
+      else next.waSantri = { exists: true, siap_terima_notif: false }
+      setKontakStatus(next)
+    } catch (e) {
+      setNotifOffcanvasError(e?.message || 'Gagal menyimpan nomor')
+    } finally {
+      setNotifOffcanvasSaving(false)
+    }
+  }
   const [loading, setLoading] = useState(true)
   const [notifWaLoading, setNotifWaLoading] = useState(null) // id/nomor yang sedang diklik
   const [waFromBiodata, setWaFromBiodata] = useState({ noTelpon: '', noWaSantri: '', nama: '', nik: '' })
   const [kontakStatus, setKontakStatus] = useState({ telpon: null, waSantri: null }) // { exists, siap_terima_notif }
+  const [showNotifOffcanvas, setShowNotifOffcanvas] = useState(false)
+  const [notifOffcanvasStep, setNotifOffcanvasStep] = useState('pilih') // 'pilih' | 'input'
+  const [notifOffcanvasChoice, setNotifOffcanvasChoice] = useState(null) // 'telpon' | 'wa_santri'
+  const [notifOffcanvasNomor, setNotifOffcanvasNomor] = useState('')
+  const [notifOffcanvasSaving, setNotifOffcanvasSaving] = useState(false)
+  const [notifOffcanvasError, setNotifOffcanvasError] = useState('')
 
   // Load biodata (nomor WA user) dan status kontak
   useEffect(() => {
@@ -162,24 +236,7 @@ function Dashboard() {
     console.log('User ID:', user?.id)
     console.log('========================================')
     
-    // Santri baru (id null) harus lewat: page 1 status pendaftar → page 2 opsi pendidikan → page 3 status santri
-    if (user && (user.id == null || user.id === '')) {
-      const hasChosenStatusPendaftar = typeof localStorage !== 'undefined' && (localStorage.getItem('daftar_status_pendaftar') === 'Baru' || localStorage.getItem('daftar_status_pendaftar') === 'Lama')
-      if (!hasChosenStatusPendaftar) {
-        navigate('/pilihan-status', { replace: true })
-        return
-      }
-      const hasOpsiPendidikan = typeof localStorage !== 'undefined' && localStorage.getItem('daftar_diniyah') != null && localStorage.getItem('daftar_diniyah') !== '' && localStorage.getItem('daftar_formal') != null && localStorage.getItem('daftar_formal') !== ''
-      if (!hasOpsiPendidikan) {
-        navigate('/pilihan-opsi-pendidikan', { replace: true })
-        return
-      }
-      const hasChosenStatusSantri = typeof localStorage !== 'undefined' && (localStorage.getItem('daftar_status_santri') === 'Mukim' || localStorage.getItem('daftar_status_santri') === 'Khoriji')
-      if (!hasChosenStatusSantri) {
-        navigate('/pilihan-status-santri', { replace: true })
-        return
-      }
-    }
+    // Setelah login langsung ke Dashboard; tidak ada redirect ke halaman pilihan opsi.
 
     const checkProgress = async () => {
       setLoading(true)
@@ -312,7 +369,12 @@ function Dashboard() {
               updatedSteps[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
             }
           } catch (error) {
-            console.error('Error checking pembayaran:', error)
+            // Jika backend mengembalikan 400/404 untuk get-registrasi (misal belum ada registrasi),
+            // anggap saja sama seperti belum ada data registrasi: jangan spam error di console.
+            const status = error?.response?.status
+            if (status !== 400 && status !== 404) {
+              console.error('Error checking pembayaran:', error)
+            }
             updatedSteps[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
           }
           
@@ -740,7 +802,9 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Nomor WA dari biodata user (ortu/santri) + Toggle Notifikasi */}
+        {/* Nomor WA — hanya untuk santri yang sudah tersimpan (punya id/NIS) */}
+        {user?.id && (
+        <>
         <section className="mt-8 mb-6 rounded-xl border border-emerald-200/80 dark:border-emerald-800/80 bg-gradient-to-b from-emerald-50/80 to-white dark:from-emerald-950/40 dark:to-gray-900 overflow-hidden shadow-sm">
           <div className="px-4 py-4 md:px-6 md:py-5">
             <div className="flex items-center gap-3 mb-4">
@@ -755,9 +819,7 @@ function Dashboard() {
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">Notifikasi dikirim ke nomor yang Anda pakai saat mendaftar. Jika mengaktifkan dari HP/nomor lain, kirim dari nomor yang ingin menerima notifikasi.</p>
               </div>
             </div>
-            {(!waFromBiodata.noTelpon || waFromBiodata.noTelpon.length < 10) && (!waFromBiodata.noWaSantri || waFromBiodata.noWaSantri.length < 10) ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">Isi biodata dulu (No. Telpon Wali atau No. WA Santri) agar nomor tampil di sini.</p>
-            ) : (
+            {(waFromBiodata.noTelpon && waFromBiodata.noTelpon.length >= 10) || (waFromBiodata.noWaSantri && waFromBiodata.noWaSantri.length >= 10) ? (
               <div className="space-y-4">
                 {waFromBiodata.noTelpon && waFromBiodata.noTelpon.length >= 10 && (
                   <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-white dark:bg-gray-800/50 border border-emerald-200/60 dark:border-emerald-800/50">
@@ -806,9 +868,109 @@ function Dashboard() {
                   </div>
                 )}
               </div>
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  onClick={openNotifOffcanvas}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors shadow-sm"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                  </svg>
+                  Aktifkan Notifikasi WA
+                </button>
+              </div>
             )}
           </div>
         </section>
+
+        {/* Offcanvas bawah: pilih nomor Wali/Santri → input → Simpan & Aktifkan */}
+        <div
+          className={`fixed inset-0 z-50 transition-opacity duration-300 ${showNotifOffcanvas ? 'bg-black/50' : 'pointer-events-none opacity-0'}`}
+          onClick={() => showNotifOffcanvas && setShowNotifOffcanvas(false)}
+          aria-hidden="true"
+        />
+        <div
+          className={`fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 rounded-t-2xl shadow-xl transition-transform duration-300 ease-out max-h-[85vh] overflow-hidden flex flex-col ${showNotifOffcanvas ? 'translate-y-0' : 'translate-y-full'}`}
+          aria-modal="true"
+          aria-labelledby="offcanvas-notif-title"
+          role="dialog"
+        >
+          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <h2 id="offcanvas-notif-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+              {notifOffcanvasStep === 'pilih' ? 'Pilih nomor untuk notifikasi' : notifOffcanvasChoice === 'telpon' ? 'Nomor Wali Santri' : 'Nomor Santri'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowNotifOffcanvas(false)}
+              className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+              aria-label="Tutup"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {notifOffcanvasStep === 'pilih' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => chooseNotifType('telpon')}
+                  className="p-4 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-left transition-colors"
+                >
+                  <span className="font-semibold text-emerald-800 dark:text-emerald-200">Nomor Wali Santri</span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">No. telepon wali yang terdaftar di biodata</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chooseNotifType('wa_santri')}
+                  className="p-4 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-left transition-colors"
+                >
+                  <span className="font-semibold text-emerald-800 dark:text-emerald-200">Nomor Santri</span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">No. WA santri yang terdaftar di biodata</p>
+                </button>
+              </div>
+            ) : (
+                <div className="space-y-4">
+                {notifOffcanvasError && (
+                  <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{notifOffcanvasError}</p>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {notifOffcanvasChoice === 'telpon' ? 'No. Telpon Wali (WA)' : 'No. WA Santri'}
+                  </label>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={notifOffcanvasNomor}
+                    onChange={(e) => { setNotifOffcanvasNomor((e.target.value || '').replace(/\D/g, '')); setNotifOffcanvasError('') }}
+                    placeholder="08..."
+                    className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setNotifOffcanvasStep('pilih'); setNotifOffcanvasChoice(null); setNotifOffcanvasNomor(''); setNotifOffcanvasError('') }}
+                    className="px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Kembali
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitNotifNomor}
+                    disabled={notifOffcanvasSaving || (normalizeNomor(notifOffcanvasNomor).length < 10)}
+                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                  >
+                    {notifOffcanvasSaving ? 'Menyimpan...' : 'Simpan & Aktifkan di WA'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        </>
+        )}
 
         {/* Gelombang Pendaftaran — rapi & informatif */}
         <section className="mt-6 mb-8 rounded-xl border border-teal-200/80 dark:border-teal-800/80 bg-gradient-to-b from-teal-50/80 to-white dark:from-teal-950/40 dark:to-gray-900 overflow-hidden shadow-sm">

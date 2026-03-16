@@ -1,131 +1,135 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useThemeStore } from '../store/themeStore'
 import { authAPI } from '../services/api'
+import { APP_VERSION } from '../config/version'
+import { getGambarUrl } from '../config/images'
 import { normalizeNikInput, isNikValid } from '../utils/nikUtils'
 
-function LupaPassword() {
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.1 } }
+}
+const itemVariants = {
+  hidden: { y: 24, opacity: 0 },
+  visible: { y: 0, opacity: 1, transition: { type: 'spring', stiffness: 120, damping: 18 } }
+}
+
+export function LupaPasswordFormCard() {
   const [idPengurus, setIdPengurus] = useState('')
   const [nik, setNik] = useState('')
   const [noWa, setNoWa] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [flipPhase, setFlipPhase] = useState('idle')
+  const prevThemeRef = useRef(null)
+  const { theme } = useThemeStore()
+
+  useEffect(() => {
+    if (prevThemeRef.current === null) { prevThemeRef.current = theme; return }
+    if (prevThemeRef.current !== theme) { prevThemeRef.current = theme; setFlipPhase('close') }
+  }, [theme])
+
+  const handleInputCloseComplete = () => { if (flipPhase === 'close') setFlipPhase('open') }
+  const handleInputOpenComplete = () => { if (flipPhase === 'open') setFlipPhase('idle') }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setSuccessMessage('')
-
     const nikTrim = nik.trim()
-    if (!isNikValid(nikTrim)) {
-      setError('Coba kembali periksa NIK.')
-      return
-    }
-
+    if (!isNikValid(nikTrim)) { setError('Coba kembali periksa NIK.'); return }
     setLoading(true)
     try {
       const res = await authAPI.lupaPasswordRequest(idPengurus.trim(), nikTrim, noWa.trim())
-      if (res.success) {
-        setSuccessMessage(res.message || 'Link buat password baru telah dikirim ke WhatsApp Anda.')
-      } else {
-        setError(res.message || 'Gagal mengirim link.')
-      }
+      if (res.success) setSuccessMessage(res.message || 'Link buat password baru telah dikirim ke WhatsApp Anda.')
+      else setError(res.message || 'Gagal mengirim link.')
     } catch (err) {
       setError(err.response?.data?.message || 'Terjadi kesalahan. Coba lagi.')
-      if (err.response?.status === 429) {
-        setError(err.response?.data?.message || 'Terlalu banyak permintaan. Coba lagi nanti.')
-      }
-    } finally {
-      setLoading(false)
-    }
+      if (err.response?.status === 429) setError(err.response?.data?.message || 'Terlalu banyak permintaan. Coba lagi nanti.')
+    } finally { setLoading(false) }
   }
 
+  const inputClass = 'w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white/95 dark:bg-gray-800/95 md:bg-gray-50/50 md:dark:bg-gray-700/50 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all'
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-200 dark:border-gray-700"
-      >
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Lupa Password</h1>
-        <p className="text-gray-600 dark:text-gray-400 text-sm mb-6">
-          Masukkan NIP Pengurus, NIK, dan No. WA yang sama persis dengan saat daftar. Link buat password baru akan dikirim ke WhatsApp Anda.
-        </p>
-        <p className="text-amber-700 dark:text-amber-400 text-xs mb-4 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-lg">
-          NIK harus persis sama dengan yang terdaftar (tanpa spasi atau titik). Jika salah, permintaan akan ditolak.
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">NIP Pengurus</label>
-            <input
-              type="text"
-              value={idPengurus}
-              onChange={(e) => setIdPengurus(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
-              placeholder="Contoh: 333"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">NIK</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              value={nik}
-              onChange={(e) => setNik(normalizeNikInput(e.target.value))}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-mono tracking-wide"
-              placeholder="16 digit NIK (persis seperti saat daftar)"
-              maxLength={16}
-              required
-            />
-            {nik.length > 0 && nik.length !== 16 && (
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{nik.length}/16 digit</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">No. WA</label>
-            <input
-              type="text"
-              value={noWa}
-              onChange={(e) => setNoWa(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
-              placeholder="08xxxxxxxxxx"
-              required
-            />
-          </div>
-
+    <motion.div variants={containerVariants} initial="hidden" animate="visible" className="w-full max-w-[400px] relative z-10">
+      <motion.div variants={itemVariants} className="relative p-4 md:p-10 md:rounded-3xl md:bg-white/90 md:dark:bg-gray-800/90 md:backdrop-blur-xl md:border md:border-white/40 md:dark:border-gray-600/40 md:login-card-glow">
+        <div className="md:hidden text-center mb-6" style={{ perspective: '800px' }}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={theme}
+              className="inline-block"
+              initial={{ rotateY: -90, opacity: 0 }}
+              animate={{ rotateY: 0, opacity: 1 }}
+              exit={{ rotateY: 90, opacity: 0 }}
+              transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+              style={{ transformStyle: 'preserve-3d' }}
+            >
+              {theme === 'dark' ? (
+                <><motion.img src={getGambarUrl('/icon/ebeddienlogoputih.png')} alt="eBeddien" className="max-w-[100px] w-auto h-12 mx-auto mb-2 object-contain" whileHover={{ scale: 1.03 }} /><motion.img src={getGambarUrl('/icon/ebeddientextputih.png')} alt="eBeddien" className="max-w-[100px] w-auto h-10 mx-auto object-contain" whileHover={{ scale: 1.03 }} /></>
+              ) : (
+                <><motion.img src={getGambarUrl('/icon/ebeddienlogo.png')} alt="eBeddien" className="max-w-[100px] w-auto h-12 mx-auto mb-2 object-contain" whileHover={{ scale: 1.03 }} /><motion.img src={getGambarUrl('/icon/ebeddientext.png')} alt="eBeddien" className="max-w-[100px] w-auto h-10 mx-auto object-contain" whileHover={{ scale: 1.03 }} /></>
+              )}
+            </motion.div>
+          </AnimatePresence>
+          <div className="flex justify-center gap-1.5 mt-3 text-xs text-gray-500 dark:text-gray-400"><span className="font-mono">v{APP_VERSION}</span></div>
+        </div>
+        <div className="hidden md:block text-center mb-8">
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1 tracking-tight">Lupa Password</h1>
+        </div>
+        <p className="text-amber-700 dark:text-amber-400 text-xs mb-4 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 rounded-xl">NIK harus persis sama dengan yang terdaftar (tanpa spasi atau titik).</p>
+        <form onSubmit={handleSubmit} className="space-y-5" style={{ perspective: '600px' }}>
+          <motion.div
+            variants={itemVariants}
+            style={{ transformStyle: 'preserve-3d', transformOrigin: 'bottom center' }}
+            animate={{ rotateX: flipPhase === 'close' ? 90 : flipPhase === 'open' ? 0 : 0 }}
+            transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+            onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
+          >
+            <input type="text" value={idPengurus} onChange={(e) => setIdPengurus(e.target.value)} className={inputClass} placeholder="NIP Pengurus (contoh: 333)" required />
+          </motion.div>
+          <motion.div
+            variants={itemVariants}
+            style={{ transformStyle: 'preserve-3d', transformOrigin: 'bottom center' }}
+            animate={{ rotateX: flipPhase === 'close' ? 90 : flipPhase === 'open' ? 0 : 0 }}
+            transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+            onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
+          >
+            <input type="text" inputMode="numeric" autoComplete="off" value={nik} onChange={(e) => setNik(normalizeNikInput(e.target.value))} className={`${inputClass} font-mono tracking-wide`} placeholder="NIK (16 digit)" maxLength={16} required />
+            {nik.length > 0 && nik.length !== 16 && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{nik.length}/16 digit</p>}
+          </motion.div>
+          <motion.div
+            variants={itemVariants}
+            style={{ transformStyle: 'preserve-3d', transformOrigin: 'bottom center' }}
+            animate={{ rotateX: flipPhase === 'close' ? 90 : flipPhase === 'open' ? 0 : 0 }}
+            transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+            onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
+          >
+            <input type="text" value={noWa} onChange={(e) => setNoWa(e.target.value)} className={inputClass} placeholder="No. WA (08xxxxxxxxxx)" required />
+          </motion.div>
           {error && (
-            <div className="text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
-              {error}
-            </div>
+            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 px-4 py-3 text-sm">
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span>{error}</span>
+            </motion.div>
           )}
           {successMessage && (
-            <div className="text-green-600 dark:text-green-400 text-sm bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
-              {successMessage}
-            </div>
+            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 text-green-700 dark:text-green-300 px-4 py-3 text-sm">
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span>{successMessage}</span>
+            </motion.div>
           )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-xl font-semibold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
-          >
-            {loading ? 'Mengirim...' : 'Kirim link ke WhatsApp'}
-          </button>
+          <motion.button variants={itemVariants} type="submit" disabled={loading} className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
+            {loading ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Mengirim...</span> : 'Kirim link ke WhatsApp'}
+          </motion.button>
+          <p className="text-center text-sm text-gray-600 dark:text-gray-400 pt-2">Ingat password? <Link to="/login" className="font-medium text-primary-600 dark:text-primary-400 hover:underline">Masuk</Link></p>
         </form>
-
-        <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-          Ingat password?{' '}
-          <Link to="/login" className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
-            Masuk
-          </Link>
-        </p>
       </motion.div>
-    </div>
+    </motion.div>
   )
 }
 
-export default LupaPassword
+export default LupaPasswordFormCard

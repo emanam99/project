@@ -86,25 +86,14 @@ const PageLoader = () => (
   </div>
 )
 
-// Redirect setelah login: pakai redirect_after_login dari sessionStorage (set oleh Login) agar NIK baru ke /pilihan-status
-// Baca hanya sekali (ref) agar di Strict Mode / double-render tidak ter-override jadi /dashboard
+// Redirect setelah login: pakai redirect_after_login dari sessionStorage (set oleh Login). Selalu ke dashboard.
+// Baca hanya sekali (ref) agar di Strict Mode / double-render tidak ter-override.
 const RedirectAfterLogin = () => {
   const toRef = useRef(null)
   if (toRef.current === null) {
-    let to = sessionStorage.getItem('redirect_after_login')
+    const to = sessionStorage.getItem('redirect_after_login') || '/dashboard'
     sessionStorage.removeItem('redirect_after_login')
-    if (!to || to === '') {
-      try {
-        const userData = localStorage.getItem('user_data')
-        if (userData) {
-          const user = JSON.parse(userData)
-          if (user?.id != null && user?.id !== '') {
-            to = '/pilihan-opsi-pendidikan'
-          }
-        }
-      } catch (_) { /* ignore */ }
-    }
-    toRef.current = to || '/dashboard'
+    toRef.current = to
   }
   return <Navigate to={toRef.current} replace />
 }

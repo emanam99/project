@@ -244,8 +244,16 @@ class SantriBerkasControllerV2
             $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
+
             if ($roleKey === 'santri') {
-                $idSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+                // Untuk role santri, utamakan id dari token (anti-IDOR).
+                // Namun untuk kasus santri baru yang belum punya id di token (user_id/null),
+                // izinkan fallback ke id_santri dari query agar berkas pertama langsung terbaca
+                // setelah biodata disimpan, tanpa perlu logout/login.
+                $idFromToken = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+                if ($idFromToken !== null && $idFromToken !== '') {
+                    $idSantri = $idFromToken;
+                }
             }
             $jenisBerkas = $queryParams['jenis_berkas'] ?? null;
 

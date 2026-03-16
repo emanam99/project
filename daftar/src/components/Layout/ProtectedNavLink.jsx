@@ -37,6 +37,7 @@ function ProtectedNavLink({ to, children, ...props }) {
     }
 
     // Jika ada unsaved changes, prevent default dan tampilkan modal
+    console.log('[ProtectedNavLink] Navigasi diblokir: hasUnsavedChanges=true, dari', location.pathname, 'ke', to)
     e.preventDefault()
     setPendingNav(to)
     setShowModal(true)

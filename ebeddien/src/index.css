@@ -514,3 +514,89 @@
   }
 }
 
+/* Login page: animated gradient background */
+@keyframes login-gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Offcanvas kalender: animasi gelombang air di atas */
+@keyframes offcanvas-wave-flow {
+  to { transform: translateX(-50%); }
+}
+.offcanvas-wave-svg {
+  animation: offcanvas-wave-flow 4s linear infinite;
+}
+
+.login-bg-gradient {
+  background: linear-gradient(
+    135deg,
+    #f0fdfa 0%,
+    #ccfbf1 25%,
+    #e0f2fe 50%,
+    #f0fdfa 75%,
+    #ccfbf1 100%
+  );
+  background-size: 400% 400%;
+  animation: login-gradient-shift 12s ease infinite;
+}
+.dark .login-bg-gradient {
+  background: linear-gradient(
+    135deg,
+    #134e4a 0%,
+    #115e59 25%,
+    #0f766e 50%,
+    #134e4a 75%,
+    #164e47 100%
+  );
+  background-size: 400% 400%;
+  animation: login-gradient-shift 14s ease infinite;
+}
+
+/* Mode gelap + HP: bg area form warna gelap netral (bukan ijo) */
+@media (max-width: 767px) {
+  .dark .login-bg-gradient {
+    background: linear-gradient(
+      135deg,
+      #111827 0%,
+      #0f172a 25%,
+      #0c0a0e 50%,
+      #0f172a 75%,
+      #111827 100%
+    );
+    background-size: 400% 400%;
+    animation: login-gradient-shift 14s ease infinite;
+  }
+}
+.login-card-glow {
+  box-shadow:
+    0 0 0 1px rgba(20, 184, 166, 0.08),
+    0 25px 50px -12px rgba(0, 0, 0, 0.08),
+    0 0 80px -20px rgba(20, 184, 166, 0.25);
+}
+.dark .login-card-glow {
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.1),
+    0 25px 50px -12px rgba(0, 0, 0, 0.4),
+    0 0 60px -15px rgba(45, 212, 191, 0.15);
+}
+.login-btn-glow:hover {
+  box-shadow: 0 0 30px -5px rgba(20, 184, 166, 0.5);
+}
+.dark .login-btn-glow:hover {
+  box-shadow: 0 0 30px -5px rgba(45, 212, 191, 0.4);
+}
+
+/* Login left panel — pure CSS, no image */
+.login-panel-left {
+  background-color: #0f766e;
+}
+.login-panel-pattern {
+  opacity: 0.08;
+  background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.6) 1px, transparent 0);
+  background-size: 32px 32px;
+}
+.dark .login-panel-pattern {
+  opacity: 0.06;
+}
+

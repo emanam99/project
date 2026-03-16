@@ -54,11 +54,11 @@ function Header() {
   // Get santri name from user data or show default
   const getSantriName = () => {
     // Jika user ada dan ada nama, tampilkan nama
-    // Jika belum ada nama, tampilkan "Pendaftaran Santri Baru"
+    // Jika belum ada nama, tampilkan "Pendaftaran"
     if (user?.nama && user.nama.trim() !== '') {
       return user.nama
     }
-    return 'Pendaftaran Santri Baru'
+    return 'Pendaftaran'
   }
 
   // Update document title when route changes

@@ -1,8 +1,16 @@
 .kalender-page {
-  padding: 1rem;
-  max-width: 640px;
+  padding: 1rem 1.5rem;
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
   min-height: 100%;
+  box-sizing: border-box;
+}
+
+@media (min-width: 641px) {
+  .kalender-page {
+    max-width: 640px;
+  }
 }
 
 .kalender-page__header {
@@ -116,6 +124,10 @@
 
 .kalender-page__content {
   min-height: 320px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   /* Scroll hanya di area ini; tab di atas tidak ikut scroll. Style scrollbar tipis & halus. */
   scrollbar-width: thin;
   scrollbar-color: rgba(13, 148, 136, 0.4) transparent;

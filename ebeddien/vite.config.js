@@ -37,7 +37,7 @@ export default defineConfig(({ mode }) => {
         short_name: 'eBeddien',
         description: 'eBeddien adalah Digital Service Center yang dirancang untuk memudahkan pengelolaan manajemen Pesantren Salafiyah Al-Utsmani. Aplikasi ini mendukung berbagai fitur pembayaran, pencatatan, serta pengelolaan keuangan yang terintegrasi.',
         theme_color: '#0d9488',
-        background_color: '#f3f4f6',
+        background_color: '#D9F8F4',
         display: 'minimal-ui',
         scope: '/',
         start_url: '/',

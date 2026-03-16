@@ -1,6 +1,56 @@
 import { create } from 'zustand'
 import { authAPI } from '../services/api'
 
+const STORAGE_NIK_KEY = 'daftar_storage_nik'
+
+/** Hapus semua localStorage dan sessionStorage (dipakai saat logout) */
+function clearAllStorage() {
+  if (typeof localStorage !== 'undefined') {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i)
+      if (k) localStorage.removeItem(k)
+    }
+  }
+  if (typeof sessionStorage !== 'undefined') {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i)
+      if (k) sessionStorage.removeItem(k)
+    }
+  }
+}
+
+/** Hapus hanya data daftar/user (NIK berubah = orang berbeda), tetap pertahankan auth_token & user_data */
+function clearDaftarDataOnly() {
+  const keep = new Set(['auth_token', 'user_data', 'theme', 'sidebarCollapsed'])
+  if (typeof localStorage !== 'undefined') {
+    const keys = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && !keep.has(k)) keys.push(k)
+    }
+    keys.forEach((k) => localStorage.removeItem(k))
+  }
+  if (typeof sessionStorage !== 'undefined') {
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i)
+      if (k) sessionStorage.removeItem(k)
+    }
+  }
+}
+
+/** Pastikan data localStorage dipakai hanya untuk NIK yang sama; jika NIK berubah, bersihkan data orang sebelumnya */
+function ensureStorageNik(currentNik) {
+  if (!currentNik || String(currentNik).trim() === '') return
+  const nik = String(currentNik).trim()
+  const stored = localStorage.getItem(STORAGE_NIK_KEY)
+  if (stored != null && stored !== nik) {
+    clearDaftarDataOnly()
+  }
+  try {
+    localStorage.setItem(STORAGE_NIK_KEY, nik)
+  } catch (e) { /* ignore */ }
+}
+
 // Helper function to decode JWT token
 const decodeJWT = (token) => {
   try {
@@ -25,6 +75,9 @@ export const useAuthStore = create((set) => ({
   isAuthenticated: false,
   
   setAuth: (token, user) => {
+    if (user?.nik) {
+      ensureStorageNik(user.nik)
+    }
     localStorage.setItem('auth_token', token)
     if (user) {
       const normalizedUser = {
@@ -52,19 +105,7 @@ export const useAuthStore = create((set) => ({
   },
   
   logout: () => {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user_data')
-    localStorage.removeItem('daftar_status_pendaftar')
-    localStorage.removeItem('daftar_diniyah')
-    localStorage.removeItem('daftar_formal')
-    localStorage.removeItem('daftar_status_santri')
-    localStorage.removeItem('daftar_status_murid')
-    localStorage.removeItem('daftar_prodi')
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.removeItem('redirect_after_login')
-      sessionStorage.removeItem('pendaftaranData')
-      sessionStorage.removeItem('daftar_login_nik')
-    }
+    clearAllStorage()
     set({ 
       token: null, 
       user: null, 
@@ -142,6 +183,11 @@ export const useAuthStore = create((set) => ({
             }
           }
         } catch (e) { /* ignore */ }
+      }
+
+      // NIK berubah = orang berbeda: bersihkan data daftar milik NIK sebelumnya
+      if (user?.nik) {
+        ensureStorageNik(user.nik)
       }
       
       set({ 

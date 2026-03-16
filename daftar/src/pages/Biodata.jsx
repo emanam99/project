@@ -161,6 +161,8 @@ function Biodata() {
   })
 
   const [hasChanges, setHasChanges] = useState(false)
+  const hasUserEditedRef = useRef(false)
+  const hasLoadedFromServerRef = useRef(false)
   const [showRequiredFieldsModal, setShowRequiredFieldsModal] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [missingRequiredFields, setMissingRequiredFields] = useState([])
@@ -308,12 +310,15 @@ function Biodata() {
       isLoadingDataRef.current = true
 
       try {
-        // Jika ada draft di localStorage (perubahan yang belum disimpan ke server), pakai itu dulu
+        // Jika ada draft di localStorage (perubahan yang belum disimpan ke server), pakai itu dulu.
+        // Draft dianggap sebagai state awal halaman ini; peringatan unsaved baru muncul
+        // jika ada perubahan tambahan setelah halaman dibuka.
         const draftRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('daftar_biodata_draft') : null
         if (draftRaw) {
           try {
             const parsed = JSON.parse(draftRaw)
             if (parsed && typeof parsed === 'object' && (parsed.nik || parsed.nama)) {
+              console.log('[Biodata unsaved] setHasChanges(true) dari: load draft di loadDataFromUser (user punya id)')
               setFormData(parsed)
               setHasChanges(true)
               setIsLoading(false)
@@ -494,7 +499,9 @@ function Biodata() {
           }
 
           setFormData(newFormData)
+          console.log('[Biodata unsaved] setHasChanges(false) setelah load dari server')
           setHasChanges(false)
+          hasLoadedFromServerRef.current = true
         } else {
           console.warn('Data santri tidak ditemukan di database.', { response: biodataResponse, userId: user.id })
         }
@@ -528,6 +535,7 @@ function Biodata() {
       if (draftRaw) {
         const parsed = JSON.parse(draftRaw)
         if (parsed && typeof parsed === 'object' && (parsed.nik || parsed.nama)) {
+          console.log('[Biodata unsaved] setHasChanges(true) dari: load draft santri baru (useEffect draft)')
           setFormData(parsed)
           setHasChanges(true)
         }
@@ -587,10 +595,17 @@ function Biodata() {
     }
   }, [formData])
 
+  // Field yang diisi otomatis oleh sistem (bukan edit user) — update formData saja, jangan tandai sebagai perubahan
+  const SYSTEM_AUTO_FILLED_FIELDS = ['gelombang']
+
   // Handle perubahan field
   const handleFieldChange = (field, value) => {
     // ID tidak bisa diubah manual oleh pendaftar
     if (field === 'id') {
+      return
+    }
+    if (SYSTEM_AUTO_FILLED_FIELDS.includes(field)) {
+      setFormData(prev => ({ ...prev, [field]: value }))
       return
     }
 
@@ -685,7 +700,9 @@ function Biodata() {
 
         return updated
       })
+      console.log('[Biodata unsaved] setHasChanges(true) + hasUserEditedRef dari: handleFieldChange (nik)')
       setHasChanges(true)
+      hasUserEditedRef.current = true
       return
     } else if (field === 'nik_ayah' || field === 'nik_ibu' || field === 'nik_wali') {
       // Hanya filter angka dan batasi 16 digit
@@ -732,7 +749,9 @@ function Biodata() {
 
         return updated
       })
+      console.log('[Biodata unsaved] setHasChanges(true) + hasUserEditedRef dari: handleFieldChange (nik_ayah/ibu/wali)')
       setHasChanges(true)
+      hasUserEditedRef.current = true
       return
     }
 
@@ -759,7 +778,9 @@ function Biodata() {
 
       return updated
     })
+    console.log('[Biodata unsaved] setHasChanges(true) + hasUserEditedRef dari: handleFieldChange (field=', field, ')')
     setHasChanges(true)
+    hasUserEditedRef.current = true
   }
 
   // Fungsi untuk cek field wajib yang belum diisi
@@ -1018,17 +1039,21 @@ function Biodata() {
   }
 
   useEffect(() => {
-    if (hasChanges) {
+    const userEdited = hasUserEditedRef.current
+    if (hasChanges && userEdited) {
+      console.log('[Biodata unsaved] Terdeteksi perubahan: set unsaved (hasChanges=true, hasUserEditedRef=true)')
       setUnsavedChanges(true, handleSave, checkRequiredFields)
     } else {
+      console.log('[Biodata unsaved] Tidak ada perubahan user: clear unsaved', { hasChanges, userEdited })
       clearUnsavedChanges()
     }
   }, [hasChanges, setUnsavedChanges, clearUnsavedChanges, handleSave, checkRequiredFields])
 
-  // Notif saat pindah tab browser: ingatkan simpan jika ada perubahan yang belum disimpan ke server
+  // Notif saat pindah tab browser: ingatkan simpan jika ada perubahan yang belum disimpan ke server.
+  // Hanya aktif jika user memang sudah mengedit (bukan hanya load dari server).
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && hasChanges) {
+      if (document.visibilityState === 'hidden' && hasChanges && hasUserEditedRef.current) {
         showNotification('Ada perubahan yang belum disimpan. Simpan ke server?', 'warning')
       }
     }

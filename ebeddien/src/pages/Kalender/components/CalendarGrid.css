@@ -1,11 +1,12 @@
-/* Grid kalender – gap 0 agar garis vertikal/horizontal bersambung dari tepi ke tepi */
+/* Grid kalender – gap 0 agar garis vertikal/horizontal bersambung dari tepi ke tepi; lebar ikut container agar konsisten Hijri/Masehi */
 .kalender-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 0;
   width: 100%;
-  max-width: 480px;
+  max-width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .kalender-grid--hijri {

@@ -16,42 +16,37 @@ function HeaderSection({
   // Handle case dimana formDataId bisa string, number, null, atau undefined
   const displayId = formDataId && String(formDataId).trim() !== '' ? String(formDataId) : '-'
 
-  // Hitung progress pengisian semua field (hanya field yang visible)
+  // Hitung progress pengisian: hanya field yang benar-benar ada di formData dan visible di form
   const calculateProgress = () => {
     if (!formData) return 0
 
-    // Daftar field yang selalu ditampilkan
+    // Daftar field yang selalu ditampilkan (key harus sama persis dengan formData)
     let allFields = [
-      // Data Diri
+      // Data Diri (tanpa id/nis - itu dari server, bukan input user)
       'nik', 'nama', 'gender', 'tempat_lahir', 'tanggal_lahir',
       'no_kk', 'kepala_keluarga', 'anak_ke', 'jumlah_saudara',
-      'saudara_di_pesantren', 'nisn', 'nis', 'no_kip', 'no_kks', 'no_pkh',
-      
-      // Biodata Ayah (hanya nama dan status yang selalu visible)
-      'ayah', 'status_ayah',
-      
-      // Biodata Ibu (hanya nama dan status yang selalu visible)
-      'ibu', 'status_ibu',
-      
+      'saudara_di_pesantren', 'nisn',
+      'hobi', 'cita_cita', 'kebutuhan_khusus',
+      // KIP, PKH, KKS di form pakai key: kip, pkh, kks (bukan no_kip dll)
+      'kip', 'pkh', 'kks',
+      // Biodata Ayah & Ibu (nama + status selalu visible)
+      'ayah', 'status_ayah', 'ibu', 'status_ibu',
       // Biodata Wali
       'hubungan_wali', 'wali', 'nik_wali', 'tempat_lahir_wali', 'tanggal_lahir_wali',
       'pendidikan_wali', 'pekerjaan_wali', 'penghasilan_wali',
-      
-      // Alamat
-      'provinsi', 'kabupaten', 'kecamatan', 'desa', 'dusun', 'rt', 'rw',
-      'kode_pos', 'alamat_lengkap', 'jarak_tempuh', 'transportasi',
-      
-      // Riwayat Madrasah (hanya field pilihan madrasah yang selalu visible)
-      'madrasah',
-      
-      // Riwayat Sekolah (field sekolah selalu visible)
-      'sekolah',
-      
-      // Kategori Pendidikan
-      'kategori_pendidikan',
-      
-      // Status Pendaftaran
-      'tahun_hijriyah', 'tahun_masehi', 'status_aktif'
+      // Alamat (hanya yang ada di form: tidak ada alamat_lengkap, jarak_tempuh, transportasi)
+      'provinsi', 'kabupaten', 'kecamatan', 'desa', 'dusun', 'rt', 'rw', 'kode_pos',
+      // Riwayat
+      'madrasah', 'sekolah',
+      // Informasi Tambahan
+      'no_telpon', 'email', 'status_nikah', 'pekerjaan', 'riwayat_sakit', 'ukuran_baju', 'no_wa_santri',
+      // Status Pendaftaran:
+      // - status_pendaftar, daftar_diniyah, daftar_formal, status_murid bisa berasal dari flow lama
+      //   atau tidak selalu tampil/diisi di halaman Biodata, jadi TIDAK ikut menentukan 100%.
+      // - Yang benar-benar terlihat dan wajib diisi di sini adalah status_santri saja.
+      'status_santri',
+      // Kategori Pendidikan (key di form: kategori)
+      'kategori'
     ]
 
     // Tambahkan field Ayah jika status "Masih Hidup"
@@ -83,18 +78,28 @@ function HeaderSection({
       )
     }
 
-    // Hitung field yang terisi
+    // Prodi hanya tampil jika daftar_formal STAI
+    if (formData.daftar_formal === 'STAI') {
+      allFields.push('prodi')
+    }
+
+    // Daerah & Kamar hanya tampil jika status_santri Mukim
+    if (formData.status_santri === 'Mukim') {
+      allFields.push('daerah', 'kamar')
+    }
+
+    // Hitung field yang terisi (value ada dan tidak kosong)
     const filledCount = allFields.filter(fieldKey => {
       const value = formData[fieldKey]
-      // Cek jika value ada dan tidak kosong
       if (value === null || value === undefined) return false
       if (typeof value === 'string') return value.trim() !== ''
       if (typeof value === 'number') return true
       return false
     }).length
 
-    console.log('Progress check - filled:', filledCount, 'total:', allFields.length)
-    return Math.round((filledCount / allFields.length) * 100)
+    const total = allFields.length
+    if (total === 0) return 100
+    return Math.round((filledCount / total) * 100)
   }
 
   const progress = calculateProgress()
@@ -122,9 +127,9 @@ function HeaderSection({
           <label className="text-teal-600 dark:text-teal-400 font-semibold whitespace-nowrap text-sm">
             NIS
           </label>
-          <div className="text-sm text-gray-900 dark:text-gray-100 font-medium min-w-[4.5rem] text-center px-2 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-300 dark:border-gray-600">
+          <span className="text-sm text-gray-900 dark:text-gray-100 font-medium min-w-[4.5rem] text-center">
             {displayId}
-          </div>
+          </span>
           <button
             type="button"
             onClick={onSave}

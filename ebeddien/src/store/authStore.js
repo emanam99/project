@@ -40,13 +40,31 @@ function normalizeUserFromPayload(payload) {
   }
 }
 
+// Batas umur token login: 5 jam dari terakhir digunakan (sliding). Lewat = harus login lagi.
+const AUTH_TOKEN_MAX_AGE_MS = 5 * 60 * 60 * 1000
+
+function getAuthLastUsedAt() {
+  try {
+    const v = localStorage.getItem('auth_last_used_at')
+    return v ? parseInt(v, 10) : null
+  } catch {
+    return null
+  }
+}
+
 export const useAuthStore = create((set, get) => ({
   token: null,
   user: null,
   isAuthenticated: false,
 
-  setAuth: (token, user) => {
+  setAuth: (token, user, refreshToken = null) => {
     localStorage.setItem('auth_token', token)
+    const now = Date.now()
+    localStorage.setItem('auth_last_used_at', String(now))
+    try { localStorage.setItem('auth_ever_logged_in', '1') } catch (_) {}
+    if (refreshToken != null && refreshToken !== '') {
+      try { localStorage.setItem('refresh_token', refreshToken) } catch (_) {}
+    }
     if (user) {
       const normalizedUser = normalizeUserFromPayload({
         ...user,
@@ -70,9 +88,11 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
+  /** Keluar dari aplikasi. Token akses & user_data dihapus; refresh_token & auth_ever_logged_in tetap agar kalender/tool gratis tetap bisa diakses. */
   logout: () => {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user_data')
+    localStorage.removeItem('auth_last_used_at')
     set({ token: null, user: null, isAuthenticated: false })
   },
 
@@ -132,6 +152,14 @@ export const useAuthStore = create((set, get) => ({
   
   checkAuth: async () => {
     const token = localStorage.getItem('auth_token')
+    const lastUsed = getAuthLastUsedAt()
+    if (token && lastUsed != null && (Date.now() - lastUsed) > AUTH_TOKEN_MAX_AGE_MS) {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user_data')
+      localStorage.removeItem('auth_last_used_at')
+      set({ token: null, user: null, isAuthenticated: false })
+      return
+    }
     if (token) {
       let user = null
       

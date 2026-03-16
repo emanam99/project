@@ -1,8 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import InfoModal from '../InfoModal'
-import { pendaftaranAPI } from '../../../services/api'
-
-const NOMOR_DAFTAR_NOTIF = '6285123123399'
 
 function normalizeNomor(v) {
   if (!v) return ''
@@ -14,8 +11,8 @@ function normalizeNomor(v) {
 
 /**
  * Informasi Tambahan Section Component
- * Dengan pengecekan WhatsApp untuk No. Telpon (Wali) dan No. WA Santri
- * + Toggle Notifikasi WA (status dari whatsapp___kontak); saat hidupkan → modal → wa.me Daftar Notifikasi
+ * Dengan pengecekan WhatsApp untuk No. Telpon (Wali) dan No. WA Santri.
+ * Aktifkan notifikasi WA dilakukan dari Dashboard setelah simpan.
  */
 function InformasiTambahanSection({
   sectionRef,
@@ -30,12 +27,6 @@ function InformasiTambahanSection({
   const [showInfoModal, setShowInfoModal] = useState(false)
   const [infoModalType, setInfoModalType] = useState(null)
 
-  const [kontakTelpon, setKontakTelpon] = useState(null)
-  const [kontakWaSantri, setKontakWaSantri] = useState(null)
-  const [showNotifModal, setShowNotifModal] = useState(false)
-  const [notifModalFor, setNotifModalFor] = useState(null)
-  const kontakDebounceRef = useRef(null)
-
   const {
     isCheckingTelpon,
     waStatusTelpon,
@@ -49,80 +40,6 @@ function InformasiTambahanSection({
     setWaStatusTelpon,
     setWaStatusWaSantri
   } = waCheck || {}
-
-  useEffect(() => {
-    const fetchKontak = async (nomor, setter) => {
-      if (!nomor || nomor.length < 10) {
-        setter(null)
-        return
-      }
-      try {
-        const res = await pendaftaranAPI.getWhatsAppKontakStatus(nomor)
-        if (res?.success) setter({ exists: !!res.exists, siap_terima_notif: !!res.siap_terima_notif })
-        else setter(null)
-      } catch {
-        setter(null)
-      }
-    }
-    const noTelpon = normalizeNomor(formData.no_telpon)
-    const noWaSantri = normalizeNomor(formData.no_wa_santri)
-    if (kontakDebounceRef.current) clearTimeout(kontakDebounceRef.current)
-    kontakDebounceRef.current = setTimeout(() => {
-      fetchKontak(noTelpon, setKontakTelpon)
-      fetchKontak(noWaSantri, setKontakWaSantri)
-      kontakDebounceRef.current = null
-    }, 400)
-    return () => {
-      if (kontakDebounceRef.current) clearTimeout(kontakDebounceRef.current)
-    }
-  }, [formData.no_telpon, formData.no_wa_santri])
-
-  const notifOnTelpon = kontakTelpon?.exists && kontakTelpon?.siap_terima_notif
-  const notifOnWaSantri = kontakWaSantri?.exists && kontakWaSantri?.siap_terima_notif
-
-  const handleNotifToggle = (field) => {
-    const num = field === 'telpon' ? normalizeNomor(formData.no_telpon) : normalizeNomor(formData.no_wa_santri)
-    const isOn = field === 'telpon' ? notifOnTelpon : notifOnWaSantri
-    const status = field === 'telpon' ? kontakTelpon : kontakWaSantri
-    if (isOn) return
-    if (num.length < 10) return
-    if (status?.exists && status?.siap_terima_notif) return
-    setNotifModalFor(field)
-    setShowNotifModal(true)
-    pendaftaranAPI.getWaWake().catch(() => {})
-  }
-
-  const buildDaftarNotifikasiText = (forField) => {
-    const lines = ['Daftar Notifikasi']
-    if (formData.nama) lines.push(`Nama: ${formData.nama}`)
-    if (formData.nik) lines.push(`NIK: ${formData.nik}`)
-    const nomorWa = forField === 'wa_santri' ? normalizeNomor(formData.no_wa_santri) : normalizeNomor(formData.no_telpon)
-    if (nomorWa && nomorWa.length >= 10) lines.push(`No WA: ${nomorWa}`)
-    return lines.join('\n')
-  }
-
-  const refetchKontak = (field) => {
-    const num = field === 'telpon' ? normalizeNomor(formData.no_telpon) : normalizeNomor(formData.no_wa_santri)
-    if (num.length < 10) return
-    pendaftaranAPI.getWhatsAppKontakStatus(num).then((res) => {
-      if (res?.success) {
-        const data = { exists: !!res.exists, siap_terima_notif: !!res.siap_terima_notif }
-        if (field === 'telpon') setKontakTelpon(data)
-        else setKontakWaSantri(data)
-      }
-    }).catch(() => {})
-  }
-
-  const openWaMeDaftarNotifikasi = () => {
-    pendaftaranAPI.getWaWake().catch(() => {})
-    const text = buildDaftarNotifikasiText(notifModalFor || 'telpon')
-    const url = `https://wa.me/${NOMOR_DAFTAR_NOTIF}?text=${encodeURIComponent(text)}`
-    window.open(url, '_blank', 'noopener,noreferrer')
-    setShowNotifModal(false)
-    const field = notifModalFor
-    setNotifModalFor(null)
-    setTimeout(() => refetchKontak(field), 3000)
-  }
 
   const handleInfoClick = (fieldType) => {
     setInfoModalType(fieldType)
@@ -203,26 +120,6 @@ function InformasiTambahanSection({
           className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
           placeholder="Nomor telepon wali (wajib untuk pembayaran iPayMu)"
         />
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className="text-sm text-gray-600 dark:text-gray-400">Notifikasi WA</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={notifOnTelpon}
-            onClick={() => handleNotifToggle('telpon')}
-            disabled={normalizeNomor(formData.no_telpon).length < 10}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:cursor-not-allowed disabled:opacity-50 ${
-              notifOnTelpon ? 'bg-teal-500' : 'bg-gray-200 dark:bg-gray-600'
-            }`}
-          >
-            <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
-              notifOnTelpon ? 'translate-x-5' : 'translate-x-1'
-            }`} />
-          </button>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {normalizeNomor(formData.no_telpon).length < 10 ? 'Isi nomor dulu' : notifOnTelpon ? 'Aktif' : 'Nonaktif'}
-          </span>
-        </div>
       </div>
 
       {/* No WA Santri */}
@@ -292,26 +189,6 @@ function InformasiTambahanSection({
           className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
           placeholder="Nomor WhatsApp santri"
         />
-        <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className="text-sm text-gray-600 dark:text-gray-400">Notifikasi WA</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={notifOnWaSantri}
-            onClick={() => handleNotifToggle('wa_santri')}
-            disabled={normalizeNomor(formData.no_wa_santri).length < 10}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:cursor-not-allowed disabled:opacity-50 ${
-              notifOnWaSantri ? 'bg-teal-500' : 'bg-gray-200 dark:bg-gray-600'
-            }`}
-          >
-            <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
-              notifOnWaSantri ? 'translate-x-5' : 'translate-x-1'
-            }`} />
-          </button>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {normalizeNomor(formData.no_wa_santri).length < 10 ? 'Isi nomor dulu' : notifOnWaSantri ? 'Aktif' : 'Nonaktif'}
-          </span>
-        </div>
       </div>
 
       {/* Email */}
@@ -477,38 +354,6 @@ function InformasiTambahanSection({
           placeholder="Kartu Keluarga Sejahtera"
         />
       </div>
-
-      {/* Modal Aktifkan Notifikasi WA — responsif (tidak terpotong di mobile) */}
-      {showNotifModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true" aria-labelledby="notif-modal-title">
-          <div className="w-full max-w-sm max-h-[90vh] overflow-auto rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-200 dark:border-gray-700">
-            <div className="p-5">
-              <h3 id="notif-modal-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                Aktifkan notifikasi WhatsApp
-              </h3>
-              <p className="text-gray-600 dark:text-gray-300 mb-4">
-                Aktifkan notifikasi whatsapp untuk nomor saya.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={openWaMeDaftarNotifikasi}
-                  className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
-                >
-                  Aktifkan via WhatsApp
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowNotifModal(false); setNotifModalFor(null) }}
-                  className="flex-1 px-4 py-2.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors"
-                >
-                  Batal
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Info Modal Dinamis */}
       <InfoModal

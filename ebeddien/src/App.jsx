@@ -1,9 +1,11 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, lazy, Suspense } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import Layout from './components/Layout/Layout'
-import Login from './pages/Login'
-import Daftar from './pages/Daftar'
-import LupaPassword from './pages/LupaPassword'
+import { LoginFormCard } from './pages/Login'
+import { DaftarFormCard } from './pages/Daftar'
+import { LupaPasswordFormCard } from './pages/LupaPassword'
+import AuthLeftPanel from './components/Auth/AuthLeftPanel'
 import SetupAkun from './pages/SetupAkun'
 import UbahPassword from './pages/UbahPassword'
 import UbahUsername from './pages/UbahUsername'
@@ -11,6 +13,7 @@ import Tentang from './pages/Tentang/index.jsx'
 import Version from './pages/Tentang/Version'
 import InfoAplikasi from './pages/Tentang/InfoAplikasi'
 import { useAuthStore } from './store/authStore'
+import { useThemeStore } from './store/themeStore'
 import ProtectedRoute from './components/Auth/ProtectedRoute'
 import SuperAdminRoute from './components/Auth/SuperAdminRoute'
 import AdminRoute from './components/Auth/AdminRoute'
@@ -22,6 +25,7 @@ const FinanceRoute = createFinanceRoute()
 import { NotificationProvider } from './contexts/NotificationContext'
 import InstallPrompt from './components/InstallPrompt'
 import pwaSubscriptionService from './services/pwaSubscriptionService'
+import { authPageFlipVariants, authPageFlipStyle } from './utils/authPageTransition'
 
 // Lazy load pages for code splitting
 const DashboardUmum = lazy(() => import('./pages/Settings/DashboardUmum'))
@@ -114,6 +118,243 @@ const PageLoader = () => (
     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
   </div>
 )
+
+// Auth: panel kiri 1 (shared), yang flip hanya bagian kanan (form)
+const AUTH_PATHS = ['/login', '/daftar', '/lupa-password']
+
+function AuthPagesWrapper() {
+  const location = useLocation()
+  const pathname = location.pathname
+  const isAuthPath = AUTH_PATHS.includes(pathname)
+  const theme = useThemeStore((s) => s.theme)
+  const toggleTheme = useThemeStore((s) => s.toggleTheme)
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [isMd, setIsMd] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const update = () => setIsMd(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
+  // Kunci scroll body saat offcanvas kalender terbuka
+  useEffect(() => {
+    if (!calendarOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [calendarOpen])
+
+  const showCalendarButton =
+    typeof window !== 'undefined' &&
+    (!!localStorage.getItem('auth_token') ||
+      !!localStorage.getItem('refresh_token') ||
+      !!localStorage.getItem('auth_ever_logged_in'))
+
+  let FormCard = null
+  if (pathname === '/login') FormCard = LoginFormCard
+  else if (pathname === '/daftar') FormCard = DaftarFormCard
+  else if (pathname === '/lupa-password') FormCard = LupaPasswordFormCard
+
+  if (!isAuthPath || !FormCard) return null
+
+  return (
+    <div className="w-full min-h-screen flex relative overflow-y-auto md:overflow-hidden">
+      <AuthLeftPanel />
+
+      {/* Desktop: tombol tema + kalender di garis vertikal pemisah kiri/kanan, tersusun vertikal, bg bulat sesuai tema */}
+      <div
+        className="hidden md:flex fixed z-50 flex-col gap-2 p-2 rounded-full bg-white/95 dark:bg-gray-800/95 backdrop-blur-md shadow-lg border border-gray-200/60 dark:border-gray-600/60"
+        style={{ left: 'calc(100% - 480px)', top: '50%', transform: 'translate(-50%, -50%)' }}
+      >
+        <motion.button
+          type="button"
+          onClick={toggleTheme}
+          className="flex items-center justify-center w-10 h-10 rounded-full text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors"
+          style={{ perspective: '120px' }}
+          whileTap={{ scale: 0.92 }}
+          aria-label="Ganti tema gelap/terang"
+        >
+          <span className="relative w-5 h-5 block">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={theme}
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ rotateY: -90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: 90, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                {theme === 'dark' ? (
+                  <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+        </motion.button>
+        {showCalendarButton && (
+          <motion.button
+            type="button"
+            onClick={() => setCalendarOpen(true)}
+            className="flex items-center justify-center w-10 h-10 rounded-full text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors"
+            whileTap={{ scale: 0.92 }}
+            aria-label="Buka kalender"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </motion.button>
+        )}
+      </div>
+
+      <div className="w-full md:w-[480px] flex items-start md:items-center justify-center pt-6 md:pt-0 px-4 pb-16 md:pb-8 md:px-10 relative z-10 login-bg-gradient" style={{ perspective: '1400px' }}>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={pathname}
+            variants={authPageFlipVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            style={authPageFlipStyle}
+            className="w-full flex justify-center"
+          >
+            <FormCard />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* Mobile: tombol tema + kalender di bawah, berjejer, style sama (icon + label kecil, tanpa BG) */}
+      <div className="md:hidden fixed bottom-6 left-0 right-0 flex justify-center items-end gap-8 z-40 px-4">
+        <motion.button
+          type="button"
+          onClick={toggleTheme}
+          className="flex flex-col items-center justify-center gap-0.5 text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 active:opacity-80"
+          style={{ perspective: '140px' }}
+          whileTap={{ scale: 0.96 }}
+          aria-label="Ganti tema gelap/terang"
+        >
+          <span className="relative w-7 h-7 block">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={theme}
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ rotateY: -90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: 90, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                {theme === 'dark' ? (
+                  <svg className="w-7 h-7 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+          <span className="text-[10px] font-medium leading-tight">Tema</span>
+        </motion.button>
+        {showCalendarButton && (
+          <motion.button
+            type="button"
+            onClick={() => setCalendarOpen(true)}
+            className="flex flex-col items-center justify-center gap-0.5 text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 active:opacity-80"
+            whileTap={{ scale: 0.96 }}
+            aria-label="Buka kalender"
+          >
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-[10px] font-medium leading-tight">Kalender</span>
+          </motion.button>
+        )}
+      </div>
+
+      {/* Offcanvas kalender dari bawah: atas bergelombang (air) + animasi */}
+      <AnimatePresence>
+        {calendarOpen && (
+          <>
+            <motion.div
+              className="fixed inset-0 bg-black/50 z-[60]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setCalendarOpen(false)}
+              aria-hidden
+            />
+            <motion.div
+              className="fixed z-[61] flex flex-col bg-white dark:bg-gray-900 shadow-2xl overflow-hidden md:left-0 md:top-0 md:bottom-0 md:w-full md:max-w-md md:rounded-r-2xl md:rounded-t-none left-0 right-0 bottom-0 rounded-t-3xl"
+              style={isMd ? { width: 'min(100%, 28rem)' } : { height: '90vh', maxHeight: '90vh' }}
+              initial={isMd ? { x: '-100%' } : { y: '100%' }}
+              animate={isMd ? { x: 0 } : { y: 0 }}
+              exit={isMd ? { x: '-100%' } : { y: '100%' }}
+              transition={{ type: 'tween', duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+            >
+              {/* Atas: strip gelombang air (mobile) */}
+              {/* Header desktop: judul + tombol tutup (offcanvas kiri) */}
+              <div className="hidden md:flex flex-shrink-0 items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <span className="font-semibold text-gray-800 dark:text-gray-100">Kalender</span>
+                <button
+                  type="button"
+                  onClick={() => setCalendarOpen(false)}
+                  className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-teal-600 dark:hover:text-teal-400"
+                  aria-label="Tutup kalender"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-shrink-0 relative h-10 overflow-hidden bg-white dark:bg-gray-900 text-white dark:text-gray-900 md:hidden">
+                <svg
+                  className="absolute left-0 top-0 w-[200%] h-full offcanvas-wave-svg"
+                  viewBox="0 0 800 40"
+                  preserveAspectRatio="none"
+                  aria-hidden
+                >
+                  <path
+                    fill="currentColor"
+                    d="M 0,40 L 800,40 L 800,20 C 750,32 650,8 600,20 C 550,32 450,8 400,20 C 350,32 250,8 200,20 C 150,32 50,8 0,20 Z"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <Suspense fallback={<div className="flex items-center justify-center p-8 text-gray-500">Memuat kalender…</div>}>
+                  <div className="flex-1 min-h-0 min-w-0 max-w-full overflow-hidden flex flex-col h-full w-full">
+                    <PublicKalender />
+                  </div>
+                </Suspense>
+              </div>
+              {/* Bawah: tombol panah ke bawah (mobile saja) */}
+              <div className="flex-shrink-0 flex justify-center py-3 pb-5 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setCalendarOpen(false)}
+                  className="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-teal-600 dark:hover:text-teal-400"
+                  aria-label="Tutup kalender"
+                >
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 // Catch-all: jangan arahkan /setup-akun, /ubah-password, /ubah-username ke login (link dari WA)
 function CatchAllRedirect() {
@@ -216,19 +457,19 @@ function App() {
       <Route 
         path="/login" 
         element={
-          isAuthenticated ? <Navigate to="/beranda" replace /> : <Login />
+          isAuthenticated ? <Navigate to="/beranda" replace /> : <AuthPagesWrapper />
         } 
       />
       <Route 
         path="/daftar" 
         element={
-          isAuthenticated ? <Navigate to="/beranda" replace /> : <Daftar />
+          isAuthenticated ? <Navigate to="/beranda" replace /> : <AuthPagesWrapper />
         } 
       />
       <Route 
         path="/lupa-password" 
         element={
-          isAuthenticated ? <Navigate to="/beranda" replace /> : <LupaPassword />
+          isAuthenticated ? <Navigate to="/beranda" replace /> : <AuthPagesWrapper />
         } 
       />
       <Route 

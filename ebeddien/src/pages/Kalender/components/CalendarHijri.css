@@ -1,7 +1,15 @@
 .kalender-hijri {
   padding: 0.5rem 0;
-  max-width: 560px;
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
+}
+
+@media (min-width: 641px) {
+  .kalender-hijri {
+    max-width: 560px;
+  }
 }
 
 .kalender-hijri--error {
@@ -225,8 +233,16 @@
 /* Kalender Masehi (reuses kalender-hijri nav/toggle styles) */
 .kalender-masehi {
   padding: 0.5rem 0;
-  max-width: 560px;
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
+}
+
+@media (min-width: 641px) {
+  .kalender-masehi {
+    max-width: 560px;
+  }
 }
 
 .kalender-masehi__year,

@@ -131,12 +131,30 @@ export const getApiBaseUrl = () => apiBaseUrl
 export const checkWhatsAppNumberViaAPI = (phoneNumber) =>
   api.post('/wa/check', { phoneNumber: String(phoneNumber || '').trim() }).then((r) => r.data)
 
+// Batas umur token login: 5 jam dari terakhir digunakan (sliding). Lewat = hapus token dan wajib login lagi.
+const AUTH_TOKEN_MAX_AGE_MS = 5 * 60 * 60 * 1000
+
+/** Hapus token login & redirect. Refresh token tetap disimpan agar kalender tetap bisa diakses (tanpa auto-login). */
+function clearAuthAndRedirectToLogin() {
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('user_data')
+  localStorage.removeItem('auth_last_used_at')
+  resetCsrfToken()
+  window.location.href = '/login'
+}
+
 // Request interceptor untuk menambahkan auth token dan CSRF token
 api.interceptors.request.use(
   async (config) => {
-    // Tambahkan JWT token
     const token = localStorage.getItem('auth_token')
     if (token) {
+      const lastUsedRaw = localStorage.getItem('auth_last_used_at')
+      const lastUsed = lastUsedRaw ? parseInt(lastUsedRaw, 10) : null
+      if (lastUsed == null || (Date.now() - lastUsed) > AUTH_TOKEN_MAX_AGE_MS) {
+        clearAuthAndRedirectToLogin()
+        return Promise.reject(new Error('Token login kadaluarsa (5 jam). Silakan login lagi.'))
+      }
+      localStorage.setItem('auth_last_used_at', String(Date.now()))
       config.headers.Authorization = `Bearer ${token}`
     }
 
@@ -178,15 +196,7 @@ api.interceptors.response.use(
 
       // Jika error terkait token atau sudah pernah retry, langsung redirect ke login
       if (isTokenError || originalRequest._retry) {
-        // Hapus token dari localStorage
-        localStorage.removeItem('auth_token')
-        resetCsrfToken()
-
-        // Redirect ke halaman login
-        // Gunakan window.location.href untuk full page reload dan clear state
-        window.location.href = '/login'
-
-        // Return promise yang tidak akan di-resolve untuk mencegah eksekusi lebih lanjut
+        clearAuthAndRedirectToLogin()
         return Promise.reject(new Error('Token tidak valid atau sudah kadaluarsa. Redirecting to login...'))
       }
 
@@ -200,9 +210,7 @@ api.interceptors.response.use(
       }
 
       // Jika tidak bisa mendapatkan CSRF token, redirect ke login
-      localStorage.removeItem('auth_token')
-      resetCsrfToken()
-      window.location.href = '/login'
+      clearAuthAndRedirectToLogin()
       return Promise.reject(new Error('Token tidak valid atau sudah kadaluarsa. Redirecting to login...'))
     }
 

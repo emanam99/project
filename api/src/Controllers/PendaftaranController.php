@@ -1123,7 +1123,9 @@ class PendaftaranController
                     ], 400);
                 }
                 $tahunHijriyah = trim((string) $input['tahun_hijriyah']);
-                SantriHelper::parsePrefixFromGenderAndTahun($genderNormalized, $tahunHijriyah);
+                // Hitung prefix grup untuk santri baru (dipakai saat INSERT di bawah)
+                // Sekaligus validasi format tahun_hijriyah & gender melalui helper.
+                $grup = SantriHelper::parsePrefixFromGenderAndTahun($genderNormalized, $tahunHijriyah);
                 $id = 0;
             }
 
