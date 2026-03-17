@@ -6,6 +6,7 @@
 /** Urutan grup untuk Sidebar, Expanded, Semua Menu, Header */
 export const GROUP_ORDER = [
   'My Workspace',
+  'Super Admin',
   'Pendaftaran',
   'UWABA',
   'UGT',
@@ -30,6 +31,9 @@ export const MENU_ITEMS = [
   { path: '/beranda', label: 'Beranda', iconKey: 'home', group: 'My Workspace' },
   { path: '/profil', label: 'Profil', iconKey: 'user', group: 'My Workspace' },
   { path: '/aktivitas-saya', label: 'Aktivitas Saya', iconKey: 'activity', group: 'My Workspace' },
+  { path: '/chat', label: 'Chat', iconKey: 'chat', group: 'My Workspace' },
+  // ========== Super Admin ==========
+  { path: '/super-admin/dashboard', label: 'Online', iconKey: 'usersGroup', group: 'Super Admin', requiresSuperAdmin: true },
   // ========== Pendaftaran ==========
   { path: '/dashboard-pendaftaran', label: 'Dashboard', iconKey: 'dashboard', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran', label: 'Pendaftaran', iconKey: 'document', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
@@ -142,7 +146,7 @@ export function getItemByPath(path) {
 }
 
 /** Urutan grup untuk Header (breadcrumb) — Pendaftaran … Setting (termasuk Domisili+Lembaga) … Tentang */
-const HEADER_GROUP_ORDER = ['Pendaftaran', 'UWABA', 'UGT', 'Keuangan', 'Ijin', 'Kalender', 'Cashless', 'Setting', 'Tentang']
+const HEADER_GROUP_ORDER = ['Super Admin', 'Pendaftaran', 'UWABA', 'UGT', 'Keuangan', 'Ijin', 'Kalender', 'Cashless', 'Setting', 'Tentang']
 
 /**
  * HEADER_GROUPS format: [{ name, routes: [{ path, label, prefix? }] }]. Setting = Setting + Domisili + Lembaga.

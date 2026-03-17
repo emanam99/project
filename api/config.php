@@ -134,6 +134,10 @@ return [
         'api_key' => env('WATZAP_API_KEY', ''),
         'number_key' => env('WATZAP_NUMBER_KEY', 'ALL'),
     ],
+    // Live server (Socket.IO): API key untuk simpan pesan chat ke tabel chat. Set LIVE_SERVER_API_KEY di .env (sama dengan live/.env).
+    'live_server' => [
+        'api_key' => env('LIVE_SERVER_API_KEY', ''),
+    ],
     // Base URL API ini (untuk webhook WatZap). Staging: https://api2.alutsmani.id, production: https://api.alutsmani.id.
     // Di .env set API_PUBLIC_URL; atau WATZAP_WEBHOOK_URL (full URL) untuk override.
     'api_public_url' => rtrim((string) env('API_PUBLIC_URL', ''), '/'),

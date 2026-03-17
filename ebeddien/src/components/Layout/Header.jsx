@@ -299,9 +299,15 @@ function Header() {
     return () => { cancelled = true }
   }, [location.pathname])
 
-  // Load payment data
+  // Load payment data — endpoint hanya boleh diakses role admin_uwaba, petugas_uwaba, super_admin
+  const canAccessTotalPembayaran = (() => {
+    const role = (user?.role_key || user?.level || '').toLowerCase()
+    const roles = Array.isArray(user?.all_roles) ? user.all_roles.map((r) => String(r).toLowerCase()) : []
+    return ['admin_uwaba', 'petugas_uwaba', 'super_admin'].some((r) => role === r || roles.includes(r))
+  })()
+
   useEffect(() => {
-    if (!user?.id) return
+    if (!user?.id || !canAccessTotalPembayaran) return
 
     const loadPaymentData = async () => {
       try {
@@ -330,15 +336,14 @@ function Header() {
           })
         }
       } catch (error) {
-        console.error('Error loading payment data:', error)
+        if (error?.response?.status !== 403) console.error('Error loading payment data:', error)
       }
     }
 
     loadPaymentData()
-    // Refresh setiap 30 detik
     const interval = setInterval(loadPaymentData, 30000)
     return () => clearInterval(interval)
-  }, [user?.id])
+  }, [user?.id, canAccessTotalPembayaran])
 
   // Load saldo data (pemasukan & pengeluaran) untuk grup Keuangan
   useEffect(() => {

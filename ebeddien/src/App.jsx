@@ -24,6 +24,8 @@ import { createFinanceRoute } from './components/Auth/PermissionRoute'
 const FinanceRoute = createFinanceRoute()
 import { NotificationProvider } from './contexts/NotificationContext'
 import InstallPrompt from './components/InstallPrompt'
+import LiveSocketSync from './components/LiveSocket/LiveSocketSync'
+import { LiveSocketProvider } from './contexts/LiveSocketContext'
 import pwaSubscriptionService from './services/pwaSubscriptionService'
 import { authPageFlipVariants, authPageFlipStyle } from './utils/authPageTransition'
 
@@ -60,6 +62,7 @@ const ImportTunggakan = lazy(() => import('./pages/Pembayaran/ImportTunggakan'))
 const Profil = lazy(() => import('./pages/MyWorkspace/Profil/index.jsx'))
 const Beranda = lazy(() => import('./pages/MyWorkspace/Beranda/index.jsx'))
 const AktivitasSaya = lazy(() => import('./pages/MyWorkspace/AktivitasSaya/index.jsx'))
+const Chat = lazy(() => import('./pages/MyWorkspace/Chat/index.jsx'))
 const SemuaMenu = lazy(() => import('./pages/MyWorkspace/SemuaMenu/index.jsx'))
 const Print = lazy(() => import('./pages/Pembayaran/print/Print'))
 const PrintPengeluaran = lazy(() => import('./pages/Keuangan/Pengeluaran/print/PrintPengeluaran'))
@@ -111,6 +114,7 @@ const DataLulusan = lazy(() => import('./pages/Lulusan/DataLulusan'))
 const Daerah = lazy(() => import('./pages/Domisili/Daerah'))
 const Kamar = lazy(() => import('./pages/Domisili/Kamar'))
 const KoneksiWa = lazy(() => import('./pages/WhatsApp/KoneksiWa'))
+const DashboardSuperAdmin = lazy(() => import('./pages/SuperAdmin/Dashboard'))
 
 // Loading component
 const PageLoader = () => (
@@ -451,8 +455,10 @@ function App() {
 
   return (
     <NotificationProvider>
-      <InstallPrompt />
-      <Routes>
+      <LiveSocketProvider>
+        <InstallPrompt />
+        <LiveSocketSync />
+        <Routes>
       {/* Public Routes */}
       <Route 
         path="/login" 
@@ -805,6 +811,14 @@ function App() {
               </Suspense>
             } 
           />
+          <Route 
+            path="/chat" 
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Chat />
+              </Suspense>
+            } 
+          />
           {/* Kalender - semua user login bisa lihat */}
           <Route 
             path="/kalender" 
@@ -867,6 +881,17 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KalenderPesantrenKelolaEvent />
+                </Suspense>
+              }
+            />
+          </Route>
+          {/* Super Admin — Dashboard (user aktif / live) */}
+          <Route element={<SuperAdminRoute />}>
+            <Route 
+              path="/super-admin/dashboard" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DashboardSuperAdmin />
                 </Suspense>
               }
             />
@@ -1295,6 +1320,7 @@ function App() {
       {/* 404 - Jangan arahkan /setup-akun ke login (link WA ke buat username/password) */}
       <Route path="*" element={<CatchAllRedirect />} />
     </Routes>
+      </LiveSocketProvider>
     </NotificationProvider>
   )
 }

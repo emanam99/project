@@ -210,7 +210,7 @@ function Sidebar() {
     <motion.aside
       initial={false}
       animate={{ width: isCollapsed ? 80 : 256 }}
-      className={`hidden sm:flex flex-col bg-white dark:bg-gray-800 shadow-lg transition-all duration-300 ease-in-out ${sidebarWidth} overflow-hidden h-screen`}
+      className={`hidden sm:flex flex-col bg-white dark:bg-gray-800 shadow-lg transition-all duration-300 ease-in-out ${sidebarWidth} overflow-hidden h-full min-h-0`}
     >
       {/* Header */}
       <div className="flex items-center justify-center h-20 shadow-md bg-primary-600 dark:bg-primary-800 overflow-hidden flex-shrink-0">

@@ -9,7 +9,7 @@ $SSH_USER   = "root"
 $SSH_HOST   = "148.230.96.1"
 $SSH_PORT   = 22
 $VPS_WA     = "/var/www/wa"   # production (wa.alutsmani.id), port 3001
-$VPS_WA2    = "/var/www/wa2"  # staging (wa2.alutsmani.id), port 3002
+$VPS_WA2    = "/var/www/wa2"  # staging (wa2.alutsmani.id), port 3003
 $DOMAIN_WA  = "wa.alutsmani.id"
 $DOMAIN_WA2 = "wa2.alutsmani.id"
 
@@ -24,7 +24,7 @@ $sshTarget = "${SSH_USER}@${SSH_HOST}"
 
 Write-Host ""
 Write-Host "  Setup WA VPS: folder wa + wa2, Nginx, HTTPS (certbot), auto-renew" -ForegroundColor Cyan
-Write-Host "  VPS: $SSH_HOST | wa -> $DOMAIN_WA (port 3001) | wa2 -> $DOMAIN_WA2 (port 3002)" -ForegroundColor Gray
+Write-Host "  VPS: $SSH_HOST | wa -> $DOMAIN_WA (port 3001) | wa2 -> $DOMAIN_WA2 (port 3003)" -ForegroundColor Gray
 Write-Host "  Pastikan DNS A record $DOMAIN_WA dan $DOMAIN_WA2 sudah mengarah ke $SSH_HOST" -ForegroundColor Yellow
 Write-Host ""
 
@@ -69,7 +69,7 @@ server {
     listen 80;
     server_name $DOMAIN_WA2;
     location / {
-        proxy_pass http://127.0.0.1:3002;
+        proxy_pass http://127.0.0.1:3003;
         proxy_http_version 1.1;
         proxy_set_header Host `$host;
         proxy_set_header X-Real-IP `$remote_addr;
@@ -185,7 +185,7 @@ if ($pm2Ok -match "NOTFOUND") {
 Write-Host ""
 Write-Host "  Setup selesai." -ForegroundColor Green
 Write-Host "  - Folder: $VPS_WA (production), $VPS_WA2 (staging)" -ForegroundColor White
-Write-Host "  - HTTPS: https://$DOMAIN_WA (-> port 3001), https://$DOMAIN_WA2 (-> port 3002)" -ForegroundColor White
+Write-Host "  - HTTPS: https://$DOMAIN_WA (-> port 3001), https://$DOMAIN_WA2 (-> port 3003)" -ForegroundColor White
 Write-Host "  - Sertifikat otomatis diperpanjang oleh certbot (systemd timer atau cron)." -ForegroundColor Gray
 Write-Host "  - Deploy kode WA: .\deploy-wa-vps.ps1" -ForegroundColor Cyan
 Write-Host ""

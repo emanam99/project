@@ -1654,6 +1654,19 @@ export const dashboardAPI = {
   }
 }
 
+// Chat user-to-user (percakapan, daftar user, riwayat pesan)
+export const chatUserAPI = {
+  /** users.id yang login (untuk daftar socket agar receive_message sampai). */
+  getMe: () => api.get('/chat/me').then((r) => r.data),
+  getConversations: () => api.get('/chat/conversations').then((r) => r.data),
+  getUsers: () => api.get('/chat/users').then((r) => r.data),
+  /** Riwayat pesan dengan satu user. peerId = user id lawan, limit default 20. */
+  getMessages: (peerId, params = {}) => {
+    const limit = params.limit ?? 20
+    return api.get('/chat/messages', { params: { peer_id: peerId, limit } }).then((r) => r.data)
+  },
+}
+
 // Chat API
 export const chatAPI = {
   getCountBySantri: async (idSantri) => {

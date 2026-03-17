@@ -52,6 +52,7 @@ use App\Controllers\PaymentController;
 use App\Controllers\PrintController;
 use App\Controllers\LaporanController;
 use App\Controllers\ChatController;
+use App\Controllers\UserChatController;
 use App\Controllers\ManageUsersController;
 use App\Controllers\PengeluaranController;
 use App\Controllers\PemasukanController;

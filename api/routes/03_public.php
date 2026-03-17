@@ -17,6 +17,7 @@ use App\Controllers\HariPentingController;
 use App\Controllers\WhatsAppController;
 use App\Controllers\WarmerController;
 use App\Controllers\WatzapController;
+use App\Controllers\UserChatController;
 
 return function (\Slim\App $app): void {
     // Public endpoint untuk cek NIK (tanpa auth)
@@ -71,6 +72,9 @@ return function (\Slim\App $app): void {
     $app->post('/api/wa/incoming', [WhatsAppController::class, 'incoming']);
     // Update status pesan (sent/delivered/read) dari server WA. Header X-API-Key wajib (sama dengan WA_API_KEY).
     $app->post('/api/wa/message-status', [WhatsAppController::class, 'messageStatus']);
+
+    // Live server: simpan pesan chat user-to-user ke tabel chat. Header X-API-Key = LIVE_SERVER_API_KEY.
+    $app->post('/api/live/chat/message', [UserChatController::class, 'saveMessage']);
 
     // Warmer runner — Node WA server (header X-API-Key wajib)
     $app->get('/api/warmer/runner/pairs', [WarmerController::class, 'runnerPairs']);

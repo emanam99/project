@@ -55,7 +55,7 @@ const offcanvasRightVariants = {
 
 function Layout() {
   const location = useLocation()
-  const hideHeader = location.pathname === '/beranda' || location.pathname === '/semua-menu'
+  const hideHeader = location.pathname === '/beranda' || location.pathname === '/semua-menu' || location.pathname === '/chat'
   const setOptions = useTahunAjaranStore((s) => s.setOptions)
   const setOptionsMasehi = useTahunAjaranStore((s) => s.setOptionsMasehi)
   const [templateOffcanvasOpen, setTemplateOffcanvasOpen] = useState(false)
@@ -77,9 +77,9 @@ function Layout() {
 
   return (
     <WhatsAppTemplateContext.Provider value={templateContextValue}>
-    <div className="flex h-screen relative overflow-hidden">
+    <div className="flex h-screen max-h-screen min-h-0 relative overflow-hidden w-full">
       {/* Background hiasan */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-primary-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-primary-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 pointer-events-none">
         {/* Pattern overlay */}
         <div 
           className="absolute inset-0 opacity-5 dark:opacity-10"
@@ -100,13 +100,13 @@ function Layout() {
         <div className="absolute bottom-1/4 left-1/3 w-16 h-16 border-2 border-primary-400/30 dark:border-primary-500/30 rounded-full"></div>
       </div>
 
-      {/* Sidebar untuk Desktop */}
-      <div className="relative z-10">
+      {/* Sidebar untuk Desktop — tinggi ikut container, jangan melebihi viewport */}
+      <div className="relative z-10 h-full min-h-0 shrink-0 flex flex-col">
         <Sidebar />
       </div>
       
       {/* Main Content Area */}
-      <div className="flex flex-col flex-1 overflow-hidden relative z-10">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative z-10 w-0">
         {/* Header: tersembunyi di Beranda & Semua Menu, muncul dengan animasi di halaman lain; z-20 agar dropdown di atas main; overflow-visible saat tampil agar menu tidak terpotong */}
         <motion.div
           className={`shrink-0 z-20 ${hideHeader ? 'overflow-hidden' : 'overflow-visible'}`}

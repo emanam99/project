@@ -13,6 +13,7 @@ use App\Controllers\ChatController;
 use App\Controllers\SubscriptionController;
 use App\Controllers\WhatsAppTemplateController;
 use App\Controllers\WarmerController;
+use App\Controllers\UserChatController;
 
 return function (\Slim\App $app): void {
     // Daftar user (sensitif) — hanya super_admin
@@ -97,6 +98,14 @@ return function (\Slim\App $app): void {
         $group->post('/warmer/messages/import', [WarmerController::class, 'importMessages']);
         $group->post('/warmer/messages/delete', [WarmerController::class, 'deleteMessage']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    // Chat user-to-user: percakapan, daftar user, riwayat pesan — cukup login
+    $app->group('/api', function ($group) {
+        $group->get('/chat/me', [UserChatController::class, 'getMe']);
+        $group->get('/chat/conversations', [UserChatController::class, 'getConversations']);
+        $group->get('/chat/users', [UserChatController::class, 'getChatUsers']);
+        $group->get('/chat/messages', [UserChatController::class, 'getMessages']);
+    })->add(new AuthMiddleware());
 
     // User profil (sendiri) & subscription — cukup login; GET /user/{id} di controller harus cek: own id atau super_admin
     $app->group('/api', function ($group) {

@@ -1,0 +1,5 @@
+# ========== Tambahkan ke api/.env di Hostinger (File Manager / FTP) ==========
+# Supaya server live (Socket.IO) bisa simpan pesan chat ke database via POST /api/live/chat/message.
+# Salin baris berikut ke file .env di folder API (public_html/api/.env atau sesuai path API Anda).
+
+LIVE_SERVER_API_KEY=LiveChatAlutsmani2026SecretKey32Ch
