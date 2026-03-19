@@ -429,9 +429,10 @@ export const authAPI = {
 
 /**
  * Base URL backend WA (Node) — koneksi/QR, status, connect/disconnect/logout.
- * Jika muncul ERR_CERT_COMMON_NAME_INVALID saat akses halaman WhatsApp (staging/production),
- * set VITE_WA_BACKEND_URL di .env ke URL backend WA yang sertifikat SSL-nya valid
- * (mis. same-origin jika backend di-reverse-proxy: https://domain-anda.id).
+ * - Staging: frontend di *2.alutsmani.id → WA Node di https://wa2.alutsmani.id (folder `wa`, port 3003 di VPS).
+ *   Jangan same-origin ke ebeddien2/dll. kecuali Anda memang reverse-proxy /api/whatsapp ke Node di vhost yang sama.
+ * - Production: https://wa.alutsmani.id
+ * - Override: VITE_WA_BACKEND_URL di .env (wajib jika domain/custom path beda).
  */
 export const getWaBackendUrl = () => {
   const url = import.meta.env.VITE_WA_BACKEND_URL
@@ -443,15 +444,30 @@ export const getWaBackendUrl = () => {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:3001'
   }
-  // Staging (ebeddien2, uwaba2, daftar2, mybeddian2): pakai same-origin agar tidak kena ERR_CERT_COMMON_NAME_INVALID.
-  // Backend WA harus di-reverse-proxy di domain yang sama, atau set VITE_WA_BACKEND_URL di .env.
-  if (hostname.includes('ebeddien2') || hostname.includes('uwaba2') || hostname.includes('daftar2') || hostname.includes('mybeddian2') || hostname === 'wa2.alutsmani.id') {
-    return `${protocol}//${hostname}`
+
+  const hl = hostname.toLowerCase()
+
+  // Langsung buka dari host WA staging
+  if (hl === 'wa2.alutsmani.id') {
+    return 'https://wa2.alutsmani.id'
   }
-  // Production: backend WA di wa.alutsmani.id
-  if (hostname.includes('alutsmani.id') || hostname.includes('alutsmani.my.id')) {
+
+  // Staging alutsmani.id: subdomain …2 (ebeddien2, uwaba2, api2 untuk tes, dll.) → backend WA terpisah wa2
+  // Kecuali api* (biasanya bukan UI Koneksi WA) — tetap wa2 aman untuk konsistensi; bisa override lewat .env.
+  // ebeddien2.alutsmani.id, uwaba2.*, api2.*, … (subdomain berakhiran "2" = staging → WA Node wa2)
+  const alutsmaniParts = hl.match(/^([a-z0-9-]+)\.alutsmani\.id$/i)
+  if (alutsmaniParts) {
+    const sub = alutsmaniParts[1]
+    if (sub.endsWith('2')) {
+      return 'https://wa2.alutsmani.id'
+    }
+  }
+
+  // Production & domain lain *.alutsmani.id / *.alutsmani.my.id
+  if (hl.includes('alutsmani.id') || hl.includes('alutsmani.my.id')) {
     return 'https://wa.alutsmani.id'
   }
+
   return `${protocol}//${hostname}:3001`
 }
 

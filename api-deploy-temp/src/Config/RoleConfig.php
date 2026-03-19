@@ -1,0 +1,271 @@
+<?php
+
+namespace App\Config;
+
+/**
+ * Konfigurasi Role dan Permissions
+ * 
+ * File ini berisi konfigurasi lengkap untuk:
+ * - Role yang tersedia
+ * - Aplikasi yang bisa diakses oleh setiap role
+ * - Permissions untuk setiap role (untuk fitur-fitur)
+ * 
+ * Untuk menambah atau mengubah role/permission, edit file ini.
+ */
+class RoleConfig
+{
+    /**
+     * Daftar aplikasi yang tersedia (hanya UWABA; lembaga & umroh sudah digabung ke UWABA)
+     */
+    const APPS = [
+        'uwaba' => 'Aplikasi UWABA',
+        'mybeddian' => 'Aplikasi Mybeddian'
+    ];
+
+    /**
+     * Konfigurasi role dan aplikasi yang bisa diakses
+     * 
+     * Format: 'role_key' => ['app1', 'app2', ...]
+     */
+    const ROLE_ALLOWED_APPS = [
+        'super_admin' => ['uwaba'],
+        'admin_uwaba' => ['uwaba'],
+        'petugas_uwaba' => ['uwaba'],
+        'admin_lembaga' => [],
+        'wali_kelas' => [],
+        'guru' => [],
+        'waka_lembaga' => [],
+        'ketua_lembaga' => [],
+        'admin_umroh' => ['uwaba'],
+        'petugas_umroh' => ['uwaba'],
+        'user_umroh' => [],
+        'admin_psb' => ['uwaba'],
+        'petugas_psb' => ['uwaba'],
+        'admin_ijin' => ['uwaba'],
+        'petugas_ijin' => ['uwaba'],
+        'admin_ugt' => ['uwaba'],
+        'admin_kalender' => ['uwaba'],
+        'koordinator_ugt' => ['uwaba'],
+        'santri' => ['mybeddian']
+    ];
+
+    /**
+     * Konfigurasi permissions untuk setiap role
+     * 
+     * Format: 'role_key' => ['permission1', 'permission2', ...]
+     * 
+     * Permission yang tersedia:
+     * - manage_users: Mengelola pengguna
+     * - manage_santri: Mengelola data santri
+     * - manage_uwaba: Mengelola pembayaran UWABA (termasuk fitur umroh)
+     * - manage_umroh: Mengelola data Umroh (Jamaah, Tabungan, Pengeluaran Umroh)
+     * - manage_psb: Mengelola pendaftaran PSB (Penerimaan Santri Baru)
+     * - manage_ijin: Mengelola data Ijin
+     * - view_reports: Melihat laporan
+     * - manage_finance: Mengelola keuangan (Pemasukan, Pengeluaran, Aktivitas)
+     * - manage_settings: Mengelola pengaturan
+     */
+    const ROLE_PERMISSIONS = [
+        'super_admin' => [
+            'manage_users',
+            'manage_santri',
+            'manage_uwaba',
+            'manage_umroh',
+            'manage_psb',
+            'view_reports',
+            'manage_finance',
+            'manage_settings'
+        ],
+        'admin_uwaba' => [
+            'manage_santri',
+            'manage_uwaba',
+            'manage_umroh',
+            'view_reports',
+            'manage_finance'
+        ],
+        'petugas_uwaba' => [
+            'manage_uwaba',
+            'manage_umroh',
+            'view_reports'
+        ],
+        'admin_lembaga' => [
+            'manage_santri',
+            'view_reports'
+        ],
+        'wali_kelas' => [
+            'manage_santri',
+            'view_reports'
+        ],
+        'guru' => [
+            'view_reports'
+        ],
+        'waka_lembaga' => [
+            'manage_santri',
+            'view_reports',
+            'manage_finance'
+        ],
+        'ketua_lembaga' => [
+            'manage_santri',
+            'view_reports',
+            'manage_finance'
+        ],
+        'admin_umroh' => [
+            'manage_uwaba',
+            'manage_umroh',
+            'view_reports',
+            'manage_finance'
+        ],
+        'petugas_umroh' => [
+            'manage_uwaba',
+            'manage_umroh',
+            'view_reports'
+        ],
+        'user_umroh' => [
+            'view_reports'
+        ],
+        'admin_psb' => [
+            'manage_santri',
+            'manage_psb',
+            'view_reports'
+        ],
+        'petugas_psb' => [
+            'manage_psb',
+            'view_reports'
+        ],
+        'admin_ijin' => [
+            'manage_ijin',
+            'view_reports'
+        ],
+        'petugas_ijin' => [
+            'manage_ijin',
+            'view_reports'
+        ],
+        'admin_ugt' => [
+            'view_reports'
+        ],
+        'admin_kalender' => [
+            'view_reports',
+            'manage_settings'
+        ],
+        'koordinator_ugt' => [
+            'view_reports'
+        ],
+        'santri' => []
+    ];
+
+    /**
+     * Label untuk setiap role
+     */
+    const ROLE_LABELS = [
+        'super_admin' => 'Super Admin',
+        'admin_uwaba' => 'Admin UWABA',
+        'petugas_uwaba' => 'Petugas UWABA',
+        'admin_lembaga' => 'Admin Lembaga',
+        'wali_kelas' => 'Wali Kelas',
+        'guru' => 'Guru',
+        'waka_lembaga' => 'Waka Lembaga',
+        'ketua_lembaga' => 'Ketua Lembaga',
+        'admin_umroh' => 'Admin Umroh',
+        'petugas_umroh' => 'Petugas Umroh',
+        'user_umroh' => 'User Umroh',
+        'admin_psb' => 'Admin PSB',
+        'petugas_psb' => 'Petugas PSB',
+        'admin_ijin' => 'Admin Ijin',
+        'petugas_ijin' => 'Petugas Ijin',
+        'admin_ugt' => 'Admin UGT (Urusan Guru Tugas)',
+        'admin_kalender' => 'Admin Kalender',
+        'koordinator_ugt' => 'Koordinator UGT',
+        'santri' => 'Santri'
+    ];
+
+    /**
+     * Cek apakah role bisa mengakses aplikasi tertentu
+     * 
+     * @param string $roleKey Key role (contoh: 'super_admin')
+     * @param string $appKey Key aplikasi (contoh: 'uwaba')
+     * @return bool
+     */
+    public static function canAccessApp(string $roleKey, string $appKey): bool
+    {
+        $roleKey = strtolower($roleKey);
+        $appKey = strtolower($appKey);
+        
+        if (!isset(self::ROLE_ALLOWED_APPS[$roleKey])) {
+            return false;
+        }
+        
+        return in_array($appKey, self::ROLE_ALLOWED_APPS[$roleKey]);
+    }
+
+    /**
+     * Cek apakah role memiliki permission tertentu
+     * 
+     * @param string $roleKey Key role
+     * @param string $permission Key permission
+     * @return bool
+     */
+    public static function hasPermission(string $roleKey, string $permission): bool
+    {
+        $roleKey = strtolower($roleKey);
+        $permission = strtolower($permission);
+        
+        if (!isset(self::ROLE_PERMISSIONS[$roleKey])) {
+            return false;
+        }
+        
+        return in_array($permission, self::ROLE_PERMISSIONS[$roleKey]);
+    }
+
+    /**
+     * Dapatkan daftar aplikasi yang bisa diakses oleh role
+     * 
+     * @param string $roleKey Key role
+     * @return array
+     */
+    public static function getAllowedApps(string $roleKey): array
+    {
+        $roleKey = strtolower($roleKey);
+        
+        return self::ROLE_ALLOWED_APPS[$roleKey] ?? [];
+    }
+
+    /**
+     * Dapatkan daftar permissions untuk role
+     * 
+     * @param string $roleKey Key role
+     * @return array
+     */
+    public static function getPermissions(string $roleKey): array
+    {
+        $roleKey = strtolower($roleKey);
+        
+        return self::ROLE_PERMISSIONS[$roleKey] ?? [];
+    }
+
+    /**
+     * Dapatkan label role
+     * 
+     * @param string $roleKey Key role
+     * @return string
+     */
+    public static function getRoleLabel(string $roleKey): string
+    {
+        $roleKey = strtolower($roleKey);
+        
+        return self::ROLE_LABELS[$roleKey] ?? $roleKey;
+    }
+
+    /**
+     * Validasi apakah role key valid
+     * 
+     * @param string $roleKey Key role
+     * @return bool
+     */
+    public static function isValidRole(string $roleKey): bool
+    {
+        $roleKey = strtolower($roleKey);
+        
+        return isset(self::ROLE_LABELS[$roleKey]);
+    }
+}
+

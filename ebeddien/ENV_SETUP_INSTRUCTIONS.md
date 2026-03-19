@@ -32,14 +32,16 @@ Setelah setup, refresh browser dan cek console:
 
 ## Backend WhatsApp (halaman Koneksi WA)
 
-Jika setelah deploy muncul error **ERR_CERT_COMMON_NAME_INVALID** atau **Failed to fetch** saat buka halaman WhatsApp:
+Frontend memanggil **server Node** di folder `wa/` (status/QR/connect).
 
-1. Set **VITE_WA_BACKEND_URL** di `.env` (atau env di server) ke URL backend WA yang **sertifikat SSL-nya valid**.
-2. Contoh: jika backend WA di-reverse-proxy di domain yang sama dengan frontend, gunakan same-origin:
-   ```env
-   VITE_WA_BACKEND_URL=https://ebeddien2.alutsmani.id
-   ```
-3. Setelah ubah env, rebuild: `npm run build`, lalu deploy lagi.
+- **Staging** (`ebeddien2.alutsmani.id`, `uwaba2.*`, subdomain `*2.alutsmani.id`): default **`https://wa2.alutsmani.id`** (bukan same-origin ke ebeddien2).
+- **Production**: default **`https://wa.alutsmani.id`**.
+- Jika masih **Network error / Failed to fetch**: cek SSL `wa2` (mis. `openssl s_client -servername wa2.alutsmani.id -connect wa2.alutsmani.id:443`), Nginx proxy ke port Node (biasanya **3003** untuk wa2), dan CORS di `wa/server.js` (sudah mengizinkan `*.alutsmani.id`).
+- **Override** URL WA:
+  ```env
+  VITE_WA_BACKEND_URL=https://wa2.alutsmani.id
+  ```
+  Lalu rebuild: `npm run build`.
 
 ## Link setup akun / ubah password (WhatsApp)
 
