@@ -7,6 +7,7 @@ import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useAuthStore } from '../../store/authStore'
 import OffcanvasPindahRombel from '../../components/Modal/OffcanvasPindahRombel'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
+import PrintAbsenOffcanvas from './components/PrintAbsenOffcanvas'
 
 const normalizeStatus = (s) => {
   if (!s) return ''
@@ -61,6 +62,9 @@ function Rombel() {
   const [santriOffcanvasRombel, setSantriOffcanvasRombel] = useState(null)
   const [santriOffcanvasList, setSantriOffcanvasList] = useState([])
   const [santriOffcanvasLoading, setSantriOffcanvasLoading] = useState(false)
+  const [santriOffcanvasSearch, setSantriOffcanvasSearch] = useState('')
+  const [santriSelectMode, setSantriSelectMode] = useState(false)
+  const [printAbsenOpen, setPrintAbsenOpen] = useState(false)
   const [rombelSameLembaga, setRombelSameLembaga] = useState([])
   const [moveLoadingId, setMoveLoadingId] = useState(null)
   const [selectedSantriIds, setSelectedSantriIds] = useState(() => new Set())
@@ -96,6 +100,25 @@ function Rombel() {
     return k === String(val).trim()
   }, [])
   const statusLabel = useCallback((v) => (v === 'aktif' ? 'Aktif' : v === 'nonaktif' ? 'Nonaktif' : v), [])
+
+  /** Daftar santri di offcanvas setelah filter cari (nama / NIS) */
+  const filteredSantriOffcanvasList = useMemo(() => {
+    const q = santriOffcanvasSearch.trim().toLowerCase()
+    if (!q) return santriOffcanvasList
+    return santriOffcanvasList.filter((s) => {
+      const nama = (s.nama && String(s.nama).toLowerCase()) || ''
+      const nis = s.nis != null ? String(s.nis).toLowerCase() : ''
+      return nama.includes(q) || nis.includes(q)
+    })
+  }, [santriOffcanvasList, santriOffcanvasSearch])
+
+  /** Baris untuk cetak absen: jika mode pilih aktif & ada centang → hanya terpilih; else semua yang terlihat (filter) */
+  const absenPrintRows = useMemo(() => {
+    if (santriSelectMode && selectedSantriIds.size > 0) {
+      return filteredSantriOffcanvasList.filter((s) => selectedSantriIds.has(s.id))
+    }
+    return filteredSantriOffcanvasList
+  }, [filteredSantriOffcanvasList, santriSelectMode, selectedSantriIds])
 
   const { lembagaOptions, kelasOptions, statusOptions } = useMemo(() => {
     const base = filterSourceData
@@ -386,6 +409,9 @@ function Rombel() {
     setSantriOffcanvasRombel(rombel)
     setSantriOffcanvasOpen(true)
     setSantriOffcanvasList([])
+    setSantriOffcanvasSearch('')
+    setSantriSelectMode(false)
+    setPrintAbsenOpen(false)
     setRombelSameLembaga([])
     setSelectedSantriIds(new Set())
     setPindahModalOpen(false)
@@ -415,6 +441,9 @@ function Rombel() {
     setSantriOffcanvasOpen(false)
     setSantriOffcanvasRombel(null)
     setSantriOffcanvasList([])
+    setSantriOffcanvasSearch('')
+    setSantriSelectMode(false)
+    setPrintAbsenOpen(false)
     setRombelSameLembaga([])
     setSelectedSantriIds(new Set())
     setPindahModalOpen(false)
@@ -495,12 +524,27 @@ function Rombel() {
   }
 
   const toggleSelectAllSantri = () => {
-    if (selectedSantriIds.size >= santriOffcanvasList.length) {
-      setSelectedSantriIds(new Set())
+    const visible = filteredSantriOffcanvasList
+    const ids = visible.map((s) => s.id)
+    const allVisibleSelected = ids.length > 0 && ids.every((id) => selectedSantriIds.has(id))
+    if (allVisibleSelected) {
+      setSelectedSantriIds((prev) => {
+        const next = new Set(prev)
+        ids.forEach((id) => next.delete(id))
+        return next
+      })
     } else {
-      setSelectedSantriIds(new Set(santriOffcanvasList.map((s) => s.id)))
+      setSelectedSantriIds((prev) => {
+        const next = new Set(prev)
+        ids.forEach((id) => next.add(id))
+        return next
+      })
     }
   }
+
+  const allFilteredSantriSelected =
+    filteredSantriOffcanvasList.length > 0 &&
+    filteredSantriOffcanvasList.every((s) => selectedSantriIds.has(s.id))
 
   const handleBulkMoveToRombel = async (targetRombelId, tahunAjaran = '') => {
     const ids = Array.from(selectedSantriIds)
@@ -1452,16 +1496,78 @@ function Rombel() {
                     </svg>
                   </button>
                 </div>
+
                 {!santriOffcanvasLoading && santriOffcanvasList.length > 0 && (
+                  <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 space-y-3">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" aria-hidden>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </span>
+                      <input
+                        type="search"
+                        value={santriOffcanvasSearch}
+                        onChange={(e) => setSantriOffcanvasSearch(e.target.value)}
+                        placeholder="Cari nama atau NIS..."
+                        className="w-full pl-10 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                        aria-label="Cari santri"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSantriSelectMode((v) => {
+                            if (v) setSelectedSantriIds(new Set())
+                            return !v
+                          })
+                        }}
+                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                          santriSelectMode
+                            ? 'bg-teal-600 border-teal-600 text-white hover:bg-teal-700'
+                            : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        aria-pressed={santriSelectMode}
+                      >
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Pilih
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (absenPrintRows.length === 0) {
+                            showNotification('Tidak ada santri untuk dicetak', 'warning')
+                            return
+                          }
+                          setPrintAbsenOpen(true)
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                      >
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                        </svg>
+                        Print absen
+                      </button>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
+                        Tampil {filteredSantriOffcanvasList.length} dari {santriOffcanvasList.length}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {!santriOffcanvasLoading && santriSelectMode && santriOffcanvasList.length > 0 && (
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-2 flex-shrink-0">
                     <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
                       <input
                         type="checkbox"
-                        checked={selectedSantriIds.size === santriOffcanvasList.length && santriOffcanvasList.length > 0}
+                        checked={allFilteredSantriSelected}
                         onChange={toggleSelectAllSantri}
                         className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
                       />
-                      Centang semua
+                      Centang semua{santriOffcanvasSearch.trim() ? ' (yang terlihat)' : ''}
                     </label>
                     {selectedSantriIds.size > 0 && (
                       <>
@@ -1506,20 +1612,27 @@ function Rombel() {
                     </div>
                   ) : santriOffcanvasList.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400 py-4">Tidak ada santri di rombel ini.</p>
+                  ) : filteredSantriOffcanvasList.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 py-4">Tidak ada santri yang cocok dengan pencarian.</p>
                   ) : (
                     <ul className="space-y-1">
-                      {santriOffcanvasList.map((s) => (
+                      {filteredSantriOffcanvasList.map((s) => (
                         <li
                           key={s.id}
                           className="relative flex items-center gap-2 py-2 px-3 rounded-lg border border-gray-100 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-700/30"
                         >
-                          <input
-                            type="checkbox"
-                            checked={selectedSantriIds.has(s.id)}
-                            onChange={() => toggleSantriSelection(s.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="shrink-0 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
-                          />
+                          {santriSelectMode ? (
+                            <input
+                              type="checkbox"
+                              checked={selectedSantriIds.has(s.id)}
+                              onChange={() => toggleSantriSelection(s.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="shrink-0 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                              aria-label={`Pilih ${s.nama || s.nis || 'santri'}`}
+                            />
+                          ) : (
+                            <span className="w-4 shrink-0" aria-hidden="true" />
+                          )}
                           <span className="text-sm font-mono text-gray-600 dark:text-gray-400 w-20 shrink-0">{s.nis ?? '–'}</span>
                           <span className="text-sm font-medium text-gray-900 dark:text-white truncate flex-1 min-w-0">{s.nama || '–'}</span>
                           <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0 hidden sm:inline">{s.status_santri || '–'}</span>
@@ -1654,6 +1767,14 @@ function Rombel() {
         </AnimatePresence>,
         document.body
       )}
+
+      <PrintAbsenOffcanvas
+        isOpen={printAbsenOpen}
+        onClose={() => setPrintAbsenOpen(false)}
+        rombel={santriOffcanvasRombel}
+        santriList={absenPrintRows}
+        waliNama={santriOffcanvasRombel?.wali_aktif_nama || ''}
+      />
     </div>
   )
 }

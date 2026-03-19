@@ -4,8 +4,26 @@ import { io } from 'socket.io-client'
 import { useAuthStore } from '../store/authStore'
 import { getLiveServerUrl } from '../config/liveServer'
 import { chatUserAPI } from '../services/api'
+import { MENU_ITEMS } from '../config/menuConfig'
 
 const LiveSocketContext = createContext(null)
+
+/** Format tampilan: "nama @username" (nama dari pengurus, username dari users). */
+function buildNamaUsername(nama, username, fallback = 'User') {
+  const n = nama && String(nama).trim()
+  const u = username && String(username).trim()
+  if (n && u) return `${n} @${u}`
+  if (u) return u
+  if (n) return n
+  return fallback
+}
+
+/** Ambil label halaman untuk presence (daftar online). Path /super-admin/dashboard → "Online", dll. */
+function getHalamanLabel(pathname) {
+  const path = (pathname || '/').replace(/\/$/, '') || '/'
+  const item = MENU_ITEMS.find((m) => m.path === path)
+  return item ? item.label : pathname || '/'
+}
 
 /** Socket singleton: hindari "WebSocket closed before connection established" (React Strict Mode unmount). */
 let liveSocketInstance = null
@@ -36,22 +54,20 @@ export function LiveSocketProvider({ children }) {
 
     const onConnect = () => {
       setIsConnected(true)
-      const halaman = location.pathname || '/'
+      const halaman = getHalamanLabel(location.pathname)
       if (user?.id) {
-        s.emit('connect_user', {
-          user_id: String(user.id),
-          nama: user.nama || user.username || 'User',
-          halaman,
-        })
-        chatUserAPI.getMe().then((r) => {
-          if (r?.success && r?.my_user_id != null) {
-            s.emit('connect_user', {
-              user_id: String(r.my_user_id),
-              nama: user.nama || user.username || 'User',
-              halaman,
-            })
-          }
-        }).catch(() => {})
+        const usersId = user?.users_id != null ? String(user.users_id) : null
+        const displayName = buildNamaUsername(user?.nama, user?.username, 'User')
+        if (usersId) {
+          s.emit('connect_user', { user_id: usersId, nama: displayName, halaman })
+        } else {
+          chatUserAPI.getMe().then((r) => {
+            if (r?.success && r?.my_user_id != null) {
+              const name = (r?.display_name && String(r.display_name).trim()) || buildNamaUsername(r?.nama, r?.username, 'User')
+              s.emit('connect_user', { user_id: String(r.my_user_id), nama: name, halaman })
+            }
+          }).catch(() => {})
+        }
       } else {
         s.emit('connect_visitor', { halaman })
       }
@@ -77,29 +93,27 @@ export function LiveSocketProvider({ children }) {
     }
   }, [])
 
-  // Presence: daftar dengan users.id agar receive_message chat sampai (getSocketIdByUserId pakai users.id)
+  // Presence: pakai users_id dari login (users.id); fallback getMe() bila belum ada (session lama).
   useEffect(() => {
     if (!socket?.connected) return
-    const halaman = location.pathname || '/'
+    const halaman = getHalamanLabel(location.pathname)
     if (user?.id) {
-      socket.emit('connect_user', {
-        user_id: String(user.id),
-        nama: user.nama || user.username || 'User',
-        halaman,
-      })
-      chatUserAPI.getMe().then((r) => {
-        if (r?.success && r?.my_user_id != null) {
-          socket.emit('connect_user', {
-            user_id: String(r.my_user_id),
-            nama: user.nama || user.username || 'User',
-            halaman,
-          })
-        }
-      }).catch(() => {})
+      const usersId = user?.users_id != null ? String(user.users_id) : null
+      const displayName = buildNamaUsername(user?.nama, user?.username, 'User')
+      if (usersId) {
+        socket.emit('connect_user', { user_id: usersId, nama: displayName, halaman })
+      } else {
+        chatUserAPI.getMe().then((r) => {
+          if (r?.success && r?.my_user_id != null) {
+            const name = (r?.display_name && String(r.display_name).trim()) || buildNamaUsername(r?.nama, r?.username, 'User')
+            socket.emit('connect_user', { user_id: String(r.my_user_id), nama: name, halaman })
+          }
+        }).catch(() => {})
+      }
     } else {
       socket.emit('connect_visitor', { halaman })
     }
-  }, [socket, user?.id, user?.nama, user?.username, location.pathname])
+  }, [socket, user?.id, user?.users_id, user?.nama, user?.username, location.pathname])
 
   const value = {
     socket,

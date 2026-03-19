@@ -141,10 +141,12 @@ return [
     // Base URL API ini (untuk webhook WatZap). Staging: https://api2.alutsmani.id, production: https://api.alutsmani.id.
     // Di .env set API_PUBLIC_URL; atau WATZAP_WEBHOOK_URL (full URL) untuk override.
     'api_public_url' => rtrim((string) env('API_PUBLIC_URL', ''), '/'),
-    // Base URL aplikasi FRONTEND (UWABA), bukan backend. Link WA (setup akun pengurus) dibuka di frontend UWABA.
-    // Dev: http://localhost:5173 (Vite UWABA). Production: https://uwaba.alutsmani.id
+    // Base URL aplikasi FRONTEND eBeddien (dulu UWABA), bukan backend. Link WA (setup akun / ubah password).
+    // Dev: http://localhost:5173. Production: https://ebeddien.alutsmani.id (sesuaikan domain Anda).
+    // Optional: EBEDDIEN_APP_URL mengoverride APP_URL hanya untuk link di pesan WA (jika APP_URL masih domain lama).
     'app' => [
         'url' => env('APP_URL', 'http://localhost:5173'),
+        'ebeddien_url' => env('EBEDDIEN_APP_URL', ''),
         // Base URL aplikasi Mybeddian — untuk link WA saat daftar santri (setup akun). Dev: http://localhost:5174. Production: https://mybeddian.example.com
         'mybeddian_url' => env('MYBEDDIAN_APP_URL', 'http://localhost:5174'),
     ],

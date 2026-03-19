@@ -586,6 +586,11 @@ function Navigation() {
     }
   }, [])
 
+  // Thread isi pesan di /chat (mobile): sembunyikan bottom nav agar area input tidak tertindih
+  const chatThreadOpenMobile =
+    location.pathname === '/chat' &&
+    (Boolean(searchParams.get('c')?.trim()) || Boolean(searchParams.get('u')?.trim()))
+
   useEffect(() => {
     const expandedMenu = expandedMenuScrollRef.current
     if (expandedMenu) {
@@ -608,7 +613,10 @@ function Navigation() {
   return (
     <nav 
       ref={navRef}
-      className="sm:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex justify-around z-[100] border-t border-gray-200 dark:border-gray-700 overflow-x-auto"
+      className={`sm:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex justify-around z-[100] border-t border-gray-200 dark:border-gray-700 overflow-x-auto ${
+        chatThreadOpenMobile ? 'hidden' : ''
+      }`}
+      aria-hidden={chatThreadOpenMobile || undefined}
       style={{ 
         position: 'fixed', 
         bottom: 0, 

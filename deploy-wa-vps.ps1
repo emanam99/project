@@ -17,7 +17,7 @@ $WA_TAR = "wa-deploy.tar"
 # --- Pilih target: Staging (wa2) atau Production (wa) ---
 Write-Host ""
 Write-Host "  Pilih target deploy WA:" -ForegroundColor White
-Write-Host '    1) Staging   (wa2.alutsmani.id, port 3002)' -ForegroundColor Yellow
+Write-Host '    1) Staging   (wa2.alutsmani.id, port 3003)' -ForegroundColor Yellow
 Write-Host '    2) Production (wa.alutsmani.id, port 3001)' -ForegroundColor Green
 Write-Host ""
 $choice = Read-Host '  Masukkan pilihan (1 atau 2)'
@@ -30,7 +30,7 @@ if (-not $isStaging -and $choice -ne "2") {
 if ($isStaging) {
     $REMOTE_PATH = $VPS_WA2
     $envLabel    = "staging"
-    $PORT        = 3002
+    $PORT        = 3003
     $PM2_NAME    = "wa2"
 } else {
     $REMOTE_PATH = $VPS_WA

@@ -24,6 +24,7 @@ function normalizeUserFromPayload(payload) {
   const userId = payload.user_id || payload.id
   return {
     id: userId,
+    users_id: payload.users_id != null ? Number(payload.users_id) : null,
     id_pengurus: payload.id_pengurus ?? (payload.user_id != null ? payload.user_id : null),
     nama: payload.user_name || payload.nama,
     username: payload.username || null,
@@ -69,6 +70,7 @@ export const useAuthStore = create((set, get) => ({
       const normalizedUser = normalizeUserFromPayload({
         ...user,
         user_id: user.id,
+        users_id: user.users_id,
         user_name: user.nama,
         user_role: user.role_key,
         role_key: user.role_key,

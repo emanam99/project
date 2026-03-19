@@ -73,8 +73,9 @@ return function (\Slim\App $app): void {
     // Update status pesan (sent/delivered/read) dari server WA. Header X-API-Key wajib (sama dengan WA_API_KEY).
     $app->post('/api/wa/message-status', [WhatsAppController::class, 'messageStatus']);
 
-    // Live server: simpan pesan chat user-to-user ke tabel chat. Header X-API-Key = LIVE_SERVER_API_KEY.
+    // Live server: simpan pesan chat + update last_seen. Header X-API-Key = LIVE_SERVER_API_KEY.
     $app->post('/api/live/chat/message', [UserChatController::class, 'saveMessage']);
+    $app->post('/api/live/presence', [UserChatController::class, 'updatePresence']);
 
     // Warmer runner — Node WA server (header X-API-Key wajib)
     $app->get('/api/warmer/runner/pairs', [WarmerController::class, 'runnerPairs']);

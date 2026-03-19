@@ -56,6 +56,12 @@ const offcanvasRightVariants = {
 function Layout() {
   const location = useLocation()
   const hideHeader = location.pathname === '/beranda' || location.pathname === '/semua-menu' || location.pathname === '/chat'
+  // HP: thread chat (/chat?c= atau ?u=) pakai layar penuh — tanpa padding bawah untuk bottom nav (nav disembunyikan di Navigation.jsx)
+  const chatSearch = typeof location.search === 'string' ? new URLSearchParams(location.search) : null
+  const chatMobileThreadOpen =
+    location.pathname === '/chat' &&
+    chatSearch &&
+    (Boolean(chatSearch.get('c')?.trim()) || Boolean(chatSearch.get('u')?.trim()))
   const setOptions = useTahunAjaranStore((s) => s.setOptions)
   const setOptionsMasehi = useTahunAjaranStore((s) => s.setOptionsMasehi)
   const [templateOffcanvasOpen, setTemplateOffcanvasOpen] = useState(false)
@@ -129,7 +135,11 @@ function Layout() {
         </motion.div>
         
         {/* Area main tidak di-scroll; hanya konten di dalam halaman (mis. kotak biodata) yang scroll */}
-        <main className="flex-1 min-h-0 overflow-hidden overflow-x-hidden sm:pb-0 pb-16 px-2 sm:px-3">
+        <main
+          className={`flex-1 min-h-0 overflow-hidden overflow-x-hidden sm:pb-0 px-2 sm:px-3 ${
+            chatMobileThreadOpen ? 'pb-0' : 'pb-16'
+          }`}
+        >
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

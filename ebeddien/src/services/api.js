@@ -134,6 +134,26 @@ export const checkWhatsAppNumberViaAPI = (phoneNumber) =>
 // Batas umur token login: 5 jam dari terakhir digunakan (sliding). Lewat = hapus token dan wajib login lagi.
 const AUTH_TOKEN_MAX_AGE_MS = 5 * 60 * 60 * 1000
 
+/**
+ * Endpoint auth v2 publik (link dari WA: setup akun, ubah password, daftar).
+ * Jangan pakai cek umur JWT lokal / jangan paksa redirect login — user bisa punya token lama di storage
+ * sambil membuka link setup dari WhatsApp.
+ */
+function isPublicV2AuthPath(config) {
+  const u = config.url || ''
+  return (
+    u.includes('/v2/auth/setup-token') ||
+    u.includes('/v2/auth/setup-akun') ||
+    u.includes('/v2/auth/daftar-check') ||
+    u.includes('/v2/auth/daftar-konfirmasi') ||
+    u.includes('/v2/auth/lupa-password-request') ||
+    u.includes('/v2/auth/ubah-password-token') ||
+    u.includes('/v2/auth/ubah-password') ||
+    u.includes('/v2/auth/ubah-username-token') ||
+    u.includes('/v2/auth/ubah-username')
+  )
+}
+
 /** Hapus token login & redirect. Refresh token tetap disimpan agar kalender tetap bisa diakses (tanpa auto-login). */
 function clearAuthAndRedirectToLogin() {
   localStorage.removeItem('auth_token')
@@ -146,8 +166,14 @@ function clearAuthAndRedirectToLogin() {
 // Request interceptor untuk menambahkan auth token dan CSRF token
 api.interceptors.request.use(
   async (config) => {
+    // Selalu kirim origin frontend agar backend bisa bangun link WA yang benar (setup akun / ubah password).
+    if (typeof window !== 'undefined' && window.location?.origin) {
+      config.headers['X-Frontend-Base-URL'] = window.location.origin
+    }
+
     const token = localStorage.getItem('auth_token')
-    if (token) {
+    const isPublicAuth = isPublicV2AuthPath(config)
+    if (token && !isPublicAuth) {
       const lastUsedRaw = localStorage.getItem('auth_last_used_at')
       const lastUsed = lastUsedRaw ? parseInt(lastUsedRaw, 10) : null
       if (lastUsed == null || (Date.now() - lastUsed) > AUTH_TOKEN_MAX_AGE_MS) {
@@ -272,19 +298,15 @@ export const authAPI = {
     return response.data
   },
 
-  /** Konfirmasi daftar: kirim link WA (aktif 5 menit). Link memakai domain yang dipakai user (bukan localhost). */
+  /** Konfirmasi daftar: kirim link WA (aktif 5 menit). Origin frontend dikirim otomatis lewat interceptor axios. */
   daftarKonfirmasi: async (idPengurus, nik, noWa) => {
-    const response = await api.post('/v2/auth/daftar-konfirmasi', { id_pengurus: idPengurus, nik, no_wa: noWa }, {
-      headers: { 'X-Frontend-Base-URL': typeof window !== 'undefined' ? window.location.origin : '' }
-    })
+    const response = await api.post('/v2/auth/daftar-konfirmasi', { id_pengurus: idPengurus, nik, no_wa: noWa })
     return response.data
   },
 
   /** Lupa password (public): id_pengurus, nik, no_wa. NIK harus persis sama dengan yang terdaftar. Kirim link reset ke WA. */
   lupaPasswordRequest: async (idPengurus, nik, noWa) => {
-    const response = await api.post('/v2/auth/lupa-password-request', { id_pengurus: idPengurus, nik, no_wa: noWa }, {
-      headers: { 'X-Frontend-Base-URL': typeof window !== 'undefined' ? window.location.origin : '' }
-    })
+    const response = await api.post('/v2/auth/lupa-password-request', { id_pengurus: idPengurus, nik, no_wa: noWa })
     return response.data
   },
 
@@ -318,11 +340,9 @@ export const authAPI = {
     return response.data
   },
 
-  /** Profil: minta link ubah password; kirim ke WA setelah konfirmasi no_wa. Link memakai domain yang dipakai user. */
+  /** Profil: minta link ubah password; kirim ke WA setelah konfirmasi no_wa. */
   requestUbahPassword: async (noWaKonfirmasi) => {
-    const response = await api.post('/v2/auth/request-ubah-password', { no_wa_konfirmasi: noWaKonfirmasi }, {
-      headers: { 'X-Frontend-Base-URL': typeof window !== 'undefined' ? window.location.origin : '' }
-    })
+    const response = await api.post('/v2/auth/request-ubah-password', { no_wa_konfirmasi: noWaKonfirmasi })
     return response.data
   },
 
@@ -346,9 +366,7 @@ export const authAPI = {
 
   /** Profil: minta link ubah username; username_baru + password (verifikasi). Kirim link ke WA. */
   requestUbahUsername: async (usernameBaru, password) => {
-    const response = await api.post('/v2/auth/request-ubah-username', { username_baru: usernameBaru, password }, {
-      headers: { 'X-Frontend-Base-URL': typeof window !== 'undefined' ? window.location.origin : '' }
-    })
+    const response = await api.post('/v2/auth/request-ubah-username', { username_baru: usernameBaru, password })
     return response.data
   },
 
@@ -409,7 +427,12 @@ export const authAPI = {
   }
 }
 
-/** Base URL backend WA (Node) — koneksi/QR, status, connect/disconnect/logout. */
+/**
+ * Base URL backend WA (Node) — koneksi/QR, status, connect/disconnect/logout.
+ * Jika muncul ERR_CERT_COMMON_NAME_INVALID saat akses halaman WhatsApp (staging/production),
+ * set VITE_WA_BACKEND_URL di .env ke URL backend WA yang sertifikat SSL-nya valid
+ * (mis. same-origin jika backend di-reverse-proxy: https://domain-anda.id).
+ */
 export const getWaBackendUrl = () => {
   const url = import.meta.env.VITE_WA_BACKEND_URL
   if (url && typeof url === 'string' && url.trim() !== '') {
@@ -420,9 +443,10 @@ export const getWaBackendUrl = () => {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:3001'
   }
-  // Staging (ebeddien2, uwaba2, daftar2, mybeddian2): backend WA di wa2.alutsmani.id
+  // Staging (ebeddien2, uwaba2, daftar2, mybeddian2): pakai same-origin agar tidak kena ERR_CERT_COMMON_NAME_INVALID.
+  // Backend WA harus di-reverse-proxy di domain yang sama, atau set VITE_WA_BACKEND_URL di .env.
   if (hostname.includes('ebeddien2') || hostname.includes('uwaba2') || hostname.includes('daftar2') || hostname.includes('mybeddian2') || hostname === 'wa2.alutsmani.id') {
-    return 'https://wa2.alutsmani.id'
+    return `${protocol}//${hostname}`
   }
   // Production: backend WA di wa.alutsmani.id
   if (hostname.includes('alutsmani.id') || hostname.includes('alutsmani.my.id')) {
@@ -1660,10 +1684,14 @@ export const chatUserAPI = {
   getMe: () => api.get('/chat/me').then((r) => r.data),
   getConversations: () => api.get('/chat/conversations').then((r) => r.data),
   getUsers: () => api.get('/chat/users').then((r) => r.data),
-  /** Riwayat pesan dengan satu user. peerId = user id lawan, limit default 20. */
-  getMessages: (peerId, params = {}) => {
-    const limit = params.limit ?? 20
-    return api.get('/chat/messages', { params: { peer_id: peerId, limit } }).then((r) => r.data)
+  /** Riwayat pesan. conversationId ATAU peerId (untuk private get-or-create), limit default 20. */
+  getMessages: (params = {}) => {
+    const { conversation_id, peer_id, limit = 20 } = params
+    const q = {}
+    if (conversation_id != null) q.conversation_id = conversation_id
+    if (peer_id != null) q.peer_id = peer_id
+    q.limit = limit
+    return api.get('/chat/messages', { params: q }).then((r) => r.data)
   },
 }
 
@@ -2061,11 +2089,9 @@ export const manageUsersAPI = {
     return response.data
   },
 
-  /** Kirim link WA untuk buat password baru (super_admin). id = pengurus.id. Link memakai domain yang dipakai user (production). */
+  /** Kirim link WA untuk buat password baru (super_admin). id = pengurus.id. */
   sendResetPasswordLink: async (id) => {
-    const response = await api.post(`/manage-users/${id}/send-reset-password-link`, {}, {
-      headers: { 'X-Frontend-Base-URL': typeof window !== 'undefined' ? window.location.origin : '' }
-    })
+    const response = await api.post(`/manage-users/${id}/send-reset-password-link`, {})
     return response.data
   }
 }

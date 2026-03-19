@@ -44,7 +44,12 @@ export async function saveMessage(payload) {
       throw err;
     }
     if (data.success && data.id != null) {
-      return { id: data.id, created_at: data.created_at || new Date().toISOString() };
+      return {
+        id: data.id,
+        conversation_id: data.conversation_id ?? null,
+        sender_id: data.sender_id != null ? Number(data.sender_id) : from_user_id,
+        created_at: data.created_at || data.tanggal_dibuat || new Date().toISOString(),
+      };
     }
     console.error('[chatRepository] API tidak mengembalikan id:', data);
     throw new Error(data?.message || 'API tidak mengembalikan id');
@@ -54,6 +59,27 @@ export async function saveMessage(payload) {
   const created_at = new Date().toISOString();
   memoryMessages.push({ id: lastId, from_user_id, to_user_id, message, created_at });
   return { id: lastId, created_at };
+}
+
+/**
+ * Update last_seen_at user (dipanggil saat connect_user).
+ * @param {{ user_id: number|string }} payload
+ */
+export async function updatePresence(payload) {
+  const user_id = payload?.user_id != null ? Number(payload.user_id) : 0;
+  if (!CHAT_API_URL || !LIVE_SERVER_API_KEY || user_id < 1) return;
+  try {
+    const res = await fetch(`${CHAT_API_URL}/api/live/presence`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': LIVE_SERVER_API_KEY },
+      body: JSON.stringify({ user_id }),
+    });
+    if (!res.ok) {
+      console.warn('[chatRepository] updatePresence failed:', res.status);
+    }
+  } catch (err) {
+    console.warn('[chatRepository] updatePresence error:', err?.message);
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { addUser, updatePage, updateUser, removeUser, getCount, getAll, getSocketIdByUserId } from './store.js';
-import { saveMessage } from './chatRepository.js';
+import { saveMessage, updatePresence } from './chatRepository.js';
 
 function getIp(socket) {
   const headers = socket.handshake?.headers || {};
@@ -41,11 +41,13 @@ export function attachSocket(io) {
     });
 
     socket.on('connect_user', (data) => {
+      const user_id = String(data?.user_id ?? '');
       updateUser(socket.id, {
-        user_id: String(data?.user_id ?? ''),
+        user_id,
         nama: String(data?.nama ?? ''),
         halaman: String(data?.halaman ?? ''),
       });
+      if (user_id) updatePresence({ user_id }).catch(() => {});
       socket.emit('connect_user_ok', { socketId: socket.id });
       broadcastUsers(io);
     });
@@ -66,18 +68,29 @@ export function attachSocket(io) {
         return;
       }
       try {
-        // Simpan ke DB dulu (selalu), baru kirim ke penerima jika online
-        const { id, created_at } = await saveMessage({ from_user_id, to_user_id, message });
-        const payload = { id, from_user_id, to_user_id, message, created_at };
-        const toSocketId = getSocketIdByUserId(to_user_id);
+        const result = await saveMessage({ from_user_id, to_user_id, message });
+        const { id, created_at, conversation_id, sender_id } = result;
+        const isSelf = from_user_id === to_user_id;
+        const payload = {
+          id,
+          conversation_id: conversation_id ?? null,
+          sender_id: sender_id ?? from_user_id,
+          from_user_id,
+          to_user_id,
+          message,
+          created_at,
+        };
+        // Chat ke diri sendiri: cukup simpan di DB, jangan emit receive_message (client sudah dapat dari send_message_result)
+        const toSocketId = isSelf ? null : getSocketIdByUserId(to_user_id);
         if (toSocketId) {
           io.to(toSocketId).emit('receive_message', payload);
         }
         socket.emit('send_message_result', {
           success: true,
           id,
+          conversation_id: conversation_id ?? null,
           created_at,
-          ...(toSocketId ? {} : { reason: 'user_offline' }),
+          ...(!toSocketId && !isSelf ? { reason: 'user_offline' } : {}),
         });
       } catch (err) {
         console.error('send_message save error', err);

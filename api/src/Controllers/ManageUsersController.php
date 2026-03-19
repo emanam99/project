@@ -1880,7 +1880,7 @@ class ManageUsersController
 
     /**
      * Base URL frontend untuk link WA (reset password).
-     * Prioritas: X-Frontend-Base-URL → Origin (bukan localhost) → config app.url.
+     * Sama logika dengan AuthControllerV2::getFrontendBaseUrl (Referer + EBEDDIEN_APP_URL).
      */
     private function getFrontendBaseUrl(Request $request, array $config): string
     {
@@ -1895,6 +1895,21 @@ class ManageUsersController
             if ($host && $host !== 'localhost' && $host !== '127.0.0.1') {
                 return rtrim($origin, '/');
             }
+        }
+        $referer = trim($request->getHeaderLine('Referer'));
+        if ($referer !== '' && (strpos($referer, 'http://') === 0 || strpos($referer, 'https://') === 0)) {
+            $parts = parse_url($referer);
+            if (!empty($parts['scheme']) && !empty($parts['host'])) {
+                $h = $parts['host'];
+                if ($h !== 'localhost' && $h !== '127.0.0.1') {
+                    $port = isset($parts['port']) ? ':' . (int)$parts['port'] : '';
+                    return rtrim($parts['scheme'] . '://' . $h . $port, '/');
+                }
+            }
+        }
+        $explicit = trim((string)($config['app']['ebeddien_url'] ?? ''));
+        if ($explicit !== '' && (strpos($explicit, 'http://') === 0 || strpos($explicit, 'https://') === 0)) {
+            return rtrim($explicit, '/');
         }
         return rtrim($config['app']['url'] ?? 'http://localhost:5173', '/');
     }

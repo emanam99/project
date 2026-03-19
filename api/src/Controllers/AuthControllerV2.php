@@ -25,6 +25,9 @@ class AuthControllerV2
     private $db;
     private $jwt;
 
+    /** @var bool|null */
+    private $setupTokensHasEntityColumnsCache = null;
+
     public function __construct()
     {
         $this->db = Database::getInstance()->getConnection();
@@ -32,8 +35,9 @@ class AuthControllerV2
     }
 
     /**
-     * Jalankan callback dengan session timezone Indonesia (Asia/Jakarta) untuk token expires_at.
-     * Setelah selesai, timezone dikembalikan ke nilai sebelumnya.
+     * Jalankan callback dengan session timezone WIB untuk token expires_at (NOW(), DATE_ADD, dll.).
+     * Pakai offset +07:00 — sama seperti Database.php — agar jalan di MySQL/MariaDB tanpa tabel timezone
+     * (nama 'Asia/Jakarta' memicu error 1298 jika mysql_tzinfo_to_sql belum di-load).
      */
     private function withIndonesiaTimezone(callable $fn)
     {
@@ -41,13 +45,92 @@ class AuthControllerV2
         try {
             $res = $this->db->query("SELECT @@session.time_zone");
             $prev = $res ? $res->fetchColumn() : null;
-            $this->db->exec("SET SESSION time_zone = 'Asia/Jakarta'");
+            $this->db->exec("SET SESSION time_zone = '+07:00'");
             return $fn();
         } finally {
             if ($prev !== null && $prev !== false && $prev !== '') {
-                $this->db->exec("SET SESSION time_zone = " . $this->db->quote($prev));
+                $this->db->exec("SET SESSION time_zone = " . $this->db->quote((string) $prev));
             }
         }
+    }
+
+    private function userSetupTokensHasEntityColumns(): bool
+    {
+        if ($this->setupTokensHasEntityColumnsCache !== null) {
+            return $this->setupTokensHasEntityColumnsCache;
+        }
+        try {
+            $st = $this->db->query("SHOW COLUMNS FROM user___setup_tokens LIKE 'entity_type'");
+            $this->setupTokensHasEntityColumnsCache = $st !== false && $st->rowCount() > 0;
+        } catch (\Throwable $e) {
+            $this->setupTokensHasEntityColumnsCache = false;
+        }
+        return $this->setupTokensHasEntityColumnsCache;
+    }
+
+    private function userSetupTokensMainHasNoWaColumn(): bool
+    {
+        try {
+            $st = $this->db->query("SHOW COLUMNS FROM user___setup_tokens LIKE 'no_wa'");
+            return $st !== false && $st->rowCount() > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function userSetupTokensSantriLegacyTableExists(): bool
+    {
+        try {
+            $st = $this->db->query("SHOW TABLES LIKE 'user___setup_tokens_santri'");
+            return $st !== false && $st->rowCount() > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function userSetupTokensSantriLegacyHasNoWaColumn(): bool
+    {
+        try {
+            $st = $this->db->query("SHOW COLUMNS FROM user___setup_tokens_santri LIKE 'no_wa'");
+            return $st !== false && $st->rowCount() > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Insert token setup akun — skema baru (entity_type) atau lama (id_pengurus / tabel santri terpisah).
+     *
+     * @param 'pengurus'|'santri' $entityType
+     */
+    private function insertUserSetupToken(string $tokenHash, string $entityType, int $entityId, string $noWa): void
+    {
+        if ($this->userSetupTokensHasEntityColumns()) {
+            $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)');
+            $ins->execute([$tokenHash, $entityType, $entityId, $noWa]);
+            return;
+        }
+        if ($entityType === 'pengurus') {
+            if ($this->userSetupTokensMainHasNoWaColumn()) {
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, id_pengurus, expires_at, no_wa) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)');
+                $ins->execute([$tokenHash, $entityId, $noWa]);
+            } else {
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, id_pengurus, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))');
+                $ins->execute([$tokenHash, $entityId]);
+            }
+            return;
+        }
+        if ($entityType === 'santri' && $this->userSetupTokensSantriLegacyTableExists()) {
+            if ($this->userSetupTokensSantriLegacyHasNoWaColumn()) {
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens_santri (token_hash, id_santri, expires_at, no_wa) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)');
+                $ins->execute([$tokenHash, $entityId, $noWa]);
+            } else {
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens_santri (token_hash, id_santri, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))');
+                $ins->execute([$tokenHash, $entityId]);
+            }
+            return;
+        }
+        throw new \RuntimeException('Skema user___setup_tokens perlu migrasi. Jalankan: php vendor/bin/phinx migrate (dari folder api).');
     }
 
     /**
@@ -173,8 +256,7 @@ class AuthControllerV2
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
             $this->withIndonesiaTimezone(function () use ($tokenHash, $idPengurusResolved, $noWa) {
-                $ins = $this->db->prepare("INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, 'pengurus', ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)");
-                $ins->execute([$tokenHash, $idPengurusResolved, $noWa]);
+                $this->insertUserSetupToken($tokenHash, 'pengurus', $idPengurusResolved, $noWa);
             });
 
             $config = require __DIR__ . '/../../config.php';
@@ -204,9 +286,12 @@ class AuthControllerV2
                 'success' => true,
                 'message' => 'Link telah dikirim ke WhatsApp. Cek nomor yang Anda masukkan. Link aktif 5 menit.',
             ], 200);
-        } catch (\Exception $e) {
+        } catch (\RuntimeException $e) {
             error_log('AuthControllerV2::daftarKonfirmasi ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
+            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 503);
+        } catch (\Throwable $e) {
+            error_log('AuthControllerV2::daftarKonfirmasi ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan server. Coba lagi atau hubungi admin.'], 500);
         }
     }
 
@@ -320,10 +405,20 @@ class AuthControllerV2
 
             $tokenHash = hash('sha256', $token);
             $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
-                $stmt = $this->db->prepare("
+                if ($this->userSetupTokensHasEntityColumns()) {
+                    $stmt = $this->db->prepare("
                     SELECT st.id, st.entity_id, p.nama
                     FROM user___setup_tokens st
                     INNER JOIN pengurus p ON st.entity_type = 'pengurus' AND p.id = st.entity_id
+                    WHERE st.token_hash = ? AND st.expires_at > NOW()
+                ");
+                    $stmt->execute([$tokenHash]);
+                    return $stmt->fetch(\PDO::FETCH_ASSOC);
+                }
+                $stmt = $this->db->prepare("
+                    SELECT st.id, st.id_pengurus AS entity_id, p.nama
+                    FROM user___setup_tokens st
+                    INNER JOIN pengurus p ON p.id = st.id_pengurus
                     WHERE st.token_hash = ? AND st.expires_at > NOW()
                 ");
                 $stmt->execute([$tokenHash]);
@@ -390,10 +485,21 @@ class AuthControllerV2
 
             $tokenHash = hash('sha256', $token);
             $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
-                $stmt = $this->db->prepare("
+                if ($this->userSetupTokensHasEntityColumns()) {
+                    $stmt = $this->db->prepare("
                     SELECT st.id, st.entity_id, st.no_wa
                     FROM user___setup_tokens st
                     INNER JOIN pengurus p ON st.entity_type = 'pengurus' AND p.id = st.entity_id AND p.id_user IS NULL
+                    WHERE st.token_hash = ? AND st.expires_at > NOW()
+                ");
+                    $stmt->execute([$tokenHash]);
+                    return $stmt->fetch(\PDO::FETCH_ASSOC);
+                }
+                $nw = $this->userSetupTokensMainHasNoWaColumn() ? 'st.no_wa' : 'NULL AS no_wa';
+                $stmt = $this->db->prepare("
+                    SELECT st.id, st.id_pengurus AS entity_id, {$nw}
+                    FROM user___setup_tokens st
+                    INNER JOIN pengurus p ON p.id = st.id_pengurus AND p.id_user IS NULL
                     WHERE st.token_hash = ? AND st.expires_at > NOW()
                 ");
                 $stmt->execute([$tokenHash]);
@@ -410,7 +516,7 @@ class AuthControllerV2
             }
 
             $idPengurus = (int) $row['entity_id'];
-            $noWa = isset($row['no_wa']) ? trim($row['no_wa']) : null;
+            $noWa = isset($row['no_wa']) && $row['no_wa'] !== null && $row['no_wa'] !== '' ? trim((string) $row['no_wa']) : null;
             $email = null;
 
             $passwordHash = PasswordHelper::hashPassword($password);
@@ -565,8 +671,7 @@ class AuthControllerV2
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
             $this->withIndonesiaTimezone(function () use ($tokenHash, $santriId, $noWa) {
-                $ins = $this->db->prepare("INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, 'santri', ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)");
-                $ins->execute([$tokenHash, $santriId, $noWa]);
+                $this->insertUserSetupToken($tokenHash, 'santri', $santriId, $noWa);
             });
 
             $config = require __DIR__ . '/../../config.php';
@@ -586,7 +691,15 @@ class AuthControllerV2
             }
             if (!empty($sendResult['messageId'])) {
                 try {
-                    $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = ? WHERE token_hash = ?")->execute([trim($sendResult['messageId']), $tokenHash]);
+                    $mid = trim($sendResult['messageId']);
+                    if ($this->userSetupTokensHasEntityColumns()) {
+                        $this->db->prepare('UPDATE user___setup_tokens SET wa_message_id = ? WHERE token_hash = ?')->execute([$mid, $tokenHash]);
+                    } elseif ($this->userSetupTokensSantriLegacyTableExists()) {
+                        $wc = $this->db->query("SHOW COLUMNS FROM user___setup_tokens_santri LIKE 'wa_message_id'");
+                        if ($wc !== false && $wc->rowCount() > 0) {
+                            $this->db->prepare('UPDATE user___setup_tokens_santri SET wa_message_id = ? WHERE token_hash = ?')->execute([$mid, $tokenHash]);
+                        }
+                    }
                 } catch (\Throwable $e) {
                 }
             }
@@ -595,9 +708,12 @@ class AuthControllerV2
                 'success' => true,
                 'message' => 'Link telah dikirim ke WhatsApp. Cek nomor yang Anda masukkan. Link aktif 5 menit.',
             ], 200);
-        } catch (\Exception $e) {
+        } catch (\RuntimeException $e) {
             error_log('AuthControllerV2::daftarKonfirmasiSantri ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
+            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 503);
+        } catch (\Throwable $e) {
+            error_log('AuthControllerV2::daftarKonfirmasiSantri ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan server. Coba lagi atau hubungi admin.'], 500);
         }
     }
 
@@ -614,30 +730,63 @@ class AuthControllerV2
 
             $tokenHash = hash('sha256', $token);
             $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
-                $stmt = $this->db->prepare("
+                if ($this->userSetupTokensHasEntityColumns()) {
+                    $stmt = $this->db->prepare("
                     SELECT st.id, st.entity_id, s.nama
                     FROM user___setup_tokens st
                     INNER JOIN santri s ON st.entity_type = 'santri' AND s.id = st.entity_id
                     WHERE st.token_hash = ? AND st.expires_at > NOW()
                 ");
-                $stmt->execute([$tokenHash]);
-                return $stmt->fetch(\PDO::FETCH_ASSOC);
+                    $stmt->execute([$tokenHash]);
+                    return $stmt->fetch(\PDO::FETCH_ASSOC);
+                }
+                if ($this->userSetupTokensSantriLegacyTableExists()) {
+                    $stmt = $this->db->prepare("
+                        SELECT st.id, st.id_santri AS entity_id, s.nama
+                        FROM user___setup_tokens_santri st
+                        INNER JOIN santri s ON s.id = st.id_santri
+                        WHERE st.token_hash = ? AND st.expires_at > NOW()
+                    ");
+                    $stmt->execute([$tokenHash]);
+                    return $stmt->fetch(\PDO::FETCH_ASSOC);
+                }
+                return false;
             });
 
             if (!$row) {
                 try {
-                    $stmtInv = $this->db->prepare("SELECT id, wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?");
-                    $stmtInv->execute([$tokenHash]);
-                    $inv = $stmtInv->fetch(\PDO::FETCH_ASSOC);
-                    if ($inv && !empty($inv['wa_message_id']) && !empty($inv['no_wa'])) {
-                        $isExpired = $this->withIndonesiaTimezone(function () use ($inv) {
-                            $r = $this->db->prepare("SELECT 1 FROM user___setup_tokens WHERE id = ? AND expires_at <= NOW()");
-                            $r->execute([$inv['id']]);
-                            return $r->fetch() !== false;
-                        });
-                        if ($isExpired) {
-                            $this->editWaMessageTokenInvalidated($inv['no_wa'], $inv['wa_message_id'], 'kadaluarsa', '🔒 Verifikasi Daftar Mybeddian');
-                            $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = NULL WHERE id = ?")->execute([$inv['id']]);
+                    if ($this->userSetupTokensHasEntityColumns()) {
+                        $stmtInv = $this->db->prepare('SELECT id, wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?');
+                        $stmtInv->execute([$tokenHash]);
+                        $inv = $stmtInv->fetch(\PDO::FETCH_ASSOC);
+                        if ($inv && !empty($inv['wa_message_id']) && !empty($inv['no_wa'])) {
+                            $isExpired = $this->withIndonesiaTimezone(function () use ($inv) {
+                                $r = $this->db->prepare('SELECT 1 FROM user___setup_tokens WHERE id = ? AND expires_at <= NOW()');
+                                $r->execute([$inv['id']]);
+                                return $r->fetch() !== false;
+                            });
+                            if ($isExpired) {
+                                $this->editWaMessageTokenInvalidated($inv['no_wa'], $inv['wa_message_id'], 'kadaluarsa', '🔒 Verifikasi Daftar Mybeddian');
+                                $this->db->prepare('UPDATE user___setup_tokens SET wa_message_id = NULL WHERE id = ?')->execute([$inv['id']]);
+                            }
+                        }
+                    } elseif ($this->userSetupTokensSantriLegacyTableExists()) {
+                        $stmtInv = $this->db->prepare('SELECT id, wa_message_id, no_wa FROM user___setup_tokens_santri WHERE token_hash = ?');
+                        $stmtInv->execute([$tokenHash]);
+                        $inv = $stmtInv->fetch(\PDO::FETCH_ASSOC);
+                        if ($inv && !empty($inv['wa_message_id']) && !empty($inv['no_wa'])) {
+                            $isExpired = $this->withIndonesiaTimezone(function () use ($inv) {
+                                $r = $this->db->prepare('SELECT 1 FROM user___setup_tokens_santri WHERE id = ? AND expires_at <= NOW()');
+                                $r->execute([$inv['id']]);
+                                return $r->fetch() !== false;
+                            });
+                            if ($isExpired) {
+                                $this->editWaMessageTokenInvalidated($inv['no_wa'], $inv['wa_message_id'], 'kadaluarsa', '🔒 Verifikasi Daftar Mybeddian');
+                                $wc = $this->db->query("SHOW COLUMNS FROM user___setup_tokens_santri LIKE 'wa_message_id'");
+                                if ($wc !== false && $wc->rowCount() > 0) {
+                                    $this->db->prepare('UPDATE user___setup_tokens_santri SET wa_message_id = NULL WHERE id = ?')->execute([$inv['id']]);
+                                }
+                            }
                         }
                     }
                 } catch (\Throwable $e) {
@@ -683,14 +832,28 @@ class AuthControllerV2
 
             $tokenHash = hash('sha256', $token);
             $row = $this->withIndonesiaTimezone(function () use ($tokenHash) {
-                $stmt = $this->db->prepare("
+                if ($this->userSetupTokensHasEntityColumns()) {
+                    $stmt = $this->db->prepare("
                     SELECT st.id, st.entity_id, st.no_wa
                     FROM user___setup_tokens st
                     INNER JOIN santri s ON st.entity_type = 'santri' AND s.id = st.entity_id AND s.id_user IS NULL
                     WHERE st.token_hash = ? AND st.expires_at > NOW()
                 ");
-                $stmt->execute([$tokenHash]);
-                return $stmt->fetch(\PDO::FETCH_ASSOC);
+                    $stmt->execute([$tokenHash]);
+                    return $stmt->fetch(\PDO::FETCH_ASSOC);
+                }
+                if ($this->userSetupTokensSantriLegacyTableExists()) {
+                    $nw = $this->userSetupTokensSantriLegacyHasNoWaColumn() ? 'st.no_wa' : 'NULL AS no_wa';
+                    $stmt = $this->db->prepare("
+                        SELECT st.id, st.id_santri AS entity_id, {$nw}
+                        FROM user___setup_tokens_santri st
+                        INNER JOIN santri s ON s.id = st.id_santri AND s.id_user IS NULL
+                        WHERE st.token_hash = ? AND st.expires_at > NOW()
+                    ");
+                    $stmt->execute([$tokenHash]);
+                    return $stmt->fetch(\PDO::FETCH_ASSOC);
+                }
+                return false;
             });
             if (!$row) {
                 return $this->json($response, ['success' => false, 'message' => 'Token tidak valid atau kadaluarsa'], 400);
@@ -703,7 +866,7 @@ class AuthControllerV2
             }
 
             $idSantri = (int) $row['entity_id'];
-            $noWa = isset($row['no_wa']) ? trim($row['no_wa']) : null;
+            $noWa = isset($row['no_wa']) && $row['no_wa'] !== null && $row['no_wa'] !== '' ? trim((string) $row['no_wa']) : null;
             $email = null;
 
             $passwordHash = PasswordHelper::hashPassword($password);
@@ -726,15 +889,28 @@ class AuthControllerV2
             $this->db->prepare("UPDATE users SET no_wa_verified_at = NOW() WHERE id = ?")->execute([$userId]);
             $this->db->prepare("UPDATE santri SET id_user = ? WHERE id = ?")->execute([$userId, $idSantri]);
             try {
-                $stmtWa = $this->db->prepare("SELECT wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?");
-                $stmtWa->execute([$tokenHash]);
-                $waRow = $stmtWa->fetch(\PDO::FETCH_ASSOC);
-                if ($waRow && !empty($waRow['wa_message_id']) && !empty($waRow['no_wa'])) {
-                    $this->editWaMessageTokenInvalidated($waRow['no_wa'], $waRow['wa_message_id'], 'dipakai', '🔒 Verifikasi Daftar Mybeddian');
+                if ($this->userSetupTokensHasEntityColumns()) {
+                    $stmtWa = $this->db->prepare('SELECT wa_message_id, no_wa FROM user___setup_tokens WHERE token_hash = ?');
+                    $stmtWa->execute([$tokenHash]);
+                    $waRow = $stmtWa->fetch(\PDO::FETCH_ASSOC);
+                    if ($waRow && !empty($waRow['wa_message_id']) && !empty($waRow['no_wa'])) {
+                        $this->editWaMessageTokenInvalidated($waRow['no_wa'], $waRow['wa_message_id'], 'dipakai', '🔒 Verifikasi Daftar Mybeddian');
+                    }
+                } elseif ($this->userSetupTokensSantriLegacyTableExists()) {
+                    $stmtWa = $this->db->prepare('SELECT wa_message_id, no_wa FROM user___setup_tokens_santri WHERE token_hash = ?');
+                    $stmtWa->execute([$tokenHash]);
+                    $waRow = $stmtWa->fetch(\PDO::FETCH_ASSOC);
+                    if ($waRow && !empty($waRow['wa_message_id']) && !empty($waRow['no_wa'])) {
+                        $this->editWaMessageTokenInvalidated($waRow['no_wa'], $waRow['wa_message_id'], 'dipakai', '🔒 Verifikasi Daftar Mybeddian');
+                    }
                 }
             } catch (\Throwable $e) {
             }
-            $this->db->prepare("DELETE FROM user___setup_tokens WHERE token_hash = ?")->execute([$tokenHash]);
+            if ($this->userSetupTokensHasEntityColumns()) {
+                $this->db->prepare('DELETE FROM user___setup_tokens WHERE token_hash = ?')->execute([$tokenHash]);
+            } elseif ($this->userSetupTokensSantriLegacyTableExists()) {
+                $this->db->prepare('DELETE FROM user___setup_tokens_santri WHERE token_hash = ?')->execute([$tokenHash]);
+            }
 
             AuditLogger::log((string)$userId, 'setup_akun_santri', ['username' => $username, 'id_santri' => $idSantri], $this->getClientIp($request), true);
 
@@ -999,6 +1175,7 @@ class AuthControllerV2
             $allowedApps = $roleInfo['allowed_apps'];
             $loginUser = [
                 'id' => $pengurusId ?? $santriId ?? $usersId,
+                'users_id' => $usersId,
                 'nama' => $nama,
                 'username' => $username,
                 'role_key' => $roleInfo['role_key'],
@@ -1009,6 +1186,9 @@ class AuthControllerV2
                 'lembaga_id' => $roleInfo['lembaga_id'],
                 'level' => $roleInfo['role_key'],
             ];
+            if ($pengurusId !== null) {
+                $loginUser['id_pengurus'] = $pengurusId;
+            }
             if ($pengurusId !== null && isset($pengurus['nip'])) {
                 $loginUser['pengurus'] = ['nip' => $pengurus['nip'] !== null && $pengurus['nip'] !== '' ? (string) $pengurus['nip'] : null];
             }
@@ -1855,8 +2035,9 @@ class AuthControllerV2
     }
 
     /**
-     * Base URL frontend untuk link WA (setup akun / ubah password) — UWABA/pengurus.
-     * Prioritas: X-Frontend-Base-URL → Origin (bukan localhost) → config app.url.
+     * Base URL frontend untuk link WA (setup akun / ubah password) — eBeddien (pengurus).
+     * Prioritas: X-Frontend-Base-URL → Origin (bukan localhost) → Referer (host saja, bukan localhost)
+     * → EBEDDIEN_APP_URL (jika di-set) → APP_URL.
      */
     private function getFrontendBaseUrl(Request $request, array $config): string
     {
@@ -1871,6 +2052,22 @@ class AuthControllerV2
             if ($host && $host !== 'localhost' && $host !== '127.0.0.1') {
                 return rtrim($origin, '/');
             }
+        }
+        // Beberapa klien/mobile tidak mengirim Origin pada POST; Referer sering tetap ada.
+        $referer = trim($request->getHeaderLine('Referer'));
+        if ($referer !== '' && (strpos($referer, 'http://') === 0 || strpos($referer, 'https://') === 0)) {
+            $parts = parse_url($referer);
+            if (!empty($parts['scheme']) && !empty($parts['host'])) {
+                $h = $parts['host'];
+                if ($h !== 'localhost' && $h !== '127.0.0.1') {
+                    $port = isset($parts['port']) ? ':' . (int)$parts['port'] : '';
+                    return rtrim($parts['scheme'] . '://' . $h . $port, '/');
+                }
+            }
+        }
+        $explicit = trim((string)($config['app']['ebeddien_url'] ?? ''));
+        if ($explicit !== '' && (strpos($explicit, 'http://') === 0 || strpos($explicit, 'https://') === 0)) {
+            return rtrim($explicit, '/');
         }
         return rtrim($config['app']['url'] ?? 'http://localhost:5173', '/');
     }

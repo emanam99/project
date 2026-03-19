@@ -224,7 +224,7 @@ function Sidebar() {
               src={getGambarUrl('/icon/ebeddienlogoputih.png')}
               alt="eBeddien"
               className="h-12 w-12 transform scale-150"
-              style={{ objectFit: 'cover' }}
+              style={{ objectFit: 'contain' }}
             />
           ) : (
             <motion.img

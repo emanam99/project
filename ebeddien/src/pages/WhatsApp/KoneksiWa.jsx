@@ -46,6 +46,7 @@ export default function KoneksiWa() {
   const [activeTab, setActiveTab] = useState('koneksi')
   const [data, setData] = useState({ sessions: {} })
   const [backendUnavailable, setBackendUnavailable] = useState(false)
+  const [backendErrorHint, setBackendErrorHint] = useState(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
   const [testPhone, setTestPhone] = useState('')
@@ -102,6 +103,7 @@ export default function KoneksiWa() {
     try {
       const res = await waBackendAPI.getStatus()
       setBackendUnavailable(false)
+      setBackendErrorHint(null)
       if (res?.success && res?.data) {
         const d = res.data
         if (d.sessions && typeof d.sessions === 'object') {
@@ -143,6 +145,11 @@ export default function KoneksiWa() {
     } catch (e) {
       console.error('KoneksiWa fetchStatus:', e)
       setBackendUnavailable(true)
+      setBackendErrorHint(
+        (e?.message === 'Failed to fetch' || e?.name === 'TypeError')
+          ? 'Koneksi gagal (SSL/CORS/network). Jika ERR_CERT_COMMON_NAME_INVALID, set VITE_WA_BACKEND_URL di .env ke URL backend WA yang valid.'
+          : null
+      )
       setData(prev => ({ ...prev, sessions: prev.sessions || {} }))
     } finally {
       setLoading(false)
@@ -744,8 +751,9 @@ export default function KoneksiWa() {
               >
               <div className="p-4 space-y-4">
                 {backendUnavailable && (
-                  <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-                    Layanan status WA tidak terjangkau (503 / CORS). Pastikan server wa2 berjalan dan proxy mengizinkan origin ini.
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-200 space-y-1">
+                    <p>Layanan status WA tidak terjangkau (503 / CORS / network). Pastikan backend WA berjalan dan proxy mengizinkan origin ini.</p>
+                    {backendErrorHint && <p className="text-xs mt-1 opacity-90">{backendErrorHint}</p>}
                   </div>
                 )}
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">

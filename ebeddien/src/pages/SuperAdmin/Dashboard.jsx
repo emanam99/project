@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { io } from 'socket.io-client'
 import { getLiveServerUrl } from '../../config/liveServer'
+import { NamaUsernameDisplay } from '../../components/NamaUsernameDisplay'
 
 const LIVE_SECRET = import.meta.env.VITE_LIVE_ADMIN_SECRET || ''
 
-function formatWaktu(ms) {
-  if (!ms) return '-'
-  const d = new Date(ms)
-  return d.toLocaleString('id-ID', {
-    dateStyle: 'short',
-    timeStyle: 'medium'
-  })
+function formatTanggal(ms) {
+  if (!ms) return '–'
+  return new Date(ms).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+function formatJam(ms) {
+  if (!ms) return '–'
+  return new Date(ms).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 export default function DashboardSuperAdmin() {
@@ -116,15 +117,16 @@ export default function DashboardSuperAdmin() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-gray-800 dark:text-gray-100 truncate">
-                  {u.nama || u.ip || '–'}
+                  <NamaUsernameDisplay text={u.nama || u.ip || '–'} className="truncate" />
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   {u.halaman || '/'}
                   {u.ip ? ` · ${u.ip}` : ''}
                 </p>
               </div>
-              <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">
-                {formatWaktu(u.connectedAt)}
+              <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 flex flex-col items-end">
+                <span>{formatTanggal(u.connectedAt)}</span>
+                <span>{formatJam(u.connectedAt)}</span>
               </span>
             </li>
           ))}
