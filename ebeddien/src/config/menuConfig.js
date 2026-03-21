@@ -32,6 +32,7 @@ export const MENU_ITEMS = [
   { path: '/profil', label: 'Profil', iconKey: 'user', group: 'My Workspace' },
   { path: '/aktivitas-saya', label: 'Aktivitas Saya', iconKey: 'activity', group: 'My Workspace' },
   { path: '/chat', label: 'Chat', iconKey: 'chat', group: 'My Workspace' },
+  { path: '/chat-ai', label: 'eBeddien', iconKey: 'sparkles', group: 'My Workspace' },
   // ========== Super Admin ==========
   { path: '/super-admin/dashboard', label: 'Online', iconKey: 'usersGroup', group: 'Super Admin', requiresSuperAdmin: true },
   // ========== Pendaftaran ==========
@@ -91,6 +92,8 @@ export const MENU_ITEMS = [
   { path: '/lulusan', label: 'Lulusan', iconKey: 'academic', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/rombel', label: 'Rombel', iconKey: 'users', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/manage-jabatan', label: 'Jabatan', iconKey: 'briefcase', group: 'Lembaga', requiresSuperAdmin: true },
+  { path: '/kitab', label: 'Kitab', iconKey: 'documentText', group: 'Lembaga', requiresSuperAdmin: true },
+  { path: '/mapel', label: 'Mapel', iconKey: 'mapel', group: 'Lembaga', requiresSuperAdmin: true },
   // ========== Setting ==========
   { path: '/dashboard-umum', label: 'Dashboard Umum', iconKey: 'dashboard', group: 'Setting', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin'] },
   { path: '/manage-users', label: 'Kelola User', iconKey: 'users', group: 'Setting', requiresRole: ['super_admin', 'admin_cashless'] },

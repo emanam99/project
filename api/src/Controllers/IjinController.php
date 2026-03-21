@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\KalenderHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -69,32 +70,29 @@ class IjinController
                 ], 400);
             }
 
-            // Generate ID menggunakan timestamp untuk memastikan unique
-            $id = $this->generateId($data['id_santri'], $data['tahun_ajaran']);
+            $dari = $data['dari'] ?? null;
+            $sampai = $data['sampai'] ?? null;
+            $perpanjang = $data['perpanjang'] ?? null;
+            $masehi = $this->computeMasehiTriplet($dari, $sampai, $perpanjang);
 
-            // Cek apakah sudah ada
-            $stmtCheck = $this->db->prepare("SELECT id FROM santri___ijin WHERE id = ?");
-            $stmtCheck->execute([$id]);
-            if ($stmtCheck->fetch()) {
-                // Jika ID sudah ada, tambahkan timestamp
-                $id = $this->generateId($data['id_santri'], $data['tahun_ajaran'], true);
-            }
-
-            $sql = "INSERT INTO santri___ijin (id, id_santri, urutan, tahun_ajaran, alasan, dari, sampai, perpanjang, lama) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sql = 'INSERT INTO santri___ijin (id_santri, urutan, tahun_ajaran, alasan, dari, sampai, perpanjang, lama, tanggal_kembali, dari_masehi, sampai_masehi, perpanjang_masehi)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)';
 
             $stmt = $this->db->prepare($sql);
             $stmt->execute([
-                $id,
                 $data['id_santri'],
                 $data['urutan'] ?? null,
                 $data['tahun_ajaran'],
                 TextSanitizer::cleanTextOrNull($data['alasan'] ?? null),
-                $data['dari'] ?? null,
-                $data['sampai'] ?? null,
-                $data['perpanjang'] ?? null,
-                $data['lama'] ?? null
+                $dari,
+                $sampai,
+                $perpanjang,
+                $data['lama'] ?? null,
+                $masehi['dari_masehi'],
+                $masehi['sampai_masehi'],
+                $masehi['perpanjang_masehi'],
             ]);
+            $id = (int) $this->db->lastInsertId();
             $stmtNew = $this->db->prepare("SELECT * FROM santri___ijin WHERE id = ?");
             $stmtNew->execute([$id]);
             $newIjin = $stmtNew->fetch(\PDO::FETCH_ASSOC);
@@ -122,8 +120,8 @@ class IjinController
     public function updateIjin(Request $request, Response $response, array $args): Response
     {
         try {
-            $id = $args['id'] ?? null;
-            if (!$id) {
+            $id = isset($args['id']) ? (int) $args['id'] : 0;
+            if ($id <= 0) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'ID ijin wajib diisi'
@@ -168,8 +166,35 @@ class IjinController
                 $params[] = $data['perpanjang'];
             }
             if (isset($data['lama'])) {
-                $fields[] = "lama = ?";
+                $fields[] = 'lama = ?';
                 $params[] = $data['lama'];
+            }
+            if (array_key_exists('tanggal_kembali', $data)) {
+                $fields[] = 'tanggal_kembali = ?';
+                $v = $data['tanggal_kembali'];
+                $params[] = ($v === '' || $v === null) ? null : $v;
+            }
+
+            $mergedDari = $oldIjin['dari'] ?? null;
+            $mergedSampai = $oldIjin['sampai'] ?? null;
+            $mergedPerpanjang = $oldIjin['perpanjang'] ?? null;
+            if (isset($data['dari'])) {
+                $mergedDari = $data['dari'];
+            }
+            if (isset($data['sampai'])) {
+                $mergedSampai = $data['sampai'];
+            }
+            if (isset($data['perpanjang'])) {
+                $mergedPerpanjang = $data['perpanjang'];
+            }
+            if (isset($data['dari']) || isset($data['sampai']) || isset($data['perpanjang'])) {
+                $m = $this->computeMasehiTriplet($mergedDari, $mergedSampai, $mergedPerpanjang);
+                $fields[] = 'dari_masehi = ?';
+                $params[] = $m['dari_masehi'];
+                $fields[] = 'sampai_masehi = ?';
+                $params[] = $m['sampai_masehi'];
+                $fields[] = 'perpanjang_masehi = ?';
+                $params[] = $m['perpanjang_masehi'];
             }
 
             if (empty($fields)) {
@@ -211,8 +236,8 @@ class IjinController
     public function deleteIjin(Request $request, Response $response, array $args): Response
     {
         try {
-            $id = $args['id'] ?? null;
-            if (!$id) {
+            $id = isset($args['id']) ? (int) $args['id'] : 0;
+            if ($id <= 0) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'ID ijin wajib diisi'
@@ -252,13 +277,83 @@ class IjinController
         }
     }
 
-    private function generateId($idSantri, $tahunAjaran, $useTimestamp = false)
+    /**
+     * @return array{dari_masehi: ?string, sampai_masehi: ?string, perpanjang_masehi: ?string}
+     */
+    private function computeMasehiTriplet(?string $dari, ?string $sampai, ?string $perpanjang): array
     {
-        // Format: id_santri-timestamp-tahun_ajaran (tanpa spasi)
-        // Menggunakan timestamp untuk memastikan unique karena urutan sekarang nullable
-        $tahunClean = str_replace(['-', ' '], '', $tahunAjaran);
-        $timestamp = $useTimestamp ? time() : microtime(true) * 10000; // Gunakan microtime untuk lebih unique
-        return $idSantri . '-' . (int)$timestamp . '-' . $tahunClean;
+        return [
+            'dari_masehi' => KalenderHelper::hijriyahToMasehi($this->db, $this->normalizeHijriForConvert($dari)),
+            'sampai_masehi' => KalenderHelper::hijriyahToMasehi($this->db, $this->normalizeHijriForConvert($sampai)),
+            'perpanjang_masehi' => KalenderHelper::hijriyahToMasehi($this->db, $this->normalizeHijriForConvert($perpanjang)),
+        ];
+    }
+
+    private function normalizeHijriForConvert($v): ?string
+    {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        $s = trim((string) $v);
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $s) ? $s : null;
+    }
+
+    public function markKembali(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $id = isset($args['id']) ? (int) $args['id'] : 0;
+            if ($id <= 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'ID ijin wajib diisi',
+                ], 400);
+            }
+
+            $body = $request->getParsedBody();
+            if (!is_array($body)) {
+                $body = [];
+            }
+            $set = array_key_exists('set', $body) ? (bool) $body['set'] : true;
+
+            $stmtOld = $this->db->prepare('SELECT * FROM santri___ijin WHERE id = ?');
+            $stmtOld->execute([$id]);
+            $oldIjin = $stmtOld->fetch(\PDO::FETCH_ASSOC);
+            if (!$oldIjin) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Data ijin tidak ditemukan',
+                ], 404);
+            }
+
+            $tanggal = $set ? date('Y-m-d') : null;
+            $stmt = $this->db->prepare('UPDATE santri___ijin SET tanggal_kembali = ? WHERE id = ?');
+            $stmt->execute([$tanggal, $id]);
+
+            $user = $request->getAttribute('user');
+            $idPengurus = $user['user_id'] ?? $user['id'] ?? null;
+            if ($idPengurus) {
+                $stmtNew = $this->db->prepare('SELECT * FROM santri___ijin WHERE id = ?');
+                $stmtNew->execute([$id]);
+                $newIjin = $stmtNew->fetch(\PDO::FETCH_ASSOC);
+                if ($newIjin) {
+                    UserAktivitasLogger::log(null, $idPengurus, UserAktivitasLogger::ACTION_UPDATE, 'santri___ijin', $id, $oldIjin, $newIjin, $request);
+                }
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => $set ? 'Tanggal kembali dicatat' : 'Status kembali dibatalkan',
+                'data' => ['tanggal_kembali' => $tanggal],
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Mark kembali error: ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function getPublicIjin(Request $request, Response $response): Response
@@ -423,6 +518,93 @@ class IjinController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/ijin/kamar-options — daftar kamar untuk dropdown id_kamar (admin_ijin / petugas_ijin).
+     * Query: id_daerah (opsional), status (opsional). Tanpa filter status: hanya aktif.
+     */
+    public function getKamarOptions(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $idDaerah = isset($params['id_daerah']) ? (int) $params['id_daerah'] : null;
+            $status = isset($params['status']) && $params['status'] !== '' ? trim((string) $params['status']) : null;
+
+            $sql = 'SELECT dk.id, dk.id_daerah, dk.kamar, dk.keterangan, dk.status,
+                    d.daerah AS daerah_nama, d.kategori AS daerah_kategori
+                    FROM daerah___kamar dk
+                    LEFT JOIN daerah d ON d.id = dk.id_daerah
+                    WHERE 1=1';
+            $bind = [];
+            if ($idDaerah !== null && $idDaerah > 0) {
+                $sql .= ' AND dk.id_daerah = ?';
+                $bind[] = $idDaerah;
+            }
+            if ($status !== null) {
+                $sql .= ' AND dk.status = ?';
+                $bind[] = $status;
+            } else {
+                $sql .= " AND (dk.status IS NULL OR dk.status = 'aktif')";
+            }
+            $sql .= ' ORDER BY d.kategori, d.daerah, dk.kamar';
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($bind);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $rows
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('IjinController::getKamarOptions ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil data kamar',
+                'data' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/ijin/rombel-options?jenis=diniyah|formal — sama dengan pendaftaran/rombel-options.
+     */
+    public function getRombelOptions(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $jenis = isset($params['jenis']) ? trim((string) $params['jenis']) : '';
+            if ($jenis === '' || !in_array(strtolower($jenis), ['diniyah', 'formal'], true)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Parameter jenis wajib: diniyah atau formal',
+                    'data' => []
+                ], 400);
+            }
+            $kategoriLembaga = ucfirst(strtolower($jenis));
+
+            $sql = 'SELECT r.id, r.lembaga_id, l.nama AS lembaga_nama, r.kelas, r.kel
+                    FROM lembaga___rombel r
+                    INNER JOIN lembaga l ON l.id = r.lembaga_id
+                    WHERE l.kategori = ? AND (r.status IS NULL OR r.status = \'aktif\')
+                    ORDER BY l.nama, r.kelas, r.kel';
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$kategoriLembaga]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $rows
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('IjinController::getRombelOptions ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil data rombel',
+                'data' => []
             ], 500);
         }
     }

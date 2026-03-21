@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Training Chat AI</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="../icon.png">
+    <link rel="icon" type="image/x-icon" href="../icon.png">
+    <link rel="shortcut icon" type="image/x-icon" href="../icon.png">
+    <link rel="apple-touch-icon" href="../icon.png">
+    <meta name="msapplication-TileImage" content="../icon.png">
+    <meta name="msapplication-TileColor" content="#4299e1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="training_chat.css">
+</head>
+<body>
+    <div class="main-layout">
+        <aside id="session-sidebar">
+            <div class="sidebar-header">
+                
+                <a href="index.html" id="home-btn" title="Home" style="display:flex;align-items:center;gap:0.5rem;text-decoration:none;background:#232b3a;padding:0.45rem 1rem;border-radius:0.5rem;margin-right:0.7rem;transition:background 0.18s;">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="#38bdf8" style="width:1.5em;height:1.5em;display:block;"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l9-7 9 7M4 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-6 0h6"/></svg>
+                    <span style="color:#38bdf8;font-weight:600;font-size:1.1em;">Home</span>
+                </a>
+                <span></span>
+                <button id="new-session-btn" class="btn btn-primary w-full my-2">+ Sesi Baru</button>
+            </div>
+            <div class="session-list" id="session-list"></div>
+        </aside>
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        <div id="current-session" class="">
+            <div class="chat-container">
+                <div class="session-header">
+                    <button class="sidebar-menu-btn" id="sidebar-menu-btn" title="Menu">&#9776;</button>
+                    <span id="current-session-title" class="session-title"></span>
+                    <div class="session-actions">
+                        <button id="close-session-btn" class="btn btn-danger">Tutup Sesi</button>
+                        <button id="delete-session-btn" class="btn btn-danger ml-2">Hapus Sesi</button>
+                    </div>
+                </div>
+                <div class="chat-messages" id="chat-messages"></div>
+                <form id="chat-form" class="chat-input">
+                    <select id="sender-select">
+                        <option value="user">User</option>
+                        <option value="ai">AI</option>
+                        <option value="trainer">Trainer</option>
+                    </select>
+                    <textarea id="message-input" rows="2" placeholder="Ketik pesan..."></textarea>
+                    <button type="submit">Kirim</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- Modal Sesi Baru -->
+    <div id="new-session-modal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-lg relative">
+            <h2 class="text-lg font-bold mb-4">Buat Sesi Training Baru</h2>
+            <input id="new-session-title" type="text" class="w-full p-3 rounded bg-gray-700 border border-gray-600 text-white mb-4" placeholder="Judul sesi...">
+            <div class="flex justify-end gap-2">
+                <button id="cancel-new-session" class="px-4 py-2 rounded bg-gray-600 hover:bg-gray-700 text-white">Batal</button>
+                <button id="save-new-session" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold">Buat</button>
+            </div>
+            <button id="close-new-session-modal" class="absolute top-2 right-3 text-gray-400 hover:text-white text-2xl">&times;</button>
+        </div>
+    </div>
+    <!-- Modal Konfirmasi Hapus Sesi -->
+    <div id="delete-session-modal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-lg relative">
+            <h2 class="text-lg font-bold mb-4 text-center">Konfirmasi Hapus Sesi</h2>
+            <p class="mb-6 text-center text-gray-300">Yakin ingin menghapus seluruh sesi ini beserta semua pesan?</p>
+            <div class="flex justify-center gap-3">
+                <button id="cancel-delete-session" class="px-4 py-2 rounded bg-gray-600 hover:bg-gray-700 text-white">Batal</button>
+                <button id="confirm-delete-session" class="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white font-semibold">Hapus</button>
+            </div>
+            <button id="close-delete-session-modal" class="absolute top-2 right-3 text-gray-400 hover:text-white text-2xl">&times;</button>
+        </div>
+    </div>
+    <script>
+        // Check admin authentication
+        if (!localStorage.getItem('adminUserId')) {
+            window.location.href = 'login.html';
+        }
+        
+        const SESSION_API = 'https://chat.alutsmani.id/api/training_chat.php';
+        let sessions = [];
+        let currentSession = null;
+        let messages = [];
+        
+        // Ambil sesi
+        async function fetchSessions() {
+            try {
+                const res = await fetch(SESSION_API + '?action=list_sessions');
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                const data = await res.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                sessions = Array.isArray(data) ? data : [];
+                renderSessionList();
+            } catch (error) {
+                console.error('Error fetching sessions:', error);
+                alert('Gagal memuat daftar sesi: ' + error.message);
+            }
+        }
+        
+        // Render daftar sesi
+        function renderSessionList() {
+            const list = document.getElementById('session-list');
+            list.innerHTML = '';
+            if (sessions.length === 0) {
+                list.innerHTML = '<div class="text-gray-400">Belum ada sesi. Klik "+ Sesi Baru" untuk mulai.</div>';
+                return;
+            }
+            sessions.forEach(sess => {
+                const div = document.createElement('div');
+                div.className = 'session-item' + (currentSession && currentSession.id === sess.id ? ' selected' : '');
+                div.innerHTML = `<span>${sess.title}</span><span class="text-xs">${sess.status || ''}</span>`;
+                div.onclick = () => openSession(sess);
+                list.appendChild(div);
+            });
+        }
+        
+        // Buka sesi
+        async function openSession(sess) {
+            currentSession = sess;
+            document.getElementById('current-session').classList.remove('hidden');
+            document.getElementById('current-session-title').textContent = sess.title;
+            await fetchMessages(sess.id);
+            
+            // Setup chat form again when session is opened
+            setTimeout(() => {
+                setupChatForm();
+                
+                const closeBtn = document.getElementById('close-session-btn');
+                if (closeBtn) {
+                    closeBtn.onclick = function() {
+                        closeSession();
+                        if (window.innerWidth <= 900) openSidebar();
+                    };
+                    closeBtn.disabled = false;
+                }
+                const deleteBtn = document.getElementById('delete-session-btn');
+                if (deleteBtn) {
+                    deleteBtn.onclick = function() {
+                        // Tampilkan modal konfirmasi
+                        document.getElementById('delete-session-modal').classList.remove('hidden');
+                    };
+                    deleteBtn.disabled = false;
+                }
+            }, 100);
+        }
+        
+        // Tutup sesi
+        function closeSession() {
+            currentSession = null;
+            document.getElementById('current-session').classList.add('hidden');
+            renderSessionList();
+        }
+        
+        // Ambil pesan
+        async function fetchMessages(sessionId) {
+            try {
+                const res = await fetch(SESSION_API + '?action=list_messages&session_id=' + sessionId);
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                const data = await res.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                messages = Array.isArray(data) ? data : [];
+                renderMessages();
+            } catch (error) {
+                console.error('Error fetching messages:', error);
+                alert('Gagal memuat pesan: ' + error.message);
+            }
+        }
+        
+        // Render pesan
+        function renderMessages() {
+            const box = document.getElementById('chat-messages');
+            box.innerHTML = '';
+            
+            messages.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = 'message ' + msg.sender;
+                
+                // Tombol edit, hapus, approve/feedback untuk AI
+                let actions = '';
+                if (msg.sender === 'ai') {
+                    actions += `<button class='ml-2 px-2 py-1 rounded bg-green-600 text-xs text-white approve-msg-btn' data-id='${msg.id}'>Approve</button>`;
+                    actions += `<button class='ml-2 px-2 py-1 rounded bg-red-600 text-xs text-white wrong-msg-btn' data-id='${msg.id}' data-msg='${encodeURIComponent(msg.message)}'>Salah</button>`;
+                }
+                
+                // Tombol edit dan hapus untuk semua pesan (user, trainer, ai)
+                if (msg.sender === 'trainer' || msg.sender === 'ai' || msg.sender === 'user') {
+                    actions += `<button class="ml-2 px-2 py-1 rounded bg-yellow-500 text-xs text-white edit-msg-btn" data-id="${msg.id}" data-msg="${encodeURIComponent(msg.message)}">Edit</button>` +
+                               `<button class="ml-2 px-2 py-1 rounded bg-red-600 text-xs text-white delete-msg-btn" data-id="${msg.id}">Hapus</button>`;
+                }
+                
+                let feedback = '';
+                if (msg.approved_as_training == 1) feedback = `<span class='ml-2 text-green-400 text-xs font-bold'>✔ Disetujui</span>`;
+                if (msg.feedback && msg.feedback.length > 0) feedback = `<span class='ml-2 text-red-400 text-xs font-bold'>✗ Dikoreksi: ${msg.feedback}</span>`;
+                
+                // Format timestamp
+                let time = msg.created_at ? new Date(msg.created_at.replace(' ', 'T')).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+                
+                // Render markdown ke HTML
+                let messageHTML = '';
+                try {
+                    messageHTML = marked.parse(msg.message || '');
+                } catch (e) {
+                    messageHTML = msg.message || '';
+                }
+                
+                // Pastikan pesan tidak tumpang tindih dengan menambahkan wrapper yang tepat
+                div.innerHTML = `<div class="bubble ${msg.sender}"><div class="bubble-content">${messageHTML}</div><div class="bubble-actions">${actions}</div><div class="bubble-feedback">${feedback}</div><span class='bubble-timestamp'>${time}</span></div>`;
+                box.appendChild(div);
+            });
+            
+            // Scroll ke bawah setelah render dengan delay yang lebih lama
+            setTimeout(() => {
+                box.scrollTop = box.scrollHeight;
+            }, 200);
+            
+            // Tambahan scroll untuk memastikan semua elemen ter-render
+            setTimeout(() => {
+                box.scrollTop = box.scrollHeight;
+            }, 500);
+            
+            // Event edit
+            document.querySelectorAll('.edit-msg-btn').forEach(btn => {
+                btn.onclick = function() {
+                    const id = this.getAttribute('data-id');
+                    const oldMsg = decodeURIComponent(this.getAttribute('data-msg'));
+                    showEditMessageForm(id, oldMsg);
+                };
+            });
+            
+            // Event hapus
+            document.querySelectorAll('.delete-msg-btn').forEach(btn => {
+                btn.onclick = async function() {
+                    const id = this.getAttribute('data-id');
+                    if (!confirm('Yakin hapus pesan ini?')) return;
+                    try {
+                        const res = await fetch(SESSION_API, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'delete_message', id })
+                        });
+                        if (!res.ok) throw new Error('Gagal menghapus pesan');
+                        await fetchMessages(currentSession.id);
+                    } catch (error) {
+                        alert('Gagal menghapus pesan: ' + error.message);
+                    }
+                };
+            });
+            
+            // Event approve
+            document.querySelectorAll('.approve-msg-btn').forEach(btn => {
+                btn.onclick = async function() {
+                    const id = this.getAttribute('data-id');
+                    try {
+                        const res = await fetch(SESSION_API, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'approve_message', id })
+                        });
+                        if (!res.ok) throw new Error('Gagal approve pesan');
+                        await fetchMessages(currentSession.id);
+                    } catch (error) {
+                        alert('Gagal approve pesan: ' + error.message);
+                    }
+                };
+            });
+            
+            // Event feedback/koreksi
+            document.querySelectorAll('.wrong-msg-btn').forEach(btn => {
+                btn.onclick = function() {
+                    const id = this.getAttribute('data-id');
+                    const oldMsg = decodeURIComponent(this.getAttribute('data-msg'));
+                    showFeedbackForm(id, oldMsg);
+                };
+            });
+        }
+        
+        // Form edit pesan
+        function showEditMessageForm(id, oldMsg) {
+            const box = document.getElementById('chat-messages');
+            const msgDiv = Array.from(box.querySelectorAll('.edit-msg-btn')).find(btn => btn.getAttribute('data-id') == id).closest('.message');
+            const bubble = msgDiv.querySelector('.bubble');
+            bubble.innerHTML = `<textarea class='w-full p-2 rounded bg-gray-700 text-white border border-gray-500' id='edit-msg-text'>${oldMsg}</textarea><div class='flex gap-2 mt-2'><button class='px-3 py-1 rounded bg-blue-600 text-white' id='save-edit-msg'>Simpan</button><button class='px-3 py-1 rounded bg-gray-600 text-white' id='cancel-edit-msg'>Batal</button></div>`;
+            document.getElementById('edit-msg-text').focus();
+            document.getElementById('save-edit-msg').onclick = async function() {
+                const newMsg = document.getElementById('edit-msg-text').value.trim();
+                if (!newMsg) return;
+                try {
+                    const res = await fetch(SESSION_API, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'edit_message', id, message: newMsg })
+                    });
+                    if (!res.ok) throw new Error('Gagal edit pesan');
+                    await fetchMessages(currentSession.id);
+                } catch (error) {
+                    alert('Gagal edit pesan: ' + error.message);
+                }
+            };
+            document.getElementById('cancel-edit-msg').onclick = function() {
+                fetchMessages(currentSession.id);
+            };
+        }
+        
+        // Form feedback/koreksi
+        function showFeedbackForm(id, oldMsg) {
+            const box = document.getElementById('chat-messages');
+            const msgDiv = Array.from(box.querySelectorAll('.wrong-msg-btn')).find(btn => btn.getAttribute('data-id') == id).closest('.message');
+            const bubble = msgDiv.querySelector('.bubble');
+            bubble.innerHTML = `<textarea class='w-full p-2 rounded bg-gray-700 text-white border border-gray-500' id='feedback-msg-text' placeholder='Koreksi jawaban AI...'></textarea><div class='flex gap-2 mt-2'><button class='px-3 py-1 rounded bg-blue-600 text-white' id='save-feedback-msg'>Kirim Koreksi</button><button class='px-3 py-1 rounded bg-gray-600 text-white' id='cancel-feedback-msg'>Batal</button></div>`;
+            document.getElementById('feedback-msg-text').focus();
+            document.getElementById('save-feedback-msg').onclick = async function() {
+                const feedback = document.getElementById('feedback-msg-text').value.trim();
+                if (!feedback) return;
+                try {
+                    const res = await fetch(SESSION_API, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'feedback_message', id, feedback })
+                    });
+                    if (!res.ok) throw new Error('Gagal kirim feedback');
+                    await fetchMessages(currentSession.id);
+                } catch (error) {
+                    alert('Gagal kirim feedback: ' + error.message);
+                }
+            };
+            document.getElementById('cancel-feedback-msg').onclick = function() {
+                fetchMessages(currentSession.id);
+            };
+        }
+        
+        // Kirim pesan
+        function setupChatForm() {
+            const chatForm = document.getElementById('chat-form');
+            if (!chatForm) {
+                console.error('Chat form not found!');
+                return;
+            }
+            
+            console.log('Setting up chat form event listener');
+            
+            chatForm.onsubmit = async function(e) {
+                e.preventDefault();
+                console.log('Chat form submitted');
+                
+                if (!currentSession) {
+                    alert('Pilih sesi terlebih dahulu');
+                    return;
+                }
+                
+                const sender = document.getElementById('sender-select').value;
+                const message = document.getElementById('message-input').value.trim();
+                
+                console.log('Sender:', sender, 'Message:', message);
+                
+                if (!message) {
+                    alert('Pesan tidak boleh kosong');
+                    return;
+                }
+                
+                // Tampilkan pesan user langsung
+                const box = document.getElementById('chat-messages');
+                const userDiv = document.createElement('div');
+                userDiv.className = 'message user';
+                userDiv.innerHTML = `<div class="bubble user">${message}<span class='bubble-timestamp'>${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></div>`;
+                box.appendChild(userDiv);
+                
+                // Jika user, tampilkan loading AI
+                let aiDiv;
+                if (sender === 'user') {
+                    aiDiv = document.createElement('div');
+                    aiDiv.className = 'message ai';
+                    aiDiv.innerHTML = `<div class="bubble ai"><span class='animate-pulse'>AI sedang menjawab...</span><span class='bubble-timestamp'>${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span></div>`;
+                    box.appendChild(aiDiv);
+                }
+                
+                // Scroll ke bawah dengan delay untuk memastikan DOM sudah ter-render
+                setTimeout(() => {
+                    box.scrollTop = box.scrollHeight;
+                }, 150);
+                
+                // Tambahan scroll untuk memastikan semua elemen ter-render
+                setTimeout(() => {
+                    box.scrollTop = box.scrollHeight;
+                }, 300);
+                
+                document.getElementById('message-input').value = '';
+                
+                // Kirim ke backend
+                try {
+                    console.log('Sending message to API...');
+                    const res = await fetch(SESSION_API, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            action: 'send_message', 
+                            session_id: currentSession.id, 
+                            sender, 
+                            message 
+                        })
+                    });
+                    
+                    console.log('API response status:', res.status);
+                    
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        console.error('API error response:', errorText);
+                        throw new Error(`HTTP ${res.status}: ${errorText}`);
+                    }
+                    
+                    const result = await res.json();
+                    console.log('API response:', result);
+                    
+                    if (result.error) {
+                        throw new Error(result.error);
+                    }
+                    
+                    // Refresh pesan agar sinkron
+                    await fetchMessages(currentSession.id);
+                } catch (err) {
+                    console.error('Error sending message:', err);
+                    if (aiDiv) {
+                        aiDiv.querySelector('.bubble').innerHTML = '<span class="text-red-400">Gagal mendapatkan jawaban AI</span>';
+                    }
+                    alert('Gagal kirim pesan: ' + err.message);
+                }
+            };
+            
+            console.log('Chat form event listener attached successfully');
+        }
+        
+        // Setup chat form when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, setting up chat form');
+            setupChatForm();
+        });
+        
+        // Modal Sesi Baru
+        const newSessionModal = document.getElementById('new-session-modal');
+        const newSessionTitle = document.getElementById('new-session-title');
+        const saveNewSession = document.getElementById('save-new-session');
+        const cancelNewSession = document.getElementById('cancel-new-session');
+        const closeNewSessionModal = document.getElementById('close-new-session-modal');
+        const newSessionBtn = document.getElementById('new-session-btn');
+
+        function showNewSessionModal() {
+            newSessionModal.classList.remove('hidden');
+            newSessionTitle.value = '';
+            setTimeout(() => newSessionTitle.focus(), 100);
+        }
+        function hideNewSessionModal() {
+            newSessionModal.classList.add('hidden');
+            newSessionTitle.value = '';
+        }
+        
+        // Add event listener for new session button
+        if (newSessionBtn) {
+            newSessionBtn.addEventListener('click', showNewSessionModal);
+        }
+        
+        cancelNewSession.onclick = hideNewSessionModal;
+        closeNewSessionModal.onclick = hideNewSessionModal;
+        newSessionModal.onclick = function(e) {
+            if (e.target === newSessionModal) hideNewSessionModal();
+        };
+        newSessionTitle.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') saveNewSession.click();
+        });
+        saveNewSession.onclick = async function() {
+            const title = newSessionTitle.value.trim();
+            if (!title) {
+                newSessionTitle.focus();
+                newSessionTitle.classList.add('border-red-500');
+                setTimeout(() => newSessionTitle.classList.remove('border-red-500'), 1000);
+                return;
+            }
+            try {
+                const res = await fetch(SESSION_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'create_session', title })
+                });
+                if (!res.ok) throw new Error('Gagal membuat sesi');
+                const result = await res.json();
+                if (result.error) throw new Error(result.error);
+                hideNewSessionModal();
+                await fetchSessions();
+            } catch (error) {
+                alert('Gagal membuat sesi: ' + error.message);
+            }
+        };
+        
+        // Load awal
+        fetchSessions();
+
+        // Modal konfirmasi hapus sesi
+        const deleteSessionModal = document.getElementById('delete-session-modal');
+        const cancelDeleteSession = document.getElementById('cancel-delete-session');
+        const closeDeleteSessionModal = document.getElementById('close-delete-session-modal');
+        const confirmDeleteSession = document.getElementById('confirm-delete-session');
+        if (cancelDeleteSession) cancelDeleteSession.onclick = () => deleteSessionModal.classList.add('hidden');
+        if (closeDeleteSessionModal) closeDeleteSessionModal.onclick = () => deleteSessionModal.classList.add('hidden');
+        if (confirmDeleteSession) {
+            confirmDeleteSession.onclick = async function() {
+                if (!currentSession) {
+                    alert('Tidak ada sesi yang dipilih.');
+                    return;
+                }
+                confirmDeleteSession.disabled = true;
+                confirmDeleteSession.textContent = 'Menghapus...';
+                try {
+                    const res = await fetch(SESSION_API, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'delete_session', id: currentSession.id })
+                    });
+                    if (!res.ok) throw new Error('Gagal menghubungi server');
+                    const result = await res.json();
+                    if (result.error) {
+                        alert(result.error || 'Gagal menghapus sesi di server.');
+                        return;
+                    }
+                    currentSession = null;
+                    document.getElementById('current-session').classList.add('hidden');
+                    await fetchSessions();
+                    deleteSessionModal.classList.add('hidden');
+                    if (window.innerWidth <= 900) openSidebar();
+                } catch (err) {
+                    alert('Terjadi kesalahan saat menghapus sesi: ' + err.message);
+                } finally {
+                    confirmDeleteSession.disabled = false;
+                    confirmDeleteSession.textContent = 'Hapus';
+                }
+            };
+        }
+
+        // Sidebar logic
+        const sidebar = document.getElementById('session-sidebar');
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        const sidebarMenuBtn = document.getElementById('sidebar-menu-btn');
+        
+        function openSidebar() {
+            sidebar.classList.add('open');
+            sidebarOverlay.style.display = 'block';
+        }
+        
+        function closeSidebar() {
+            sidebar.classList.remove('open');
+            sidebarOverlay.style.display = 'none';
+        }
+        
+        if (sidebarMenuBtn) {
+            sidebarMenuBtn.addEventListener('click', openSidebar);
+        }
+        
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', closeSidebar);
+        }
+        
+        // Auto open sidebar on mobile at first load
+        if (window.innerWidth <= 900) {
+            setTimeout(openSidebar, 200);
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 900) {
+                closeSidebar();
+            }
+        });
+    </script>
+</body>
+</html> 

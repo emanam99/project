@@ -55,7 +55,14 @@ const offcanvasRightVariants = {
 
 function Layout() {
   const location = useLocation()
-  const hideHeader = location.pathname === '/beranda' || location.pathname === '/semua-menu' || location.pathname === '/chat'
+  /** Chat AI eBeddien + sub-rute training: sama seperti /chat-ai — tanpa animasi y agar tidak “terangkat” vs nav bawah */
+  const isChatAiRoute =
+    location.pathname === '/chat-ai' || location.pathname.startsWith('/chat-ai/')
+  const hideHeader =
+    location.pathname === '/beranda' ||
+    location.pathname === '/semua-menu' ||
+    location.pathname === '/chat' ||
+    isChatAiRoute
   // HP: thread chat (/chat?c= atau ?u=) pakai layar penuh — tanpa padding bawah untuk bottom nav (nav disembunyikan di Navigation.jsx)
   const chatSearch = typeof location.search === 'string' ? new URLSearchParams(location.search) : null
   const chatMobileThreadOpen =
@@ -113,38 +120,29 @@ function Layout() {
       
       {/* Main Content Area */}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative z-10 w-0">
-        {/* Header: tersembunyi di Beranda & Semua Menu, muncul dengan animasi di halaman lain; z-20 agar dropdown di atas main; overflow-visible saat tampil agar menu tidak terpotong */}
-        <motion.div
-          className={`shrink-0 z-20 ${hideHeader ? 'overflow-hidden' : 'overflow-visible'}`}
-          initial={false}
-          animate={{
-            maxHeight: hideHeader ? 0 : 220,
-            opacity: hideHeader ? 0 : 1,
-          }}
-          transition={headerTransition}
-        >
+        {/* Header: jangan animasi collapse (maxHeight/y) — itu membuat sidebar+main “terangkat” saat pindah ke /chat-ai dsb. Nav bawah fixed tidak ikut → terlihat seperti geser. */}
+        {!hideHeader ? (
           <motion.div
+            className="shrink-0 z-20 overflow-visible"
             initial={false}
-            animate={{
-              y: hideHeader ? -20 : 0,
-            }}
+            animate={{ opacity: 1 }}
             transition={headerTransition}
           >
             <Header />
           </motion.div>
-        </motion.div>
+        ) : null}
         
         {/* Area main tidak di-scroll; hanya konten di dalam halaman (mis. kotak biodata) yang scroll */}
         <main
-          className={`flex-1 min-h-0 overflow-hidden overflow-x-hidden sm:pb-0 px-2 sm:px-3 ${
-            chatMobileThreadOpen ? 'pb-0' : 'pb-16'
-          }`}
+          className={`flex flex-col flex-1 min-h-0 overflow-hidden overflow-x-hidden sm:pb-0 px-2 sm:px-3 ${
+            isChatAiRoute ? 'max-sm:px-0' : ''
+          } ${chatMobileThreadOpen ? 'pb-0' : 'pb-16'}`}
         >
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
               variants={
-              location.pathname === '/beranda'
+              location.pathname === '/beranda' || isChatAiRoute
                 ? berandaInstantVariants
                 : location.pathname.startsWith('/kalender')
                   ? offcanvasRightVariants

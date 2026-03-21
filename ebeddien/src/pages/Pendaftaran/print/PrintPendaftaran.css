@@ -1755,3 +1755,488 @@ td.via-col {
   margin-top: 0;
 }
 
+/* —— Formulir biodata (cetak terpisah dari kwitansi) —— */
+.print-biodata-formulir-outer {
+  width: 100%;
+  margin-top: 16px;
+  padding-bottom: 12px;
+}
+
+.print-biodata-after-kwitansi {
+  page-break-before: always;
+  break-before: page;
+  margin-top: 0;
+  padding-top: 8px;
+}
+
+.print-biodata-formulir {
+  font-size: 11px;
+  font-family: 'Inter', Arial, sans-serif;
+  color: #22223b;
+  margin: 0;
+  padding: 0 3mm 3mm;
+  box-sizing: border-box;
+  background: #ffffff;
+}
+
+.formulir-header {
+  margin-bottom: 0.75rem;
+}
+
+.formulir-master-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.formulir-master-table td {
+  padding: 3px 6px 3px 0;
+  vertical-align: top;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.formulir-label {
+  width: 28%;
+  white-space: nowrap;
+  color: #475569;
+  font-weight: 500;
+}
+
+.formulir-colon {
+  width: 2%;
+  color: #94a3b8;
+}
+
+.formulir-value {
+  width: 70%;
+  word-break: break-word;
+}
+
+.formulir-section-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #0d9488;
+  padding-top: 0.65rem !important;
+  padding-bottom: 0.35rem !important;
+  border-bottom: 2px solid #99f6e4 !important;
+}
+
+.formulir-footer-print {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #cbd5e1;
+  font-size: 10px;
+}
+
+@media print {
+  .print-biodata-after-kwitansi {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+}
+
+/* —— Rapor Tes Madrasah Diniyah —— */
+.print-rapor-tes-outer {
+  width: 100%;
+  margin-top: 12px;
+  padding-bottom: 12px;
+}
+
+.print-rapor-after-prev {
+  page-break-before: always;
+  break-before: page;
+  margin-top: 0;
+  padding-top: 6px;
+}
+
+.print-rapor-tes-madin {
+  font-size: 11px;
+  font-family: 'Inter', Arial, sans-serif;
+  color: #1e293b;
+  padding: 0 3mm 4mm;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.print-rapor-tes-madin .rapor-tes-header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.print-rapor-tes-madin .rapor-tes-logo-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.print-rapor-tes-madin .rapor-tes-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0;
+  color: #0f766e;
+}
+
+.print-rapor-tes-madin .rapor-tes-intro {
+  text-align: justify;
+  line-height: 1.55;
+  margin: 0 0 1rem;
+  text-indent: 2rem;
+}
+
+.print-rapor-tes-madin .rapor-tes-identitas {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1rem;
+}
+
+.print-rapor-tes-madin .rapor-tes-identitas td {
+  padding: 4px 6px 4px 0;
+  vertical-align: top;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.print-rapor-tes-madin .rapor-tes-identitas .lbl {
+  width: 22%;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #475569;
+}
+
+.print-rapor-tes-madin .rapor-tes-identitas .sep {
+  width: 2%;
+  color: #94a3b8;
+}
+
+.print-rapor-tes-madin .rapor-tes-par {
+  text-align: justify;
+  line-height: 1.55;
+  margin: 0 0 0.85rem;
+  text-indent: 2rem;
+}
+
+.print-rapor-tes-madin .rapor-fill {
+  border-bottom: 1px dotted #64748b;
+  padding: 0 2px;
+  min-width: 2em;
+  display: inline-block;
+}
+
+.print-rapor-tes-madin .rapor-kelas {
+  min-width: 12em;
+}
+
+/* Baris 2 kolom: Tahap 1|2 dan Tahap 3|4 (preview layar + cetak) */
+.print-rapor-tes-madin .rapor-tahap-baris {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+  align-items: stretch;
+  margin-bottom: 0.85rem;
+}
+
+.print-rapor-tes-madin .rapor-tahap-baris .rapor-tahap {
+  margin-bottom: 0;
+  min-width: 0;
+  height: 100%;
+}
+
+/* Kolom sempit: baris nilai lebih rapat */
+.print-rapor-tes-madin .rapor-tahap-baris .rapor-nilai-baris {
+  grid-template-columns: 0.95rem minmax(0, 1fr) auto minmax(2.25rem, 3.25rem);
+  gap: 0.2rem 0.3rem;
+  font-size: 9.5px;
+}
+
+.print-rapor-tes-madin .rapor-tahap-baris .rapor-jumlah-baris {
+  font-size: 9.5px;
+  padding-left: 1.1rem;
+}
+
+.print-rapor-tes-madin .rapor-tahap-baris .rapor-keputusan-block {
+  font-size: 9.5px;
+}
+
+.print-rapor-tes-madin .rapor-tahap-baris .rapor-t1-lanjut {
+  padding-left: 3.5rem;
+}
+
+.print-rapor-tes-madin .rapor-tahap-baris .rapor-pilihan-manual {
+  white-space: normal;
+  word-break: break-word;
+  font-size: 9px;
+}
+
+@media screen and (max-width: 720px) {
+  .print-rapor-tes-madin .rapor-tahap-baris {
+    grid-template-columns: 1fr;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-t1-lanjut {
+    padding-left: 7.5rem;
+  }
+}
+
+.print-rapor-tes-madin .rapor-tahap {
+  margin: 0 0 1.1rem;
+  padding: 0.65rem 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  background: #fafafa;
+}
+
+.print-rapor-tes-madin .rapor-tahap-judul {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f766e;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #99f6e4;
+}
+
+.print-rapor-tes-madin .rapor-nilai-baris {
+  display: grid;
+  grid-template-columns: 1.1rem 1fr auto minmax(4rem, 5.5rem);
+  gap: 0.25rem 0.4rem;
+  align-items: start;
+  margin-bottom: 0.35rem;
+  font-size: 10.5px;
+}
+
+.print-rapor-tes-madin .rapor-bullet {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.print-rapor-tes-madin .rapor-nilai-label {
+  line-height: 1.35;
+}
+
+.print-rapor-tes-madin .rapor-sub {
+  display: block;
+  padding-left: 0.5rem;
+  color: #334155;
+}
+
+.print-rapor-tes-madin .rapor-nilai-colon {
+  text-align: right;
+  color: #64748b;
+}
+
+.print-rapor-tes-madin .rapor-nilai-slot {
+  text-align: right;
+}
+
+.print-rapor-tes-madin .rapor-nilai-input {
+  width: 100%;
+  min-width: 3.5rem;
+  max-width: 6rem;
+  margin-left: auto;
+  display: block;
+  border: none;
+  border-bottom: 1px dotted #64748b;
+  background: transparent;
+  font: inherit;
+  text-align: right;
+  padding: 0 2px 1px;
+  color: #0f172a;
+}
+
+.print-rapor-tes-madin .rapor-nilai-print {
+  display: none;
+  border-bottom: 1px dotted #64748b;
+  min-width: 3.5rem;
+  padding: 0 4px 1px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.print-rapor-tes-madin .rapor-jumlah-baris {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+  margin: 0.5rem 0 0.45rem;
+  padding-left: 1.35rem;
+  font-size: 10.5px;
+}
+
+.print-rapor-tes-madin .rapor-jumlah-label {
+  font-weight: 600;
+}
+
+.print-rapor-tes-madin .rapor-jumlah-baris .rapor-nilai-slot {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.print-rapor-tes-madin .rapor-slot-panjang .rapor-nilai-input,
+.print-rapor-tes-madin .rapor-slot-panjang .rapor-nilai-print {
+  max-width: none;
+  width: 100%;
+  text-align: left;
+}
+
+.print-rapor-tes-madin .rapor-keputusan-block {
+  margin-top: 0.45rem;
+  padding-left: 0.25rem;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.print-rapor-tes-madin .rapor-keputusan-baris {
+  margin-bottom: 0.2rem;
+}
+
+.print-rapor-tes-madin .rapor-t1-masuk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
+.print-rapor-tes-madin .rapor-t1-lanjut {
+  padding-left: 7.5rem;
+}
+
+.print-rapor-tes-madin .rapor-keputusan-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+}
+
+.print-rapor-tes-madin .rapor-keputusan-kelas {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.35rem;
+}
+
+.print-rapor-tes-madin .rapor-dash {
+  color: #94a3b8;
+}
+
+.print-rapor-tes-madin .rapor-keputusan-opsi {
+  margin-top: 0.15rem;
+}
+
+.print-rapor-tes-madin .rapor-pilihan-manual {
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 10px;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.print-rapor-tes-madin .rapor-tes-ttd {
+  margin-top: 2rem;
+  text-align: right;
+  max-width: 320px;
+  margin-left: auto;
+}
+
+.print-rapor-tes-madin .rapor-tes-kota {
+  margin: 0 0 0.25rem;
+}
+
+.print-rapor-tes-madin .rapor-tes-jabatan {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.print-rapor-tes-madin .rapor-tes-spacer {
+  height: 3.5rem;
+}
+
+.print-rapor-tes-madin .rapor-tes-nama {
+  margin: 0;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media print {
+  .print-rapor-after-prev {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Header rapor: logo + judul (halaman /print-pendaftaran tanpa offcanvas) */
+  .print-rapor-tes-madin .rapor-tes-header,
+  .print-rapor-tes-madin .rapor-tes-logo-row {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+  }
+
+  .print-rapor-tes-madin .rapor-kop-img,
+  .print-rapor-tes-madin .rapor-tes-header .header-logo {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    max-width: 80px !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tes-title {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #0f766e !important;
+    font-size: 14pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-rapor-tes-madin .rapor-nilai-print {
+    display: inline !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap {
+    background: #fff !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.28cm 0.4cm !important;
+    align-items: stretch !important;
+    margin-bottom: 0.35cm !important;
+    page-break-inside: avoid;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-tahap {
+    page-break-inside: avoid;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-nilai-baris {
+    grid-template-columns: 0.85rem minmax(0, 1fr) auto minmax(1.8rem, 2.6rem) !important;
+    font-size: 8px !important;
+    gap: 0.12rem 0.22rem !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-jumlah-baris,
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-keputusan-block {
+    font-size: 8px !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-tahap-judul {
+    font-size: 10px !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-t1-lanjut {
+    padding-left: 2.8rem !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tahap-baris .rapor-pilihan-manual {
+    font-size: 7.5px !important;
+  }
+}
+

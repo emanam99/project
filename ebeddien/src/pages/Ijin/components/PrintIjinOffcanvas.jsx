@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import PrintIjin from '../print/PrintIjin'
+import { DEFAULT_PRINT_IJIN_MARGIN_MM, mergePageMarginMm } from '../print/printIjinMargin'
 import '../print/PrintIjin.css'
 import '../../Pembayaran/components/PrintOffcanvas.css'
 
@@ -11,6 +12,9 @@ function PrintIjinOffcanvas({ isOpen, onClose, santriId, ijinId }) {
   const { showNotification } = useNotification()
   const { tahunAjaran } = useTahunAjaranStore()
   const [printUrl, setPrintUrl] = useState('')
+  /** Margin isi dari tepi lembar (mm) — sama pola dengan Print Absen (ribbon + opsi) */
+  const [pageMarginMm, setPageMarginMm] = useState(() => ({ ...DEFAULT_PRINT_IJIN_MARGIN_MM }))
+  const [ribbonExpanded, setRibbonExpanded] = useState(true)
 
   // Set URL untuk print
   useEffect(() => {
@@ -28,6 +32,12 @@ function PrintIjinOffcanvas({ isOpen, onClose, santriId, ijinId }) {
     }
   }, [isOpen, santriId, ijinId, tahunAjaran])
 
+  useEffect(() => {
+    if (!isOpen) return
+    setPageMarginMm({ ...DEFAULT_PRINT_IJIN_MARGIN_MM })
+    setRibbonExpanded(true)
+  }, [isOpen])
+
   // Tambahkan class ke body ketika offcanvas terbuka untuk deteksi print
   useEffect(() => {
     if (isOpen) {
@@ -40,6 +50,12 @@ function PrintIjinOffcanvas({ isOpen, onClose, santriId, ijinId }) {
       document.body.classList.remove('print-offcanvas-open')
     }
   }, [isOpen])
+
+  const handlePrint = () => {
+    setTimeout(() => window.print(), 200)
+  }
+
+  const marginSafe = mergePageMarginMm(pageMarginMm)
 
   const handleCopyUrl = () => {
     if (printUrl) {
@@ -125,7 +141,8 @@ function PrintIjinOffcanvas({ isOpen, onClose, santriId, ijinId }) {
                   Salin
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  type="button"
+                  onClick={handlePrint}
                   className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-xs whitespace-nowrap"
                   title="Print"
                 >
@@ -139,11 +156,147 @@ function PrintIjinOffcanvas({ isOpen, onClose, santriId, ijinId }) {
               </div>
             </div>
 
+            {/* Ribbon bergaya Office: margin halaman seperti print absen / rombel */}
+            <div className="no-print flex-shrink-0 border-b border-gray-300 dark:border-gray-600 bg-[#ececec] dark:bg-[#252526]">
+              {ribbonExpanded ? (
+                <>
+                  <div className="flex items-stretch min-h-[34px]">
+                    <div className="flex flex-1 items-end gap-0 px-1 pt-1 overflow-x-auto">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected
+                        className="shrink-0 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-t-md border border-b-0 transition-colors bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 border-b-white dark:border-b-gray-800 relative z-[1] mb-[-1px] shadow-[0_-1px_0_0_rgba(255,255,255,1)] dark:shadow-[0_-1px_0_0_rgb(31,41,55)]"
+                      >
+                        Margin halaman
+                      </button>
+                    </div>
+                    <div className="flex items-center border-l border-gray-300/80 dark:border-gray-600 pl-1 pr-1 shrink-0 bg-[#e4e4e4] dark:bg-[#2d2d30]">
+                      <button
+                        type="button"
+                        onClick={() => setRibbonExpanded(false)}
+                        className="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-300/60 dark:hover:bg-gray-600/50"
+                        title="Sembunyikan opsi"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                        <span className="hidden sm:inline max-w-[7rem] truncate">Sembunyikan</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 border-t border-gray-300 dark:border-gray-600 px-2 sm:px-3 py-2 min-h-[88px] overflow-x-auto">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-end">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Atas (mm)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={40}
+                          step={0.5}
+                          value={pageMarginMm.top}
+                          onChange={(e) =>
+                            setPageMarginMm((p) => ({ ...p, top: parseFloat(e.target.value) || 0 }))
+                          }
+                          className="w-14 sm:w-16 h-8 text-center text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Bawah (mm)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={40}
+                          step={0.5}
+                          value={pageMarginMm.bottom}
+                          onChange={(e) =>
+                            setPageMarginMm((p) => ({ ...p, bottom: parseFloat(e.target.value) || 0 }))
+                          }
+                          className="w-14 sm:w-16 h-8 text-center text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Kiri (mm)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={40}
+                          step={0.5}
+                          value={pageMarginMm.left}
+                          onChange={(e) =>
+                            setPageMarginMm((p) => ({ ...p, left: parseFloat(e.target.value) || 0 }))
+                          }
+                          className="w-14 sm:w-16 h-8 text-center text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Kanan (mm)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={40}
+                          step={0.5}
+                          value={pageMarginMm.right}
+                          onChange={(e) =>
+                            setPageMarginMm((p) => ({ ...p, right: parseFloat(e.target.value) || 0 }))
+                          }
+                          className="w-14 sm:w-16 h-8 text-center text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5 pb-0.5 sm:ml-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-transparent select-none">
+                          ·
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageMarginMm({ ...DEFAULT_PRINT_IJIN_MARGIN_MM })}
+                          className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/80 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 whitespace-nowrap"
+                        >
+                          Standar (10 / 8)
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2 leading-snug">
+                      Berlaku per salinan (kiri &amp; kanan): jarak isi dari tepi salinan itu — Kiri/Kanan mengikuti
+                      tepi kertas vs garis tengah. Ringkasan: atas {marginSafe.top} · bawah {marginSafe.bottom} ·
+                      kiri {marginSafe.left} · kanan {marginSafe.right} mm.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                  <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                    Margin: {marginSafe.top}/{marginSafe.bottom}/{marginSafe.left}/{marginSafe.right} mm
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setRibbonExpanded(true)}
+                    className="shrink-0 text-xs font-medium text-teal-700 dark:text-teal-400 hover:underline"
+                  >
+                    Pengaturan halaman
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* PrintIjin Component Container */}
             <div className="flex-1 overflow-auto" style={{ position: 'relative' }}>
               {santriId ? (
                 <div style={{ height: '100%', overflow: 'auto', position: 'relative' }}>
-                  <PrintIjin santriId={santriId} ijinId={ijinId} inOffcanvas={true} />
+                  <PrintIjin
+                    santriId={santriId}
+                    ijinId={ijinId}
+                    inOffcanvas={true}
+                    pageMarginMm={pageMarginMm}
+                  />
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">

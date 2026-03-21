@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+
+    <title>Chat AI Al-Utsmani</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="chat.css">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="icon" type="image/x-icon" href="icon.png">
+    <link rel="shortcut icon" type="image/x-icon" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <meta name="msapplication-TileImage" content="icon.png">
+    <meta name="msapplication-TileColor" content="#4299e1">
+
+</head>
+<body>
+  <!-- Modal untuk input nama dan email -->
+  <div id="user-modal" class="modal-overlay">
+    <div class="modal-content">
+      <h2 class="modal-title">Selamat Datang!</h2>
+      <p class="modal-description">Mohon masukkan nama dan email Anda untuk melanjutkan ke AI Chat.</p>
+      
+      <div class="form-group">
+        <label for="user-name" class="form-label">Nama Lengkap</label>
+        <input type="text" id="user-name" class="form-input" placeholder="Masukkan nama lengkap Anda" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="user-email" class="form-label">Email</label>
+        <input type="email" id="user-email" class="form-input" placeholder="Masukkan email Anda" required>
+      </div>
+      
+      <div class="modal-buttons">
+        <button id="save-user-info" class="btn-primary">Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Tentang -->
+  <div id="about-modal" class="modal-overlay hidden">
+    <div class="modal-content" id="about-modal-content" style="max-width:600px;width:98vw;max-height:90vh;overflow-y:auto;padding-top:0;position:relative;">
+      <div id="about-modal-header" style="position:sticky;top:0;z-index:10;background:#2d3748;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.2rem 1rem 1.2rem;width:100%;border-radius:0.75rem 0.75rem 0 0;box-shadow:0 2px 8px rgba(0,0,0,0.04);border-bottom:1px solid #4a5568;min-width:0;">
+        <span style="display:flex;align-items:center;gap:0.5rem;">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="#38bdf8"><circle cx="12" cy="12" r="10" stroke="#38bdf8" stroke-width="2" fill="none"/><path stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01"/></svg>
+          <span style="font-weight:600;font-size:1.1rem;">Tentang</span>
+        </span>
+        <button id="about-modal-close-x" aria-label="Tutup" style="background:none;border:none;outline:none;cursor:pointer;padding:0.2rem 0.5rem 0.2rem 0.5rem;border-radius:0.4rem;transition:background 0.2s;"><svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="#f87171"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+      <div id="about-modal-body" style="padding:1.2rem 1.2rem 1.2rem 1.2rem;"></div>
+    </div>
+  </div>
+
+  <div id="chat-container">
+    <div class="bg-gray-700 p-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="icon.png" alt="Logo AI Al-Utsmani" class="w-8 h-8 rounded-lg">
+        <div class="flex flex-col justify-center">
+          <h1 class="text-xl font-bold leading-tight mb-0">AI Al-Utsmani</h1>
+          <p id="user-greeting" class="text-sm text-gray-300 mt-0"></p>
+        </div>
+      </div>
+      <div class="relative flex items-center gap-2">
+        <button id="user-menu-btn" class="focus:outline-none flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 7.5a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 19.5a7.5 7.5 0 1115 0v.25a.75.75 0 01-.75.75h-13.5a.75.75 0 01-.75-.75v-.25z"/></svg>
+        </button>
+        <div id="user-dropdown" class="hidden absolute right-0 w-64 bg-gray-800 rounded-lg shadow-lg border border-gray-700 z-50" style="top:48px;">
+          <div class="p-4 border-b border-gray-700">
+            <div class="font-semibold text-white text-base" id="dropdown-user-name">User Name</div>
+            <div class="text-sm text-gray-300" id="dropdown-user-email">user@email.com</div>
+            <div id="dropdown-version" class="mt-3 px-3 py-2 rounded bg-gray-900 text-blue-300 text-xs font-mono border border-blue-700" style="word-break:break-all;">Versi: v1.0.0</div>
+          </div>
+          <div class="py-2">
+            <button id="about-btn" class="w-full text-left px-4 py-2 text-gray-200 hover:bg-gray-700 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mr-2 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"/></svg>
+              Tentang
+            </button>
+            <button id="dropdown-clear-chat" class="w-full text-left px-4 py-2 text-red-400 hover:bg-gray-700 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mr-2 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+              Hapus Riwayat
+            </button>
+
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="chat-content">
+      <div id="messages">
+        <div class="message-bubble ai-message">
+          Halo! Saya adalah AI yang telah dilatih dengan data dari Pesantren Salafiyah Al-Utsmani.
+        </div>
+      </div>
+      <div class="input-area p-4 flex items-center gap-2">
+        <input type="text" id="user-input" placeholder="Ketik pertanyaan Anda..." class="flex-1 p-3 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="send-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300 ease-in-out flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10.5l18-7-7 18-2.5-7L3 10.5z"/></svg>
+          <span id="loading-indicator" class="loading-spinner hidden"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="chat.js"></script>
+</body>
+</html>

@@ -1,8 +1,0 @@
-# CORS di-handle oleh PHP (blok OPTIONS di index.php + CorsForceOriginMiddleware). Jangan set CORS di sini.
-# Jangan Header unset — akan hapus header yang PHP kirim dan bikin login dari localhost:5173 / ebeddien2 gagal.
-# Preflight OPTIONS harus sampai ke index.php.
-RewriteEngine On
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.php [QSA,L]
-

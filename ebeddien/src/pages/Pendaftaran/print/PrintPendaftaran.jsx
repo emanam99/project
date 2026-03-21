@@ -1,15 +1,33 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../../store/authStore'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { getSlimApiUrl } from '../../../services/api'
 import { getGambarUrl } from '../../../config/images'
+import PrintBiodataFormulir from './PrintBiodataFormulir'
+import PrintRaporTesMadin from './PrintRaporTesMadin'
 import './PrintPendaftaran.css'
 
-function PrintPendaftaran({ santriId, inOffcanvas = false }) {
+function PrintPendaftaran({
+  santriId,
+  inOffcanvas = false,
+  printKwitansi = true,
+  printBiodataForm = true,
+  printRaporTes = false
+}) {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
+
+  const tahunAjaranLabelHijriyah = useMemo(() => {
+    const ta = tahunAjaran || '1446-1447'
+    const parts = String(ta)
+      .split(/[-\s]+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+    if (parts.length >= 2) return `${parts[0]} - ${parts[1]} H`
+    return `${ta} H`
+  }, [tahunAjaran])
   const [layoutMode, setLayoutMode] = useState('portrait')
   const [columnCount, setColumnCount] = useState('1')
   const [useColor, setUseColor] = useState(true)
@@ -85,8 +103,10 @@ function PrintPendaftaran({ santriId, inOffcanvas = false }) {
   }, [layoutMode])
 
   const handlePrint = () => {
-    // Gunakan window.print() langsung dengan CSS @media print
-    // Ini lebih sederhana dan andal
+    if (inOffcanvas && !printKwitansi && !printBiodataForm && !printRaporTes) {
+      window.alert('Centang minimal satu di atas: Kwitansi, Biodata, atau Rapor tes.')
+      return
+    }
     window.print()
   }
 
@@ -259,31 +279,57 @@ function PrintPendaftaran({ santriId, inOffcanvas = false }) {
         {error && (
           <div className="error">{error}</div>
         )}
+        {!loading && !error && pendaftaranData && inOffcanvas && !printKwitansi && !printBiodataForm && !printRaporTes && (
+          <div className="error" style={{ padding: '20px', textAlign: 'center' }}>
+            Centang minimal satu di atas: Kwitansi, Biodata, atau Rapor tes.
+          </div>
+        )}
         {!loading && !error && pendaftaranData && (
-          <div id="content" className={columnCount === '2' ? 'layout-two-columns' : ''}>
-            {columnCount === '2' ? (
-              <>
-                {/* First receipt instance */}
-                <div className={`receipt-instance ${useColor ? 'receipt-blue' : ''}`}>
-                  {/* Garis horizontal biru langit di atas header */}
-                  {useColor && <div className="top-border-line" style={{borderTop: '1pt solid #87CEEB', width: '100%', marginTop: '0', marginBottom: '12px'}}></div>}
-                  <ReceiptContentTwoColumns data={pendaftaranData} formatRupiah={formatRupiah} formatTanggal={formatTanggal} getCurrentUrlWithParams={getCurrentUrlWithParams} user={user} />
-                </div>
-                {/* Second receipt instance */}
-                <div className={`receipt-instance ${useColor ? 'receipt-green' : ''}`}>
-                  {/* Garis horizontal biru langit di atas header */}
-                  {useColor && <div className="top-border-line" style={{borderTop: '1pt solid #87CEEB', width: '100%', marginTop: '0', marginBottom: '12px'}}></div>}
-                  <ReceiptContentTwoColumns data={pendaftaranData} formatRupiah={formatRupiah} formatTanggal={formatTanggal} getCurrentUrlWithParams={getCurrentUrlWithParams} user={user} />
-                </div>
-              </>
-            ) : (
-              <div className={`receipt-instance ${useColor ? 'receipt-blue' : ''}`}>
-                {/* Garis horizontal biru langit di atas header */}
-                {useColor && <div className="top-border-line" style={{borderTop: '1pt solid #87CEEB', width: '100%', marginTop: '0', marginBottom: '12px'}}></div>}
-                <ReceiptContent data={pendaftaranData} formatRupiah={formatRupiah} formatTanggal={formatTanggal} getCurrentUrlWithParams={getCurrentUrlWithParams} user={user} />
+          <>
+            {printKwitansi && (
+              <div id="content" className={columnCount === '2' ? 'layout-two-columns' : ''}>
+                {columnCount === '2' ? (
+                  <>
+                    <div className={`receipt-instance ${useColor ? 'receipt-blue' : ''}`}>
+                      {useColor && <div className="top-border-line" style={{borderTop: '1pt solid #87CEEB', width: '100%', marginTop: '0', marginBottom: '12px'}}></div>}
+                      <ReceiptContentTwoColumns data={pendaftaranData} formatRupiah={formatRupiah} formatTanggal={formatTanggal} getCurrentUrlWithParams={getCurrentUrlWithParams} user={user} />
+                    </div>
+                    <div className={`receipt-instance ${useColor ? 'receipt-green' : ''}`}>
+                      {useColor && <div className="top-border-line" style={{borderTop: '1pt solid #87CEEB', width: '100%', marginTop: '0', marginBottom: '12px'}}></div>}
+                      <ReceiptContentTwoColumns data={pendaftaranData} formatRupiah={formatRupiah} formatTanggal={formatTanggal} getCurrentUrlWithParams={getCurrentUrlWithParams} user={user} />
+                    </div>
+                  </>
+                ) : (
+                  <div className={`receipt-instance ${useColor ? 'receipt-blue' : ''}`}>
+                    {useColor && <div className="top-border-line" style={{borderTop: '1pt solid #87CEEB', width: '100%', marginTop: '0', marginBottom: '12px'}}></div>}
+                    <ReceiptContent data={pendaftaranData} formatRupiah={formatRupiah} formatTanggal={formatTanggal} getCurrentUrlWithParams={getCurrentUrlWithParams} user={user} />
+                  </div>
+                )}
               </div>
             )}
-          </div>
+            {printBiodataForm && (
+              <div
+                className={`print-biodata-formulir-outer ${printKwitansi ? 'print-biodata-after-kwitansi' : ''}`}
+              >
+                <PrintBiodataFormulir
+                  biodata={pendaftaranData.biodata}
+                  user={user}
+                  formatTanggal={formatTanggal}
+                />
+              </div>
+            )}
+            {printRaporTes && (
+              <div
+                className={`print-rapor-tes-outer ${printKwitansi || printBiodataForm ? 'print-rapor-after-prev' : ''}`}
+              >
+                <PrintRaporTesMadin
+                  biodata={pendaftaranData.biodata}
+                  tahunAjaranLabel={tahunAjaranLabelHijriyah}
+                  tahunAjaranRaw={tahunAjaran}
+                />
+              </div>
+            )}
+          </>
         )}
         </div>
       </div>

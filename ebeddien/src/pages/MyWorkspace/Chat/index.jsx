@@ -816,12 +816,6 @@ export default function Chat() {
             <style>{`
               @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
               @keyframes slideOutRight { from { transform: translateX(0); } to { transform: translateX(100%); } }
-              .chat-scrollbar::-webkit-scrollbar { width: 6px; }
-              .chat-scrollbar::-webkit-scrollbar-track { background: transparent; border-radius: 3px; }
-              .chat-scrollbar::-webkit-scrollbar-thumb { background: rgba(20, 184, 166, 0.35); border-radius: 3px; }
-              .chat-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(20, 184, 166, 0.5); }
-              .dark .chat-scrollbar::-webkit-scrollbar-thumb { background: rgba(75, 85, 99, 0.6); }
-              .dark .chat-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(75, 85, 99, 0.8); }
             `}</style>
             <div className="shrink-0 flex items-center justify-between px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/80">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">Pilih kontak</h2>

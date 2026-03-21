@@ -1,0 +1,43 @@
+event: ready
+data: {"request_message_id":5,"response_message_id":6}
+
+event: update_session
+data: {"updated_at":1774029186.124933}
+
+data: {"v":{"response":{"message_id":6,"parent_id":5,"model":"","role":"ASSISTANT","thinking_enabled":false,"ban_edit":false,"ban_regenerate":false,"status":"WIP","accumulated_token_usage":0,"files":[],"feedback":null,"inserted_at":1774029186.119499,"search_enabled":false,"fragments":[{"id":2,"type":"RESPONSE","content":"H","references":[],"stage_id":1}],"has_pending_fragment":false,"auto_continue":false}}}
+
+data: {"p":"response/fragments/-1/content","o":"APPEND","v":"alo"}
+
+data: {"v":"!"}
+
+data: {"v":" Ada"}
+
+data: {"v":" yang"}
+
+data: {"v":" bisa"}
+
+data: {"v":" saya"}
+
+data: {"v":" b"}
+
+data: {"v":"antu"}
+
+data: {"v":" hari"}
+
+data: {"v":" ini"}
+
+data: {"v":"?"}
+
+data: {"p":"response","o":"BATCH","v":[{"p":"accumulated_token_usage","v":46},{"p":"quasi_status","v":"FINISHED"}]}
+
+data: {"p":"response/status","o":"SET","v":"FINISHED"}
+
+event: finish
+data: {}
+
+event: update_session
+data: {"updated_at":1774029186.501096}
+
+event: close
+data: {"click_behavior":"none","auto_resume":false}
+

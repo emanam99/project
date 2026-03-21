@@ -1,180 +1,384 @@
-/* Print Ijin Styles */
+/* Print Surat Ijin — A4 landscape, 2 salinan (kiri–kanan), margin aman cetak */
+
+:root {
+  --ijin-accent: #0d9488;
+  --ijin-accent-soft: #ccfbf1;
+  --ijin-ink: #0f172a;
+  --ijin-muted: #475569;
+  --ijin-border: #e2e8f0;
+  /* Diisi dari inline `.print-ijin-page` (PrintIjin.jsx); fallback = default lama */
+  --ijin-pad-top: 10mm;
+  --ijin-pad-right: 8mm;
+  --ijin-pad-bottom: 10mm;
+  --ijin-pad-left: 8mm;
+}
+
 .print-ijin-page {
   width: 100%;
   min-height: 100vh;
-  background: white;
-  padding: 20px;
+  background: #e2e8f0;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
 .print-ijin-container {
-  max-width: 210mm;
+  max-width: 297mm;
   margin: 0 auto;
-  background: white;
+  background: transparent;
 }
 
-.surat-ijin {
-  background: white;
-  padding: 20mm;
-  margin-bottom: 20px;
-  page-break-after: always;
-  font-family: 'Times New Roman', serif;
-  font-size: 12pt;
-  line-height: 1.8;
-  color: #000;
+/* Satu lembar = landscape A4, isi dua kolom; margin isi diatur per salinan (.print-ijin-half), bukan per lembar */
+.print-ijin-sheet {
+  width: 100%;
+  max-width: 297mm;
+  min-height: 210mm;
+  margin: 0 auto 24px;
+  padding: 0;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+  box-sizing: border-box;
 }
 
-.surat-ijin:last-child {
-  page-break-after: auto;
+.print-ijin-sheet:last-child {
+  margin-bottom: 0;
 }
 
-/* Header dengan Logo */
-.surat-header {
+.print-ijin-duplex {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.print-ijin-half {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Margin per satu salinan (kiri & kanan): Atas/Bawah sama;
+ * Kiri/Kanan = tepi salinan itu (kolom kiri: kiri=kertas, kanan=gutter;
+ * kolom kanan: kiri=gutter, kanan=kertas) — satu set angka untuk kedua salinan.
+ */
+.print-ijin-half--left,
+.print-ijin-half--right {
+  padding: var(--ijin-pad-top) var(--ijin-pad-right) var(--ijin-pad-bottom) var(--ijin-pad-left);
+}
+
+.print-ijin-half--left {
+  border-right: 1px solid var(--ijin-border);
+}
+
+/* ——— Isi surat per kolom ——— */
+
+.surat-ijin--half {
+  --ijin-font: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  font-family: var(--ijin-font);
+  font-size: 8.5pt;
+  line-height: 1.4;
+  color: var(--ijin-ink);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: #fff;
+}
+
+.surat-ijin__accent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--ijin-accent) 0%, #0f766e 100%);
+  pointer-events: none;
+}
+
+.surat-ijin__kop {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  margin-bottom: 20px;
-  gap: 20px;
-}
-
-.header-left {
+  gap: 8px;
+  padding-left: 11px;
+  margin-bottom: 6px;
   flex-shrink: 0;
 }
 
-.logo {
-  width: 90px;
-  height: 90px;
+.surat-ijin__logo-wrap {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #f0fdfa 0%, #fff 100%);
+  border: 1px solid var(--ijin-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.surat-ijin__logo {
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   display: block;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
-.header-right {
+.surat-ijin__headline {
   flex: 1;
+  min-width: 0;
+}
+
+.surat-ijin__kicker {
+  margin: 0 0 1px;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ijin-accent);
+}
+
+.surat-ijin__title {
+  margin: 0 0 1px;
+  font-size: 10pt;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--ijin-ink);
+}
+
+.surat-ijin__subtitle {
+  margin: 0;
+  font-size: 7.5pt;
+  font-weight: 500;
+  color: var(--ijin-muted);
+}
+
+.surat-ijin__nomor-block {
+  width: 100%;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+/* Aksen pita (mirip ribbon Word) di atas blok nomor */
+.surat-ijin__nomor-ribbon {
+  height: 5px;
+  width: 100%;
+  border-radius: 2px;
+  margin-bottom: 5px;
+  background: linear-gradient(
+    90deg,
+    #0f766e 0%,
+    var(--ijin-accent) 22%,
+    #5eead4 50%,
+    var(--ijin-accent) 78%,
+    #0f766e 100%
+  );
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.surat-ijin__nomor-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 0;
+  padding-left: 0;
+  flex-shrink: 0;
+}
+
+.surat-ijin__nomor-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 7pt;
+  font-weight: 600;
+  color: var(--ijin-ink);
+  background: var(--ijin-accent-soft);
+  border: 1px solid rgba(13, 148, 136, 0.25);
+  border-radius: 999px;
+}
+
+/* Jangan flex:1 — biar TTD tidak terdorong ke bawah melewati kertas */
+.surat-ijin__body {
+  flex: 0 1 auto;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  min-height: 0;
+  padding-left: 11px;
 }
 
-.judul-surat {
-  font-size: 18pt;
-  font-weight: bold;
-  margin: 0;
-  text-align: center;
-  margin-bottom: 8px;
-  letter-spacing: 0.5px;
-}
-
-.alamat-pesantren {
-  font-size: 12pt;
-  text-align: center;
-  margin: 0;
-  color: #333;
-  font-weight: 500;
-}
-
-/* Garis Pembatas */
-.garis-pembatas {
-  border-top: 2px solid #000;
-  margin: 15px 0;
-}
-
-/* Nomor Surat */
-.nomor-surat {
-  text-align: right;
-  margin-bottom: 20px;
-  font-size: 11pt;
-}
-
-.nomor-surat p {
-  margin: 0;
-}
-
-/* Isi Surat */
-.isi-surat {
-  margin-bottom: 40px;
-}
-
-.paragraf {
+.surat-ijin__lead,
+.surat-ijin__closing {
+  margin: 0 0 5px;
   text-align: justify;
-  margin-bottom: 15px;
-  text-indent: 30px;
+  text-indent: 8px;
+  font-size: 8pt;
 }
 
-.data-santri {
-  margin: 20px 0;
+.surat-ijin__closing {
+  margin-top: 2px;
+  margin-bottom: 4px;
 }
 
-.table-data {
+.surat-ijin__data {
+  margin: 2px 0 5px;
+  border-radius: 6px;
+  border: 1px solid var(--ijin-border);
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.surat-ijin__table {
   width: 100%;
   border-collapse: collapse;
-  margin: 15px 0;
+  table-layout: fixed;
+  font-size: 7.5pt;
 }
 
-.table-data tbody tr {
+.surat-ijin__table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.surat-ijin__table tbody tr:nth-child(odd) {
+  background: rgba(241, 245, 249, 0.5);
+}
+
+.surat-ijin__table th {
+  width: 26%;
+  padding: 3px 6px 3px 8px;
+  font-weight: 600;
+  text-align: left;
+  vertical-align: top;
+  color: var(--ijin-muted);
+  border-bottom: 1px solid var(--ijin-border);
+}
+
+.surat-ijin__table td {
+  padding: 3px 8px 3px 4px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--ijin-border);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.surat-ijin__table tr:last-child th,
+.surat-ijin__table tr:last-child td {
   border-bottom: none;
 }
 
-.table-data td {
-  padding: 5px 0;
-  vertical-align: top;
+.surat-ijin__meta {
+  font-size: 0.92em;
+  color: var(--ijin-muted);
 }
 
-.table-data .label {
-  width: 120px;
-  font-weight: normal;
+.surat-ijin__tanggal {
+  hyphens: auto;
 }
 
-.table-data .separator {
-  width: 10px;
+/* TTD: di bawah isi; jarak antar kolom tanda tangan lebar */
+.surat-ijin__footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  column-gap: 28px;
+  margin-top: 18px;
+  padding: 10px 4px 0 11px;
+  border-top: 1px solid var(--ijin-border);
+  flex-shrink: 0;
+}
+
+.surat-ijin__ttd {
   text-align: center;
-  padding: 0 5px;
+  min-width: 0;
 }
 
-.table-data .value {
-  font-weight: normal;
+.surat-ijin__ttd--wali {
+  padding-right: 6px;
 }
 
-/* Tanda Tangan */
-.ttd-section {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 80px;
-  padding-top: 20px;
+.surat-ijin__ttd--kepala {
+  padding-left: 6px;
 }
 
-.ttd-left,
-.ttd-right {
-  width: 45%;
-  text-align: center;
+.surat-ijin__ttd-label,
+.surat-ijin__ttd-place {
+  margin: 0 0 1px;
+  font-size: 7.5pt;
+  font-weight: 600;
+  color: var(--ijin-ink);
 }
 
-.ttd-left p,
-.ttd-right p {
-  margin: 5px 0;
-  font-size: 12pt;
+.surat-ijin__ttd-place {
+  margin-bottom: 2px;
 }
 
-.ttd-space {
-  height: 80px;
-  margin: 15px 0;
-  border-bottom: 1px solid #000;
+.surat-ijin__ttd-role {
+  margin: 0 0 3px;
+  font-size: 7.5pt;
+  color: var(--ijin-muted);
 }
 
-.ttd-name {
-  font-weight: bold;
-  margin-top: 5px;
+.surat-ijin__ttd-line {
+  height: 22px;
+  margin: 0 auto 2px;
+  max-width: 92%;
+  border-bottom: 1px solid var(--ijin-ink);
+}
+
+.surat-ijin__ttd-name {
+  margin: 0;
+  font-size: 7.5pt;
+  font-weight: 700;
   text-decoration: underline;
-  font-size: 12pt;
+  text-underline-offset: 2px;
 }
 
-/* Footer Note */
-.footer-note {
-  margin-top: 20px;
-  padding-top: 15px;
-  border-top: 1px solid #ddd;
-  font-size: 10pt;
-  color: #666;
+.surat-ijin__perpanjang {
+  margin-top: 4px;
+  margin-left: 11px;
+  padding: 4px 8px;
+  font-size: 7pt;
+  color: var(--ijin-muted);
+  background: #fffbeb;
+  border: 1px dashed #fbbf24;
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: baseline;
 }
 
-/* Loading dan Error */
+.surat-ijin__perpanjang-label {
+  font-weight: 700;
+  color: #92400e;
+}
+
+.surat-ijin__perpanjang-val {
+  flex: 1;
+  min-width: 0;
+}
+
 .loading,
 .error {
   text-align: center;
@@ -186,48 +390,180 @@
   color: #dc2626;
 }
 
-/* Print Styles */
+/* ——— Print ——— */
 @media print {
+  /* Paksa tampilan terang: mode gelap tidak boleh mewarnai kertas / area bawah */
+  html,
+  html.dark {
+    color-scheme: light !important;
+    background: #fff !important;
+  }
+
+  body,
+  html.dark body {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   .print-ijin-page {
-    padding: 0;
-    background: white;
-    page-break-after: avoid;
-    page-break-before: avoid;
-    page-break-inside: avoid;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+    color: #0f172a !important;
   }
 
   .print-ijin-container {
-    page-break-after: avoid;
-    page-break-before: avoid;
-    page-break-inside: avoid;
-    break-after: avoid;
-    break-before: avoid;
-    break-inside: avoid;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
   }
 
-  .surat-ijin {
-    padding: 15mm;
-    margin-bottom: 0;
+  .print-ijin-sheet {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0;
+    box-shadow: none !important;
+    box-sizing: border-box;
     page-break-after: always;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    break-after: page;
+    background: #fff !important;
+    color: #0f172a !important;
   }
 
-  .surat-ijin:last-child {
+  .print-ijin-half--left,
+  .print-ijin-half--right {
+    padding: var(--ijin-pad-top) var(--ijin-pad-right) var(--ijin-pad-bottom) var(--ijin-pad-left) !important;
+  }
+
+  .print-ijin-sheet:last-child {
     page-break-after: auto;
+    break-after: auto;
+  }
+
+  .print-ijin-duplex {
+    min-height: 0 !important;
+    height: auto !important;
+    max-width: 100% !important;
+    align-items: stretch;
+  }
+
+  .print-ijin-half {
+    overflow: visible !important;
+  }
+
+  .surat-ijin--half {
+    font-size: 8pt !important;
+    line-height: 1.35 !important;
+    background: #fff !important;
+    color: #0f172a !important;
+  }
+
+  .surat-ijin--half p,
+  .surat-ijin--half h1,
+  .surat-ijin--half td,
+  .surat-ijin--half th {
+    color: #0f172a !important;
+  }
+
+  .surat-ijin__logo-wrap,
+  .surat-ijin__logo {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Gambar kop (termasuk data URL) */
+  img.surat-ijin__logo {
+    visibility: visible !important;
+    display: block !important;
+    max-width: 100% !important;
+    height: auto !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .surat-ijin__subtitle,
+  .surat-ijin__ttd-role,
+  .surat-ijin__meta {
+    color: #475569 !important;
+  }
+
+  .surat-ijin__table th {
+    color: #475569 !important;
+  }
+
+  .surat-ijin__kicker {
+    color: #0d9488 !important;
+  }
+
+  .surat-ijin__footer {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-top: 22px !important;
+    gap: 32px !important;
+    column-gap: 32px !important;
+  }
+
+  .surat-ijin__accent {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .surat-ijin__nomor-ribbon {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-ijin-half--left {
+    border-right-color: #999 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-ijin-in-offcanvas {
+    background: #fff !important;
+    padding: 0 !important;
+    min-width: 0 !important;
   }
 
   @page {
-    size: A4 portrait;
-    margin: 15mm;
+    size: A4 landscape;
+    margin: 0;
   }
 }
 
-/* Untuk offcanvas */
-.print-ijin-in-offcanvas {
-  padding: 10px;
+@page {
+  size: A4 landscape;
+  margin: 0;
 }
 
-.print-ijin-in-offcanvas .surat-ijin {
-  padding: 15mm;
+@page :first {
+  margin-top: 0;
+}
+
+/* Offcanvas: preview lebar */
+.print-ijin-in-offcanvas {
+  padding: 8px;
+  background: #cbd5e1;
+  min-width: min(100%, 297mm);
+}
+
+.print-ijin-in-offcanvas .print-ijin-sheet {
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.12);
 }

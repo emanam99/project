@@ -63,6 +63,10 @@ const Profil = lazy(() => import('./pages/MyWorkspace/Profil/index.jsx'))
 const Beranda = lazy(() => import('./pages/MyWorkspace/Beranda/index.jsx'))
 const AktivitasSaya = lazy(() => import('./pages/MyWorkspace/AktivitasSaya/index.jsx'))
 const Chat = lazy(() => import('./pages/MyWorkspace/Chat/index.jsx'))
+const DeepseekChat = lazy(() => import('./pages/MyWorkspace/DeepseekChat/index.jsx'))
+const ChatAiLayout = lazy(() => import('./pages/MyWorkspace/ChatAiLayout.jsx'))
+const AiTrainingBank = lazy(() => import('./pages/MyWorkspace/AiTrainingBank.jsx'))
+const AiTrainingChat = lazy(() => import('./pages/MyWorkspace/AiTrainingChat.jsx'))
 const SemuaMenu = lazy(() => import('./pages/MyWorkspace/SemuaMenu/index.jsx'))
 const Print = lazy(() => import('./pages/Pembayaran/print/Print'))
 const PrintPengeluaran = lazy(() => import('./pages/Keuangan/Pengeluaran/print/PrintPengeluaran'))
@@ -73,6 +77,8 @@ const Aktivitas = lazy(() => import('./pages/Keuangan/Aktivitas'))
 const KeuanganDashboard = lazy(() => import('./pages/Keuangan/KeuanganDashboard'))
 const AktivitasTahunAjaran = lazy(() => import('./pages/Keuangan/Aktivitas/AktivitasTahunAjaran'))
 const Lembaga = lazy(() => import('./pages/Settings/Lembaga'))
+const Kitab = lazy(() => import('./pages/Settings/Kitab'))
+const Mapel = lazy(() => import('./pages/Settings/Mapel'))
 const Rombel = lazy(() => import('./pages/Settings/Rombel'))
 const ManageJabatan = lazy(() => import('./pages/Settings/ManageJabatan'))
 const ManageUploads = lazy(() => import('./pages/Settings/ManageUploads'))
@@ -819,6 +825,41 @@ function App() {
               </Suspense>
             } 
           />
+          <Route
+            path="/chat-ai"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <ChatAiLayout />
+              </Suspense>
+            }
+          >
+            <Route
+              index
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DeepseekChat />
+                </Suspense>
+              }
+            />
+            <Route element={<SuperAdminRoute />}>
+              <Route
+                path="training"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AiTrainingBank />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="training-chat"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AiTrainingChat />
+                  </Suspense>
+                }
+              />
+            </Route>
+          </Route>
           {/* Kalender - semua user login bisa lihat */}
           <Route 
             path="/kalender" 
@@ -1005,16 +1046,16 @@ function App() {
                 </Suspense>
               } 
             />
-            <Route 
-              path="/manage-users" 
+            <Route
+              path="/manage-users"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <ManageUsers />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/pengurus" 
+            <Route
+              path="/pengurus"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Pengurus />
@@ -1060,6 +1101,22 @@ function App() {
                   <Lembaga />
                 </Suspense>
               } 
+            />
+            <Route
+              path="/kitab"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Kitab />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/mapel"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Mapel />
+                </Suspense>
+              }
             />
             <Route 
               path="/santri" 

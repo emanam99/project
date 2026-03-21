@@ -141,4 +141,41 @@
     opacity: 1 !important;
     display: block !important;
   }
+
+  /* Logo & judul rapor tes (bukan .header kwitansi) — pastikan tercetak */
+  #printArea img,
+  .print-page img,
+  .print-rapor-tes-madin img,
+  .rapor-kop-img {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    max-width: 80px !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tes-header,
+  .print-rapor-tes-madin .rapor-tes-logo-row {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+  }
+
+  .print-rapor-tes-madin .rapor-tes-title,
+  .print-rapor-tes-madin h1.rapor-tes-title {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #0f766e !important;
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    margin: 0.35rem 0 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }

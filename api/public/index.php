@@ -555,6 +555,10 @@ $errorMiddleware->setErrorHandler(
 (require __DIR__ . '/../routes/22_mybeddian.php')($app);
 (require __DIR__ . '/../routes/23_cashless.php')($app);
 (require __DIR__ . '/../routes/24_daerah_kamar.php')($app);
+(require __DIR__ . '/../routes/25_deepseek.php')($app);
+(require __DIR__ . '/../routes/26_ai_training_admin.php')($app);
+(require __DIR__ . '/../routes/27_kitab.php')($app);
+(require __DIR__ . '/../routes/28_mapel.php')($app);
 
 // Catch-all untuk 404
 $app->map(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], '/{routes:.+}', function (Request $request, Response $response) {

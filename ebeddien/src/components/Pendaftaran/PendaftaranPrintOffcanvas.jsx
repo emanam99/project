@@ -10,6 +10,9 @@ import PrintPendaftaran from '../../pages/Pendaftaran/print/PrintPendaftaran'
 import '../Payment/PrintOffcanvas.css'
 
 function PendaftaranPrintOffcanvas({ isOpen, onClose, santriId }) {
+  const [printKwitansi, setPrintKwitansi] = useState(true)
+  const [printBiodataForm, setPrintBiodataForm] = useState(true)
+  const [printRaporTes, setPrintRaporTes] = useState(false)
   const [printUrl, setPrintUrl] = useState('')
   const [waNumber, setWaNumber] = useState('')
   const [waStatus, setWaStatus] = useState({ text: '', type: '', visible: false }) // type: 'success', 'error', 'checking'
@@ -54,6 +57,14 @@ function PendaftaranPrintOffcanvas({ isOpen, onClose, santriId }) {
       setPrintUrl(url)
     }
   }, [isOpen, santriId, user, tahunAjaran, tahunAjaranMasehi])
+
+  useEffect(() => {
+    if (isOpen) {
+      setPrintKwitansi(true)
+      setPrintBiodataForm(true)
+      setPrintRaporTes(false)
+    }
+  }, [isOpen, santriId])
 
   // Tambahkan class ke body ketika offcanvas terbuka untuk deteksi print
   useEffect(() => {
@@ -248,6 +259,14 @@ Barakallahu fiikum.`
     }
   }
 
+  const handlePrintClick = () => {
+    if (!printKwitansi && !printBiodataForm && !printRaporTes) {
+      showNotification('Centang minimal satu: Kwitansi, Biodata, atau Rapor tes.', 'error')
+      return
+    }
+    window.print()
+  }
+
   if (!isOpen) return null
 
   const offcanvasContent = (
@@ -274,7 +293,7 @@ Barakallahu fiikum.`
           >
             {/* Header */}
             <div className="no-print flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-              <h2 className="text-xl font-semibold text-teal-600 dark:text-teal-400">Print Riwayat Pendaftaran</h2>
+              <h2 className="text-xl font-semibold text-teal-600 dark:text-teal-400">Print Pendaftaran</h2>
               <button
                 onClick={onClose}
                 className="text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
@@ -375,7 +394,7 @@ Barakallahu fiikum.`
                     )}
                   </button>
                   <button
-                    onClick={() => window.print()}
+                    onClick={handlePrintClick}
                     className="px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-xs whitespace-nowrap"
                     title="Print"
                   >
@@ -390,11 +409,49 @@ Barakallahu fiikum.`
               </div>
             </div>
 
+            {/* Pilihan bagian yang dicetak */}
+            <div className="no-print px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-x-4 gap-y-2 bg-white dark:bg-gray-800 flex-shrink-0">
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Cetak:</span>
+              <label className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  checked={printKwitansi}
+                  onChange={(e) => setPrintKwitansi(e.target.checked)}
+                />
+                Kwitansi &amp; riwayat pembayaran
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  checked={printBiodataForm}
+                  onChange={(e) => setPrintBiodataForm(e.target.checked)}
+                />
+                Biodata (formulir pendaftaran)
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  checked={printRaporTes}
+                  onChange={(e) => setPrintRaporTes(e.target.checked)}
+                />
+                Rapor tes Madrasah Diniyah
+              </label>
+            </div>
+
             {/* PrintPendaftaran Component Container */}
             <div className="flex-1 overflow-auto" style={{ position: 'relative' }}>
               {santriId ? (
                 <div style={{ height: '100%', overflow: 'auto', position: 'relative' }}>
-                  <PrintPendaftaran santriId={santriId} inOffcanvas={true} />
+                  <PrintPendaftaran
+                    santriId={santriId}
+                    inOffcanvas={true}
+                    printKwitansi={printKwitansi}
+                    printBiodataForm={printBiodataForm}
+                    printRaporTes={printRaporTes}
+                  />
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">

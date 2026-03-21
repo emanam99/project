@@ -43,6 +43,41 @@ class KalenderHelper
         }
     }
 
+    /**
+     * Konversi tanggal Hijriyah (Y-m-d) ke Masehi (Y-m-d) memakai psa___kalender.
+     * Sama dengan API kalender?action=to_masehi.
+     */
+    public static function hijriyahToMasehi(\PDO $db, ?string $hijriYmd): ?string
+    {
+        if ($hijriYmd === null || $hijriYmd === '') {
+            return null;
+        }
+        $parts = explode('-', substr(trim($hijriYmd), 0, 10));
+        if (count($parts) !== 3) {
+            return null;
+        }
+        $tahun = (int) $parts[0];
+        $bulan = (int) $parts[1];
+        $hari = (int) $parts[2];
+        if ($tahun < 1 || $bulan < 1 || $bulan > 12 || $hari < 1 || $hari > 30) {
+            return null;
+        }
+        try {
+            $stmt = $db->prepare('SELECT mulai, akhir FROM psa___kalender WHERE tahun = ? AND id_bulan = ? LIMIT 1');
+            $stmt->execute([$tahun, $bulan]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row || empty($row['mulai'])) {
+                return null;
+            }
+            $mulai = new \DateTime($row['mulai']);
+            $mulai->add(new \DateInterval('P' . ($hari - 1) . 'D'));
+            return $mulai->format('Y-m-d');
+        } catch (\Throwable $e) {
+            error_log('KalenderHelper::hijriyahToMasehi error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     private static function isAfterMaghrib(string $waktu): bool
     {
         $parts = explode(':', substr($waktu, 0, 8));

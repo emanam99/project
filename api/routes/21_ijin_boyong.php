@@ -11,6 +11,9 @@ return function (\Slim\App $app): void {
     $app->group('/api/ijin', function ($group) {
         $group->get('', [IjinController::class, 'getIjin']);
         $group->get('/dashboard', [IjinController::class, 'getDashboard']);
+        $group->get('/kamar-options', [IjinController::class, 'getKamarOptions']);
+        $group->get('/rombel-options', [IjinController::class, 'getRombelOptions']);
+        $group->post('/{id}/kembali', [IjinController::class, 'markKembali']);
         $group->post('', [IjinController::class, 'createIjin']);
         $group->put('/{id}', [IjinController::class, 'updateIjin']);
         $group->delete('/{id}', [IjinController::class, 'deleteIjin']);

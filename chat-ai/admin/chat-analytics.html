@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisis Chat AI</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="../icon.png">
+    <link rel="icon" type="image/x-icon" href="../icon.png">
+    <link rel="shortcut icon" type="image/x-icon" href="../icon.png">
+    <link rel="apple-touch-icon" href="../icon.png">
+    <meta name="msapplication-TileImage" content="../icon.png">
+    <meta name="msapplication-TileColor" content="#4299e1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #1a202c; 
+            color: #e2e8f0; 
+            padding: 1rem;
+        }
+        
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background-color: #2d3748;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            border: 1px solid #4a5568;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #4299e1;
+        }
+        
+        .stat-label {
+            color: #a0aec0;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+        
+        .filter-section {
+            background-color: #2d3748;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            margin-bottom: 2rem;
+            border: 1px solid #4a5568;
+        }
+        
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            align-items: end;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-label {
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+        
+        .form-input, .form-select {
+            padding: 0.75rem;
+            border: 1px solid #4a5568;
+            border-radius: 0.5rem;
+            background-color: #1a202c;
+            color: #e2e8f0;
+            font-size: 0.875rem;
+        }
+        
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+        }
+        
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .btn-primary {
+            background-color: #4299e1;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #3182ce;
+        }
+        
+        .btn-secondary {
+            background-color: #4a5568;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #2d3748;
+        }
+        
+        .chat-list {
+            background-color: #2d3748;
+            border-radius: 0.75rem;
+            border: 1px solid #4a5568;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .chat-item {
+            padding: 1rem;
+            border-bottom: 1px solid #4a5568;
+            transition: background-color 0.2s;
+        }
+        
+        .chat-item:hover {
+            background-color: #374151;
+        }
+        
+        .chat-item:last-child {
+            border-bottom: none;
+        }
+        
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .chat-user {
+            font-weight: 600;
+            color: #4299e1;
+        }
+        
+        .chat-time {
+            font-size: 0.75rem;
+            color: #a0aec0;
+        }
+        
+        .chat-type {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .type-data {
+            background-color: #38a169;
+            color: white;
+        }
+        
+        .type-ai {
+            background-color: #3182ce;
+            color: white;
+        }
+        
+        .type-category {
+            background-color: #805ad5;
+            color: white;
+            font-size: 0.625rem;
+        }
+        
+        .chat-messages {
+            margin-top: 0.5rem;
+        }
+        
+        .user-message {
+            background-color: #4a5568;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .ai-message {
+            background-color: #2d3748;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            border-left: 3px solid #4299e1;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #a0aec0;
+        }
+        
+        .error {
+            text-align: center;
+            padding: 2rem;
+            color: #f56565;
+        }
+        
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .filter-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chat-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+            
+            #category-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="mb-6">
+            <div class="flex items-center gap-3 mb-2">
+              <img src="../icon.png" alt="Logo AI Al-Utsmani" class="w-10 h-10 rounded-lg">
+              <h1 class="text-3xl font-bold">Analisis Chat AI</h1>
+            </div>
+            <p class="text-gray-400">Monitor dan analisis data chat untuk meningkatkan kualitas AI</p>
+        </div>
+        
+        <!-- Statistics -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="total-chats">-</div>
+                <div class="stat-label">Total Chat</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="data-answers">-</div>
+                <div class="stat-label">Jawaban dari Data</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="ai-answers">-</div>
+                <div class="stat-label">Jawaban dari AI</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="unique-users">-</div>
+                <div class="stat-label">User Unik</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="unique-categories">-</div>
+                <div class="stat-label">Kategori Unik</div>
+            </div>
+        </div>
+        
+        <!-- Category Statistics -->
+        <div class="filter-section">
+            <h2 class="text-xl font-semibold mb-4">Statistik Kategori</h2>
+            <div id="category-stats" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <!-- Category stats will be populated here -->
+            </div>
+        </div>
+        
+        <!-- Filters -->
+        <div class="filter-section">
+            <h2 class="text-xl font-semibold mb-4">Filter Data</h2>
+            <div class="filter-grid">
+                <div class="form-group">
+                    <label class="form-label">Tipe Jawaban</label>
+                    <select id="answer-type-filter" class="form-select">
+                        <option value="">Semua</option>
+                        <option value="Data">Data Training</option>
+                        <option value="AI">AI Response</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kategori</label>
+                    <select id="category-filter" class="form-select">
+                        <option value="">Semua Kategori</option>
+                        <!-- Categories will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">User</label>
+                    <input type="text" id="user-filter" class="form-input" placeholder="Filter berdasarkan nama user">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tanggal</label>
+                    <input type="date" id="date-filter" class="form-input">
+                </div>
+                <div class="form-group">
+                    <button id="apply-filter" class="btn btn-primary">Terapkan Filter</button>
+                </div>
+                <div class="form-group">
+                    <button id="clear-filter" class="btn btn-secondary">Reset Filter</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chat List -->
+        <div class="chat-list" id="chat-list">
+            <div class="loading">Memuat data...</div>
+        </div>
+    </div>
+
+    <script>
+        if (!localStorage.getItem('adminUserId')) {
+            window.location.href = 'login.html';
+        }
+        
+        // Ambil nama admin dari localStorage
+        const adminName = localStorage.getItem('adminUserId') || '';
+        
+        // Tampilkan nama admin di header
+        const adminHeader = document.createElement('div');
+        adminHeader.style.cssText = 'position: absolute; top: 1rem; left: 1rem; z-index: 999; background: #2d3748; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; color: #4299e1;';
+        adminHeader.textContent = `Admin: ${adminName}`;
+        document.body.appendChild(adminHeader);
+    </script>
+    <div style="position: absolute; top: 1rem; right: 1rem; z-index: 999; display: flex; gap: 0.5rem;">
+  <a href="index.html" title="Menu Admin" style="display:inline-flex;align-items:center;justify-content:center;background:#4299e1;color:#fff;width:40px;height:40px;border-radius:50%;font-size:1.3rem;text-decoration:none;transition:background 0.2s;" onmouseover="this.style.background='#3182ce'" onmouseout="this.style.background='#4299e1'"><i class="fa-solid fa-house"></i></a>
+  <button onclick="localStorage.removeItem('adminUserId');location.href='login.html'" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">Logout</button>
+</div>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+
+    <script>
+        const API_URL = 'https://alutsmani.id/psa/chat/api/chat.php';
+        let allChatData = [];
+        let filteredChatData = [];
+        let isLoading = false;
+        
+        // Elements
+        const totalChatsEl = document.getElementById('total-chats');
+        const dataAnswersEl = document.getElementById('data-answers');
+        const aiAnswersEl = document.getElementById('ai-answers');
+        const uniqueUsersEl = document.getElementById('unique-users');
+        const uniqueCategoriesEl = document.getElementById('unique-categories');
+        const categoryStatsContainer = document.getElementById('category-stats');
+        const chatListEl = document.getElementById('chat-list');
+        const answerTypeFilter = document.getElementById('answer-type-filter');
+        const categoryFilter = document.getElementById('category-filter');
+        const userFilter = document.getElementById('user-filter');
+        const dateFilter = document.getElementById('date-filter');
+        const applyFilterBtn = document.getElementById('apply-filter');
+        const clearFilterBtn = document.getElementById('clear-filter');
+        
+        function showLoading() {
+            isLoading = true;
+            chatListEl.innerHTML = '<div class="loading">Memuat data...</div>';
+        }
+        
+        function hideLoading() {
+            isLoading = false;
+        }
+        
+        function showError(message) {
+            chatListEl.innerHTML = `<div class="error">${message}</div>`;
+        }
+        
+        async function loadChatData() {
+            showLoading();
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                allChatData = Array.isArray(data) ? data : [];
+                filteredChatData = [...allChatData];
+                updateStatistics();
+                renderChatList();
+                hideLoading();
+            } catch (error) {
+                console.error('Error loading chat data:', error);
+                showError(`Gagal memuat data chat: ${error.message}`);
+                hideLoading();
+            }
+        }
+        
+        function updateStatistics() {
+            const totalChats = allChatData.length;
+            const dataAnswers = allChatData.filter(chat => chat.answer_type === 'Data').length;
+            const aiAnswers = allChatData.filter(chat => chat.answer_type === 'AI').length;
+            const uniqueUsers = new Set(allChatData.map(chat => chat.user_email).filter(email => email)).size;
+            const uniqueCategories = new Set(allChatData.map(chat => chat.category).filter(cat => cat)).size;
+            
+            totalChatsEl.textContent = totalChats;
+            dataAnswersEl.textContent = dataAnswers;
+            aiAnswersEl.textContent = aiAnswers;
+            uniqueUsersEl.textContent = uniqueUsers;
+            uniqueCategoriesEl.textContent = uniqueCategories;
+            
+            // Update category statistics
+            updateCategoryStatistics();
+            
+            // Populate category filter
+            populateCategoryFilter();
+        }
+        
+        function updateCategoryStatistics() {
+            const categoryCounts = {};
+            allChatData.forEach(chat => {
+                // Pisahkan kategori jika ada koma
+                const categories = (chat.category || 'Umum').split(',').map(k => k.trim()).filter(Boolean);
+                categories.forEach(category => {
+                    categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+                });
+            });
+            // Sort categories by count (descending)
+            const sortedCategories = Object.entries(categoryCounts)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 20); // Show top 20 categories
+            categoryStatsContainer.innerHTML = sortedCategories.map(([category, count]) => `
+                <div class="stat-card">
+                    <div class="stat-number">${count}</div>
+                    <div class="stat-label">${category}</div>
+                </div>
+            `).join('');
+        }
+        
+        function populateCategoryFilter() {
+            // Ambil semua kategori unik dari seluruh chat, pisahkan koma
+            const categories = new Set();
+            allChatData.forEach(chat => {
+                (chat.category || 'Umum').split(',').map(k => k.trim()).filter(Boolean).forEach(cat => categories.add(cat));
+            });
+            const sorted = Array.from(categories).sort();
+            categoryFilter.innerHTML = '<option value="">Semua Kategori</option>' + 
+                sorted.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+        }
+        
+        function applyFilters() {
+            if (isLoading) return;
+            
+            let filtered = [...allChatData];
+            
+            // Filter by answer type
+            const answerType = answerTypeFilter.value;
+            if (answerType) {
+                filtered = filtered.filter(chat => chat.answer_type === answerType);
+            }
+            
+            // Filter by category (mengandung kata, bukan sama persis)
+            const categoryQuery = categoryFilter.value;
+            if (categoryQuery) {
+                filtered = filtered.filter(chat =>
+                    (chat.category || '').split(',').map(k => k.trim()).some(cat => cat.toLowerCase().includes(categoryQuery.toLowerCase()))
+                );
+            }
+            
+            // Filter by user
+            const userQuery = userFilter.value.toLowerCase();
+            if (userQuery) {
+                filtered = filtered.filter(chat => 
+                    (chat.user_name && chat.user_name.toLowerCase().includes(userQuery)) ||
+                    (chat.user_email && chat.user_email.toLowerCase().includes(userQuery))
+                );
+            }
+            
+            // Filter by date
+            const dateQuery = dateFilter.value;
+            if (dateQuery) {
+                filtered = filtered.filter(chat => {
+                    const chatDate = new Date(chat.timestamp).toISOString().split('T')[0];
+                    return chatDate === dateQuery;
+                });
+            }
+            
+            filteredChatData = filtered;
+            renderChatList();
+        }
+        
+        function clearFilters() {
+            answerTypeFilter.value = '';
+            categoryFilter.value = '';
+            userFilter.value = '';
+            dateFilter.value = '';
+            filteredChatData = [...allChatData];
+            renderChatList();
+        }
+        
+        function renderChatList() {
+            if (filteredChatData.length === 0) {
+                chatListEl.innerHTML = '<div class="loading">Tidak ada data chat yang ditemukan</div>';
+                return;
+            }
+            
+            chatListEl.innerHTML = filteredChatData.map(chat => `
+                <div class="chat-item">
+                    <div class="chat-header">
+                        <div>
+                            <span class="chat-user">${chat.user_name || 'Anonymous'}</span>
+                            <span class="chat-time">${formatDate(chat.timestamp)}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="chat-type ${chat.answer_type === 'Data' ? 'type-data' : 'type-ai'}">
+                                ${chat.answer_type}
+                            </span>
+                            ${chat.category ? `<span class="chat-type type-category">${chat.category}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="chat-messages">
+                        <div class="user-message">
+                            <strong>User:</strong> ${escapeHtml(chat.user_message)}
+                        </div>
+                        <div class="ai-message">
+                            <strong>${chat.answer_type === 'Data' ? 'Data Training' : 'AI'}:</strong> ${escapeHtml(chat.ai_response)}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function formatDate(timestamp) {
+            if (!timestamp) return 'N/A';
+            try {
+                const date = new Date(timestamp);
+                return date.toLocaleString('id-ID', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch (error) {
+                return 'Invalid Date';
+            }
+        }
+        
+        // Event listeners
+        applyFilterBtn.addEventListener('click', applyFilters);
+        clearFilterBtn.addEventListener('click', clearFilters);
+        
+        // Enter key support for filters
+        userFilter.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                applyFilters();
+            }
+        });
+        
+        // Load data on page load
+        window.onload = loadChatData;
+    </script>
+</body>
+</html> 

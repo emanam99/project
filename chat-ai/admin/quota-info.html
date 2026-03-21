@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quota Info - Gemini API</title>
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="../icon.png">
+  <link rel="icon" type="image/x-icon" href="../icon.png">
+  <link rel="shortcut icon" type="image/x-icon" href="../icon.png">
+  <link rel="apple-touch-icon" href="../icon.png">
+  <meta name="msapplication-TileImage" content="../icon.png">
+  <meta name="msapplication-TileColor" content="#4299e1">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+    .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 6px; margin: 10px 0; }
+    .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 15px; border-radius: 6px; margin: 10px 0; }
+    .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 15px; border-radius: 6px; margin: 10px 0; }
+    .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 15px; border-radius: 6px; margin: 10px 0; }
+    .solution { background: #e2e3e5; border: 1px solid #d6d8db; padding: 15px; border-radius: 6px; margin: 10px 0; }
+    h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+    .model-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+    .model-card { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #007bff; }
+    .cheap { border-left-color: #28a745; }
+    .expensive { border-left-color: #dc3545; }
+  </style>
+</head>
+<body>
+  <script>
+    if (!localStorage.getItem('adminUserId')) {
+      window.location.href = 'login.html';
+    }
+  </script>
+  <div style="position: absolute; top: 1rem; right: 1rem; z-index: 999; display: flex; gap: 0.5rem;">
+    <a href="index.html" title="Menu Admin" style="display:inline-flex;align-items:center;justify-content:center;background:#4299e1;color:#fff;width:40px;height:40px;border-radius:50%;font-size:1.3rem;text-decoration:none;transition:background 0.2s;" onmouseover="this.style.background='#3182ce'" onmouseout="this.style.background='#4299e1'"><i class="fa-solid fa-house"></i></a>
+    <button onclick="localStorage.removeItem('adminUserId');location.href='login.html'" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">Logout</button>
+  </div>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+  <div class="container">
+    <h1> Error 429: Quota Habis</h1>
+    
+    <div class="error">
+      <strong>Error yang Anda alami:</strong><br>
+      <code>429: You exceeded your current quota, please check your plan and billing details.</code>
+    </div>
+    
+    <h2>📊 Batas Quota Free Tier</h2>
+    <div class="info">
+      <strong>Gemini API Free Tier Limits:</strong>
+      <ul>
+        <li><strong>Requests per minute:</strong> 15 requests</li>
+        <li><strong>Requests per day:</strong> 1,500 requests</li>
+        <li><strong>Input tokens per minute:</strong> 15,000 tokens</li>
+        <li><strong>Input tokens per day:</strong> 1,500,000 tokens</li>
+      </ul>
+    </div>
+    
+    <h2>💡 Solusi</h2>
+    
+    <div class="solution">
+      <h3>1. Gunakan Model yang Lebih Hemat</h3>
+      <div class="model-comparison">
+        <div class="model-card expensive">
+          <strong>Gemini 1.5 Pro Latest</strong><br>
+          <small>❌ Mahal, cepat habis quota</small><br>
+          <small>💰 Biaya tinggi</small>
+        </div>
+        <div class="model-card cheap">
+          <strong>Gemini 1.5 Flash-8B Latest</strong><br>
+          <small>✅ Hemat, tahan lama</small><br>
+          <small>💰 Biaya rendah</small>
+        </div>
+      </div>
+    </div>
+    
+    <div class="solution">
+      <h3>2. Upgrade ke Plan Berbayar</h3>
+      <ul>
+        <li>Kunjungi <a href="https://ai.google.dev/pricing" target="_blank">Google AI Pricing</a></li>
+        <li>Pilih plan yang sesuai kebutuhan</li>
+        <li>Dapatkan quota yang lebih besar</li>
+      </ul>
+    </div>
+    
+    <div class="solution">
+      <h3>3. Implementasi Rate Limiting</h3>
+      <ul>
+        <li>Tambah delay antar request</li>
+        <li>Batasi jumlah request per user</li>
+        <li>Implementasi caching</li>
+      </ul>
+    </div>
+    
+    <div class="solution">
+      <h3>4. Gunakan Model Alternatif</h3>
+      <ul>
+        <li><strong>Gemini 1.5 Flash-8B:</strong> Paling hemat</li>
+        <li><strong>Gemini 1.5 Flash:</strong> Cepat dan efisien</li>
+        <li><strong>Gemini 2.5 Flash:</strong> Versi terbaru</li>
+      </ul>
+    </div>
+    
+    <h2>🔧 Cara Mengganti Model</h2>
+    <div class="info">
+      <ol>
+        <li>Buka file <code>index.html</code></li>
+        <li>Cari baris ini:
+          <pre><code>const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b-latest:generateContent?key=${GEMINI_API_KEY}`</code></pre>
+        </li>
+        <li>Ganti dengan model yang diinginkan</li>
+        <li>Test aplikasi</li>
+      </ol>
+    </div>
+    
+    <h2>⏰ Kapan Quota Reset?</h2>
+    <div class="warning">
+      <strong>Quota akan reset:</strong>
+      <ul>
+        <li><strong>Per minute:</strong> Setiap menit</li>
+        <li><strong>Per day:</strong> Setiap hari jam 00:00 UTC</li>
+      </ul>
+      <br>
+      <strong>Tips:</strong> Tunggu beberapa menit atau jam sebelum mencoba lagi.
+    </div>
+    
+    <h2>📈 Monitoring Quota</h2>
+    <div class="info">
+      <ul>
+        <li>Kunjungi <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a></li>
+        <li>Pilih project Anda</li>
+        <li>Lihat usage dan quota di bagian APIs & Services</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html> 

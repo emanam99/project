@@ -210,6 +210,11 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    // Endpoint /deepseek/*: 401 dari penyedia mode alternatif (bukan JWT eBeddien). Jangan logout.
+    if (originalRequest?.url?.includes('/deepseek')) {
+      return Promise.reject(error)
+    }
+
     // Handle 401 Unauthorized - Token tidak valid atau kadaluarsa
     if (error.response?.status === 401) {
       const errorMessage = error.response?.data?.message || ''
@@ -757,8 +762,30 @@ export const ijinAPI = {
     return response.data
   },
 
+  /** Catat tanggal kembali (Masehi hari ini) atau batalkan (set=false). */
+  markKembali: async (id, set = true) => {
+    const response = await api.post(`/ijin/${encodeURIComponent(id)}/kembali`, { set })
+    return response.data
+  },
+
   delete: async (id) => {
     const response = await api.delete(`/ijin/${id}`)
+    return response.data
+  },
+
+  /** Dropdown kamar (id_kamar); query opsional: { id_daerah, status } */
+  getKamarOptions: async (query = {}) => {
+    const q = new URLSearchParams()
+    if (query.id_daerah != null && query.id_daerah !== '') q.set('id_daerah', String(query.id_daerah))
+    if (query.status != null && query.status !== '') q.set('status', String(query.status))
+    const suffix = q.toString() ? `?${q.toString()}` : ''
+    const response = await api.get(`/ijin/kamar-options${suffix}`)
+    return response.data
+  },
+
+  /** jenis: 'Diniyah' | 'Formal' (case-insensitive) */
+  getRombelOptions: async (jenis) => {
+    const response = await api.get(`/ijin/rombel-options?jenis=${encodeURIComponent(jenis)}`)
     return response.data
   }
 }
@@ -1709,6 +1736,35 @@ export const chatUserAPI = {
     q.limit = limit
     return api.get('/chat/messages', { params: q }).then((r) => r.data)
   },
+}
+
+/** Asisten eBeddien — login mode alternatif + proxy Node; chat utama lewat /deepseek/api-chat. */
+export const deepseekAPI = {
+  getAccount: () => api.get('/deepseek/account').then((r) => r.data),
+  login: (password) => api.post('/deepseek/login', { password }).then((r) => r.data),
+  proxySession: (token) => api.post('/deepseek/proxy/session', { token }).then((r) => r.data),
+  proxyChat: (body) => api.post('/deepseek/proxy/chat', body).then((r) => r.data),
+  directApiChat: (body) => api.post('/deepseek/api-chat', body).then((r) => r.data),
+  /** Riwayat terakhir dari ai___chat; tanpa session_id = gabungan per user (mode utama). */
+  getChatHistory: (params) => api.get('/deepseek/chat-history', { params }).then((r) => r.data),
+  getTrainingSuggestions: () => api.get('/deepseek/training-suggestions').then((r) => r.data),
+}
+
+/** Bank Q&A + sesi training chat (ai___training, ai___training_sessions/messages) — hanya super_admin. */
+export const aiTrainingAdminAPI = {
+  listBank: () => api.get('/ai-training/bank').then((r) => r.data),
+  saveBank: (body) => api.post('/ai-training/bank', body).then((r) => r.data),
+  deleteBank: (id) => api.delete(`/ai-training/bank/${id}`).then((r) => r.data),
+  listSessions: () => api.get('/ai-training/sessions').then((r) => r.data),
+  createSession: (title) => api.post('/ai-training/sessions', { title }).then((r) => r.data),
+  deleteSession: (id) => api.delete(`/ai-training/sessions/${id}`).then((r) => r.data),
+  listMessages: (sessionId) => api.get(`/ai-training/sessions/${sessionId}/messages`).then((r) => r.data),
+  sendMessage: (body) => api.post('/ai-training/messages', body).then((r) => r.data),
+  patchMessage: (id, message) => api.patch(`/ai-training/messages/${id}`, { message }).then((r) => r.data),
+  deleteMessage: (id) => api.delete(`/ai-training/messages/${id}`).then((r) => r.data),
+  approveMessage: (id) => api.post(`/ai-training/messages/${id}/approve`, {}).then((r) => r.data),
+  feedbackMessage: (id, feedback) =>
+    api.post(`/ai-training/messages/${id}/feedback`, { feedback }).then((r) => r.data),
 }
 
 // Chat API
@@ -2774,6 +2830,78 @@ export const lembagaAPI = {
 
   delete: async (id) => {
     const response = await api.delete(`/lembaga/${id}`)
+    return response.data
+  }
+}
+
+/** Daftar kitab (tabel kitab) — super_admin */
+export const kitabAPI = {
+  getList: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search != null && params.search !== '') q.set('search', String(params.search))
+    if (params.fan != null && params.fan !== '') q.set('fan', String(params.fan))
+    const url = q.toString() ? `/kitab?${q.toString()}` : '/kitab'
+    const response = await api.get(url)
+    return response.data
+  },
+
+  getFanOptions: async () => {
+    const response = await api.get('/kitab/fan-options')
+    return response.data
+  },
+
+  getById: async (id) => {
+    const response = await api.get(`/kitab/${id}`)
+    return response.data
+  },
+
+  create: async (data) => {
+    const response = await api.post('/kitab', data)
+    return response.data
+  },
+
+  update: async (id, data) => {
+    const response = await api.put(`/kitab/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id) => {
+    const response = await api.delete(`/kitab/${id}`)
+    return response.data
+  }
+}
+
+/** Mapel per rombel (lembaga___kitab) — super_admin */
+export const mapelAPI = {
+  getList: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search != null && params.search !== '') q.set('search', String(params.search))
+    if (params.lembaga_id != null && params.lembaga_id !== '') q.set('lembaga_id', String(params.lembaga_id))
+    if (params.status != null && params.status !== '') q.set('status', String(params.status))
+    if (params.page != null) q.set('page', String(params.page))
+    if (params.limit != null) q.set('limit', String(params.limit))
+    const url = q.toString() ? `/mapel?${q.toString()}` : '/mapel'
+    const response = await api.get(url)
+    return response.data
+  },
+
+  getById: async (id) => {
+    const response = await api.get(`/mapel/${id}`)
+    return response.data
+  },
+
+  create: async (data) => {
+    const response = await api.post('/mapel', data)
+    return response.data
+  },
+
+  update: async (id, data) => {
+    const response = await api.put(`/mapel/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id) => {
+    const response = await api.delete(`/mapel/${id}`)
     return response.data
   }
 }

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Selector - Chat AI</title>
+  <link rel="icon" type="image/png" href="../icon.png">
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+    .model-option { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 8px; border: 2px solid #e9ecef; cursor: pointer; }
+    .model-option:hover { border-color: #007bff; background: #e3f2fd; }
+    .model-option.selected { border-color: #28a745; background: #d4edda; }
+    .model-option h3 { margin: 0 0 10px 0; color: #333; }
+    .model-option p { margin: 5px 0; color: #666; font-size: 14px; }
+    .recommended { background: #fff3cd; border-color: #ffc107; }
+    .fast { background: #d1ecf1; border-color: #17a2b8; }
+    button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #0056b3; }
+    .info { background: #d1ecf1; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Pilih Model Gemini</h1>
+    
+    <div class="info">
+      <strong>💡 Tips:</strong>
+      <ul>
+        <li><strong>Gemini 1.5 Pro Latest</strong> - Terbaik untuk kualitas jawaban (2M tokens)</li>
+        <li><strong>Gemini 1.5 Flash</strong> - Lebih cepat, cocok untuk chat real-time</li>
+        <li><strong>Gemini 2.5 Flash</strong> - Versi terbaru, lebih canggih</li>
+      </ul>
+    </div>
+    
+    <div class="model-option recommended selected" onclick="selectModel('gemini-1.5-pro-latest')">
+      <h3>🚀 Gemini 1.5 Pro Latest (Direkomendasikan)</h3>
+      <p><strong>Model:</strong> gemini-1.5-pro-latest</p>
+      <p><strong>Keunggulan:</strong> Kualitas tinggi, 2M tokens, multimodal</p>
+      <p><strong>Cocok untuk:</strong> Chat AI dengan jawaban berkualitas tinggi</p>
+    </div>
+    
+    <div class="model-option fast" onclick="selectModel('gemini-1.5-flash-latest')">
+      <h3>⚡ Gemini 1.5 Flash Latest (Cepat)</h3>
+      <p><strong>Model:</strong> gemini-1.5-flash-latest</p>
+      <p><strong>Keunggulan:</strong> Sangat cepat, efisien, multimodal</p>
+      <p><strong>Cocok untuk:</strong> Chat real-time, respons cepat</p>
+    </div>
+    
+    <div class="model-option" onclick="selectModel('gemini-2.5-flash')">
+      <h3>🔥 Gemini 2.5 Flash (Terbaru)</h3>
+      <p><strong>Model:</strong> gemini-2.5-flash</p>
+      <p><strong>Keunggulan:</strong> Versi terbaru, 1M tokens, lebih canggih</p>
+      <p><strong>Cocok untuk:</strong> Fitur AI terbaru, performa optimal</p>
+    </div>
+    
+    <div class="model-option" onclick="selectModel('gemini-1.5-flash-8b-latest')">
+      <h3>💰 Gemini 1.5 Flash-8B (Ekonomis)</h3>
+      <p><strong>Model:</strong> gemini-1.5-flash-8b-latest</p>
+      <p><strong>Keunggulan:</strong> Paling hemat biaya, tetap berkualitas</p>
+      <p><strong>Cocok untuk:</strong> Penggunaan dengan budget terbatas</p>
+    </div>
+    
+    <button onclick="applyModel()">Terapkan Model yang Dipilih</button>
+    
+    <div id="result"></div>
+  </div>
+
+  <script>
+    if (!localStorage.getItem('adminUserId')) {
+      window.location.href = 'login.html';
+    }
+
+    let selectedModel = 'gemini-1.5-pro-latest';
+    
+    function selectModel(model) {
+      // Remove selected class from all options
+      document.querySelectorAll('.model-option').forEach(option => {
+        option.classList.remove('selected');
+      });
+      
+      // Add selected class to clicked option
+      event.currentTarget.classList.add('selected');
+      selectedModel = model;
+      
+      console.log('Model selected:', selectedModel);
+    }
+    
+    function applyModel() {
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = `
+        <div style="background: #d4edda; color: #155724; padding: 15px; border-radius: 6px; margin-top: 20px;">
+          <strong>✅ Model berhasil dipilih!</strong><br>
+          Model: <strong>${selectedModel}</strong><br><br>
+          <strong>Langkah selanjutnya:</strong><br>
+          1. Buka file <code>index.html</code><br>
+          2. Ganti model di baris kode:<br>
+          <code>const res = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=\${GEMINI_API_KEY}\`</code><br>
+          3. Test aplikasi chat
+        </div>
+      `;
+    }
+  </script>
+  <div style="position: absolute; top: 1rem; right: 1rem; z-index: 999; display: flex; gap: 0.5rem;">
+    <a href="index.html" title="Menu Admin" style="display:inline-flex;align-items:center;justify-content:center;background:#4299e1;color:#fff;width:40px;height:40px;border-radius:50%;font-size:1.3rem;text-decoration:none;transition:background 0.2s;" onmouseover="this.style.background='#3182ce'" onmouseout="this.style.background='#4299e1'"><i class="fa-solid fa-house"></i></a>
+    <button onclick="localStorage.removeItem('adminUserId');location.href='login.html'" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">Logout</button>
+  </div>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+</body>
+</html> 
