@@ -2831,6 +2831,48 @@ export const lembagaAPI = {
   delete: async (id) => {
     const response = await api.delete(`/lembaga/${id}`)
     return response.data
+  },
+
+  /** Upload logo lembaga (PNG saja, max 2MB di server). */
+  uploadLogo: async (id, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await api.post(`/lembaga/${encodeURIComponent(id)}/logo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  },
+
+  deleteLogo: async (id) => {
+    const response = await api.delete(`/lembaga/${encodeURIComponent(id)}/logo`)
+    return response.data
+  },
+
+  _logoBlobCache: new Map(),
+  _logoBlobCacheMax: 50,
+
+  /** URL blob untuk menampilkan logo (dengan auth), di-cache di memori. */
+  fetchLogoBlobUrl: async (path) => {
+    if (!path || typeof path !== 'string') return null
+    const key = path.startsWith('uploads/') ? path : `uploads/lembaga/${path}`
+    const cached = lembagaAPI._logoBlobCache.get(key)
+    if (cached) return cached
+    const response = await api.get('/lembaga/serve-logo', {
+      params: { path: key },
+      responseType: 'blob'
+    })
+    if (response.data instanceof Blob) {
+      const url = URL.createObjectURL(response.data)
+      if (lembagaAPI._logoBlobCache.size >= lembagaAPI._logoBlobCacheMax) {
+        const firstKey = lembagaAPI._logoBlobCache.keys().next().value
+        const oldUrl = lembagaAPI._logoBlobCache.get(firstKey)
+        if (oldUrl) URL.revokeObjectURL(oldUrl)
+        lembagaAPI._logoBlobCache.delete(firstKey)
+      }
+      lembagaAPI._logoBlobCache.set(key, url)
+      return url
+    }
+    return null
   }
 }
 

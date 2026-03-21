@@ -40,6 +40,7 @@ class PrintController
     public function getPrintData(Request $request, Response $response): Response
     {
         try {
+            $registrasiPayload = null;
             $queryParams   = $request->getQueryParams();
             $idSantri      = $queryParams['id_santri'] ?? null;
             $pageMode      = $queryParams['page'] ?? 'tunggakan';
@@ -161,6 +162,12 @@ class PrintController
                         'message' => 'Data registrasi tidak ditemukan untuk santri ini'
                     ], 404);
                 }
+
+                $registrasiPayload = [
+                    'id' => isset($registrasi['id']) ? (int) $registrasi['id'] : null,
+                    'tahun_hijriyah' => $registrasi['tahun_hijriyah'] ?? null,
+                    'tahun_masehi' => $registrasi['tahun_masehi'] ?? null,
+                ];
                 
                 // Ambil detail item dari registrasi
                 $stmt = $this->db->prepare("SELECT 
@@ -442,7 +449,8 @@ class PrintController
                 'tunggakan' => $tunggakan,
                 'pembayaran' => $pembayaran,
                 'uwaba_prices' => $pageMode === 'uwaba' ? $uwabaPrices : null,
-                'tanggal_print' => $tanggalPrint
+                'tanggal_print' => $tanggalPrint,
+                'registrasi' => $registrasiPayload
             ], 200);
 
         } catch (\Exception $e) {

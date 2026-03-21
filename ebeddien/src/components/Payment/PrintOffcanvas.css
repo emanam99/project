@@ -142,9 +142,12 @@
     display: block !important;
   }
 
-  /* Logo & judul rapor tes (bukan .header kwitansi) — pastikan tercetak */
-  #printArea img,
-  .print-page img,
+  /*
+   * Logo & rapor tes — batas lebar kecil.
+   * Jangan pakai untuk .surat-kop-img (kop banner Surat Perjanjian Kapdar harus lebar & besar).
+   */
+  #printArea img:not(.surat-kop-img),
+  .print-page img:not(.surat-kop-img),
   .print-rapor-tes-madin img,
   .rapor-kop-img {
     display: block !important;
@@ -154,6 +157,25 @@
     width: auto !important;
     height: auto !important;
     object-fit: contain !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Kop Surat Perjanjian Kapdar — selebar kolom isi (margin 1cm dari PrintPendaftaran.css) */
+  #printArea .surat-kop-img,
+  .print-page .surat-kop-img,
+  .print-container .surat-kop-img {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 5cm !important;
+    height: auto !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

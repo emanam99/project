@@ -56,7 +56,9 @@ function BerkasSection({
     'PKH',
     'KKS',
     'Kartu Bantuan Lain',
-    'Surat Pindah'
+    'Surat Pindah',
+    'Surat Perjanjian Kapdar',
+    'Pakta Integritas'
   ]
 
   // Buat map untuk memudahkan pencarian berkas yang sudah ada

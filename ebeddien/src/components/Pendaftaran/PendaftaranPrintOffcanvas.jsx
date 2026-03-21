@@ -13,6 +13,8 @@ function PendaftaranPrintOffcanvas({ isOpen, onClose, santriId }) {
   const [printKwitansi, setPrintKwitansi] = useState(true)
   const [printBiodataForm, setPrintBiodataForm] = useState(true)
   const [printRaporTes, setPrintRaporTes] = useState(false)
+  const [printSuratKapdar, setPrintSuratKapdar] = useState(false)
+  const [printPaktaIntegritas, setPrintPaktaIntegritas] = useState(false)
   const [printUrl, setPrintUrl] = useState('')
   const [waNumber, setWaNumber] = useState('')
   const [waStatus, setWaStatus] = useState({ text: '', type: '', visible: false }) // type: 'success', 'error', 'checking'
@@ -63,6 +65,8 @@ function PendaftaranPrintOffcanvas({ isOpen, onClose, santriId }) {
       setPrintKwitansi(true)
       setPrintBiodataForm(true)
       setPrintRaporTes(false)
+      setPrintSuratKapdar(false)
+      setPrintPaktaIntegritas(false)
     }
   }, [isOpen, santriId])
 
@@ -260,8 +264,11 @@ Barakallahu fiikum.`
   }
 
   const handlePrintClick = () => {
-    if (!printKwitansi && !printBiodataForm && !printRaporTes) {
-      showNotification('Centang minimal satu: Kwitansi, Biodata, atau Rapor tes.', 'error')
+    if (!printKwitansi && !printBiodataForm && !printRaporTes && !printSuratKapdar && !printPaktaIntegritas) {
+      showNotification(
+        'Centang minimal satu: Kwitansi, Formulir, Tes, Kapdar, atau Pakta.',
+        'error'
+      )
       return
     }
     window.print()
@@ -419,7 +426,7 @@ Barakallahu fiikum.`
                   checked={printKwitansi}
                   onChange={(e) => setPrintKwitansi(e.target.checked)}
                 />
-                Kwitansi &amp; riwayat pembayaran
+                Kwitansi
               </label>
               <label className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-200 cursor-pointer select-none">
                 <input
@@ -428,7 +435,7 @@ Barakallahu fiikum.`
                   checked={printBiodataForm}
                   onChange={(e) => setPrintBiodataForm(e.target.checked)}
                 />
-                Biodata (formulir pendaftaran)
+                Formulir
               </label>
               <label className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-200 cursor-pointer select-none">
                 <input
@@ -437,7 +444,25 @@ Barakallahu fiikum.`
                   checked={printRaporTes}
                   onChange={(e) => setPrintRaporTes(e.target.checked)}
                 />
-                Rapor tes Madrasah Diniyah
+                Tes
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  checked={printSuratKapdar}
+                  onChange={(e) => setPrintSuratKapdar(e.target.checked)}
+                />
+                Kapdar
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  checked={printPaktaIntegritas}
+                  onChange={(e) => setPrintPaktaIntegritas(e.target.checked)}
+                />
+                Pakta
               </label>
             </div>
 
@@ -451,6 +476,8 @@ Barakallahu fiikum.`
                     printKwitansi={printKwitansi}
                     printBiodataForm={printBiodataForm}
                     printRaporTes={printRaporTes}
+                    printSuratKapdar={printSuratKapdar}
+                    printPaktaIntegritas={printPaktaIntegritas}
                   />
                 </div>
               ) : (

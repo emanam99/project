@@ -24,7 +24,9 @@ class SantriBerkasControllerV2
         'Ijazah SD Sederajat', 'Ijazah SMP Sederajat', 'Ijazah SMA Sederajat', 'SKL',
         'KTP Santri', 'KTP Ayah', 'KTP Ibu', 'KTP Wali',
         'KK Santri', 'KK Ayah', 'KK Ibu', 'KK Wali',
-        'Akta Lahir', 'KIP', 'PKH', 'KKS', 'Kartu Bantuan Lain', 'Surat Pindah'
+        'Akta Lahir', 'KIP', 'PKH', 'KKS', 'Kartu Bantuan Lain', 'Surat Pindah',
+        'Surat Perjanjian Kapdar',
+        'Pakta Integritas'
     ];
 
     private $db;

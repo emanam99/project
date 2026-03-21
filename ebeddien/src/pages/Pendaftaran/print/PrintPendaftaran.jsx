@@ -6,6 +6,8 @@ import { getSlimApiUrl } from '../../../services/api'
 import { getGambarUrl } from '../../../config/images'
 import PrintBiodataFormulir from './PrintBiodataFormulir'
 import PrintRaporTesMadin from './PrintRaporTesMadin'
+import PrintSuratPerjanjianKapdar from './PrintSuratPerjanjianKapdar'
+import PrintPaktaIntegritas from './PrintPaktaIntegritas'
 import './PrintPendaftaran.css'
 
 function PrintPendaftaran({
@@ -13,11 +15,16 @@ function PrintPendaftaran({
   inOffcanvas = false,
   printKwitansi = true,
   printBiodataForm = true,
-  printRaporTes = false
+  printRaporTes = false,
+  printSuratKapdar = false,
+  printPaktaIntegritas = false
 }) {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
+  const printSuratKapdarEffective = printSuratKapdar || searchParams.get('surat_kapdar') === '1'
+  const printPaktaIntegritasEffective =
+    printPaktaIntegritas || searchParams.get('pakta_integritas') === '1'
 
   const tahunAjaranLabelHijriyah = useMemo(() => {
     const ta = tahunAjaran || '1446-1447'
@@ -103,8 +110,17 @@ function PrintPendaftaran({
   }, [layoutMode])
 
   const handlePrint = () => {
-    if (inOffcanvas && !printKwitansi && !printBiodataForm && !printRaporTes) {
-      window.alert('Centang minimal satu di atas: Kwitansi, Biodata, atau Rapor tes.')
+    if (
+      inOffcanvas &&
+      !printKwitansi &&
+      !printBiodataForm &&
+      !printRaporTes &&
+      !printSuratKapdarEffective &&
+      !printPaktaIntegritasEffective
+    ) {
+      window.alert(
+        'Centang minimal satu di atas: Kwitansi, Biodata, Rapor tes, Surat Perjanjian Kapdar, atau Pakta Integritas.'
+      )
       return
     }
     window.print()
@@ -217,7 +233,7 @@ function PrintPendaftaran({
     }
 
     loadData()
-  }, [santriId, searchParams])
+  }, [santriId, searchParams, tahunAjaran, tahunAjaranMasehi])
 
   return (
     <div ref={printPageRef} className={`print-page print-pendaftaran ${inOffcanvas ? 'print-pendaftaran-in-offcanvas' : ''}`}>
@@ -279,9 +295,9 @@ function PrintPendaftaran({
         {error && (
           <div className="error">{error}</div>
         )}
-        {!loading && !error && pendaftaranData && inOffcanvas && !printKwitansi && !printBiodataForm && !printRaporTes && (
+        {!loading && !error && pendaftaranData && inOffcanvas && !printKwitansi && !printBiodataForm && !printRaporTes && !printSuratKapdarEffective && !printPaktaIntegritasEffective && (
           <div className="error" style={{ padding: '20px', textAlign: 'center' }}>
-            Centang minimal satu di atas: Kwitansi, Biodata, atau Rapor tes.
+            Centang minimal satu di atas: Kwitansi, Biodata, Rapor tes, Surat Perjanjian Kapdar, atau Pakta Integritas.
           </div>
         )}
         {!loading && !error && pendaftaranData && (
@@ -327,6 +343,29 @@ function PrintPendaftaran({
                   tahunAjaranLabel={tahunAjaranLabelHijriyah}
                   tahunAjaranRaw={tahunAjaran}
                 />
+              </div>
+            )}
+            {printSuratKapdarEffective && (
+              <div
+                className={`print-surat-kapdar-outer ${
+                  printKwitansi || printBiodataForm || printRaporTes ? 'print-surat-kapdar-after-prev' : ''
+                }`}
+              >
+                <PrintSuratPerjanjianKapdar
+                  biodata={pendaftaranData.biodata}
+                  registrasi={pendaftaranData.registrasi}
+                />
+              </div>
+            )}
+            {printPaktaIntegritasEffective && (
+              <div
+                className={`print-pakta-outer ${
+                  printKwitansi || printBiodataForm || printRaporTes || printSuratKapdarEffective
+                    ? 'print-pakta-after-prev'
+                    : ''
+                }`}
+              >
+                <PrintPaktaIntegritas biodata={pendaftaranData.biodata} registrasi={pendaftaranData.registrasi} />
               </div>
             )}
           </>

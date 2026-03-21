@@ -238,6 +238,10 @@ class LembagaController
                 ], 404);
             }
 
+            if (!empty($oldLembaga['logo_path'])) {
+                LembagaLogoController::deleteStoredLogo($oldLembaga['logo_path']);
+            }
+
             $stmt = $this->db->prepare("DELETE FROM lembaga WHERE id = ?");
             $stmt->execute([$id]);
             $user = $request->getAttribute('user');

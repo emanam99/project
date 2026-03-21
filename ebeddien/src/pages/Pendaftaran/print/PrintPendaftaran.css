@@ -2240,3 +2240,480 @@ td.via-col {
   }
 }
 
+/* —— Surat Perjanjian Kapdar —— */
+.print-surat-kapdar-outer {
+  width: 100%;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #111111;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-surat-kapdar-after-prev {
+  margin-top: 0;
+}
+
+@media print {
+  .print-surat-kapdar-after-prev {
+    page-break-before: always;
+  }
+}
+
+.print-surat-perjanjian-kapdar {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 10.5pt;
+  line-height: 1.3;
+  color: #111111;
+  background: #ffffff;
+  text-align: justify;
+  /* Satu blok: kop + isi — jarak 1 cm dari kiri/kanan, rapat ke atas */
+  padding: 0.12cm 1cm 0.7cm 1cm;
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/*
+ * Kop — selebar kolom isi (bukan full bleed), tetap proporsional & terpusat.
+ */
+.print-surat-perjanjian-kapdar .surat-kop-wrap {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto 8px;
+  padding: 0;
+  text-align: center;
+  background: #ffffff;
+}
+
+.print-surat-perjanjian-kapdar .surat-kop-img {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 3.25cm;
+  max-height: 4.6cm;
+  object-fit: contain;
+  object-position: center center;
+  background: #ffffff;
+}
+
+.print-surat-perjanjian-kapdar .surat-meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  /* ~2 baris kosong setelah Perihal sebelum "Yang bertandatangan…" */
+  margin-bottom: calc(2 * 1.3em);
+}
+
+.print-surat-perjanjian-kapdar .surat-meta-table td {
+  vertical-align: top;
+  padding: 0 4px 2px 0;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-meta-label {
+  width: 5.5rem;
+  white-space: nowrap;
+}
+
+.print-surat-perjanjian-kapdar .surat-meta-colon {
+  width: 1rem;
+}
+
+.print-surat-perjanjian-kapdar .surat-intro {
+  margin: 0 0 6px 0;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-section {
+  margin-bottom: 7px;
+}
+
+.print-surat-perjanjian-kapdar .surat-section-title {
+  font-weight: 700;
+  margin: 0 0 4px 0;
+  line-height: 1.3;
+}
+
+/* Blok isian (nama, NIK, TTL, alamat, domisili, jabatan pengurus) — geser ke dalam agar rapi */
+.print-surat-perjanjian-kapdar .surat-isian-indent {
+  padding-left: 0.65cm;
+  margin: 0;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.print-surat-perjanjian-kapdar .surat-isian-indent .surat-isian-table {
+  width: 100%;
+}
+
+.print-surat-perjanjian-kapdar .surat-isian-indent > :first-child {
+  margin-top: 0;
+}
+
+.print-surat-perjanjian-kapdar .surat-sub {
+  margin: 5px 0 3px 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-par {
+  margin: 0 0 4px 0;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-isian-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2px;
+}
+
+.print-surat-perjanjian-kapdar .surat-isian-table td:first-child {
+  width: 8rem;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.print-surat-perjanjian-kapdar .surat-isian-table td:nth-child(2) {
+  width: 0.85rem;
+  vertical-align: top;
+}
+
+.print-surat-perjanjian-kapdar .surat-isian-table td {
+  padding: 0 3px 1px 0;
+  vertical-align: top;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-blank {
+  border-bottom: 1px solid #333;
+  min-height: 1em;
+}
+
+.print-surat-perjanjian-kapdar .surat-janji-intro {
+  margin: 8px 0 5px 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-janji-items {
+  margin: 0 0 7px 0;
+  padding: 0;
+}
+
+.print-surat-perjanjian-kapdar .surat-janji-item {
+  display: flex;
+  gap: 0.35em;
+  align-items: flex-start;
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-janji-no {
+  flex: 0 0 auto;
+  font-weight: 700;
+  min-width: 1.15em;
+  text-align: right;
+}
+
+.print-surat-perjanjian-kapdar .surat-janji-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.print-surat-perjanjian-kapdar .surat-penutup {
+  margin: 7px 0 calc(2 * 1.3em) 0;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-mengadakan {
+  margin: 0 0 6px 0;
+  text-align: center;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.print-surat-perjanjian-kapdar .surat-ttd-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.25cm;
+  margin-top: 4px;
+}
+
+.print-surat-perjanjian-kapdar .surat-ttd-col {
+  flex: 1;
+  text-align: center;
+}
+
+.print-surat-perjanjian-kapdar .surat-ttd-title {
+  font-weight: 700;
+  margin: 0 0 4px 0;
+  line-height: 1.25;
+}
+
+.print-surat-perjanjian-kapdar .surat-ttd-space {
+  min-height: 1.85cm;
+}
+
+.print-surat-perjanjian-kapdar .surat-ttd-nama {
+  margin: 0;
+  font-weight: 600;
+  border-bottom: 1px solid transparent;
+}
+
+.print-surat-perjanjian-kapdar .surat-ttd-jab {
+  margin: 2px 0 0 0;
+  font-size: 9.5pt;
+  line-height: 1.25;
+}
+
+@media print {
+  .print-surat-kapdar-outer,
+  .print-surat-perjanjian-kapdar,
+  .print-surat-perjanjian-kapdar .surat-kop-wrap,
+  .print-surat-perjanjian-kapdar .surat-kop-img {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-surat-perjanjian-kapdar {
+    padding: 0.1cm 1cm 0.6cm 1cm !important;
+    line-height: 1.3 !important;
+  }
+
+  .print-surat-perjanjian-kapdar .surat-kop-wrap {
+    width: 100% !important;
+    margin: 0 auto 7px !important;
+    text-align: center !important;
+  }
+
+  .print-surat-perjanjian-kapdar .surat-kop-img {
+    min-height: 3.5cm !important;
+    max-height: 5cm !important;
+    width: 100% !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+  }
+
+  .print-surat-perjanjian-kapdar .surat-isian-indent {
+    padding-left: 0.65cm !important;
+  }
+}
+
+/* —— Pakta Integritas (kop sama dengan Kapdar; root pakai .print-surat-perjanjian-kapdar) —— */
+.print-pakta-integritas.print-surat-perjanjian-kapdar {
+  font-size: 11pt;
+  line-height: 1.28;
+  padding: 0.1cm 0.85cm 0.45cm 0.85cm;
+}
+
+.print-pakta-integritas .surat-kop-wrap {
+  margin-bottom: 4px;
+}
+
+.print-pakta-integritas .surat-kop-img {
+  min-height: 2.5cm;
+  max-height: 3.3cm;
+}
+
+.print-pakta-integritas .surat-intro.pakta-intro-spaced {
+  margin: 0 0 2px 0;
+  line-height: 1.28;
+  text-align: left;
+}
+
+.print-pakta-integritas .surat-isian-table {
+  margin-bottom: 0;
+}
+
+.print-pakta-integritas .surat-isian-table td {
+  padding: 0 2px 1px 0;
+  line-height: 1.26;
+}
+
+.print-pakta-integritas .pakta-judul-block {
+  text-align: center;
+  margin: 0 0 0.45em 0;
+}
+
+/* Selebar teks judul — garis pemisah mengikuti lebar "PAKTA INTEGRITAS" */
+.print-pakta-integritas .pakta-judul-heading-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.print-pakta-integritas .pakta-judul {
+  margin: 0 0 0.25em 0;
+  font-size: 13pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+
+.print-pakta-integritas .pakta-garis {
+  width: 100%;
+  height: 0;
+  margin: 0 0 0.35em 0;
+  border: 0;
+  border-bottom: 1px solid #222222;
+}
+
+.print-pakta-integritas .pakta-no-baris {
+  margin: 0 0 0.55em 0;
+  line-height: 1.28;
+  text-align: center;
+  font-weight: 600;
+  font-size: 11pt;
+}
+
+.print-pakta-integritas .pakta-isian-ortu {
+  margin-bottom: 0;
+}
+
+.print-pakta-integritas .pakta-subjudul {
+  margin: 1px 0 2px 0;
+  font-weight: 600;
+  line-height: 1.28;
+  text-align: left;
+}
+
+.print-pakta-integritas .pakta-isian-santri {
+  margin-top: 0;
+}
+
+.print-pakta-integritas .pakta-menyatakan {
+  margin: 0.45em 0 4px 0;
+  font-weight: 600;
+  line-height: 1.28;
+}
+
+.print-pakta-integritas .pakta-poin-list {
+  margin: 0 0 4px 0;
+}
+
+.print-pakta-integritas .pakta-poin-item {
+  display: flex;
+  gap: 0.3em;
+  align-items: flex-start;
+  margin-bottom: 2px;
+  line-height: 1.28;
+}
+
+.print-pakta-integritas .pakta-poin-no {
+  flex: 0 0 auto;
+  font-weight: 700;
+  min-width: 1.1em;
+}
+
+.print-pakta-integritas .pakta-poin-teks {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.print-pakta-integritas .pakta-sanksi-intro {
+  margin: 4px 0 3px 0;
+  font-weight: 600;
+  line-height: 1.28;
+}
+
+.print-pakta-integritas .pakta-sanksi-list {
+  margin: 0 0 5px 0;
+  padding-left: 0.45cm;
+}
+
+.print-pakta-integritas .pakta-sanksi-baris,
+.print-pakta-integritas .pakta-sanksi-lanjut {
+  margin: 0 0 1px 0;
+  line-height: 1.28;
+}
+
+.print-pakta-integritas .pakta-sanksi-lanjut {
+  padding-left: 1em;
+}
+
+.print-pakta-integritas .pakta-penutup {
+  margin: 0.45em 0 5px 0;
+  line-height: 1.28;
+  text-align: justify;
+}
+
+.print-pakta-integritas .pakta-tanggal-kota {
+  margin: 0 0 6px 0;
+  text-align: right;
+  line-height: 1.28;
+}
+
+.print-pakta-integritas .pakta-ttd-dua {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.2cm;
+  margin-top: 2px;
+}
+
+.print-pakta-integritas .pakta-ttd-kolom {
+  flex: 1;
+  text-align: center;
+}
+
+.print-pakta-integritas .pakta-ttd-jab {
+  margin: 0 0 2px 0;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.print-pakta-integritas .pakta-ttd-ruang {
+  min-height: 1.15cm;
+}
+
+.print-pakta-integritas .pakta-ttd-nama {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+  font-size: 11pt;
+}
+
+@media print {
+  .print-pakta-integritas.print-surat-perjanjian-kapdar {
+    font-size: 11pt !important;
+    line-height: 1.28 !important;
+    padding: 0.08cm 0.8cm 0.32cm 0.8cm !important;
+  }
+
+  .print-pakta-integritas.print-surat-perjanjian-kapdar .surat-kop-wrap {
+    margin: 0 auto 3px !important;
+  }
+
+  .print-pakta-integritas.print-surat-perjanjian-kapdar .surat-kop-img {
+    min-height: 2.35cm !important;
+    max-height: 3.05cm !important;
+  }
+}
+
+.print-pakta-outer {
+  width: 100%;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #111111;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-pakta-after-prev {
+  margin-top: 0;
+}
+
+@media print {
+  .print-pakta-after-prev {
+    page-break-before: always;
+  }
+}
+

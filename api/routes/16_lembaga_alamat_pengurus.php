@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Middleware\AuthMiddleware;
 use App\Middleware\RoleMiddleware;
 use App\Controllers\LembagaController;
+use App\Controllers\LembagaLogoController;
 use App\Controllers\AlamatController;
 use App\Controllers\PengurusController;
 use App\Controllers\RombelController;
@@ -15,12 +16,15 @@ use App\Controllers\WaliKelasController;
 return function (\Slim\App $app): void {
     // GET lembaga: super_admin + admin_uwaba (untuk dropdown pengeluaran/rencana semua lembaga)
     $app->group('/api/lembaga', function ($group) {
+        $group->get('/serve-logo', [LembagaLogoController::class, 'serve']);
         $group->get('', [LembagaController::class, 'getAllLembaga']);
         $group->get('/{id}', [LembagaController::class, 'getLembagaById']);
     })->add(new RoleMiddleware(['super_admin', 'admin_uwaba']))->add(new AuthMiddleware());
 
     $app->group('/api/lembaga', function ($group) {
         $group->post('', [LembagaController::class, 'createLembaga']);
+        $group->post('/{id}/logo', [LembagaLogoController::class, 'upload']);
+        $group->delete('/{id}/logo', [LembagaLogoController::class, 'deleteLogo']);
         $group->put('/{id}', [LembagaController::class, 'updateLembaga']);
         $group->delete('/{id}', [LembagaController::class, 'deleteLembaga']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());

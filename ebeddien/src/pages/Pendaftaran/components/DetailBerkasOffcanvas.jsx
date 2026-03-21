@@ -42,7 +42,9 @@ function DetailBerkasOffcanvas({ isOpen, onClose, idSantri, namaPendaftar, onSuc
     'PKH',
     'KKS',
     'Kartu Bantuan Lain',
-    'Surat Pindah'
+    'Surat Pindah',
+    'Surat Perjanjian Kapdar',
+    'Pakta Integritas'
   ]
 
   const fetchList = () => {
