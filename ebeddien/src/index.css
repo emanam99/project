@@ -49,12 +49,13 @@
     color: rgb(229 231 235) !important;
   }
   
-  /* Untuk select dengan bg-transparent, option tetap perlu background */
-  select.bg-transparent option {
+  /* Select dengan kelas bg-transparent: jangan pakai select.bg-transparent — Tailwind salah-merge jadi
+     .dark\\:bg-transparent:is(.dark *)select dan esbuild CSS minify error. Pakai attribute selector. */
+  select[class~='bg-transparent'] option {
     background-color: white !important;
   }
-  
-  .dark select.bg-transparent option {
+
+  .dark select[class~='bg-transparent'] option {
     background-color: rgb(31 41 55) !important;
   }
   

@@ -48,20 +48,24 @@ export default defineConfig(({ mode }) => {
         icons: [
           { src: `${GAMBAR_BASE}/icon/ebeddienicon128.png`, sizes: '128x128', type: 'image/png', purpose: 'any' },
           { src: `${GAMBAR_BASE}/icon/ebeddienicon192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: `${GAMBAR_BASE}/icon/ebeddienicon512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+          { src: `${GAMBAR_BASE}/icon/ebeddienicon512.png`, sizes: '512x512', type: 'image/png', purpose: 'any' }
         ],
         screenshots: [
-          { src: `${GAMBAR_BASE}/ss/ss1.jpg`, sizes: '512x1024', type: 'image/jpeg' },
-          { src: `${GAMBAR_BASE}/ss/ss2.jpg`, sizes: '512x1024', type: 'image/jpeg' },
-          { src: `${GAMBAR_BASE}/ss/ss3.jpg`, sizes: '512x1024', type: 'image/jpeg' },
-          { src: `${GAMBAR_BASE}/ss/ss4.jpg`, sizes: '512x1024', type: 'image/jpeg' },
-          { src: `${GAMBAR_BASE}/ss/ss5.jpg`, sizes: '512x1024', type: 'image/jpeg' },
-          { src: `${GAMBAR_BASE}/ss/ss6.jpg`, sizes: '512x1024', type: 'image/jpeg' },
-          { src: `${GAMBAR_BASE}/ss/ss7.jpg`, sizes: '512x1024', type: 'image/jpeg' },
-          { src: `${GAMBAR_BASE}/ss/ss8.jpg`, sizes: '512x1024', type: 'image/jpeg' }
+          { src: `${GAMBAR_BASE}/ss/ebeddien (1).png`, sizes: '1080x1920', type: 'image/png' },
+          { src: `${GAMBAR_BASE}/ss/ebeddien (2).png`, sizes: '1080x1920', type: 'image/png' },
+          { src: `${GAMBAR_BASE}/ss/ebeddien (3).png`, sizes: '1080x1920', type: 'image/png' },
+          { src: `${GAMBAR_BASE}/ss/ebeddien (4).png`, sizes: '1080x1920', type: 'image/png' },
+          { src: `${GAMBAR_BASE}/ss/ebeddien (5).png`, sizes: '1080x1920', type: 'image/png' },
+          { src: `${GAMBAR_BASE}/ss/ebeddienpc (1).png`, sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
+          { src: `${GAMBAR_BASE}/ss/ebeddienpc (2).png`, sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
+          { src: `${GAMBAR_BASE}/ss/ebeddienpc (3).png`, sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
+          { src: `${GAMBAR_BASE}/ss/ebeddienpc (4).png`, sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
+          { src: `${GAMBAR_BASE}/ss/ebeddienpc (5).png`, sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
+          { src: `${GAMBAR_BASE}/ss/ebeddienpc (6).png`, sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
+          { src: `${GAMBAR_BASE}/ss/ebeddienpc (7).png`, sizes: '1280x800', type: 'image/png', form_factor: 'wide' },
         ],
         shortcuts: [
-          { name: 'Dashboard', short_name: 'Dashboard', description: 'Pantau Perkembangan Pembayaran', url: '/', icons: [{ src: `${GAMBAR_BASE}/icon/dashboard.png`, sizes: '96x96', type: 'image/png' }] },
+          { name: 'Dashboard', short_name: 'Dashboard', description: 'Pantau Perkembangan Pembayaran', url: '/', icons: [{ src: `${GAMBAR_BASE}/icon/dashboard96.png`, sizes: '96x96', type: 'image/png' }] },
           { name: 'Pembayaran', short_name: 'Pembayaran', description: 'Lihat riwayat pembayaran', url: '/uwaba', icons: [{ src: `${GAMBAR_BASE}/icon/icon96.png`, sizes: '96x96', type: 'image/png' }] }
         ]
       },

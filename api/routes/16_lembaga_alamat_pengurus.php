@@ -12,6 +12,7 @@ use App\Controllers\RombelController;
 use App\Controllers\SantriController;
 use App\Controllers\SantriLulusanController;
 use App\Controllers\WaliKelasController;
+use App\Controllers\AbsenPengurusController;
 
 return function (\Slim\App $app): void {
     // GET lembaga: super_admin + admin_uwaba (untuk dropdown pengeluaran/rencana semua lembaga)
@@ -41,6 +42,12 @@ return function (\Slim\App $app): void {
     $app->get('/api/santri-lulusan', [SantriLulusanController::class, 'getAll'])
         ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
     $app->post('/api/santri-lulusan', [SantriLulusanController::class, 'create'])
+        ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    // Absensi pengurus (absen___pengurus) — super_admin only
+    $app->get('/api/absen-pengurus/rekap', [AbsenPengurusController::class, 'getRekap'])
+        ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    $app->get('/api/absen-pengurus', [AbsenPengurusController::class, 'getList'])
         ->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // Rombel (lembaga___rombel) — super_admin only

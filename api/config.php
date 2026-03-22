@@ -184,5 +184,12 @@ return [
         // IP whitelist (comma-separated). Kosong = terima dari IP mana pun. Dapatkan daftar IP dari support@ipaymu.com.
         'ip_whitelist' => array_filter(array_map('trim', explode(',', env('IPAYMU_CALLBACK_IP_WHITELIST', '')))),
     ],
+    // Mesin absensi sidik jari (iClock HTTP). Tanpa JWT. PIN = NIP pengurus.
+    // ABSEN_FINGERPRINT_ALLOWED_SN: serial mesin (SN), dipisah koma; kosong = semua SN diizinkan.
+    // ABSEN_FINGERPRINT_SECRET: jika di-set, wajib ?key=... di URL atau header X-Absen-Fingerprint-Key.
+    'absen_fingerprint' => [
+        'allowed_serial_numbers' => array_values(array_filter(array_map('trim', explode(',', (string) env('ABSEN_FINGERPRINT_ALLOWED_SN', ''))))),
+        'shared_secret' => (string) env('ABSEN_FINGERPRINT_SECRET', ''),
+    ],
 ];
 

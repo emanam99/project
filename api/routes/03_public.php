@@ -18,6 +18,7 @@ use App\Controllers\WhatsAppController;
 use App\Controllers\WarmerController;
 use App\Controllers\WatzapController;
 use App\Controllers\UserChatController;
+use App\Controllers\AbsenFingerprintController;
 
 return function (\Slim\App $app): void {
     // Public endpoint untuk cek NIK (tanpa auth)
@@ -67,6 +68,11 @@ return function (\Slim\App $app): void {
 
     // Webhook WatZap (tanpa auth). WatZap mengirim event ke sini. URL: API_PUBLIC_URL atau WATZAP_WEBHOOK_URL di .env.
     $app->post('/api/watzap/webhook', [WatzapController::class, 'webhook']);
+
+    // Mesin absensi sidik jari (ZKTeco iClock push). Tanpa login; PIN = NIP → id_pengurus. CSRF di-skip di middleware.
+    // URL mesin: base = {API_PUBLIC_URL}/api → mesin memanggil /api/iclock/cdata & /api/iclock/getrequest
+    $app->map(['GET', 'POST'], '/api/iclock/cdata', [AbsenFingerprintController::class, 'cdata']);
+    $app->get('/api/iclock/getrequest', [AbsenFingerprintController::class, 'getrequest']);
 
     // Webhook pesan masuk WA (tanpa auth). WA kirim ke sini, retry sampai 200. Simpan ke tabel whatsapp (arah=masuk).
     $app->post('/api/wa/incoming', [WhatsAppController::class, 'incoming']);

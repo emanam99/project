@@ -88,6 +88,7 @@ export const MENU_ITEMS = [
   // ========== Lembaga ==========
   { path: '/pengurus', label: 'Pengurus', iconKey: 'usersGroup', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/lembaga', label: 'Lembaga', iconKey: 'building', group: 'Lembaga', requiresSuperAdmin: true },
+  { path: '/absen', label: 'Absen', iconKey: 'clock', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/santri', label: 'Santri', iconKey: 'usersGroup', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/lulusan', label: 'Lulusan', iconKey: 'academic', group: 'Lembaga', requiresSuperAdmin: true },
   { path: '/rombel', label: 'Rombel', iconKey: 'users', group: 'Lembaga', requiresSuperAdmin: true },

@@ -2876,6 +2876,35 @@ export const lembagaAPI = {
   }
 }
 
+/** Rekap absensi pengurus (absen___pengurus) — super_admin */
+export const absenPengurusAPI = {
+  getList: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.q != null && String(params.q).trim() !== '') q.set('q', String(params.q).trim())
+    if (params.lembaga_id != null && String(params.lembaga_id).trim() !== '') {
+      q.set('lembaga_id', String(params.lembaga_id).trim())
+    }
+    if (params.limit != null) q.set('limit', String(params.limit))
+    if (params.offset != null) q.set('offset', String(params.offset))
+    const url = q.toString() ? `/absen-pengurus?${q.toString()}` : '/absen-pengurus'
+    const response = await api.get(url)
+    return response.data
+  },
+
+  /** Rekap per pengurus per hari — from/to: YYYY-MM-DD */
+  getRekap: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.from) q.set('from', String(params.from).trim())
+    if (params.to) q.set('to', String(params.to).trim())
+    if (params.lembaga_id != null && String(params.lembaga_id).trim() !== '') {
+      q.set('lembaga_id', String(params.lembaga_id).trim())
+    }
+    const url = q.toString() ? `/absen-pengurus/rekap?${q.toString()}` : '/absen-pengurus/rekap'
+    const response = await api.get(url)
+    return response.data
+  }
+}
+
 /** Daftar kitab (tabel kitab) — super_admin */
 export const kitabAPI = {
   getList: async (params = {}) => {

@@ -77,6 +77,7 @@ const Aktivitas = lazy(() => import('./pages/Keuangan/Aktivitas'))
 const KeuanganDashboard = lazy(() => import('./pages/Keuangan/KeuanganDashboard'))
 const AktivitasTahunAjaran = lazy(() => import('./pages/Keuangan/Aktivitas/AktivitasTahunAjaran'))
 const Lembaga = lazy(() => import('./pages/Settings/Lembaga'))
+const AbsenPengurus = lazy(() => import('./pages/Lembaga/AbsenPengurus'))
 const Kitab = lazy(() => import('./pages/Settings/Kitab'))
 const Mapel = lazy(() => import('./pages/Settings/Mapel'))
 const Rombel = lazy(() => import('./pages/Settings/Rombel'))
@@ -1101,6 +1102,14 @@ function App() {
                   <Lembaga />
                 </Suspense>
               } 
+            />
+            <Route
+              path="/absen"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <AbsenPengurus />
+                </Suspense>
+              }
             />
             <Route
               path="/kitab"
