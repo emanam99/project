@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { santriAPI, pendaftaranAPI, resetCsrfToken } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { useTahunAjaranStore } from '../store/tahunAjaranStore'
+import { useBiodataViewStore } from '../store/biodataViewStore'
 import { extractTanggalLahirFromNIK, extractGenderFromNIK, extractTempatLahirFromNIK } from '../utils/nikUtils'
 import SidebarNavigation from '../components/Biodata/SidebarNavigation'
 import HeaderSection from '../components/Biodata/HeaderSection'
@@ -20,8 +21,30 @@ import { useNotification } from '../contexts/NotificationContext'
 import { useUnsavedChanges } from '../contexts/UnsavedChangesContext'
 import RequiredFieldsModal from '../components/Modal/RequiredFieldsModal'
 import Modal from '../components/Modal/Modal'
+import BiodataReadOnlyView from '../components/Biodata/BiodataReadOnlyView'
+import { FEATURE_DAFTAR_WA_NOTIF_UI } from '../config/featureFlags'
 
 const NOMOR_DAFTAR_NOTIF = '6285123123399'
+
+/**
+ * Bandingkan isi draft localStorage dengan snapshot server.
+ * Hanya field yang ada di serverForm yang dicek — menghindari false positive "belum simpan"
+ * saat draft hanya hasil autosave identik dengan data terbaru dari API.
+ */
+function biodataDraftDiffersFromServer(draft, serverForm) {
+  if (!draft || typeof draft !== 'object') return false
+  if (!serverForm || typeof serverForm !== 'object') return true
+  for (const key of Object.keys(serverForm)) {
+    const s = serverForm[key]
+    const ss = s == null || s === undefined ? '' : String(s).trim()
+    // Field yang tidak ada di draft (versi lama / autosave parsial) dianggap sama dengan server
+    const d = Object.prototype.hasOwnProperty.call(draft, key) ? draft[key] : s
+    const ds = d == null || d === undefined ? '' : String(d).trim()
+    if (ds !== ss) return true
+  }
+  return false
+}
+
 function normalizeNomor(v) {
   if (!v) return ''
   const digits = String(v).replace(/\D/g, '')
@@ -166,7 +189,8 @@ function Biodata() {
   const [showRequiredFieldsModal, setShowRequiredFieldsModal] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [missingRequiredFields, setMissingRequiredFields] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
+  /** Tombol Simpan: hanya boleh dinilai setelah load biodata selesai (atau tidak perlu load). */
+  const [biodataReady, setBiodataReady] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [focusedField, setFocusedField] = useState(null)
@@ -176,16 +200,25 @@ function Biodata() {
   const [showWaMeModal, setShowWaMeModal] = useState(false)
   const [waMeModalFor, setWaMeModalFor] = useState(null) // 'telpon' | 'wa_santri'
   const { showNotification } = useNotification()
+  const biodataViewMode = useBiodataViewStore((s) => s.biodataViewMode)
+  const enterBiodataReadMode = useBiodataViewStore((s) => s.enterBiodataReadMode)
+  const enterBiodataEditMode = useBiodataViewStore((s) => s.enterBiodataEditMode)
+  const biodataEditIntent = useBiodataViewStore((s) => s.biodataEditIntent)
   const waCheck = useWhatsAppCheck(showNotification)
   // Daftar kondisi: dari API (semua field yang punya value di DB), di-filter ke field yang disimpan di registrasi
   const [kondisiFields, setKondisiFields] = useState([]) // [{ field_name, field_label, values: [{ value, label }] }, ...]
 
   const formRef = useRef(null)
-  const isLoadingDataRef = useRef(false)
   const hasLoadedForUserIdRef = useRef(null)
+  /**
+   * Cegah localStorage draft ditulis saat mount pertama (form masih snapshot kosong/default).
+   * Jika draft tertimpa snapshot parsial, saat fetch API selesai merge { ...server, ...draft }
+   * justru menimpa data server dengan string kosong → tampak "simpan tidak jalan" / kembali ke data lama.
+   */
+  const biodataHydratedRef = useRef(false)
 
-  // Use section navigation hook
-  const { sectionRefs, activeSection, scrollToSection } = useSectionNavigation()
+  // Use section navigation hook (reobserve saat ganti mode baca/ubah)
+  const { sectionRefs, activeSection, scrollToSection } = useSectionNavigation(biodataViewMode)
 
   // Helper function untuk validasi ID
   const isValidId = (id) => {
@@ -198,6 +231,22 @@ function Biodata() {
       id !== null &&
       id !== undefined
   }
+
+  // Mode baca: data dari server + tidak ada perubahan lokal (termasuk draft beda server). Mode ubah: lainnya.
+  // Jangan paksa baca jika user baru menekan Ubah (biodataEditIntent) saat biodataReady reload.
+  useEffect(() => {
+    if (!biodataReady) return
+    if (hasChanges) {
+      enterBiodataEditMode()
+      return
+    }
+    if (isValidId(formData.id)) {
+      if (biodataEditIntent) return
+      enterBiodataReadMode()
+    } else {
+      enterBiodataEditMode()
+    }
+  }, [biodataReady, formData.id, hasChanges, biodataEditIntent, enterBiodataReadMode, enterBiodataEditMode])
 
   // Helper function untuk mendapatkan className label berdasarkan focused state
   const getLabelClassName = (fieldName) => {
@@ -217,6 +266,27 @@ function Biodata() {
     }
     return []
   }
+
+  // Santri tanpa id server: tidak ada fetch biodata — form langsung "siap", Simpan mengikuti hasChanges saja.
+  useEffect(() => {
+    if (!tahunHijriyah || !tahunMasehi) return
+    if (!isValidId(user?.id)) {
+      setBiodataReady(true)
+    }
+  }, [tahunHijriyah, tahunMasehi, user?.id])
+
+  // Reset hydrasi saat ganti akun / id santri
+  useEffect(() => {
+    biodataHydratedRef.current = false
+  }, [user?.id])
+
+  // Santri baru (tanpa id valid): tidak ada load API — boleh persist draft setelah biodataReady.
+  useEffect(() => {
+    if (isValidId(user?.id)) return
+    if (biodataReady) {
+      biodataHydratedRef.current = true
+    }
+  }, [user?.id, biodataReady])
 
   // Load tahun ajaran saat mount
   useEffect(() => {
@@ -306,24 +376,18 @@ function Biodata() {
       }
 
       // User ID valid, lanjutkan load data
-      setIsLoading(true)
-      isLoadingDataRef.current = true
+      setBiodataReady(false)
 
       try {
-        // Jika ada draft di localStorage (perubahan yang belum disimpan ke server), pakai itu dulu.
-        // Draft dianggap sebagai state awal halaman ini; peringatan unsaved baru muncul
-        // jika ada perubahan tambahan setelah halaman dibuka.
+        // Draft dari autosave selalu ada setelah load — jangan skip API atau paksa hasChanges(true)
+        // hanya karena draft tersimpan. Bandingkan dulu dengan data server; beda = benar-benar ada edit lokal.
         const draftRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('daftar_biodata_draft') : null
+        let parsedDraft = null
         if (draftRaw) {
           try {
             const parsed = JSON.parse(draftRaw)
             if (parsed && typeof parsed === 'object' && (parsed.nik || parsed.nama)) {
-              console.log('[Biodata unsaved] setHasChanges(true) dari: load draft di loadDataFromUser (user punya id)')
-              setFormData(parsed)
-              setHasChanges(true)
-              setIsLoading(false)
-              isLoadingDataRef.current = false
-              return
+              parsedDraft = parsed
             }
           } catch (_) {}
         }
@@ -498,20 +562,54 @@ function Biodata() {
             } catch (e) { /* ignore */ }
           }
 
-          setFormData(newFormData)
-          console.log('[Biodata unsaved] setHasChanges(false) setelah load dari server')
-          setHasChanges(false)
+          // Sinkronkan NIS & id registrasi ke auth (header / save berikutnya)
+          let idRegHeader = biodata.id_registrasi != null && biodata.id_registrasi !== ''
+            ? Number(biodata.id_registrasi)
+            : null
+          if (idRegHeader == null || Number.isNaN(idRegHeader)) {
+            if (registrasiResponse.success && registrasiResponse.data) {
+              const r = registrasiResponse.data
+              const raw = r.id_registrasi ?? r.id
+              if (raw != null && raw !== '') {
+                idRegHeader = Number(raw)
+              }
+            }
+          }
+          const nisHeader = biodata.nis != null && String(biodata.nis).trim() !== ''
+            ? String(biodata.nis).trim()
+            : null
+          const authSync = useAuthStore.getState()
+          authSync.setAuth(authSync.token, {
+            ...authSync.user,
+            id: String(biodata.id),
+            nik: biodata.nik || authSync.user?.nik || '',
+            nama: biodata.nama || authSync.user?.nama || '',
+            nis: nisHeader ?? authSync.user?.nis ?? null,
+            id_registrasi: !Number.isNaN(idRegHeader) && idRegHeader != null
+              ? idRegHeader
+              : (authSync.user?.id_registrasi ?? null)
+          })
+
+          if (parsedDraft && biodataDraftDiffersFromServer(parsedDraft, newFormData)) {
+            setFormData({ ...newFormData, ...parsedDraft })
+            setHasChanges(true)
+            // Restore draft ≠ user baru saja mengedit; jangan aktifkan modal navigasi global.
+            hasUserEditedRef.current = false
+          } else {
+            setFormData(newFormData)
+            setHasChanges(false)
+            hasUserEditedRef.current = false
+          }
           hasLoadedFromServerRef.current = true
+          biodataHydratedRef.current = true
         } else {
           console.warn('Data santri tidak ditemukan di database.', { response: biodataResponse, userId: user.id })
+          biodataHydratedRef.current = true
         }
       } catch (error) {
         console.error('Error loading data:', error)
       } finally {
-        setIsLoading(false)
-        setTimeout(() => {
-          isLoadingDataRef.current = false
-        }, 100)
+        setBiodataReady(true)
       }
     }
 
@@ -535,7 +633,6 @@ function Biodata() {
       if (draftRaw) {
         const parsed = JSON.parse(draftRaw)
         if (parsed && typeof parsed === 'object' && (parsed.nik || parsed.nama)) {
-          console.log('[Biodata unsaved] setHasChanges(true) dari: load draft santri baru (useEffect draft)')
           setFormData(parsed)
           setHasChanges(true)
         }
@@ -585,6 +682,7 @@ function Biodata() {
 
   // Simpan formData ke sessionStorage (validasi Berkas) dan localStorage (tetap ada saat ditinggal/masuk lagi)
   useEffect(() => {
+    if (!biodataHydratedRef.current) return
     if (formData.nik || formData.nama) {
       sessionStorage.setItem('pendaftaranData', JSON.stringify(formData))
       try {
@@ -700,7 +798,6 @@ function Biodata() {
 
         return updated
       })
-      console.log('[Biodata unsaved] setHasChanges(true) + hasUserEditedRef dari: handleFieldChange (nik)')
       setHasChanges(true)
       hasUserEditedRef.current = true
       return
@@ -749,7 +846,6 @@ function Biodata() {
 
         return updated
       })
-      console.log('[Biodata unsaved] setHasChanges(true) + hasUserEditedRef dari: handleFieldChange (nik_ayah/ibu/wali)')
       setHasChanges(true)
       hasUserEditedRef.current = true
       return
@@ -778,7 +874,6 @@ function Biodata() {
 
       return updated
     })
-    console.log('[Biodata unsaved] setHasChanges(true) + hasUserEditedRef dari: handleFieldChange (field=', field, ')')
     setHasChanges(true)
     hasUserEditedRef.current = true
   }
@@ -903,22 +998,27 @@ function Biodata() {
 
       // id untuk backend = santri PK (user.id dari backend) saat update saja; santri baru jangan kirim id (biar AUTO_INCREMENT)
       const santriIdForSave = user?.id != null && user?.id !== '' ? String(user.id) : null
+      // Field psb___registrasi: pakai ?? '' agar kunci selalu ada di JSON (JSON.stringify membuang undefined).
+      // Tanpa ini backend anggap kunci hilang dan mempertahankan nilai lama — atau meng-null kolom lain (prodi/gelombang).
       const biodataPayload = {
         ...formData,
         email: emailToSave, // Gunakan email yang diisi atau default
         id: santriIdForSave,
         id_admin: null,
-        tahun_hijriyah: tahunHijriyah,
-        tahun_masehi: tahunMasehi,
+        tahun_hijriyah: tahunHijriyah ?? '',
+        tahun_masehi: tahunMasehi ?? '',
         nama: formData.nama,
         gender: formData.gender,
-        status_pendaftar: formData.status_pendaftar,
-        daftar_diniyah: formData.daftar_diniyah,
-        daftar_formal: formData.daftar_formal,
-        status_murid: formData.status_murid,
-        prodi: formData.prodi,
-        gelombang: formData.gelombang,
-        status_santri: formData.status_santri
+        status_pendaftar: formData.status_pendaftar ?? '',
+        daftar_diniyah: formData.daftar_diniyah ?? '',
+        daftar_formal: formData.daftar_formal ?? '',
+        status_murid: formData.status_murid ?? '',
+        prodi: formData.prodi ?? '',
+        gelombang: formData.gelombang ?? '',
+        status_santri: formData.status_santri ?? '',
+        id_registrasi: user?.id_registrasi != null && user.id_registrasi !== ''
+          ? String(user.id_registrasi)
+          : ''
       }
 
       console.log('Sending save request with payload:', biodataPayload)
@@ -941,6 +1041,10 @@ function Biodata() {
           id: idSantri,
           nama: formData.nama || user?.nama || '',
           nik: formData.nik || user?.nik || '',
+          nis: biodataResponse.data.nis != null ? String(biodataResponse.data.nis) : (user?.nis ?? null),
+          id_registrasi: biodataResponse.data.id_registrasi != null
+            ? Number(biodataResponse.data.id_registrasi)
+            : (user?.id_registrasi ?? null),
           role_key: user?.role_key || 'santri',
           role_label: user?.role_label || 'Santri',
           allowed_apps: user?.allowed_apps || ['daftar'],
@@ -950,7 +1054,9 @@ function Biodata() {
       }
 
       setHasChanges(false)
+      hasUserEditedRef.current = false
       clearUnsavedChanges()
+      enterBiodataReadMode()
       showNotification('Data pendaftaran berhasil disimpan!', 'success')
       try {
         localStorage.removeItem('daftar_biodata_draft')
@@ -963,24 +1069,26 @@ function Biodata() {
       } catch (e) { /* ignore */ }
 
       // Setelah simpan, cek nomor yang bisa diaktifkan notifikasi WA (belum di kontak atau notif off)
-      const noTelpon = normalizeNomor(formData.no_telpon)
-      const noWaSantri = normalizeNomor(formData.no_wa_santri)
-      const toCheck = []
-      if (noTelpon.length >= 10) toCheck.push({ field: 'telpon', number: noTelpon, label: 'No. Telpon (Wali)' })
-      if (noWaSantri.length >= 10 && noWaSantri !== noTelpon) toCheck.push({ field: 'wa_santri', number: noWaSantri, label: 'No. WA Santri' })
-      if (toCheck.length > 0) {
-        const results = await Promise.all(toCheck.map(async (item) => {
-          try {
-            const res = await pendaftaranAPI.getWhatsAppKontakStatus(item.number)
-            if (res?.success && (!res.exists || !res.siap_terima_notif)) return item
-          } catch { /* skip */ }
-          return null
-        }))
-        const needActivation = results.filter(Boolean)
-        if (needActivation.length > 0) {
-          setPostSaveNotifNumbers(needActivation)
-          setShowPostSaveNotifModal(true)
-          pendaftaranAPI.getWaWake().catch(() => {})
+      if (FEATURE_DAFTAR_WA_NOTIF_UI) {
+        const noTelpon = normalizeNomor(formData.no_telpon)
+        const noWaSantri = normalizeNomor(formData.no_wa_santri)
+        const toCheck = []
+        if (noTelpon.length >= 10) toCheck.push({ field: 'telpon', number: noTelpon, label: 'No. Telpon (Wali)' })
+        if (noWaSantri.length >= 10 && noWaSantri !== noTelpon) toCheck.push({ field: 'wa_santri', number: noWaSantri, label: 'No. WA Santri' })
+        if (toCheck.length > 0) {
+          const results = await Promise.all(toCheck.map(async (item) => {
+            try {
+              const res = await pendaftaranAPI.getWhatsAppKontakStatus(item.number)
+              if (res?.success && (!res.exists || !res.siap_terima_notif)) return item
+            } catch { /* skip */ }
+            return null
+          }))
+          const needActivation = results.filter(Boolean)
+          if (needActivation.length > 0) {
+            setPostSaveNotifNumbers(needActivation)
+            setShowPostSaveNotifModal(true)
+            pendaftaranAPI.getWaWake().catch(() => {})
+          }
         }
       }
 
@@ -1013,7 +1121,7 @@ function Biodata() {
     } finally {
       setIsSaving(false)
     }
-  }, [formData, tahunHijriyah, tahunMasehi, user, showNotification, navigate, clearUnsavedChanges])
+  }, [formData, tahunHijriyah, tahunMasehi, user, showNotification, navigate, clearUnsavedChanges, enterBiodataReadMode])
 
   // Wrapper handleSave untuk konfirmasi NIK & Gender (Hanya untuk ID Baru)
   const handleSave = useCallback(() => {
@@ -1038,16 +1146,24 @@ function Biodata() {
     saveData()
   }
 
+  // Ref agar sinkronisasi ke context tidak ikut jalan setiap render (handleSave/checkRequiredFields berubah tiap formData).
+  const handleSaveRef = useRef(handleSave)
+  const checkRequiredRef = useRef(checkRequiredFields)
+  handleSaveRef.current = handleSave
+  checkRequiredRef.current = checkRequiredFields
+
+  // Hanya halaman Biodata yang mengisi "unsaved" global. Aktif bila user benar-benar mengubah form (bukan load data).
   useEffect(() => {
-    const userEdited = hasUserEditedRef.current
-    if (hasChanges && userEdited) {
-      console.log('[Biodata unsaved] Terdeteksi perubahan: set unsaved (hasChanges=true, hasUserEditedRef=true)')
-      setUnsavedChanges(true, handleSave, checkRequiredFields)
+    if (biodataViewMode === 'read') {
+      clearUnsavedChanges()
+      return
+    }
+    if (hasChanges && hasUserEditedRef.current) {
+      setUnsavedChanges(true, () => handleSaveRef.current(), () => checkRequiredRef.current())
     } else {
-      console.log('[Biodata unsaved] Tidak ada perubahan user: clear unsaved', { hasChanges, userEdited })
       clearUnsavedChanges()
     }
-  }, [hasChanges, setUnsavedChanges, clearUnsavedChanges, handleSave, checkRequiredFields])
+  }, [biodataViewMode, hasChanges, setUnsavedChanges, clearUnsavedChanges])
 
   // Notif saat pindah tab browser: ingatkan simpan jika ada perubahan yang belum disimpan ke server.
   // Hanya aktif jika user memang sudah mengedit (bukan hanya load dari server).
@@ -1076,10 +1192,11 @@ function Biodata() {
         setIsSidebarOpen={setIsSidebarOpen}
         onSave={handleSave}
         isSaving={isSaving}
-        isLoading={isLoading}
+        dataReady={biodataReady}
         formDataId={formData.id}
         hasChanges={hasChanges}
         formData={formData}
+        readOnly={biodataViewMode === 'read'}
       />
 
       {/* Scrollable Content Area */}
@@ -1124,125 +1241,131 @@ function Biodata() {
           }
         `}</style>
 
-        <form
-          ref={formRef}
-          className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault()
-            return false
-          }}
-        >
-
-
-          {/* Data Diri */}
-          <DataDiriSection
-            sectionRef={sectionRefs.dataDiri}
+        {biodataViewMode === 'read' ? (
+          <BiodataReadOnlyView
+            sectionRefs={sectionRefs}
             formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-          />
-
-          {/* Biodata Ayah */}
-          <BiodataOrangTuaSection
-            sectionRef={sectionRefs.biodataAyah}
-            title="Biodata Ayah"
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-            prefix="ayah"
-          />
-
-          {/* Biodata Ibu */}
-          <BiodataOrangTuaSection
-            sectionRef={sectionRefs.biodataIbu}
-            title="Biodata Ibu"
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-            prefix="ibu"
-          />
-
-          {/* Biodata Wali */}
-          <BiodataWaliSection
-            sectionRef={sectionRefs.biodataWali}
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-          />
-
-          {/* Alamat */}
-          <AlamatSection
-            sectionRef={sectionRefs.alamat}
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-          />
-
-          {/* Riwayat Madrasah */}
-          <RiwayatPendidikanSection
-            sectionRef={sectionRefs.riwayatMadrasah}
-            title="Riwayat Madrasah"
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-            type="madrasah"
-          />
-
-          {/* Riwayat Sekolah */}
-          <RiwayatPendidikanSection
-            sectionRef={sectionRefs.riwayatSekolah}
-            title="Riwayat Sekolah"
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-            type="sekolah"
-          />
-
-          {/* Informasi Tambahan */}
-          <InformasiTambahanSection
-            sectionRef={sectionRefs.informasiTambahan}
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
-            waCheck={waCheck}
-          />
-
-          {/* Status Pendaftaran (termasuk Daerah & Kamar jika status santri Mukim) */}
-          <StatusPendaftaranSection
-            sectionRef={sectionRefs.statusPendaftaran}
-            formData={formData}
-            onFieldChange={handleFieldChange}
-            focusedField={focusedField}
-            onFocus={setFocusedField}
-            onBlur={() => setFocusedField(null)}
-            getLabelClassName={getLabelClassName}
             kondisiFields={kondisiFields}
           />
-        </form>
+        ) : (
+          <form
+            ref={formRef}
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              return false
+            }}
+          >
+            {/* Data Diri */}
+            <DataDiriSection
+              sectionRef={sectionRefs.dataDiri}
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+            />
+
+            {/* Biodata Ayah */}
+            <BiodataOrangTuaSection
+              sectionRef={sectionRefs.biodataAyah}
+              title="Biodata Ayah"
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+              prefix="ayah"
+            />
+
+            {/* Biodata Ibu */}
+            <BiodataOrangTuaSection
+              sectionRef={sectionRefs.biodataIbu}
+              title="Biodata Ibu"
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+              prefix="ibu"
+            />
+
+            {/* Biodata Wali */}
+            <BiodataWaliSection
+              sectionRef={sectionRefs.biodataWali}
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+            />
+
+            {/* Alamat */}
+            <AlamatSection
+              sectionRef={sectionRefs.alamat}
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+            />
+
+            {/* Riwayat Madrasah */}
+            <RiwayatPendidikanSection
+              sectionRef={sectionRefs.riwayatMadrasah}
+              title="Riwayat Madrasah"
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+              type="madrasah"
+            />
+
+            {/* Riwayat Sekolah */}
+            <RiwayatPendidikanSection
+              sectionRef={sectionRefs.riwayatSekolah}
+              title="Riwayat Sekolah"
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+              type="sekolah"
+            />
+
+            {/* Informasi Tambahan */}
+            <InformasiTambahanSection
+              sectionRef={sectionRefs.informasiTambahan}
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+              waCheck={waCheck}
+            />
+
+            {/* Status Pendaftaran (termasuk Daerah & Kamar jika status santri Mukim) */}
+            <StatusPendaftaranSection
+              sectionRef={sectionRefs.statusPendaftaran}
+              formData={formData}
+              onFieldChange={handleFieldChange}
+              focusedField={focusedField}
+              onFocus={setFocusedField}
+              onBlur={() => setFocusedField(null)}
+              getLabelClassName={getLabelClassName}
+              kondisiFields={kondisiFields}
+            />
+          </form>
+        )}
 
         {/* Spacer untuk mobile - agar tidak terhalang navigasi bawah */}
         <div className="h-24 md:h-8"></div>
@@ -1319,92 +1442,96 @@ function Biodata() {
         requiredFields={missingRequiredFields}
       />
 
-      {/* Modal setelah Simpan: opsi aktifkan notifikasi WA untuk nomor yang belum notif on */}
-      <Modal
-        isOpen={showPostSaveNotifModal}
-        onClose={() => setShowPostSaveNotifModal(false)}
-        title="Aktifkan notifikasi WhatsApp"
-        maxWidth="max-w-md"
-      >
-        <div className="p-6">
-          <p className="text-gray-600 dark:text-gray-300 mb-4">
-            Data berhasil disimpan. Ingin mengaktifkan notifikasi WhatsApp untuk nomor berikut?
-          </p>
-          <ul className="space-y-3 mb-6">
-            {postSaveNotifNumbers.map((item) => (
-              <li key={item.field} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div>
-                  <span className="font-medium text-gray-800 dark:text-gray-200">{item.label}</span>
-                  <span className="block text-sm text-gray-500 dark:text-gray-400">{item.number}</span>
-                </div>
+      {FEATURE_DAFTAR_WA_NOTIF_UI && (
+        <>
+          {/* Modal setelah Simpan: opsi aktifkan notifikasi WA untuk nomor yang belum notif on */}
+          <Modal
+            isOpen={showPostSaveNotifModal}
+            onClose={() => setShowPostSaveNotifModal(false)}
+            title="Aktifkan notifikasi WhatsApp"
+            maxWidth="max-w-md"
+          >
+            <div className="p-6">
+              <p className="text-gray-600 dark:text-gray-300 mb-4">
+                Data berhasil disimpan. Ingin mengaktifkan notifikasi WhatsApp untuk nomor berikut?
+              </p>
+              <ul className="space-y-3 mb-6">
+                {postSaveNotifNumbers.map((item) => (
+                  <li key={item.field} className="flex flex-wrap items-center justify-between gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div>
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{item.label}</span>
+                      <span className="block text-sm text-gray-500 dark:text-gray-400">{item.number}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPostSaveNotifModal(false)
+                        setWaMeModalFor(item.field)
+                        setShowWaMeModal(true)
+                      }}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      Aktifkan notifikasi WA
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowPostSaveNotifModal(false)}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 rounded-lg font-medium transition-colors"
+                >
+                  Lewati
+                </button>
+              </div>
+            </div>
+          </Modal>
+
+          {/* Modal wa.me: Aktifkan notifikasi untuk nomor saya (setelah pilih dari modal atas) */}
+          <Modal
+            isOpen={showWaMeModal}
+            onClose={() => { setShowWaMeModal(false); setWaMeModalFor(null) }}
+            title="Aktifkan notifikasi WhatsApp"
+            maxWidth="max-w-sm"
+          >
+            <div className="p-5">
+              <p className="text-gray-600 dark:text-gray-300 mb-4">
+                Aktifkan notifikasi whatsapp untuk nomor saya.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => {
-                    setShowPostSaveNotifModal(false)
-                    setWaMeModalFor(item.field)
-                    setShowWaMeModal(true)
+                    pendaftaranAPI.getWaWake().catch(() => {})
+                    const lines = ['Daftar Notifikasi']
+                    if (formData.nama) lines.push(`Nama: ${formData.nama}`)
+                    if (formData.nik) lines.push(`NIK: ${formData.nik}`)
+                    const num = waMeModalFor === 'telpon' ? String(formData.no_telpon || '').replace(/\D/g, '') : String(formData.no_wa_santri || '').replace(/\D/g, '')
+                    const nomor62 = num.startsWith('0') ? '62' + num.slice(1) : (num.startsWith('62') ? num : '62' + num)
+                    if (nomor62.length >= 12) lines.push(`No WA: ${nomor62}`)
+                    const text = lines.join('\n')
+                    const url = `https://wa.me/${NOMOR_DAFTAR_NOTIF}?text=${encodeURIComponent(text)}`
+                    window.open(url, '_blank', 'noopener,noreferrer')
+                    setShowWaMeModal(false)
+                    setWaMeModalFor(null)
                   }}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
                 >
-                  Aktifkan notifikasi WA
+                  Aktifkan via WhatsApp
                 </button>
-              </li>
-            ))}
-          </ul>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setShowPostSaveNotifModal(false)}
-              className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 rounded-lg font-medium transition-colors"
-            >
-              Lewati
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Modal wa.me: Aktifkan notifikasi untuk nomor saya (setelah pilih dari modal atas) */}
-      <Modal
-        isOpen={showWaMeModal}
-        onClose={() => { setShowWaMeModal(false); setWaMeModalFor(null) }}
-        title="Aktifkan notifikasi WhatsApp"
-        maxWidth="max-w-sm"
-      >
-        <div className="p-5">
-          <p className="text-gray-600 dark:text-gray-300 mb-4">
-            Aktifkan notifikasi whatsapp untuk nomor saya.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                pendaftaranAPI.getWaWake().catch(() => {})
-                const lines = ['Daftar Notifikasi']
-                if (formData.nama) lines.push(`Nama: ${formData.nama}`)
-                if (formData.nik) lines.push(`NIK: ${formData.nik}`)
-                const num = waMeModalFor === 'telpon' ? String(formData.no_telpon || '').replace(/\D/g, '') : String(formData.no_wa_santri || '').replace(/\D/g, '')
-                const nomor62 = num.startsWith('0') ? '62' + num.slice(1) : (num.startsWith('62') ? num : '62' + num)
-                if (nomor62.length >= 12) lines.push(`No WA: ${nomor62}`)
-                const text = lines.join('\n')
-                const url = `https://wa.me/${NOMOR_DAFTAR_NOTIF}?text=${encodeURIComponent(text)}`
-                window.open(url, '_blank', 'noopener,noreferrer')
-                setShowWaMeModal(false)
-                setWaMeModalFor(null)
-              }}
-              className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
-            >
-              Aktifkan via WhatsApp
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowWaMeModal(false); setWaMeModalFor(null) }}
-              className="flex-1 px-4 py-2.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors"
-            >
-              Batal
-            </button>
-          </div>
-        </div>
-      </Modal>
+                <button
+                  type="button"
+                  onClick={() => { setShowWaMeModal(false); setWaMeModalFor(null) }}
+                  className="flex-1 px-4 py-2.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </Modal>
+        </>
+      )}
     </div>
   )
 }

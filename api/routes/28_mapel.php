@@ -13,5 +13,5 @@ return function (\Slim\App $app): void {
         $group->post('', [LembagaKitabController::class, 'create']);
         $group->put('/{id}', [LembagaKitabController::class, 'update']);
         $group->delete('/{id}', [LembagaKitabController::class, 'delete']);
-    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['super_admin', 'tarbiyah']))->add(new AuthMiddleware());
 };

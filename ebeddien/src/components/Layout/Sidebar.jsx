@@ -6,6 +6,7 @@ import { useSidebarStore } from '../../store/sidebarStore'
 import { getGambarUrl } from '../../config/images'
 import { getMenuItemsWithSeparators, GROUP_ORDER } from '../../config/menuConfig'
 import { getIcon } from '../../config/menuIcons'
+import { userMatchesAnyAllowedRole, userHasSuperAdminAccess, userHasAnyAdminCap } from '../../utils/roleAccess'
 
 const GROUP_LABELS = GROUP_ORDER
 const navItems = getMenuItemsWithSeparators().map((item) => ({
@@ -25,31 +26,12 @@ function Sidebar() {
   const scrollTimeoutRef = useRef(null)
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { user, viewAsRole, getEffectiveRole, isRealSuperAdmin } = useAuthStore()
-  const effectiveRole = getEffectiveRole?.() ?? (user?.role_key || user?.level || '').toLowerCase()
-  const realSuperAdmin = isRealSuperAdmin?.() ?? (user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin')
-  
+  const { user } = useAuthStore()
+  const hasSuperAdminMenu = userHasSuperAdminAccess(user)
+
   // Ambil NIS/ID dari URL (pembayaran pakai nis, pendaftaran pakai id; bawa keduanya agar data santri tetap)
   const idFromUrl = searchParams.get('nis') || searchParams.get('id')
-  
-  
-  // Helper untuk cek permission
-  const hasPermission = (permission) => {
-    if (!user || !user.permissions) {
-      return false
-    }
-    return user.permissions.includes(permission)
-  }
-  
-  // Helper untuk cek role - pakai effectiveRole (super_admin + viewAsRole => role yang dicoba)
-  const hasRole = (roles) => {
-    if (!user || !roles || !Array.isArray(roles)) {
-      return false
-    }
-    const allowed = roles.map(r => r.toLowerCase())
-    return allowed.includes(effectiveRole)
-  }
-  
+
   // Indeks grup per item (berdasarkan urutan asli navItems); pembatas selalu antara beda grup
   const groupIndices = useMemo(() => {
     const out = []
@@ -61,25 +43,29 @@ function Sidebar() {
     return out
   }, [])
 
-  // Filter nav items: pakai effectiveRole, kecuali Role & Akses selalu tampil untuk super_admin asli
+  // Filter menu: gabungan all_roles (role_key bisa "multi_role")
   const filteredNavItems = useMemo(() => {
+    const matchRoles = (roles) => userMatchesAnyAllowedRole(user, roles)
+    const permOk = (permission) => {
+      if (!user || !user.permissions) return false
+      return user.permissions.includes(permission)
+    }
     const canSee = (item) => {
-      // Halaman Role & Akses selalu tampil untuk super_admin asli (meski sedang "coba sebagai" role lain)
       if (item.path === '/settings/role-akses') {
-        return realSuperAdmin
+        return hasSuperAdminMenu
       }
-      if (effectiveRole === 'super_admin') return true // Super Admin (tanpa viewAs) lihat semua menu
+      if (hasSuperAdminMenu) return true
       const userLevel = user?.level?.toLowerCase()
-      if (item.requiresRole) return hasRole(item.requiresRole)
-      if (item.requiresSuperAdmin) return effectiveRole === 'super_admin'
-      if (item.requiresAdmin) return user && (userLevel === 'admin' || effectiveRole === 'admin_uwaba' || effectiveRole === 'admin_psb' || effectiveRole === 'admin_lembaga' || effectiveRole === 'super_admin')
-      if (item.requiresPermission) return user && hasPermission(item.requiresPermission)
+      if (item.requiresRole) return matchRoles(item.requiresRole)
+      if (item.requiresSuperAdmin) return false
+      if (item.requiresAdmin) return user && (userLevel === 'admin' || userHasAnyAdminCap(user))
+      if (item.requiresPermission) return user && permOk(item.requiresPermission)
       return true
     }
     return navItems
       .map((item, i) => ({ item, groupIndex: groupIndices[i] }))
       .filter(({ item }) => canSee(item))
-  }, [user, groupIndices, effectiveRole, realSuperAdmin, viewAsRole])
+  }, [user, groupIndices, hasSuperAdminMenu])
 
   // Grup untuk accordion: { groupIndex, label, items }
   const navGroups = useMemo(() => {

@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
 import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { compressImage } from '../../../utils/imageCompression'
 import { formatFileSize } from './utils/fileUtils'
 import { getGambarUrl } from '../../../config/images'
+import ImageEditorModal from '../../../components/ImageEditor/ImageEditorModal'
 
 /**
  * Offcanvas upload berkas — mengikuti aplikasi daftar:
  * - Muncul dari bawah (mobile), tengah layar (desktop)
- * - File gambar > 1MB → redirect ke editor (auto crop, deteksi dokumen)
+ * - File gambar > 1MB → kompres lalu modal editor (tanpa ganti route / reload halaman)
  * - Maks. 1MB untuk upload langsung
  * - Styling dan pengaturan sama dengan daftar
  */
@@ -30,10 +30,41 @@ function BerkasOffcanvas({
 }) {
   const backdropZ = overlayZIndex
   const panelZ = overlayZIndex + 1
-  const navigate = useNavigate()
+  const editorModalZ = overlayZIndex + 80
   const { showNotification } = useNotification()
+
+  const closeImageEditor = useCallback(() => {
+    setImageEditorOpen(false)
+    setImageFileForEditor(null)
+  }, [])
+
+  const applyCompressIfNeeded = useCallback(async (editedFile) => {
+    const compressibleImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    const fileExtension = editedFile.name.split('.').pop()?.toLowerCase()
+    const compressibleExtensions = ['jpg', 'jpeg', 'png', 'webp']
+    const isCompressibleImage =
+      (compressibleImageTypes.includes(editedFile.type) || compressibleExtensions.includes(fileExtension)) &&
+      editedFile.size > 1024 * 1024
+    if (!isCompressibleImage) return editedFile
+    try {
+      return await compressImage(editedFile, 1)
+    } catch (err) {
+      console.error('Error compressing edited image:', err)
+      return editedFile
+    }
+  }, [])
+
+  const handleImageEditorSave = useCallback(
+    async (editedFile) => {
+      const fileToUse = await applyCompressIfNeeded(editedFile)
+      setSelectedFile(fileToUse)
+    },
+    [applyCompressIfNeeded]
+  )
   const [uploading, setUploading] = useState(false)
   const [jenisBerkas, setJenisBerkas] = useState('Ijazah SD Sederajat')
+  const [imageEditorOpen, setImageEditorOpen] = useState(false)
+  const [imageFileForEditor, setImageFileForEditor] = useState(null)
   const [selectedFile, setSelectedFile] = useState(null)
   const [keterangan, setKeterangan] = useState('')
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -53,7 +84,8 @@ function BerkasOffcanvas({
 
   useEffect(() => {
     if (isOpen && idSantri) {
-      if (defaultFile) setSelectedFile(defaultFile)
+      // Utamakan file dari parent (kembali dari editor); jangan kosongkan bila defaultFile belum ter-prop satu siklus
+      if (defaultFile != null) setSelectedFile(defaultFile)
       else if (!existingBerkas) setSelectedFile(null)
       if (existingBerkas) {
         setJenisBerkas(existingBerkas.jenis_berkas)
@@ -82,8 +114,8 @@ function BerkasOffcanvas({
       try {
         const compressed = await compressImage(file, 1)
         sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas)
-        sessionStorage.setItem('editorReturnPage', idSantri ? `/pendaftaran?nis=${idSantri}` : '/pendaftaran')
-        navigate('/pendaftaran/editor', { state: { file: compressed } })
+        setImageFileForEditor(compressed)
+        setImageEditorOpen(true)
       } catch (err) {
         showNotification('Gagal mengompresi gambar.', 'error')
       }
@@ -136,7 +168,6 @@ function BerkasOffcanvas({
 
   const openCamera = () => {
     sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas)
-    sessionStorage.setItem('editorReturnPage', idSantri ? `/pendaftaran?nis=${idSantri}` : '/pendaftaran')
     setShowCameraScanner?.(true)
     onClose?.()
   }
@@ -145,7 +176,9 @@ function BerkasOffcanvas({
 
   const offcanvasTransition = { type: 'tween', duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }
 
-  return createPortal(
+  return (
+    <>
+      {createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -293,8 +326,8 @@ function BerkasOffcanvas({
                                 type="button"
                                 onClick={() => {
                                   sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas)
-                                  sessionStorage.setItem('editorReturnPage', idSantri ? `/pendaftaran?nis=${idSantri}` : '/pendaftaran')
-                                  navigate('/pendaftaran/editor', { state: { file: selectedFile } })
+                                  setImageFileForEditor(selectedFile)
+                                  setImageEditorOpen(true)
                                 }}
                                 className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
                               >
@@ -354,6 +387,15 @@ function BerkasOffcanvas({
       )}
     </AnimatePresence>,
     document.body
+      )}
+      <ImageEditorModal
+        isOpen={imageEditorOpen}
+        imageFile={imageFileForEditor}
+        onClose={closeImageEditor}
+        onSave={handleImageEditorSave}
+        zIndex={editorModalZ}
+      />
+    </>
   )
 }
 

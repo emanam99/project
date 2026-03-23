@@ -14,5 +14,5 @@ return function (\Slim\App $app): void {
         $group->post('/update', [SantriBerkasController::class, 'updateBerkas']);
         $group->get('/download', [SantriBerkasController::class, 'downloadBerkas']);
         $group->post('/link', [SantriBerkasController::class, 'linkBerkas']);
-    })->add(new RoleMiddleware(['admin_psb', 'petugas_psb', 'super_admin', 'santri']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['admin_psb', 'petugas_psb', 'super_admin', 'santri', 'tarbiyah']))->add(new AuthMiddleware());
 };

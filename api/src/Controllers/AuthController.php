@@ -8,7 +8,6 @@ use App\Auth\PasswordHelper;
 use App\Helpers\LoginSuspiciousHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\RoleHelper;
-use App\Helpers\ViewAsHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -125,9 +124,8 @@ class AuthController
             try {
                 $roleInfo = RoleHelper::getRoleInfoForToken($user['id']);
                 
-                // Ambil semua role keys user untuk multiple roles support
-                $allUserRoles = RoleHelper::getUserRoles($user['id']);
-                $allRoleKeys = array_column($allUserRoles, 'role_key');
+                // Semua role (unik, urutan stabil) — hak akses gabungan, tidak tergantung urutan di DB
+                $allRoleKeys = RoleHelper::getAllRoleKeysNormalizedForPengurus((int) $user['id']);
                 
                 // Log untuk debugging
                 error_log("AuthController::login - Role info retrieved: " . json_encode([
@@ -149,12 +147,15 @@ class AuthController
                     'role_label' => 'User',
                     'allowed_apps' => [],
                     'permissions' => [],
-                    'lembaga_id' => null
+                    'lembaga_id' => null,
+                    'lembaga_scope_all' => false,
+                    'lembaga_ids' => [],
                 ];
                 $allRoleKeys = ['user'];
             }
             
             // Generate JWT token dengan informasi role lengkap
+            $isRealSuperAdmin = RoleHelper::pengurusHasSuperAdminRole((int) $user['id']);
             $tokenPayload = [
                 'user_id' => $user['id'],
                 'user_name' => $user['nama'],
@@ -164,7 +165,10 @@ class AuthController
                 'all_roles' => $allRoleKeys ?? [], // Array semua role keys user
                 'allowed_apps' => $roleInfo['allowed_apps'] ?? [],
                 'permissions' => $roleInfo['permissions'] ?? [],
-                'lembaga_id' => $roleInfo['lembaga_id'] ?? null
+                'lembaga_id' => $roleInfo['lembaga_id'] ?? null,
+                'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
+                'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
+                'is_real_super_admin' => $isRealSuperAdmin,
             ];
 
             $token = $this->getJwt()->generateToken($tokenPayload);
@@ -200,7 +204,10 @@ class AuthController
                         'allowed_apps' => $allowedApps,
                         'permissions' => $roleInfo['permissions'] ?? [],
                         'lembaga_id' => $roleInfo['lembaga_id'] ?? null,
-                        'level' => $roleInfo['role_key'] ?? 'user'
+                        'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
+                        'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
+                        'level' => $roleInfo['role_key'] ?? 'user',
+                        'is_real_super_admin' => $isRealSuperAdmin,
                     ],
                     'redirect_url' => '/'
                 ]
@@ -240,43 +247,70 @@ class AuthController
 
             // Ambil user ID dari payload
             $userId = $payload['user_id'] ?? $payload['id'] ?? null;
-            
+            $payloadArr = is_array($payload) ? $payload : [];
+            $isSantriDaftar = RoleHelper::tokenIsSantriDaftarContext($payloadArr);
+
             if ($userId) {
-                // Refresh role info dari database untuk mendapatkan all_roles terbaru
-                try {
-                    $roleInfo = RoleHelper::getRoleInfoForToken($userId);
-                    $allUserRoles = RoleHelper::getUserRoles($userId);
-                    $allRoleKeys = array_column($allUserRoles, 'role_key');
-                    
-                    // Update payload dengan data terbaru
-                    $payload['role_key'] = $roleInfo['role_key'] ?? $payload['role_key'] ?? 'user';
-                    $payload['role_label'] = $roleInfo['role_label'] ?? $payload['role_label'] ?? 'User';
-                    $payload['all_roles'] = $allRoleKeys ?? [];
-                    $payload['allowed_apps'] = $roleInfo['allowed_apps'] ?? [];
-                    $payload['permissions'] = $roleInfo['permissions'] ?? [];
-                    $payload['lembaga_id'] = $roleInfo['lembaga_id'] ?? null;
-                } catch (\Exception $e) {
-                    error_log("Error refreshing role info in verify: " . $e->getMessage());
-                    // Continue with existing payload if refresh fails
-                }
-                // NIP dan id_pengurus dari tabel pengurus (user_id di token = pengurus.id untuk role pengurus)
-                try {
-                    $stmt = $this->getDb()->prepare("SELECT id, nip FROM pengurus WHERE id = ? LIMIT 1");
-                    $stmt->execute([$userId]);
-                    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-                    if ($row && !empty($row['id'])) {
-                        $payload['id_pengurus'] = (int) $row['id'];
-                        if (isset($row['nip']) && trim((string) $row['nip']) !== '') {
-                            $payload['pengurus'] = ['nip' => (string) $row['nip']];
-                        }
+                if ($isSantriDaftar) {
+                    // Konteks login NIK / aplikasi daftar: jangan refresh role sebagai pengurus (user_id = santri.id)
+                    $payload['is_real_super_admin'] = false;
+                    try {
+                        $sid = (int) $userId;
+                        $stmt = $this->getDb()->prepare('SELECT nis FROM santri WHERE id = ? LIMIT 1');
+                        $stmt->execute([$sid]);
+                        $sr = $stmt->fetch(\PDO::FETCH_ASSOC);
+                        $payload['nis'] = ($sr && isset($sr['nis']) && trim((string) $sr['nis']) !== '') ? (string) $sr['nis'] : null;
+                        $stmt2 = $this->getDb()->prepare('SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1');
+                        $stmt2->execute([$sid]);
+                        $rr = $stmt2->fetch(\PDO::FETCH_ASSOC);
+                        $payload['id_registrasi'] = ($rr && isset($rr['id'])) ? (int) $rr['id'] : null;
+                    } catch (\Exception $e) {
+                        error_log('AuthController::verify santri enrich: ' . $e->getMessage());
                     }
-                } catch (\Exception $e) {
-                    // ignore
+                } else {
+                    // Refresh role info dari database untuk mendapatkan all_roles terbaru
+                    try {
+                        $roleInfo = RoleHelper::getRoleInfoForToken((int) $userId);
+                        $allRoleKeys = RoleHelper::getAllRoleKeysNormalizedForPengurus((int) $userId);
+
+                        // Update payload dengan data terbaru
+                        $payload['role_key'] = $roleInfo['role_key'] ?? $payload['role_key'] ?? 'user';
+                        $payload['role_label'] = $roleInfo['role_label'] ?? $payload['role_label'] ?? 'User';
+                        $payload['all_roles'] = $allRoleKeys ?? [];
+                        $payload['allowed_apps'] = $roleInfo['allowed_apps'] ?? [];
+                        $payload['permissions'] = $roleInfo['permissions'] ?? [];
+                        $payload['lembaga_id'] = $roleInfo['lembaga_id'] ?? null;
+                        $payload['lembaga_scope_all'] = (bool) ($roleInfo['lembaga_scope_all'] ?? false);
+                        $payload['lembaga_ids'] = $roleInfo['lembaga_ids'] ?? [];
+                        $payload['is_real_super_admin'] = RoleHelper::pengurusHasSuperAdminRole((int) $userId);
+                    } catch (\Exception $e) {
+                        error_log("Error refreshing role info in verify: " . $e->getMessage());
+                        // Continue with existing payload if refresh fails
+                    }
+                    // NIP dan id_pengurus dari tabel pengurus (user_id di token = pengurus.id untuk role pengurus)
+                    try {
+                        $stmt = $this->getDb()->prepare("SELECT id, nip FROM pengurus WHERE id = ? LIMIT 1");
+                        $stmt->execute([$userId]);
+                        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                        if ($row && !empty($row['id'])) {
+                            $payload['id_pengurus'] = (int) $row['id'];
+                            if (isset($row['nip']) && trim((string) $row['nip']) !== '') {
+                                $payload['pengurus'] = ['nip' => (string) $row['nip']];
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        // ignore
+                    }
                 }
             }
 
-            // Super admin "coba sebagai": ganti role/lembaga/permissions dengan yang efektif
-            $payload = ViewAsHelper::mergePayloadWithViewAs($payload);
+            if (!isset($payload['is_real_super_admin']) && $userId && !$isSantriDaftar) {
+                try {
+                    $payload['is_real_super_admin'] = RoleHelper::pengurusHasSuperAdminRole((int) $userId);
+                } catch (\Exception $e) {
+                    $payload['is_real_super_admin'] = false;
+                }
+            }
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -289,51 +323,6 @@ class AuthController
                 'success' => false,
                 'message' => 'Terjadi kesalahan saat verifikasi token'
             ], 500);
-        }
-    }
-
-    /**
-     * POST /api/auth/view-as — Set atau clear "coba sebagai" role (hanya super_admin).
-     * Body: { role_key?: string|null, lembaga_id?: number|null }
-     * Jika role_key kosong/null = clear. Setelah set/clear, frontend harus panggil verify lagi.
-     */
-    public function setViewAs(Request $request, Response $response): Response
-    {
-        try {
-            $payload = $request->getAttribute('user');
-            if (!$payload || !is_array($payload)) {
-                return $this->jsonResponse($response, ['success' => false, 'message' => 'Unauthorized'], 401);
-            }
-            $roleKey = strtolower(trim($payload['role_key'] ?? $payload['user_role'] ?? ''));
-            if ($roleKey !== 'super_admin') {
-                return $this->jsonResponse($response, ['success' => false, 'message' => 'Hanya Super Admin yang dapat mengatur view as'], 403);
-            }
-            $pengurusId = (int) ($payload['user_id'] ?? $payload['id'] ?? 0);
-            if ($pengurusId <= 0) {
-                return $this->jsonResponse($response, ['success' => false, 'message' => 'User tidak valid'], 403);
-            }
-            $data = $request->getParsedBody() ?? [];
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id', 'username', 'role_key', 'nik']) : [];
-            $viewAsRole = isset($data['role_key']) ? trim((string) $data['role_key']) : null;
-            if ($viewAsRole === '') {
-                $viewAsRole = null;
-            }
-            $viewAsLembagaId = null;
-            if (isset($data['lembaga_id']) && $data['lembaga_id'] !== '' && $data['lembaga_id'] !== null) {
-                $viewAsLembagaId = (int) $data['lembaga_id'];
-            }
-            $ok = ViewAsHelper::setViewAs($pengurusId, $viewAsRole, $viewAsLembagaId);
-            if (!$ok && $viewAsRole !== null) {
-                return $this->jsonResponse($response, ['success' => false, 'message' => 'Role tidak valid'], 400);
-            }
-            return $this->jsonResponse($response, [
-                'success' => true,
-                'message' => $viewAsRole ? 'View as diset' : 'View as dikosongkan',
-                'data' => ['role_key' => $viewAsRole, 'lembaga_id' => $viewAsLembagaId]
-            ], 200);
-        } catch (\Exception $e) {
-            error_log("AuthController::setViewAs " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -387,7 +376,7 @@ class AuthController
             }
 
             // Query santri dari database berdasarkan NIK
-            $stmt = $this->getDb()->prepare("SELECT id, nama, nik, gender, tempat_lahir, tanggal_lahir FROM santri WHERE nik = ? LIMIT 1");
+            $stmt = $this->getDb()->prepare("SELECT id, nama, nik, nis, gender, tempat_lahir, tanggal_lahir FROM santri WHERE nik = ? LIMIT 1");
             $stmt->execute([$nik]);
             $santri = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -400,6 +389,7 @@ class AuthController
                     'id' => null, // Belum ada ID, akan dibuat saat save biodata
                     'nama' => '',
                     'nik' => $nik,
+                    'nis' => null,
                     'gender' => null,
                     'tempat_lahir' => null,
                     'tanggal_lahir' => null
@@ -460,12 +450,29 @@ class AuthController
 
             $redirectUrl = $showPilihanStatus ? '/pilihan-status' : '/dashboard';
 
+            $idRegistrasiLogin = null;
+            $nisLogin = isset($santri['nis']) && trim((string) $santri['nis']) !== '' ? trim((string) $santri['nis']) : null;
+            if (!$isNewSantri && !empty($santri['id'])) {
+                try {
+                    $stmtRegLogin = $this->getDb()->prepare('SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1');
+                    $stmtRegLogin->execute([(int) $santri['id']]);
+                    $rowRegLogin = $stmtRegLogin->fetch(\PDO::FETCH_ASSOC);
+                    if ($rowRegLogin && isset($rowRegLogin['id'])) {
+                        $idRegistrasiLogin = (int) $rowRegLogin['id'];
+                    }
+                } catch (\Throwable $e) {
+                    error_log('loginNik id_registrasi: ' . $e->getMessage());
+                }
+            }
+
             // Generate JWT token untuk santri (baik yang sudah ada maupun yang baru)
             // Untuk aplikasi pendaftaran, kita tidak perlu role seperti pengurus
             $tokenPayload = [
                 'user_id' => $santri['id'], // null untuk santri baru
                 'user_name' => $santri['nama'] ?: '',
                 'nik' => $santri['nik'],
+                'nis' => $nisLogin,
+                'id_registrasi' => $idRegistrasiLogin,
                 'role_key' => 'santri',
                 'role_label' => 'Santri',
                 'allowed_apps' => ['daftar'], // Aplikasi pendaftaran
@@ -485,6 +492,8 @@ class AuthController
                         'id' => $santri['id'], // null untuk santri baru
                         'nama' => $santri['nama'] ?: '',
                         'nik' => $santri['nik'],
+                        'nis' => $nisLogin,
+                        'id_registrasi' => $idRegistrasiLogin,
                         'gender' => $santri['gender'] ?? null,
                         'tempat_lahir' => $santri['tempat_lahir'] ?? null,
                         'tanggal_lahir' => $santri['tanggal_lahir'] ?? null,

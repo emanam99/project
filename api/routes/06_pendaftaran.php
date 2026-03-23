@@ -33,6 +33,7 @@ return function (\Slim\App $app): void {
         $group->post('/bulk-update-registrasi-detail', [PendaftaranController::class, 'bulkUpdateRegistrasiDetail']);
         $group->get('/get-transaksi', [PendaftaranController::class, 'getTransaksi']);
         $group->post('/delete-transaksi', [PendaftaranController::class, 'deleteTransaksi']);
+        $group->post('/update-transaksi', [PendaftaranController::class, 'updateTransaksiPsb']);
         $group->post('/create-payment-psb', [PendaftaranController::class, 'createPaymentPsb']);
         $group->post('/save-registrasi', [PendaftaranController::class, 'saveRegistrasi']);
         $group->post('/update-keterangan-status', [PendaftaranController::class, 'updateKeteranganStatus']);

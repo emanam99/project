@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { authAPI } from '../services/api'
+import { userHasSuperAdminAccess } from '../utils/roleAccess'
 
 // Helper function to decode JWT token
 const decodeJWT = (token) => {
@@ -22,7 +23,7 @@ const decodeJWT = (token) => {
 function normalizeUserFromPayload(payload) {
   if (!payload) return null
   const userId = payload.user_id || payload.id
-  return {
+  const base = {
     id: userId,
     users_id: payload.users_id != null ? Number(payload.users_id) : null,
     id_pengurus: payload.id_pengurus ?? (payload.user_id != null ? payload.user_id : null),
@@ -35,10 +36,15 @@ function normalizeUserFromPayload(payload) {
     allowed_apps: payload.allowed_apps || [],
     permissions: payload.permissions || [],
     lembaga_id: payload.lembaga_id ?? null,
+    lembaga_scope_all: payload.lembaga_scope_all === true,
+    lembaga_ids: Array.isArray(payload.lembaga_ids) ? payload.lembaga_ids.map((x) => String(x)) : [],
     level: (payload.role_key || payload.user_role || payload.level || 'user').toLowerCase(),
-    is_real_super_admin: payload.is_real_super_admin === true,
-    view_as_active: payload.view_as_active === true
+    is_real_super_admin: payload.is_real_super_admin === true
   }
+  if (!base.is_real_super_admin) {
+    base.is_real_super_admin = userHasSuperAdminAccess(base)
+  }
+  return base
 }
 
 // Batas umur token login: 5 jam dari terakhir digunakan (sliding). Lewat = harus login lagi.
@@ -62,9 +68,17 @@ export const useAuthStore = create((set, get) => ({
     localStorage.setItem('auth_token', token)
     const now = Date.now()
     localStorage.setItem('auth_last_used_at', String(now))
-    try { localStorage.setItem('auth_ever_logged_in', '1') } catch (_) {}
+    try {
+      localStorage.setItem('auth_ever_logged_in', '1')
+    } catch {
+      /* localStorage tidak tersedia */
+    }
     if (refreshToken != null && refreshToken !== '') {
-      try { localStorage.setItem('refresh_token', refreshToken) } catch (_) {}
+      try {
+        localStorage.setItem('refresh_token', refreshToken)
+      } catch {
+        /* localStorage tidak tersedia */
+      }
     }
     if (user) {
       const normalizedUser = normalizeUserFromPayload({
@@ -78,10 +92,12 @@ export const useAuthStore = create((set, get) => ({
         all_roles: user.all_roles,
         allowed_apps: user.allowed_apps,
         permissions: user.permissions,
-        lembaga_id: user.lembaga_id
+        lembaga_id: user.lembaga_id,
+        lembaga_scope_all: user.lembaga_scope_all,
+        lembaga_ids: user.lembaga_ids
       })
       if (!normalizedUser.is_real_super_admin) {
-        normalizedUser.is_real_super_admin = (user.role_key || user.level || '').toLowerCase() === 'super_admin'
+        normalizedUser.is_real_super_admin = userHasSuperAdminAccess(normalizedUser)
       }
       localStorage.setItem('user_data', JSON.stringify(normalizedUser))
       set({ token, user: normalizedUser, isAuthenticated: true })
@@ -98,55 +114,19 @@ export const useAuthStore = create((set, get) => ({
     set({ token: null, user: null, isAuthenticated: false })
   },
 
-  /** Super admin: set "coba sebagai" role + lembaga di backend, lalu refresh user dari verify. */
-  setViewAsRole: async (roleKey, lembagaId = null) => {
-    try {
-      await authAPI.setViewAs(roleKey || null, lembagaId)
-      return get().refreshUserData()
-    } catch (err) {
-      console.error('setViewAsRole error:', err)
-      return false
-    }
-  },
-
-  /** Set hanya lembaga saat sudah dalam mode view-as (role tetap, lembaga diubah). */
-  setViewAsLembagaId: async (lembagaId) => {
-    const { user } = get()
-    const roleKey = user?.view_as_active ? user?.role_key : null
-    if (!roleKey) return false
-    try {
-      await authAPI.setViewAs(roleKey, lembagaId)
-      return get().refreshUserData()
-    } catch (err) {
-      console.error('setViewAsLembagaId error:', err)
-      return false
-    }
-  },
-
-  /** Super admin: clear "coba sebagai" di backend, lalu refresh user. */
-  clearViewAsRole: async () => {
-    try {
-      await authAPI.setViewAs(null)
-      return get().refreshUserData()
-    } catch (err) {
-      console.error('clearViewAsRole error:', err)
-      return false
-    }
-  },
-
-  /** Role efektif (dari backend; sudah termasuk "view as" jika aktif). */
+  /** Role utama dari token (bisa "multi_role" jika banyak role — jangan dipakai tunggal untuk izin menu). */
   getEffectiveRole: () => {
     const { user } = get()
     return (user?.role_key || user?.level || '').toLowerCase() || null
   },
 
-  /** True jika user asli adalah super_admin (backend mengirim is_real_super_admin). */
+  /** True jika user punya role super_admin (gabungan all_roles / flag backend). */
   isRealSuperAdmin: () => {
     const { user } = get()
-    return user?.is_real_super_admin === true
+    return userHasSuperAdminAccess(user)
   },
 
-  /** Lembaga ID efektif (dari backend; sudah termasuk "view as" jika aktif). */
+  /** Lembaga ID dari token (gabungan scope dari semua role). */
   getEffectiveLembagaId: () => {
     const { user } = get()
     return user?.lembaga_id ?? null

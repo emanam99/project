@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\PengurusAdminIdHelper;
 use App\Helpers\SantriHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -417,6 +418,19 @@ class UwabaController
                 ], 400);
             }
             
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            $id_admin = PengurusAdminIdHelper::resolveEffectivePengurusId($uArr, $paymentData['id_admin'] ?? 0);
+            if ($id_admin === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: tidak dapat menentukan admin pengurus.',
+                ], 403);
+            }
+            $admin = PengurusAdminIdHelper::fetchPengurusNama($this->db, $id_admin) ?? trim((string) ($paymentData['admin'] ?? ''));
+            if ($admin === '') {
+                $admin = 'Admin';
+            }
+
             $this->db->beginTransaction();
             
             // 1. Simpan data pembayaran ke uwaba___bayar (id_santri dari input bisa id atau nis)
@@ -428,8 +442,6 @@ class UwabaController
             $tahun_ajaran = $paymentData['tahun_ajaran'];
             $nominal = floatval($paymentData['nominal']);
             $via = $paymentData['via'];
-            $admin = $paymentData['admin'];
-            $id_admin = $paymentData['id_admin'];
             $hijriyah = $paymentData['hijriyah'];
             $waktu = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
             
@@ -565,9 +577,26 @@ class UwabaController
             $stmtOld = $this->db->prepare("SELECT * FROM uwaba___bayar WHERE id = ?");
             $stmtOld->execute([$id_bayar]);
             $oldBayar = $stmtOld->fetch(\PDO::FETCH_ASSOC);
-            $user = $request->getAttribute('user');
-            $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
-            
+            if (!$oldBayar) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Data pembayaran tidak ditemukan atau sudah dihapus.',
+                ], 404);
+            }
+
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $oldBayar['id_admin'] ?? null)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat menghapus.',
+                ], 403);
+            }
+
+            $idAdmin = isset($uArr['user_id']) ? (int) $uArr['user_id'] : (int) ($uArr['id'] ?? 0);
+            if ($idAdmin <= 0) {
+                $idAdmin = (int) ($oldBayar['id_admin'] ?? 0);
+            }
+
             // Update kolom admin sebelum hapus
             try {
                 $stmtUpdate = $this->db->prepare('UPDATE uwaba___bayar SET admin = ? WHERE id = ?');
@@ -580,8 +609,8 @@ class UwabaController
             $stmt = $this->db->prepare('DELETE FROM uwaba___bayar WHERE id = ?');
             $stmt->execute([$id_bayar]);
             $deleted = $stmt->rowCount();
-            if ($deleted > 0 && $oldBayar) {
-                UserAktivitasLogger::log(null, $idAdmin, UserAktivitasLogger::ACTION_DELETE, 'uwaba___bayar', $id_bayar, $oldBayar, null, $request);
+            if ($deleted > 0) {
+                UserAktivitasLogger::log(null, $idAdmin > 0 ? $idAdmin : null, UserAktivitasLogger::ACTION_DELETE, 'uwaba___bayar', $id_bayar, $oldBayar, null, $request);
             }
             
             if ($deleted > 0) {
@@ -628,11 +657,20 @@ class UwabaController
             if ($id_santri === null) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Santri tidak ditemukan.'], 404);
             }
+            $id_admin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
+            if ($id_admin === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: tidak dapat menentukan admin pengurus.',
+                ], 403);
+            }
+            $admin = PengurusAdminIdHelper::fetchPengurusNama($this->db, $id_admin) ?? trim((string) ($input['admin'] ?? ''));
+            if ($admin === '') {
+                $admin = 'Admin';
+            }
             $tahun_ajaran = $input['tahun_ajaran'];
             $nominal = floatval($input['nominal']);
             $via = $input['via'];
-            $admin = $input['admin'];
-            $id_admin = $input['id_admin'];
             $hijriyah = $input['hijriyah'];
             $waktu = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
             

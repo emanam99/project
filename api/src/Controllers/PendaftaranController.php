@@ -8,6 +8,8 @@ use App\Helpers\SantriKamarHelper;
 use App\Helpers\SantriRombelHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
+use App\Helpers\PengurusAdminIdHelper;
+use App\Helpers\RoleHelper;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -522,10 +524,19 @@ class PendaftaranController
             $idSantri = $input['id_santri'];
             $idPendaftaran = $input['id_pendaftaran'];
             $amount = (float)$input['amount'];
-            $admin = $input['admin'];
-            $idAdmin = $input['id_admin'];
             $hijriyah = $input['hijriyah'];
             $via = $input['via'];
+            $idAdmin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
+            if ($idAdmin === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: tidak dapat menentukan admin pengurus.',
+                ], 403);
+            }
+            $admin = PengurusAdminIdHelper::fetchPengurusNama($this->db, $idAdmin) ?? trim((string) ($input['admin'] ?? ''));
+            if ($admin === '') {
+                $admin = 'Admin';
+            }
 
             $this->db->beginTransaction();
 
@@ -604,7 +615,7 @@ class PendaftaranController
 
             try {
                 // Cek apakah data pembayaran ada
-                $sqlSelectBayar = "SELECT id, nominal, id_pendaftaran FROM pendaftaran___bayar WHERE id = ?";
+                $sqlSelectBayar = "SELECT id, nominal, id_admin, id_pendaftaran FROM pendaftaran___bayar WHERE id = ?";
                 $stmtSelect = $this->db->prepare($sqlSelectBayar);
                 $stmtSelect->execute([$idBayar]);
                 $payment = $stmtSelect->fetch(\PDO::FETCH_ASSOC);
@@ -615,6 +626,15 @@ class PendaftaranController
                         'success' => false,
                         'message' => "Data pembayaran dengan ID {$idBayar} tidak ditemukan."
                     ], 404);
+                }
+
+                $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+                if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $payment['id_admin'] ?? null)) {
+                    $this->db->rollBack();
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat menghapus.',
+                    ], 403);
                 }
 
                 // Hapus pembayaran dari tabel riwayat
@@ -677,7 +697,8 @@ class PendaftaranController
             $tahunAjaran = $input['tahun_ajaran'] ?? null;
             $lembaga = TextSanitizer::cleanTextOrNull($input['lembaga'] ?? null);
             $admin = TextSanitizer::cleanTextOrNull($input['admin'] ?? null);
-            $idAdmin = $input['id_admin'] ?? null;
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            $idAdmin = PengurusAdminIdHelper::resolveEffectivePengurusId($uArr, $input['id_admin'] ?? 0);
             $hijriyah = $input['hijriyah'] ?? null;
             $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
             
@@ -715,13 +736,33 @@ class PendaftaranController
             }
             
             $id = $input['id'];
+            $stmtExist = $this->db->prepare('SELECT id_admin FROM pendaftaran WHERE id = ?');
+            $stmtExist->execute([$id]);
+            $existingPendaftaran = $stmtExist->fetch(\PDO::FETCH_ASSOC);
+            if (!$existingPendaftaran) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Data tidak ditemukan.',
+                ], 404);
+            }
+
             $keterangan1 = TextSanitizer::cleanText($input['keterangan_1'] ?? '');
             $keterangan2 = TextSanitizer::cleanTextOrNull($input['keterangan_2'] ?? null);
             $total = (float)$input['total'];
             $tahunAjaran = $input['tahun_ajaran'] ?? null;
             $lembaga = TextSanitizer::cleanTextOrNull($input['lembaga'] ?? null);
             $admin = TextSanitizer::cleanTextOrNull($input['admin'] ?? null);
-            $idAdmin = $input['id_admin'] ?? null;
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            $idResolved = PengurusAdminIdHelper::resolveEffectivePengurusId($uArr, $input['id_admin'] ?? 0);
+            if ($idResolved !== null) {
+                $idAdmin = $idResolved;
+            } else {
+                $prev = $existingPendaftaran['id_admin'] ?? null;
+                $idAdmin = ($prev !== null && $prev !== '') ? (int) $prev : null;
+                if ($idAdmin === 0) {
+                    $idAdmin = null;
+                }
+            }
             $hijriyah = TextSanitizer::cleanTextOrNull($input['hijriyah'] ?? null);
             
             $sqlUpdate = "UPDATE pendaftaran SET keterangan_1=?, keterangan_2=?, total=?, tahun_ajaran=?, lembaga=?, admin=?, id_admin=?, hijriyah=? WHERE id=?";
@@ -758,7 +799,25 @@ class PendaftaranController
             }
             
             $id = $input['id'];
-            
+
+            $stmtOld = $this->db->prepare('SELECT * FROM pendaftaran WHERE id = ?');
+            $stmtOld->execute([$id]);
+            $oldRow = $stmtOld->fetch(\PDO::FETCH_ASSOC);
+            if (!$oldRow) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Data tidak ditemukan.',
+                ], 404);
+            }
+
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $oldRow['id_admin'] ?? null)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat menghapus.',
+                ], 403);
+            }
+
             $sqlDelete = "DELETE FROM pendaftaran WHERE id=?";
             $stmtDelete = $this->db->prepare($sqlDelete);
             $stmtDelete->execute([$id]);
@@ -826,7 +885,6 @@ class PendaftaranController
             $nama = TextSanitizer::cleanText($input['nama'] ?? '');
             $nik = $input['nik'] ?? null;
             $admin = TextSanitizer::cleanTextOrNull($input['admin'] ?? null);
-            $idAdmin = isset($input['id_admin']) && $input['id_admin'] !== null && $input['id_admin'] !== '' ? (int)$input['id_admin'] : null;
 
             // Cek apakah NIK sudah terdaftar
             if ($nik) {
@@ -898,7 +956,7 @@ class PendaftaranController
     {
         try {
             $user = $request->getAttribute('user');
-            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
+            $userArr = is_array($user) ? $user : [];
             $queryParams = $request->getQueryParams();
             $nik = $queryParams['nik'] ?? null;
 
@@ -909,7 +967,7 @@ class PendaftaranController
                 ], 400);
             }
 
-            if ($roleKey === 'santri') {
+            if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
                 $tokenNik = $user['nik'] ?? null;
                 if ($tokenNik === null || trim((string) $nik) !== trim((string) $tokenNik)) {
                     return $this->jsonResponse($response, [
@@ -1016,7 +1074,8 @@ class PendaftaranController
             $appSource = $request->getHeaderLine('X-App-Source') ?: ($input['app_source'] ?? 'daftar');
             $appSource = strtolower(trim($appSource)) === 'uwaba' ? 'uwaba' : 'daftar';
             $user = $request->getAttribute('user');
-            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
+            $userArr = is_array($user) ? $user : [];
+            $santriOnlyBiodata = !RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr);
             $idPengurusPengirim = null;
             if ($user !== null && $appSource === 'uwaba') {
                 $idPengurusPengirim = (int) ($user['id_pengurus'] ?? $user['pengurus_id'] ?? $user['id'] ?? 0) ?: null;
@@ -1025,13 +1084,19 @@ class PendaftaranController
 
             // Pastikan semua teks dari pendaftar bersih (UTF-8 valid, tanpa karakter font/encoding aneh)
             $input = TextSanitizer::sanitizeStringValues($input, []);
+            // psb___registrasi.id_admin → FK ke pengurus.id. Token santri (daftar) memuat user_id = id santri;
+            // resolveEffectivePengurusId akan mengembalikan itu dan melanggar FK — hanya staff yang boleh set id_admin.
+            $idAdminForReg = null;
+            if (!$santriOnlyBiodata) {
+                $idAdminForReg = PengurusAdminIdHelper::resolveEffectivePengurusId($userArr, $input['id_admin'] ?? 0);
+            }
 
             $id = null;
             $isNewSantri = false;
 
             $idFromInputRaw = $input['id'] ?? null;
             $allowedIdForSantri = null;
-            if ($roleKey === 'santri') {
+            if ($santriOnlyBiodata) {
                 $allowedIdForSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
             }
 
@@ -1046,8 +1111,8 @@ class PendaftaranController
                 $id = $resolvedId;
                 $isNewSantri = false;
 
-                // Keamanan: role santri hanya boleh mengubah biodata sendiri
-                if ($roleKey === 'santri' && $allowedIdForSantri !== null) {
+                // Keamanan: konteks santri-app hanya boleh mengubah biodata sendiri
+                if ($santriOnlyBiodata && $allowedIdForSantri !== null) {
                     $allowedResolved = SantriHelper::resolveId($this->db, $allowedIdForSantri);
                     if ($allowedResolved === null || (int) $id !== (int) $allowedResolved) {
                         return $this->jsonResponse($response, [
@@ -1254,7 +1319,7 @@ class PendaftaranController
                     $stmt = $this->db->prepare($sql);
                     $stmt->execute($params);
                     
-                    $this->saveOrUpdateRegistrasi($id, $input, $input['id_admin'] ?? null);
+                    $idRegistrasiSaved = $this->saveOrUpdateRegistrasi($id, $input, $idAdminForReg);
                     
                     $this->appendSantriRombelRiwayatIfNeeded($id, $input, $request);
                     $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, $oldSantri);
@@ -1269,7 +1334,8 @@ class PendaftaranController
                     $actorEntityType = null;
                     $actorEntityId = null;
                     if ($user !== null) {
-                        if (isset($user['role_key']) && strtolower((string) $user['role_key']) === 'santri') {
+                        $uArr = is_array($user) ? $user : [];
+                        if (RoleHelper::tokenIsSantriDaftarContext($uArr)) {
                             $santriIdActor = (int) $id;
                             $actorEntityType = UserAktivitasLogger::ACTOR_SANTRI;
                             $actorEntityId = (int) $id;
@@ -1337,7 +1403,8 @@ class PendaftaranController
                         'message' => 'Biodata pendaftaran berhasil diupdate',
                         'data' => [
                             'id' => $id,
-                            'nis' => $nisDisplay !== null ? $nisDisplay : (string) $id
+                            'nis' => $nisDisplay !== null ? $nisDisplay : (string) $id,
+                            'id_registrasi' => $idRegistrasiSaved,
                         ]
                     ], 200);
                 } else {
@@ -1404,7 +1471,7 @@ class PendaftaranController
                         throw new \Exception('Gagal mendapatkan ID santri dari database.');
                     }
                     
-                    $this->saveOrUpdateRegistrasi($id, $input, $input['id_admin'] ?? null);
+                    $idRegistrasiSaved = $this->saveOrUpdateRegistrasi($id, $input, $idAdminForReg);
                     
                     $this->appendSantriRombelRiwayatIfNeeded($id, $input, $request);
                     $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, null);
@@ -1419,7 +1486,8 @@ class PendaftaranController
                     $actorEntityType = null;
                     $actorEntityId = null;
                     if ($user !== null) {
-                        if (isset($user['role_key']) && strtolower((string) $user['role_key']) === 'santri') {
+                        $uArr = is_array($user) ? $user : [];
+                        if (RoleHelper::tokenIsSantriDaftarContext($uArr)) {
                             $santriIdActor = $id;
                             $actorEntityType = UserAktivitasLogger::ACTOR_SANTRI;
                             $actorEntityId = (int) $id;
@@ -1503,7 +1571,8 @@ class PendaftaranController
                         'data' => [
                             'id' => $id,
                             'nis' => $nis,
-                            'is_new' => $isNewSantri
+                            'is_new' => $isNewSantri,
+                            'id_registrasi' => $idRegistrasiSaved,
                         ]
                     ], 200);
                 }
@@ -1679,22 +1748,37 @@ class PendaftaranController
         return $fallback;
     }
 
+    /** @param mixed $v */
+    private function registrasiDbStringOrNull($v): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+        $t = trim((string) $v);
+
+        return $t === '' ? null : $t;
+    }
+
     /**
-     * Helper function untuk menyimpan atau update data ke tabel psb___registrasi
-     * Dipanggil dari saveBiodata untuk menyimpan data registrasi sekaligus
+     * Simpan / update psb___registrasi. Update memakai id_registrasi dari klien jika valid untuk id_santri ini,
+     * jika tidak ada / tidak valid pakai baris terakhir santri, atau INSERT.
+     *
+     * @return int|null PK psb___registrasi, atau null jika tabel tidak ada
      */
-    private function saveOrUpdateRegistrasi($idSantri, $input, $idAdmin = null)
+    private function saveOrUpdateRegistrasi($idSantri, $input, $idAdmin = null): ?int
     {
         // Cek apakah tabel psb___registrasi ada
         try {
             $tableCheck = $this->db->query("SHOW TABLES LIKE 'psb___registrasi'");
             if ($tableCheck->rowCount() === 0) {
                 error_log("Tabel psb___registrasi tidak ditemukan, skip save registrasi");
-                return; // Skip jika tabel tidak ada
+
+                return null; // Skip jika tabel tidak ada
             }
         } catch (\Exception $e) {
             error_log("Error checking table psb___registrasi: " . $e->getMessage());
-            return; // Skip jika error
+
+            return null; // Skip jika error
         }
 
         // Field yang bisa disimpan ke psb___registrasi
@@ -1732,126 +1816,112 @@ class PendaftaranController
         $tahunHijriyah = $input['tahun_hijriyah'] ?? null;
         $tahunMasehi = $input['tahun_masehi'] ?? null;
 
-        try {
-            // Cek apakah data registrasi sudah ada berdasarkan kombinasi id_santri + tahun_hijriyah + tahun_masehi
-            // Sesuai dengan unique constraint yang ada di tabel
-            if ($tahunHijriyah !== null && $tahunHijriyah !== '' && $tahunMasehi !== null && $tahunMasehi !== '') {
-                // Jika tahun hijriyah dan masehi ada, cek berdasarkan kombinasi 3 kolom
-                $stmtCheck = $this->db->prepare("SELECT id FROM psb___registrasi WHERE id_santri = ? AND tahun_hijriyah = ? AND tahun_masehi = ?");
-                $stmtCheck->execute([$idSantri, $tahunHijriyah, $tahunMasehi]);
-            } else {
-                // Jika tahun tidak ada, cek hanya berdasarkan id_santri (untuk backward compatibility)
-                // Tapi sebaiknya update jika ada untuk menambahkan tahun ajaran
-                $stmtCheck = $this->db->prepare("SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1");
-                $stmtCheck->execute([$idSantri]);
+        $idSantriInt = (int) $idSantri;
+        $targetRegId = null;
+        $idRegInput = isset($input['id_registrasi']) ? (int) $input['id_registrasi'] : 0;
+        if ($idRegInput > 0) {
+            $stmtOwn = $this->db->prepare('SELECT id, id_santri FROM psb___registrasi WHERE id = ? LIMIT 1');
+            $stmtOwn->execute([$idRegInput]);
+            $own = $stmtOwn->fetch(\PDO::FETCH_ASSOC);
+            if ($own && (int) $own['id_santri'] === $idSantriInt) {
+                $targetRegId = (int) $own['id'];
             }
-            $exists = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
-
-            $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
-
-            if ($exists) {
-                // Ambil nilai saat ini agar jika input kosong kita tidak timpa dengan null (penting untuk notif WA)
-                $currentRow = null;
-                try {
-                    $stmtCurrent = $this->db->prepare("SELECT status_pendaftar, daftar_formal, daftar_diniyah, status_murid FROM psb___registrasi WHERE id = ? LIMIT 1");
-                    $stmtCurrent->execute([$exists['id']]);
-                    $currentRow = $stmtCurrent->fetch(\PDO::FETCH_ASSOC);
-                } catch (\Throwable $e) {
-                    // ignore
-                }
-                $cur = $currentRow ?: [];
-                $statusPendaftarUse = (isset($statusPendaftar) && $statusPendaftar !== '' && trim((string) $statusPendaftar) !== '') ? $statusPendaftar : ($cur['status_pendaftar'] ?? null);
-                $daftarFormalUse = (isset($daftarFormal) && $daftarFormal !== '' && trim((string) $daftarFormal) !== '') ? $daftarFormal : ($cur['daftar_formal'] ?? null);
-                $daftarDiniyahUse = (isset($daftarDiniyah) && $daftarDiniyah !== '' && trim((string) $daftarDiniyah) !== '') ? $daftarDiniyah : ($cur['daftar_diniyah'] ?? null);
-                $statusMuridUse = (isset($statusMurid) && $statusMurid !== '' && trim((string) $statusMurid) !== '') ? $statusMurid : ($cur['status_murid'] ?? null);
-
-                // Update existing registrasi berdasarkan id yang ditemukan (tanggal_biodata_simpan dicatat setiap simpan biodata)
-                $sql = "UPDATE psb___registrasi SET 
-                        status_pendaftar = ?, keterangan_status = ?, daftar_diniyah = ?, daftar_formal = ?, status_murid = ?, prodi = ?, gelombang = ?, status_santri = ?,
-                        gender = ?,
-                        madrasah = ?, nama_madrasah = ?, alamat_madrasah = ?, lulus_madrasah = ?,
-                        sekolah = ?, nama_sekolah = ?, alamat_sekolah = ?, lulus_sekolah = ?,
-                        npsn = ?, nsm = ?, jurusan = ?, program_sekolah = ?,
-                        tahun_hijriyah = ?, tahun_masehi = ?,
-                        id_admin = ?, tanggal_update = ?, tanggal_biodata_simpan = COALESCE(tanggal_biodata_simpan, ?) 
-                        WHERE id = ?";
-                $stmt = $this->db->prepare($sql);
-                $stmt->execute([
-                    $statusPendaftarUse === '' ? null : $statusPendaftarUse,
-                    $keteranganStatus === '' ? null : $keteranganStatus,
-                    $daftarDiniyahUse === '' ? null : $daftarDiniyahUse,
-                    $daftarFormalUse === '' ? null : $daftarFormalUse,
-                    $statusMuridUse === '' ? null : $statusMuridUse,
-                    $prodi === '' ? null : $prodi,
-                    $gelombang === '' ? null : $gelombang,
-                    $statusSantri === '' ? null : $statusSantri,
-                    $gender === '' ? null : $gender,
-                    $madrasah === '' ? null : $madrasah,
-                    $namaMadrasah === '' ? null : $namaMadrasah,
-                    $alamatMadrasah === '' ? null : $alamatMadrasah,
-                    $lulusMadrasah === '' ? null : $lulusMadrasah,
-                    $sekolah === '' ? null : $sekolah,
-                    $namaSekolah === '' ? null : $namaSekolah,
-                    $alamatSekolah === '' ? null : $alamatSekolah,
-                    $lulusSekolah === '' ? null : $lulusSekolah,
-                    $npsn === '' ? null : $npsn,
-                    $nsm === '' ? null : $nsm,
-                    $jurusan === '' ? null : $jurusan,
-                    $programSekolah === '' ? null : $programSekolah,
-                    $tahunHijriyah === '' ? null : $tahunHijriyah,
-                    $tahunMasehi === '' ? null : $tahunMasehi,
-                    $idAdmin,
-                    $waktuIndonesia,
-                    $waktuIndonesia,
-                    $exists['id']
-                ]);
-            } else {
-                // Insert new registrasi (tanggal_biodata_simpan dicatat saat insert)
-                    $sql = "INSERT INTO psb___registrasi 
-                            (id_santri, status_pendaftar, keterangan_status, daftar_diniyah, daftar_formal, status_murid, prodi, gelombang, status_santri,
-                             gender,
-                             madrasah, nama_madrasah, alamat_madrasah, lulus_madrasah,
-                             sekolah, nama_sekolah, alamat_sekolah, lulus_sekolah,
-                             npsn, nsm, jurusan, program_sekolah,
-                             tahun_hijriyah, tahun_masehi,
-                             id_admin, tanggal_dibuat, tanggal_biodata_simpan) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                    $stmt = $this->db->prepare($sql);
-                    $stmt->execute([
-                        $idSantri,
-                        $statusPendaftar === '' ? null : $statusPendaftar,
-                        $keteranganStatus === '' ? null : $keteranganStatus,
-                        $daftarDiniyah === '' ? null : $daftarDiniyah,
-                        $daftarFormal === '' ? null : $daftarFormal,
-                        $statusMurid === '' ? null : $statusMurid,
-                        $prodi === '' ? null : $prodi,
-                        $gelombang === '' ? null : $gelombang,
-                        $statusSantri === '' ? null : $statusSantri,
-                    $gender === '' ? null : $gender,
-                    $madrasah === '' ? null : $madrasah,
-                    $namaMadrasah === '' ? null : $namaMadrasah,
-                    $alamatMadrasah === '' ? null : $alamatMadrasah,
-                    $lulusMadrasah === '' ? null : $lulusMadrasah,
-                    $sekolah === '' ? null : $sekolah,
-                    $namaSekolah === '' ? null : $namaSekolah,
-                    $alamatSekolah === '' ? null : $alamatSekolah,
-                    $lulusSekolah === '' ? null : $lulusSekolah,
-                    $npsn === '' ? null : $npsn,
-                    $nsm === '' ? null : $nsm,
-                    $jurusan === '' ? null : $jurusan,
-                    $programSekolah === '' ? null : $programSekolah,
-                    $tahunHijriyah === '' ? null : $tahunHijriyah,
-                    $tahunMasehi === '' ? null : $tahunMasehi,
-                    $idAdmin,
-                    $waktuIndonesia,
-                    $waktuIndonesia
-                ]);
-            }
-        } catch (\Exception $e) {
-            error_log("Error saving registrasi in saveBiodata: " . $e->getMessage());
-            // Jangan throw error, biarkan proses save biodata tetap berhasil
-            // Registrasi bisa disimpan nanti melalui endpoint save-registrasi terpisah
         }
+        if ($targetRegId === null) {
+            $stmtCheck = $this->db->prepare('SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1');
+            $stmtCheck->execute([$idSantriInt]);
+            $exists = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
+            if ($exists) {
+                $targetRegId = (int) $exists['id'];
+            }
+        }
+
+        $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
+
+        if ($targetRegId !== null) {
+            $sql = "UPDATE psb___registrasi SET 
+                    status_pendaftar = ?, keterangan_status = ?, daftar_diniyah = ?, daftar_formal = ?, status_murid = ?, prodi = ?, gelombang = ?, status_santri = ?,
+                    gender = ?,
+                    madrasah = ?, nama_madrasah = ?, alamat_madrasah = ?, lulus_madrasah = ?,
+                    sekolah = ?, nama_sekolah = ?, alamat_sekolah = ?, lulus_sekolah = ?,
+                    npsn = ?, nsm = ?, jurusan = ?, program_sekolah = ?,
+                    tahun_hijriyah = ?, tahun_masehi = ?,
+                    id_admin = ?, tanggal_update = ?, tanggal_biodata_simpan = COALESCE(tanggal_biodata_simpan, ?) 
+                    WHERE id = ?";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                $this->registrasiDbStringOrNull($statusPendaftar),
+                $this->registrasiDbStringOrNull($keteranganStatus) ?? 'Belum Upload',
+                $this->registrasiDbStringOrNull($daftarDiniyah),
+                $this->registrasiDbStringOrNull($daftarFormal),
+                $this->registrasiDbStringOrNull($statusMurid),
+                $this->registrasiDbStringOrNull($prodi),
+                $this->registrasiDbStringOrNull($gelombang),
+                $this->registrasiDbStringOrNull($statusSantri),
+                $this->registrasiDbStringOrNull($gender),
+                $this->registrasiDbStringOrNull($madrasah),
+                $this->registrasiDbStringOrNull($namaMadrasah),
+                $this->registrasiDbStringOrNull($alamatMadrasah),
+                $this->registrasiDbStringOrNull($lulusMadrasah),
+                $this->registrasiDbStringOrNull($sekolah),
+                $this->registrasiDbStringOrNull($namaSekolah),
+                $this->registrasiDbStringOrNull($alamatSekolah),
+                $this->registrasiDbStringOrNull($lulusSekolah),
+                $this->registrasiDbStringOrNull($npsn),
+                $this->registrasiDbStringOrNull($nsm),
+                $this->registrasiDbStringOrNull($jurusan),
+                $this->registrasiDbStringOrNull($programSekolah),
+                $this->registrasiDbStringOrNull($tahunHijriyah),
+                $this->registrasiDbStringOrNull($tahunMasehi),
+                $idAdmin,
+                $waktuIndonesia,
+                $waktuIndonesia,
+                $targetRegId,
+            ]);
+
+            return $targetRegId;
+        }
+        $sql = "INSERT INTO psb___registrasi 
+                    (id_santri, status_pendaftar, keterangan_status, daftar_diniyah, daftar_formal, status_murid, prodi, gelombang, status_santri,
+                     gender,
+                     madrasah, nama_madrasah, alamat_madrasah, lulus_madrasah,
+                     sekolah, nama_sekolah, alamat_sekolah, lulus_sekolah,
+                     npsn, nsm, jurusan, program_sekolah,
+                     tahun_hijriyah, tahun_masehi,
+                     id_admin, tanggal_dibuat, tanggal_biodata_simpan) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                (int) $idSantri,
+                $this->registrasiDbStringOrNull($statusPendaftar),
+                $this->registrasiDbStringOrNull($keteranganStatus) ?? 'Belum Upload',
+                $this->registrasiDbStringOrNull($daftarDiniyah),
+                $this->registrasiDbStringOrNull($daftarFormal),
+                $this->registrasiDbStringOrNull($statusMurid),
+                $this->registrasiDbStringOrNull($prodi),
+                $this->registrasiDbStringOrNull($gelombang),
+                $this->registrasiDbStringOrNull($statusSantri),
+                $this->registrasiDbStringOrNull($gender),
+                $this->registrasiDbStringOrNull($madrasah),
+                $this->registrasiDbStringOrNull($namaMadrasah),
+                $this->registrasiDbStringOrNull($alamatMadrasah),
+                $this->registrasiDbStringOrNull($lulusMadrasah),
+                $this->registrasiDbStringOrNull($sekolah),
+                $this->registrasiDbStringOrNull($namaSekolah),
+                $this->registrasiDbStringOrNull($alamatSekolah),
+                $this->registrasiDbStringOrNull($lulusSekolah),
+                $this->registrasiDbStringOrNull($npsn),
+                $this->registrasiDbStringOrNull($nsm),
+                $this->registrasiDbStringOrNull($jurusan),
+                $this->registrasiDbStringOrNull($programSekolah),
+                $this->registrasiDbStringOrNull($tahunHijriyah),
+                $this->registrasiDbStringOrNull($tahunMasehi),
+                $idAdmin,
+                $waktuIndonesia,
+                $waktuIndonesia,
+            ]);
+
+        return (int) $this->db->lastInsertId();
     }
 
     /**
@@ -1901,8 +1971,9 @@ class PendaftaranController
             $nsm = TextSanitizer::cleanTextOrNull($input['nsm'] ?? null);
             $jurusan = TextSanitizer::cleanTextOrNull($input['jurusan'] ?? null);
             $programSekolah = TextSanitizer::cleanTextOrNull($input['program_sekolah'] ?? null);
-            
-            $idAdmin = isset($input['id_admin']) && $input['id_admin'] !== null && $input['id_admin'] !== '' ? (int)$input['id_admin'] : null;
+
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            $idResolved = PengurusAdminIdHelper::resolveEffectivePengurusId($uArr, $input['id_admin'] ?? 0);
             
             // Flag untuk auto-assign items (default: true untuk insert baru, false untuk update)
             $autoAssignItems = isset($input['auto_assign_items']) ? (bool)$input['auto_assign_items'] : null;
@@ -1961,6 +2032,11 @@ class PendaftaranController
                     $stmtOld->execute([$idRegistrasi]);
                     $oldRegistrasi = $stmtOld->fetch(\PDO::FETCH_ASSOC);
 
+                    $idAdmin = $idResolved !== null ? $idResolved : (isset($oldRegistrasi['id_admin']) && $oldRegistrasi['id_admin'] !== '' && $oldRegistrasi['id_admin'] !== null ? (int) $oldRegistrasi['id_admin'] : null);
+                    if ($idAdmin === 0) {
+                        $idAdmin = null;
+                    }
+
                     $sql = "UPDATE psb___registrasi SET 
                             status_pendaftar = ?, daftar_diniyah = ?, daftar_formal = ?, status_murid = ?, prodi = ?, status_santri = ?,
                             madrasah = ?, nama_madrasah = ?, alamat_madrasah = ?, lulus_madrasah = ?,
@@ -1998,6 +2074,7 @@ class PendaftaranController
                 } else {
                     // Insert new registrasi
                     $isNewRegistrasi = true;
+                    $idAdmin = $idResolved;
                     
                     $sql = "INSERT INTO psb___registrasi 
                             (id_santri, status_pendaftar, daftar_diniyah, daftar_formal, status_murid, prodi, status_santri,
@@ -2629,10 +2706,9 @@ class PendaftaranController
             if (!is_array($user)) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Unauthorized'], 401);
             }
-            $roleKey = strtolower(trim($user['role_key'] ?? $user['user_role'] ?? ''));
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
-            if ($roleKey === 'santri') {
+            if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($user) && RoleHelper::tokenIsSantriDaftarContext($user)) {
                 $idSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
             }
             if (!$idSantri) {
@@ -2677,6 +2753,19 @@ class PendaftaranController
             $stmt->execute([$resolvedId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if ($row) {
+                $idRegistrasi = null;
+                try {
+                    $stReg = $this->db->prepare('SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1');
+                    $stReg->execute([$resolvedId]);
+                    $regRow = $stReg->fetch(\PDO::FETCH_ASSOC);
+                    if ($regRow && isset($regRow['id'])) {
+                        $idRegistrasi = (int) $regRow['id'];
+                    }
+                } catch (\Throwable $e) {
+                    // ignore
+                }
+                $row['id_registrasi'] = $idRegistrasi;
+
                 return $this->jsonResponse($response, ['success' => true, 'data' => $row], 200);
             }
             return $this->jsonResponse($response, ['success' => false, 'message' => 'Santri tidak ditemukan'], 404);
@@ -2699,11 +2788,11 @@ class PendaftaranController
     {
         try {
             $user = $request->getAttribute('user');
-            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
+            $userArr = is_array($user) ? $user : [];
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
-            if ($roleKey === 'santri') {
-                $idSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+            if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
+                $idSantri = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
             }
             $tahunHijriyah = $queryParams['tahun_hijriyah'] ?? null;
             $tahunMasehi = $queryParams['tahun_masehi'] ?? null;
@@ -2753,6 +2842,28 @@ class PendaftaranController
             $stmt->execute($params);
             $data = $stmt->fetch(\PDO::FETCH_ASSOC);
 
+            // Selaras dengan save-biodata: jika filter tahun tidak cocok (format beda di DB), tetap kembalikan registrasi terakhir santri.
+            if (!$data && $resolvedId) {
+                $sqlFallback = "SELECT r.id, r.id_santri, s.nis, r.wajib, r.bayar, r.kurang, r.id_admin, r.tahun_hijriyah, r.tahun_masehi, 
+                           r.status_pendaftar, r.keterangan_status, r.daftar_diniyah, r.daftar_formal, r.status_murid, r.prodi, r.gelombang,
+                           r.status_santri, r.gender,
+                           r.madrasah, r.nama_madrasah, r.alamat_madrasah, r.lulus_madrasah,
+                           r.sekolah, r.nama_sekolah, r.alamat_sekolah, r.lulus_sekolah,
+                           r.npsn, r.nsm, r.jurusan, r.program_sekolah,
+                           p.nama AS admin
+                    FROM psb___registrasi r
+                    LEFT JOIN pengurus p ON r.id_admin = p.id
+                    LEFT JOIN santri s ON r.id_santri = s.id
+                    WHERE r.id_santri = ? ORDER BY r.id DESC LIMIT 1";
+                $stmtFb = $this->db->prepare($sqlFallback);
+                $stmtFb->execute([$resolvedId]);
+                $data = $stmtFb->fetch(\PDO::FETCH_ASSOC);
+            }
+
+            if ($data && isset($data['id'])) {
+                $data['id_registrasi'] = (int) $data['id'];
+            }
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'data' => $data ?: null
@@ -2776,7 +2887,7 @@ class PendaftaranController
     {
         try {
             $user = $request->getAttribute('user');
-            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
+            $userArr = is_array($user) ? $user : [];
             $queryParams = $request->getQueryParams();
             $idRegistrasi = $queryParams['id_registrasi'] ?? null;
 
@@ -2787,8 +2898,8 @@ class PendaftaranController
                 ], 400);
             }
 
-            if ($roleKey === 'santri') {
-                $idSantriToken = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+            if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
+                $idSantriToken = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
                 if ($idSantriToken !== null) {
                     $stmtOwn = $this->db->prepare("SELECT id FROM psb___registrasi WHERE id = ? AND id_santri = ? LIMIT 1");
                     $stmtOwn->execute([$idRegistrasi, $idSantriToken]);
@@ -2993,20 +3104,10 @@ class PendaftaranController
             $idRegistrasi = (int)$input['id_registrasi'];
             $nominal = (int)$input['nominal'];
             $via = $input['via'] ?? 'Cash';
-            $idAdmin = isset($input['id_admin']) ? (int)$input['id_admin'] : null;
+            $idAdmin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
             $hijriyah = $input['hijriyah'] ?? null;
             $masehi = $input['masehi'] ?? null;
             $pc = $input['pc'] ?? null;
-            
-            // Jika id_admin tidak dikirim, coba ambil dari request attribute (dari AuthMiddleware)
-            if (!$idAdmin || $idAdmin <= 0) {
-                $user = $request->getAttribute('user');
-                if ($user && isset($user['user_id'])) {
-                    $idAdmin = (int)$user['user_id'];
-                } elseif ($user && isset($user['id'])) {
-                    $idAdmin = (int)$user['id'];
-                }
-            }
 
             // Validasi tambahan
             if ($idRegistrasi <= 0) {
@@ -3021,11 +3122,6 @@ class PendaftaranController
                     'success' => false,
                     'message' => 'Nominal harus lebih dari 0'
                 ], 400);
-            }
-
-            // Validasi id_admin (opsional, tapi jika ada harus valid)
-            if ($idAdmin !== null && $idAdmin <= 0) {
-                $idAdmin = null; // Set ke null jika tidak valid
             }
 
             // Get tanggal hijriyah dan masehi jika tidak diberikan
@@ -3297,6 +3393,21 @@ class PendaftaranController
     }
 
     /**
+     * Rekalkulasi bayar & kurang di psb___registrasi dari SUM(psb___transaksi.nominal).
+     */
+    private function recalcRegistrasiBayarFromTransaksi(int $idRegistrasi): void
+    {
+        $sqlSum = 'SELECT COALESCE(SUM(nominal), 0) AS total_bayar FROM psb___transaksi WHERE id_registrasi = ?';
+        $stmtSum = $this->db->prepare($sqlSum);
+        $stmtSum->execute([$idRegistrasi]);
+        $result = $stmtSum->fetch(\PDO::FETCH_ASSOC);
+        $totalBayar = $result['total_bayar'] ?? 0;
+        $sqlUpdate = 'UPDATE psb___registrasi SET bayar = ?, kurang = wajib - ? WHERE id = ?';
+        $stmtUpdate = $this->db->prepare($sqlUpdate);
+        $stmtUpdate->execute([$totalBayar, $totalBayar, $idRegistrasi]);
+    }
+
+    /**
      * POST /api/pendaftaran/delete-transaksi - Hapus transaksi pembayaran berdasarkan id transaksi
      */
     public function deleteTransaksi(Request $request, Response $response): Response
@@ -3317,7 +3428,7 @@ class PendaftaranController
 
             try {
                 // Cek apakah transaksi ada
-                $sqlSelect = "SELECT id, id_registrasi, nominal FROM psb___transaksi WHERE id = ?";
+                $sqlSelect = 'SELECT id, id_registrasi, nominal, id_admin, id_payment FROM psb___transaksi WHERE id = ?';
                 $stmtSelect = $this->db->prepare($sqlSelect);
                 $stmtSelect->execute([$idTransaksi]);
                 $transaksi = $stmtSelect->fetch(\PDO::FETCH_ASSOC);
@@ -3330,6 +3441,21 @@ class PendaftaranController
                     ], 404);
                 }
 
+                $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+                if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $transaksi['id_admin'] ?? null)) {
+                    $this->db->rollBack();
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat menghapus.',
+                    ], 403);
+                }
+
+                // Hapus baris payment induk (menghindari orphan; FK transaksi.id_payment → ON DELETE SET NULL)
+                $stmtDelPay = $this->db->prepare(
+                    "DELETE FROM payment WHERE tabel_referensi = 'psb___transaksi' AND id_referensi = ?"
+                );
+                $stmtDelPay->execute([$idTransaksi]);
+
                 // Hapus transaksi
                 $sqlDelete = "DELETE FROM psb___transaksi WHERE id = ?";
                 $stmtDelete = $this->db->prepare($sqlDelete);
@@ -3337,21 +3463,10 @@ class PendaftaranController
                 $deleted = $stmtDelete->rowCount();
 
                 if ($deleted > 0) {
-                    // Update total bayar dan kurang di registrasi
-                    $idRegistrasi = $transaksi['id_registrasi'];
-                    $nominal = $transaksi['nominal'];
-                    
-                    // Hitung ulang total bayar
-                    $sqlSum = "SELECT COALESCE(SUM(nominal), 0) as total_bayar FROM psb___transaksi WHERE id_registrasi = ?";
-                    $stmtSum = $this->db->prepare($sqlSum);
-                    $stmtSum->execute([$idRegistrasi]);
-                    $result = $stmtSum->fetch(\PDO::FETCH_ASSOC);
-                    $totalBayar = $result['total_bayar'] ?? 0;
-
-                    // Update registrasi
-                    $sqlUpdate = "UPDATE psb___registrasi SET bayar = ?, kurang = wajib - ? WHERE id = ?";
-                    $stmtUpdate = $this->db->prepare($sqlUpdate);
-                    $stmtUpdate->execute([$totalBayar, $totalBayar, $idRegistrasi]);
+                    $idRegistrasi = (int) ($transaksi['id_registrasi'] ?? 0);
+                    if ($idRegistrasi > 0) {
+                        $this->recalcRegistrasiBayarFromTransaksi($idRegistrasi);
+                    }
 
                     $this->db->commit();
                     return $this->jsonResponse($response, [
@@ -3376,6 +3491,149 @@ class PendaftaranController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menghapus transaksi: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/pendaftaran/update-transaksi - Ubah transaksi PSB (nominal, via, hijriyah, masehi, pc); sinkron payment induk + rekalkulasi bayar.
+     */
+    public function updateTransaksiPsb(Request $request, Response $response): Response
+    {
+        try {
+            $input = $request->getParsedBody();
+            $input = is_array($input) ? TextSanitizer::sanitizeStringValues($input, []) : [];
+
+            if (!isset($input['id']) || $input['id'] === '' || $input['id'] === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'ID transaksi wajib diisi',
+                ], 400);
+            }
+
+            $idTransaksi = (int) $input['id'];
+            if ($idTransaksi <= 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'ID transaksi tidak valid',
+                ], 400);
+            }
+
+            $stmt = $this->db->prepare('SELECT * FROM psb___transaksi WHERE id = ?');
+            $stmt->execute([$idTransaksi]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$row) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Transaksi tidak ditemukan',
+                ], 404);
+            }
+
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $row['id_admin'] ?? null)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat mengubah.',
+                ], 403);
+            }
+
+            $nominal = isset($input['nominal']) ? (int) $input['nominal'] : (int) ($row['nominal'] ?? 0);
+            if ($nominal <= 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Nominal harus lebih dari 0',
+                ], 400);
+            }
+
+            $via = isset($input['via']) && trim((string) $input['via']) !== ''
+                ? trim((string) $input['via'])
+                : (string) ($row['via'] ?? 'Cash');
+
+            if (array_key_exists('hijriyah', $input)) {
+                $hijriyah = $input['hijriyah'] !== null && trim((string) $input['hijriyah']) !== ''
+                    ? trim((string) $input['hijriyah'])
+                    : null;
+            } else {
+                $hijriyah = $row['hijriyah'] ?? null;
+            }
+
+            if (array_key_exists('masehi', $input)) {
+                $masehi = $input['masehi'] !== null && trim((string) $input['masehi']) !== ''
+                    ? trim((string) $input['masehi'])
+                    : null;
+            } else {
+                $masehi = $row['masehi'] ?? null;
+            }
+
+            if (array_key_exists('pc', $input)) {
+                $pc = $input['pc'] !== null && trim((string) $input['pc']) !== ''
+                    ? trim((string) $input['pc'])
+                    : null;
+            } else {
+                $pc = $row['pc'] ?? null;
+            }
+
+            $idResolved = PengurusAdminIdHelper::resolveEffectivePengurusId($uArr, $input['id_admin'] ?? 0);
+            $prevAdmin = isset($row['id_admin']) && $row['id_admin'] !== '' && $row['id_admin'] !== null ? (int) $row['id_admin'] : null;
+            if ($idResolved !== null) {
+                $idAdmin = $idResolved;
+            } else {
+                $idAdmin = ($prevAdmin !== null && $prevAdmin > 0) ? $prevAdmin : null;
+            }
+
+            $adminName = ($idAdmin !== null && $idAdmin > 0)
+                ? PengurusAdminIdHelper::fetchPengurusNama($this->db, $idAdmin)
+                : null;
+
+            $this->db->beginTransaction();
+
+            try {
+                $sqlUp = 'UPDATE psb___transaksi SET nominal = ?, via = ?, hijriyah = ?, masehi = ?, pc = ?, id_admin = ? WHERE id = ?';
+                $stmtUp = $this->db->prepare($sqlUp);
+                $stmtUp->execute([$nominal, $via, $hijriyah, $masehi, $pc, $idAdmin, $idTransaksi]);
+
+                $stmtPay = $this->db->prepare(
+                    "SELECT id FROM payment WHERE tabel_referensi = 'psb___transaksi' AND id_referensi = ? LIMIT 1"
+                );
+                $stmtPay->execute([$idTransaksi]);
+                $payRow = $stmtPay->fetch(\PDO::FETCH_ASSOC);
+                if ($payRow) {
+                    $sqlPayUp = 'UPDATE payment SET nominal = ?, metode_pembayaran = ?, via = ?, hijriyah = ?, masehi = ?, id_admin = ?, admin = ? WHERE id = ?';
+                    $stmtPayUp = $this->db->prepare($sqlPayUp);
+                    $stmtPayUp->execute([
+                        $nominal,
+                        $via,
+                        $via,
+                        $hijriyah,
+                        $masehi,
+                        $idAdmin,
+                        $adminName,
+                        (int) $payRow['id'],
+                    ]);
+                }
+
+                $idRegistrasi = (int) ($row['id_registrasi'] ?? 0);
+                if ($idRegistrasi > 0) {
+                    $this->recalcRegistrasiBayarFromTransaksi($idRegistrasi);
+                }
+
+                $this->db->commit();
+
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'message' => 'Transaksi berhasil diperbarui.',
+                ], 200);
+            } catch (\Exception $e) {
+                $this->db->rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            error_log('Update transaksi PSB error: ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal memperbarui transaksi: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -4509,7 +4767,7 @@ class PendaftaranController
             }
 
             $idRegistrasi = (int)$input['id_registrasi'];
-            $idAdmin = isset($input['id_admin']) && $input['id_admin'] !== null && $input['id_admin'] !== '' ? (int)$input['id_admin'] : null;
+            $idAdmin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
 
             // Ambil data registrasi untuk matching (termasuk gelombang jika ada, agar kondisi item set ikut match)
             $sql = "SELECT status_pendaftar, daftar_formal, status_santri, status_murid, daftar_diniyah, gender, gelombang 
@@ -6338,6 +6596,26 @@ class PendaftaranController
             } elseif ($tahunMasehi && $tahunMasehi !== '') {
                 $whereConditions[] = "r.tahun_masehi = ?";
                 $params[] = $tahunMasehi;
+            }
+
+            // Scope lembaga gabungan (multi-role) atau scope dari "coba sebagai" super_admin
+            $userPayload = $request->getAttribute('user');
+            $pidFilter = is_array($userPayload) ? RoleHelper::getPengurusIdFromPayload($userPayload) : null;
+            $pf = RoleHelper::resolvePendaftarLembagaSqlFilter(is_array($userPayload) ? $userPayload : null, $pidFilter);
+            if ($pf !== null) {
+                if (!empty($pf['empty'])) {
+                    return $this->jsonResponse($response, [
+                        'success' => true,
+                        'data' => [],
+                        'message' => 'Tidak ada akses lembaga untuk data ini',
+                    ], 200);
+                }
+                if (!empty($pf['clause']) && isset($pf['params']) && is_array($pf['params'])) {
+                    $whereConditions[] = $pf['clause'];
+                    foreach ($pf['params'] as $p) {
+                        $params[] = $p;
+                    }
+                }
             }
 
             $whereClause = count($whereConditions) > 0 ? "WHERE " . implode(" AND ", $whereConditions) : "";

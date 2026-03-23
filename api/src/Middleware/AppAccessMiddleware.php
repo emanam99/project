@@ -3,6 +3,7 @@
 namespace App\Middleware;
 
 use App\Config\RoleConfig;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -51,13 +52,40 @@ class AppAccessMiddleware implements MiddlewareInterface
                 ->withHeader('Content-Type', 'application/json; charset=utf-8');
         }
 
-        // Ambil role dari user - prioritaskan role_key (sistem role baru)
-        // Urutan fallback: role_key -> user_role -> level
-        // Catatan: role_key adalah field utama untuk sistem role baru
-        // Fallback ke field lain hanya untuk backward compatibility
-        $roleKey = $user['role_key'] ?? $user['user_role'] ?? $user['level'] ?? null;
+        $tokenAllowedApps = $user['allowed_apps'] ?? [];
+        $hasAccess = false;
 
-        if (!$roleKey) {
+        // Prioritas 1: allowed_apps dari token (gabungan semua role saat login)
+        if (is_array($tokenAllowedApps) && in_array($this->requiredApp, array_map('strtolower', $tokenAllowedApps), true)) {
+            $hasAccess = true;
+        }
+
+        $unionKeys = RoleHelper::normalizeTokenRoleKeysUnion($user);
+        $roleKeyForLog = $unionKeys !== [] ? implode(',', $unionKeys) : '';
+
+        if (!$hasAccess && !empty($this->allowedRoles)) {
+            $hasAccess = RoleHelper::tokenHasAnyRoleKey($user, $this->allowedRoles);
+        }
+
+        if (!$hasAccess) {
+            $hasAccess = RoleHelper::tokenCanAccessAppFromRoleConfig($user, $this->requiredApp);
+        }
+
+        if (!$hasAccess) {
+            $pid = RoleHelper::getPengurusIdFromPayload($user);
+            if ($pid !== null && $pid > 0) {
+                foreach (RoleHelper::getUserRoles($pid) as $row) {
+                    $k = str_replace(' ', '_', strtolower(trim((string) ($row['role_key'] ?? ''))));
+                    if ($k !== '' && RoleConfig::canAccessApp($k, $this->requiredApp)) {
+                        $hasAccess = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!$hasAccess && $unionKeys === []
+            && (!is_array($tokenAllowedApps) || !in_array($this->requiredApp, array_map('strtolower', $tokenAllowedApps), true))) {
             error_log("AppAccessMiddleware: Role tidak ditemukan. User data: " . json_encode($user));
             $response = new Response();
             $response->getBody()->write(json_encode([
@@ -69,44 +97,17 @@ class AppAccessMiddleware implements MiddlewareInterface
                 ->withHeader('Content-Type', 'application/json; charset=utf-8');
         }
 
-        $roleKey = strtolower($roleKey);
-
-        // Cek akses aplikasi
-        $hasAccess = false;
-
-        // Prioritas 1: allowed_apps dari token (satu user bisa akses uwaba + mybeddian)
-        $tokenAllowedApps = $user['allowed_apps'] ?? [];
-        if (is_array($tokenAllowedApps) && in_array($this->requiredApp, array_map('strtolower', $tokenAllowedApps))) {
-            $hasAccess = true;
-        }
-
-        if (!$hasAccess && !empty($this->allowedRoles)) {
-            // Jika ada custom allowed roles, gunakan itu
-            $hasAccess = in_array($roleKey, array_map('strtolower', $this->allowedRoles));
-        }
-        if (!$hasAccess) {
-            // Gunakan RoleConfig: cek role_key dan semua all_roles
-            $hasAccess = RoleConfig::canAccessApp($roleKey, $this->requiredApp);
-            if (!$hasAccess && !empty($user['all_roles']) && is_array($user['all_roles'])) {
-                foreach ($user['all_roles'] as $r) {
-                    if (RoleConfig::canAccessApp(strtolower(trim((string)$r)), $this->requiredApp)) {
-                        $hasAccess = true;
-                        break;
-                    }
-                }
-            }
-        }
-
         if (!$hasAccess) {
             $appLabel = RoleConfig::APPS[$this->requiredApp] ?? $this->requiredApp;
-            error_log("AppAccessMiddleware: Akses ditolak. User role: $roleKey, Required app: {$this->requiredApp}");
+            error_log("AppAccessMiddleware: Akses ditolak. User roles: $roleKeyForLog, Required app: {$this->requiredApp}");
             
             $response = new Response();
             $response->getBody()->write(json_encode([
                 'success' => false,
                 'message' => "Akses ditolak. Role Anda tidak memiliki izin untuk mengakses aplikasi {$appLabel}.",
                 'required_app' => $this->requiredApp,
-                'your_role' => $roleKey
+                'your_role' => $unionKeys[0] ?? '',
+                'your_roles' => $unionKeys,
             ], JSON_UNESCAPED_UNICODE));
             return $response
                 ->withStatus(403)

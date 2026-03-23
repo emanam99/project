@@ -997,6 +997,105 @@ function App() {
               } 
             />
           </Route>
+          {/* Lembaga & Domisili — super_admin, tarbiyah; super admin asli tetap akses saat "coba sebagai" */}
+          <Route element={<RoleRoute allowedRoles={['super_admin', 'tarbiyah']} allowIfRealSuperAdmin />}>
+            <Route
+              path="/pengurus"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Pengurus />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pengurus/import"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ImportPengurus />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/lembaga"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Lembaga />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/absen"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <AbsenPengurus />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/kitab"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Kitab />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/mapel"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Mapel />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/santri"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DataSantri />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/lulusan"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DataLulusan />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/rombel"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Rombel />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/domisili/daerah"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Daerah />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/domisili/kamar"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Kamar />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/manage-jabatan"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ManageJabatan />
+                </Suspense>
+              }
+            />
+          </Route>
           {/* Super Admin Only Routes */}
           <Route element={<SuperAdminRoute />}>
             <Route 
@@ -1055,22 +1154,6 @@ function App() {
                 </Suspense>
               }
             />
-            <Route
-              path="/pengurus"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Pengurus />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pengurus/import" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ImportPengurus />
-                </Suspense>
-              } 
-            />
             <Route 
               path="/manage-users/edit/:id" 
               element={
@@ -1092,86 +1175,6 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <TahunAjaranPage />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/lembaga" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Lembaga />
-                </Suspense>
-              } 
-            />
-            <Route
-              path="/absen"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <AbsenPengurus />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/kitab"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Kitab />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/mapel"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Mapel />
-                </Suspense>
-              }
-            />
-            <Route 
-              path="/santri" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <DataSantri />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/lulusan" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <DataLulusan />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/rombel" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Rombel />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/domisili/daerah" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Daerah />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/domisili/kamar" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Kamar />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/manage-jabatan" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ManageJabatan />
                 </Suspense>
               } 
             />

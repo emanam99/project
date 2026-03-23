@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { manageUsersAPI, jabatanAPI, profilAPI } from '../../../../services/api'
 import { useNotification } from '../../../../contexts/NotificationContext'
 import { useAuthStore } from '../../../../store/authStore'
+import { userHasSuperAdminAccess } from '../../../../utils/roleAccess'
 import EditPengurusForm, { initialProfilForm, profilFormFromUser } from './EditPengurusForm'
 
 const offcanvasBottomTransition = { type: 'tween', duration: 0.25, ease: [0.4, 0, 0.2, 1] }
@@ -12,7 +13,7 @@ const offcanvasBottomPanelClass = 'fixed bottom-0 left-0 right-0 z-[10211] flex 
 function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = [], onPengurusPatch, showEditPanel = false, onOpenEdit, onCloseEdit }) {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
-  const isSuperAdmin = user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState(null)
   const [userJabatan, setUserJabatan] = useState([])

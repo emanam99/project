@@ -156,23 +156,77 @@
       margin-top: 1rem;
       font-size: 0.8rem;
       color: var(--muted);
-      word-break: break-all;
+      display: flex;
+      justify-content: center;
+      width: 100%;
     }
 
-    .url a {
+    .url-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 100%;
+      text-align: left;
+    }
+
+    .url-row a {
       color: var(--teal-dark);
       font-weight: 500;
       text-decoration: none;
+      word-break: break-all;
     }
 
-    .url a:hover {
+    .url-row a:hover {
       text-decoration: underline;
+    }
+
+    .copy-link-btn {
+      flex-shrink: 0;
+      font-family: inherit;
+      font-size: 0.65rem;
+      font-weight: 600;
+      line-height: 1.2;
+      padding: 0.2rem 0.5rem;
+      color: var(--teal-dark);
+      background: var(--teal-soft);
+      border: 1px solid rgba(13, 148, 136, 0.28);
+      border-radius: 0.35rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+
+    .copy-link-btn:hover {
+      background: #99f6e4;
+    }
+
+    .copy-link-btn:disabled {
+      cursor: default;
+      opacity: 0.85;
     }
 
     footer {
       margin-top: 1.25rem;
       font-size: 0.75rem;
       color: #94a3a8;
+    }
+
+    .pwa-hint {
+      font-size: 0.85rem;
+      line-height: 1.55;
+      color: var(--muted);
+      margin-top: -0.5rem;
+      margin-bottom: 1.25rem;
+      padding: 0.75rem 0.85rem;
+      background: rgba(204, 251, 241, 0.6);
+      border-radius: 0.75rem;
+      border: 1px solid rgba(13, 148, 136, 0.12);
+    }
+
+    .pwa-hint:not([hidden]) {
+      display: block;
     }
   </style>
 </head>
@@ -182,24 +236,29 @@
       <span class="badge">Pengalihan layanan</span>
       <div class="icons" aria-hidden="true">
         <div class="icon-box">
-          <img src="../gambar/uwaba-4.png" alt="" width="48" height="48" />
+          <img src="https://alutsmani.id/gambar/uwaba-4.png" alt="" width="48" height="48" />
         </div>
         <svg class="arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M5 12h14M12 5l7 7-7 7" />
         </svg>
         <div class="icon-box">
-          <img src="../gambar/icon/ebeddienicon192.png" alt="" width="48" height="48" />
+          <img src="https://alutsmani.id/gambar/icon/ebeddienicon192.png" alt="" width="48" height="48" />
         </div>
       </div>
       <h1>Aplikasi UWABA sudah dialihkan ke eBeddien</h1>
       <p>
-        Untuk melanjutkan ke aplikasi dan menggunakan fitur UWaba, silakan buka <strong>eBeddien</strong> di tab atau jendela baru.
+        Untuk melanjutkan ke aplikasi dan menggunakan fitur UWABA, silakan buka <strong>eBeddien</strong> di browser (tab atau jendela baru).
+      </p>
+      <p class="pwa-hint" hidden>
+        Anda membuka dari aplikasi terpasang — ketuk tombol di bawah. Di <strong>Android</strong> akan diminta membuka di browser; di <strong>iPhone/iPad</strong> jika masih di aplikasi, pakai menu <strong>Share</strong> (bagikan) lalu pilih <strong>Buka di Safari</strong>.
       </p>
       <a
         class="cta"
         href="https://ebeddien.alutsmani.id/"
         target="_blank"
         rel="noopener noreferrer"
+        referrerpolicy="no-referrer"
+        data-ebeddien-link
       >
         Buka eBeddien
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -209,10 +268,136 @@
         </svg>
       </a>
       <p class="url">
-        <a href="https://ebeddien.alutsmani.id/" target="_blank" rel="noopener noreferrer">https://ebeddien.alutsmani.id/</a>
+        <span class="url-row">
+          <a
+            href="https://ebeddien.alutsmani.id/"
+            target="_blank"
+            rel="noopener noreferrer"
+            referrerpolicy="no-referrer"
+            data-ebeddien-link
+          >https://ebeddien.alutsmani.id/</a>
+          <button
+            type="button"
+            class="copy-link-btn"
+            id="copy-ebeddien-url"
+            aria-label="Salin link eBeddien"
+            title="Salin link, lalu tempel di bilah alamat Chrome"
+          >Salin</button>
+        </span>
       </p>
     </article>
     <footer>Pesantren Salafiyah Al-Utsmani</footer>
   </div>
+  <script>
+    (function () {
+      var EBEDDIEN = "https://ebeddien.alutsmani.id/";
+      var EBEDDIEN_HOST = "ebeddien.alutsmani.id";
+
+      function isInstalledPwa() {
+        if (window.navigator.standalone === true) return true;
+        if (!window.matchMedia) return false;
+        var modes = ["standalone", "fullscreen", "minimal-ui", "window-controls-overlay"];
+        for (var i = 0; i < modes.length; i++) {
+          try {
+            if (window.matchMedia("(display-mode: " + modes[i] + ")").matches) return true;
+          } catch (e) { /* ignore */ }
+        }
+        return false;
+      }
+
+      function isAndroid() {
+        return /Android/i.test(navigator.userAgent || "");
+      }
+
+      function isIOS() {
+        return /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+      }
+
+      /**
+       * Keluar dari shell PWA Chrome/WebAPK: navigasi biasa tetap di activity yang sama.
+       * Intent VIEW + https memicu aplikasi browser (Chrome, Samsung Internet, dll.).
+       */
+      function openAndroidExternalBrowser(url) {
+        var fallback = encodeURIComponent(url);
+        var intent =
+          "intent://" +
+          EBEDDIEN_HOST +
+          "/#Intent;" +
+          "scheme=https;" +
+          "action=android.intent.action.VIEW;" +
+          "category=android.intent.category.BROWSABLE;" +
+          "category=android.intent.category.DEFAULT;" +
+          "S.browser_fallback_url=" +
+          fallback +
+          ";end";
+        window.location.href = intent;
+      }
+
+      function openEbeddien(event) {
+        if (isInstalledPwa()) {
+          event.preventDefault();
+          if (isAndroid()) {
+            openAndroidExternalBrowser(EBEDDIEN);
+            return;
+          }
+          if (isIOS()) {
+            var w = window.open(EBEDDIEN);
+            if (!w) window.location.href = EBEDDIEN;
+            return;
+          }
+          window.location.assign(EBEDDIEN);
+          return;
+        }
+        event.preventDefault();
+        var opened = window.open(EBEDDIEN, "_blank", "noopener,noreferrer");
+        if (!opened || typeof opened.closed === "undefined" || opened.closed) {
+          window.location.assign(EBEDDIEN);
+        }
+      }
+
+      document.querySelectorAll("[data-ebeddien-link]").forEach(function (el) {
+        el.addEventListener("click", openEbeddien);
+      });
+
+      var hint = document.querySelector(".pwa-hint");
+      if (hint && isInstalledPwa()) hint.removeAttribute("hidden");
+
+      var copyBtn = document.getElementById("copy-ebeddien-url");
+      if (copyBtn) {
+        copyBtn.addEventListener("click", function () {
+          var text = EBEDDIEN;
+          function flashOk() {
+            var label = "Salin";
+            copyBtn.textContent = "Tersalin";
+            copyBtn.disabled = true;
+            window.setTimeout(function () {
+              copyBtn.textContent = label;
+              copyBtn.disabled = false;
+            }, 1800);
+          }
+          function fallbackCopy() {
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.left = "-9999px";
+            ta.style.top = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            ta.setSelectionRange(0, text.length);
+            try {
+              if (document.execCommand("copy")) flashOk();
+            } catch (err) { /* ignore */ }
+            document.body.removeChild(ta);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(flashOk).catch(fallbackCopy);
+          } else {
+            fallbackCopy();
+          }
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

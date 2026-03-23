@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -24,8 +24,8 @@ function BerkasOffcanvas({
   const { showNotification } = useNotification()
   const { tahunHijriyah, tahunMasehi } = useTahunAjaranStore()
   const [uploading, setUploading] = useState(false)
-  const [showUploadForm, setShowUploadForm] = useState(false)
   const [jenisBerkas, setJenisBerkas] = useState('Ijazah SD Sederajat')
+  const pushedHistoryRef = useRef(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [keterangan, setKeterangan] = useState('')
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -66,7 +66,6 @@ function BerkasOffcanvas({
 
   useEffect(() => {
     if (isOpen && idSantri) {
-      setShowUploadForm(true)
       if (defaultFile) setSelectedFile(defaultFile)
       else if (!existingBerkas) setSelectedFile(null)
       if (existingBerkas) {
@@ -85,6 +84,29 @@ function BerkasOffcanvas({
   useEffect(() => {
     if (isOpen && defaultFile) setSelectedFile(defaultFile)
   }, [defaultFile, isOpen])
+
+  const closeOffcanvas = useCallback(() => {
+    if (pushedHistoryRef.current) {
+      window.history.back()
+    } else {
+      onClose?.()
+    }
+  }, [onClose])
+
+  // Tombol kembali browser / Android back: tutup offcanvas (satu entri history saat terbuka)
+  useEffect(() => {
+    if (!isOpen) return undefined
+    window.history.pushState({ berkasUploadOffcanvas: true }, '')
+    pushedHistoryRef.current = true
+    const onPop = () => {
+      pushedHistoryRef.current = false
+      onClose?.()
+    }
+    window.addEventListener('popstate', onPop)
+    return () => {
+      window.removeEventListener('popstate', onPop)
+    }
+  }, [isOpen, onClose])
 
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0]
@@ -135,14 +157,13 @@ function BerkasOffcanvas({
         setSelectedFile(null)
         setKeterangan('')
         setJenisBerkas('Ijazah SD Sederajat')
-        setShowUploadForm(false)
         if (idSantri && tahunHijriyah && tahunMasehi) {
           try {
             await pendaftaranAPI.syncKeteranganStatus({ id_santri: idSantri, tahun_hijriyah: tahunHijriyah, tahun_masehi: tahunMasehi })
           } catch (_) {}
         }
         onUploadSuccess?.()
-        setTimeout(() => onClose?.(), 400)
+        setTimeout(() => closeOffcanvas(), 400)
       } else {
         showNotification(result.message || 'Gagal upload', 'error')
       }
@@ -156,36 +177,43 @@ function BerkasOffcanvas({
   const openCamera = () => {
     sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas)
     setShowCameraScanner?.(true)
-    onClose?.()
+    closeOffcanvas()
   }
 
   const fileReady = selectedFile && selectedFile.size <= 1024 * 1024
 
-  if (!isOpen) return null
-
   return createPortal(
     <AnimatePresence>
-      <motion.div
-        key="berkas-offcanvas-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
-      />
-      {/* Wrapper: mobile = tempel bawah, desktop = tengah layar (flex center) */}
-      <div key="berkas-offcanvas-panel" className="fixed inset-0 z-[101] flex flex-col justify-end md:justify-center md:items-center md:p-4 pointer-events-none">
-        <motion.div
-          initial={{ y: '100%' }}
-          animate={{ y: 0 }}
-          exit={{ y: '100%' }}
-          transition={{ type: 'spring', damping: 32, stiffness: 400 }}
-          className="w-full md:max-w-4xl md:max-h-[85vh] md:w-full flex flex-col bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-2xl shadow-xl max-h-[90vh] pointer-events-auto"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0)' }}
+      {isOpen && (
+        <>
+          <motion.div
+            key="berkas-offcanvas-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={closeOffcanvas}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+          />
+          <motion.div
+            key="berkas-offcanvas-panel"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+            className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl overflow-hidden z-[101]"
+            style={{
+              maxHeight: 'calc(100vh - 64px)',
+              paddingBottom: 'env(safe-area-inset-bottom, 0)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+        <div
+          className="md:grid md:grid-cols-2 flex flex-col"
+          style={{ height: 'calc(100vh - 64px)', maxHeight: 'calc(100vh - 64px)' }}
         >
-        <div className="flex flex-1 min-h-0 md:grid md:grid-cols-2">
-          {/* Kolom kiri: Gambar / Logo / Preview (hanya di desktop) */}
-          <div className="hidden md:flex flex-col bg-gray-50 dark:bg-gray-800/50 border-r border-gray-100 dark:border-gray-800 overflow-hidden">
+          {/* Kolom kiri: Gambar / Logo / Preview (desktop) */}
+          <div className="hidden md:flex flex-col bg-gray-50 dark:bg-gray-800/50 border-r border-gray-100 dark:border-gray-800 overflow-hidden min-h-0" style={{ height: '100%' }}>
             {previewUrl ? (
               <div className="flex-1 flex items-center justify-center p-6 min-h-0">
                 <img
@@ -210,7 +238,10 @@ function BerkasOffcanvas({
           </div>
 
           {/* Kolom kanan: Form */}
-          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div
+            className="flex flex-col flex-1 min-h-0 overflow-hidden"
+            style={{ height: '100%', maxHeight: '100%' }}
+          >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
               <h2 className="text-base font-medium text-gray-900 dark:text-gray-100">
@@ -218,7 +249,7 @@ function BerkasOffcanvas({
               </h2>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={closeOffcanvas}
                 className="p-2 -m-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
                 aria-label="Tutup"
               >
@@ -229,22 +260,17 @@ function BerkasOffcanvas({
             </div>
 
             {/* Content form */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-4 space-y-5">
-            {!existingBerkas && (
-              <button
-                type="button"
-                onClick={() => setShowUploadForm((v) => !v)}
-                className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-teal-400 hover:text-teal-600 dark:hover:border-teal-500 dark:hover:text-teal-400 transition-colors text-sm font-medium flex items-center justify-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                </svg>
-                {showUploadForm ? 'Sembunyikan form' : 'Upload berkas baru'}
-              </button>
-            )}
-
-            {showUploadForm && (
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="p-4 space-y-5 pb-8 md:pb-4">
+                {previewUrl && (
+                  <div className="md:hidden rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+                    <img
+                      src={previewUrl}
+                      alt="Preview berkas"
+                      className="w-full max-h-56 object-contain"
+                    />
+                  </div>
+                )}
               <motion.form
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -363,13 +389,13 @@ function BerkasOffcanvas({
                   )}
                 </button>
               </motion.form>
-            )}
               </div>
             </div>
           </div>
         </div>
-        </motion.div>
-      </div>
+          </motion.div>
+        </>
+      )}
     </AnimatePresence>,
     document.body
   )

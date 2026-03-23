@@ -9,7 +9,14 @@ import { useLocation } from 'react-router-dom'
 function ProtectedNavLink({ to, children, ...props }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { hasUnsavedChanges, setPendingNav, clearPendingNav, handleSaveAndNavigate, validateBeforeNavigate } = useUnsavedChanges()
+  const {
+    hasUnsavedChanges,
+    setPendingNav,
+    clearPendingNav,
+    clearUnsavedChanges,
+    handleSaveAndNavigate,
+    validateBeforeNavigate
+  } = useUnsavedChanges()
   const [showModal, setShowModal] = useState(false)
   const [showRequiredFieldsModal, setShowRequiredFieldsModal] = useState(false)
   const [missingFields, setMissingFields] = useState([])
@@ -37,7 +44,6 @@ function ProtectedNavLink({ to, children, ...props }) {
     }
 
     // Jika ada unsaved changes, prevent default dan tampilkan modal
-    console.log('[ProtectedNavLink] Navigasi diblokir: hasUnsavedChanges=true, dari', location.pathname, 'ke', to)
     e.preventDefault()
     setPendingNav(to)
     setShowModal(true)
@@ -55,8 +61,9 @@ function ProtectedNavLink({ to, children, ...props }) {
   const handleDiscard = useCallback(() => {
     setShowModal(false)
     clearPendingNav()
+    clearUnsavedChanges()
     navigate(to)
-  }, [clearPendingNav, navigate, to])
+  }, [clearPendingNav, clearUnsavedChanges, navigate, to])
 
   const handleClose = useCallback(() => {
     setShowModal(false)

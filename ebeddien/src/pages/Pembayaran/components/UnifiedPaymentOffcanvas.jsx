@@ -673,7 +673,13 @@ function UnifiedPaymentOffcanvas({
             }}
             onConfirm={handleConfirmDelete}
             paymentAmount={deletePaymentAmount}
-            santriId={santriId}
+            title={
+              isUwaba
+                ? 'Konfirmasi hapus pembayaran UWABA'
+                : mode === 'khusus'
+                  ? 'Konfirmasi hapus pembayaran khusus'
+                  : 'Konfirmasi hapus pembayaran tunggakan'
+            }
           />
 
           {/* Upload Bukti TF Modal */}

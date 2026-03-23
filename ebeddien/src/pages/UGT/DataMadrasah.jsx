@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx'
 import { madrasahAPI, pengurusAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
+import { userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../utils/roleAccess'
 import { EXPORT_COLUMNS } from './exportMadrasahConfig'
 import TambahMadrasahOffcanvas from './components/TambahMadrasahOffcanvas'
 import CariKoordinatorOffcanvas from './components/CariKoordinatorOffcanvas'
@@ -406,7 +407,14 @@ SearchAndFilterSection.displayName = 'SearchAndFilterSection'
 function DataMadrasah() {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
-  const isKoordinatorUgt = useMemo(() => (user?.role_key || '').toLowerCase() === 'koordinator_ugt', [user?.role_key])
+  // Selaras backend: kunci filter koordinator hanya jika koordinator_ugt tanpa super_admin / admin_ugt
+  const isKoordinatorUgt = useMemo(
+    () =>
+      userMatchesAnyAllowedRole(user, ['koordinator_ugt']) &&
+      !userHasSuperAdminAccess(user) &&
+      !userMatchesAnyAllowedRole(user, ['admin_ugt']),
+    [user]
+  )
 
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { laporanAPI } from '../../services/api'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { useAuthStore } from '../../store/authStore'
+import { userMatchesAnyAllowedRole } from '../../utils/roleAccess'
 import { 
   PrinterIcon, 
   FunnelIcon, 
@@ -18,23 +19,7 @@ import { getGambarUrl } from '../../config/images'
 function Laporan() {
   const { user } = useAuthStore()
   
-  // Helper untuk cek role - support multiple roles
-  const hasRole = (roles) => {
-    if (!user || !roles || !Array.isArray(roles)) {
-      return false
-    }
-    
-    // Cek dari all_roles (array semua role user) jika ada
-    if (user.all_roles && Array.isArray(user.all_roles) && user.all_roles.length > 0) {
-      const userRoles = user.all_roles.map(r => (r || '').toLowerCase()).filter(r => r)
-      const allowedRoles = roles.map(r => r.toLowerCase())
-      return userRoles.some(userRole => allowedRoles.includes(userRole))
-    }
-    
-    // Fallback: cek role_key utama
-    const userRole = (user.role_key || user.level || '').toLowerCase()
-    return roles.map(r => r.toLowerCase()).includes(userRole)
-  }
+  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
   
   // Tentukan tab yang bisa diakses berdasarkan role
   const hasUwabaRole = hasRole(['admin_uwaba', 'petugas_uwaba', 'super_admin'])

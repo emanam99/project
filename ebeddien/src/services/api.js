@@ -392,15 +392,6 @@ export const authAPI = {
     return response.data
   },
 
-  /** Set/clear "coba sebagai" role (hanya super_admin). Setelah ini panggil verify untuk refresh user. */
-  setViewAs: async (roleKey, lembagaId = null) => {
-    const response = await api.post('/auth/view-as', {
-      role_key: roleKey || null,
-      lembaga_id: lembagaId != null && lembagaId !== '' ? Number(lembagaId) : null
-    })
-    return response.data
-  },
-
   /** Logout V2: revoke session di server (jika token punya jti) */
   logoutV2: async () => {
     try {
@@ -495,17 +486,22 @@ export const waBackendAPI = {
     }
     return data
   },
-  /** @param {string} [sessionId] - default, wa2, wa3, ... (max 10) */
-  connect: async (sessionId = 'default') => {
+  /**
+   * @param {string} [sessionId] - default, wa2, wa3, ... (max 10)
+   * @param {{ refreshQr?: boolean }} [options] - refreshQr: paksa QR baru (backend tidak mengembalikan cache)
+   */
+  connect: async (sessionId = 'default', options = {}) => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
+    const body = { sessionId: sessionId || 'default' }
+    if (options.refreshQr === true) body.refreshQr = true
     const res = await fetch(`${base}/api/whatsapp/connect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({ sessionId: sessionId || 'default' })
+      body: JSON.stringify(body)
     })
     return res.json().catch(() => ({ success: false, message: 'Network error' }))
   },

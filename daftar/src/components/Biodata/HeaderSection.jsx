@@ -7,10 +7,11 @@ function HeaderSection({
   setIsSidebarOpen,
   onSave,
   isSaving,
-  isLoading,
+  dataReady,
   formDataId,
   hasChanges,
-  formData
+  formData,
+  readOnly = false
 }) {
   // Tampilkan ID atau "-" jika kosong
   // Handle case dimana formDataId bisa string, number, null, atau undefined
@@ -130,39 +131,52 @@ function HeaderSection({
           <span className="text-sm text-gray-900 dark:text-gray-100 font-medium min-w-[4.5rem] text-center">
             {displayId}
           </span>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={isSaving || isLoading || !hasChanges}
-            className={`px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 border-2 flex items-center gap-2 ${
-              isSaving || isLoading || !hasChanges
-                ? 'bg-gray-300 dark:bg-gray-600 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                : 'bg-teal-600 hover:bg-teal-700 border-teal-600 dark:border-teal-500 text-white'
-            }`}
-            title={
-              isSaving ? 'Menyimpan...' 
-              : hasChanges ? 'Simpan perubahan' 
-              : 'Data tersimpan'
-            }
-          >
-            {isSaving ? (
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            ) : hasChanges ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-            )}
-            <span className="text-sm font-semibold whitespace-nowrap">
-              {isSaving ? 'Menyimpan...' : 'Simpan'}
+          {readOnly ? (
+            <span
+              className="px-2 py-1 rounded-lg text-xs font-semibold bg-gray-300/80 dark:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-400/50 dark:border-gray-500 whitespace-nowrap"
+              title="Mode baca — gunakan tombol Ubah di header untuk mengedit"
+            >
+              Mode baca
             </span>
-          </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={isSaving || !dataReady || !hasChanges}
+              className={`px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 border-2 flex items-center gap-2 ${
+                isSaving || !dataReady || !hasChanges
+                  ? 'bg-gray-300 dark:bg-gray-600 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                  : 'bg-teal-600 hover:bg-teal-700 border-teal-600 dark:border-teal-500 text-white'
+              }`}
+              title={
+                isSaving
+                  ? 'Menyimpan...'
+                  : !dataReady
+                    ? 'Memuat data...'
+                    : hasChanges
+                      ? 'Simpan perubahan'
+                      : 'Data tersimpan'
+              }
+            >
+              {isSaving ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : hasChanges ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+              )}
+              <span className="text-sm font-semibold whitespace-nowrap">
+                {isSaving ? 'Menyimpan...' : 'Simpan'}
+              </span>
+            </button>
+          )}
 
           {/* Progress Bar & Persentase */}
           <div className="flex items-center gap-1.5 md:gap-2 ml-1 md:ml-2 flex-1 min-w-0">

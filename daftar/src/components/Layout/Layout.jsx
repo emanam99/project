@@ -1,8 +1,11 @@
-import { Outlet } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import Header from './Header'
 import Sidebar from './Sidebar'
 import Navigation from './Navigation'
+import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext'
+import { useBiodataViewStore } from '../../store/biodataViewStore'
 
 const pageVariants = {
   initial: {
@@ -26,6 +29,19 @@ const pageTransition = {
 }
 
 function Layout() {
+  const location = useLocation()
+  const { clearUnsavedChanges } = useUnsavedChanges()
+
+  // Flag "belum simpan" hanya relevan saat halaman Biodata aktif. Kalau tidak di-reset, sisa true
+  // dari kunjungan sebelumnya (mis. keluar lewat navigate() dari Dashboard/Berkas, bukan modal sidebar).
+  useEffect(() => {
+    const p = location.pathname
+    if (p !== '/biodata' && !p.startsWith('/biodata/')) {
+      clearUnsavedChanges()
+      useBiodataViewStore.getState().clearBiodataEditIntent()
+    }
+  }, [location.pathname, clearUnsavedChanges])
+
   return (
     <div className="flex h-screen relative overflow-hidden">
       {/* Background hiasan */}

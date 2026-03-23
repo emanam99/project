@@ -30,7 +30,7 @@ return function (\Slim\App $app): void {
     $app->group('/api', function ($group) {
         $group->get('/santri', [SantriController::class, 'getAllSantri']);
         $group->post('/santri', [SantriController::class, 'updateSantri']);
-    })->add(new RoleMiddleware(['admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['admin_psb', 'petugas_psb', 'super_admin', 'tarbiyah']))->add(new AuthMiddleware());
 
     // Profil total & payment syahriah — role UWABA
     $app->group('/api', function ($group) {

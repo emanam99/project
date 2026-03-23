@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Auth\JwtAuth;
 use App\Database;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -46,19 +47,27 @@ class VersionChangelogController
             }
         }
 
-        $roleId = null;
+        $roleIds = [];
         $isSuperAdmin = false;
         $authHeader = $request->getHeaderLine('Authorization');
         if ($authHeader && preg_match('/Bearer\s+(.+)$/i', $authHeader, $m)) {
             $payload = $this->jwt->validateToken(trim($m[1]));
-            if ($payload && !empty($payload['role_key'])) {
-                $roleKey = strtolower((string) $payload['role_key']);
-                $isSuperAdmin = ($roleKey === 'super_admin');
-                $stmt = $this->db->prepare('SELECT id FROM role WHERE `key` = ? LIMIT 1');
-                $stmt->execute([$payload['role_key']]);
-                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-                if ($row) {
-                    $roleId = (int) $row['id'];
+            if ($payload && is_array($payload)) {
+                $isSuperAdmin = RoleHelper::tokenHasAnyRoleKey($payload, ['super_admin']);
+                if (!$isSuperAdmin) {
+                    $stmt = $this->db->prepare('SELECT id FROM role WHERE `key` = ? LIMIT 1');
+                    $seen = [];
+                    foreach (RoleHelper::normalizeTokenRoleKeysUnion($payload) as $rk) {
+                        if ($rk === '' || $rk === 'multi_role') {
+                            continue;
+                        }
+                        $stmt->execute([$rk]);
+                        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                        if ($row && !empty($row['id'])) {
+                            $seen[(int) $row['id']] = true;
+                        }
+                    }
+                    $roleIds = array_keys($seen);
                 }
             }
         }
@@ -75,9 +84,12 @@ class VersionChangelogController
             }
             if ($isSuperAdmin) {
                 // Super admin melihat semua entri (tanpa filter role_id)
-            } elseif ($roleId !== null) {
-                $where[] = ' (role_id IS NULL OR role_id = ?)';
-                $bind[] = $roleId;
+            } elseif (!empty($roleIds)) {
+                $ph = implode(',', array_fill(0, count($roleIds), '?'));
+                $where[] = ' (role_id IS NULL OR role_id IN (' . $ph . '))';
+                foreach ($roleIds as $rid) {
+                    $bind[] = $rid;
+                }
             } else {
                 $where[] = ' role_id IS NULL';
             }

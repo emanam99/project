@@ -18,7 +18,9 @@ function Modal({
   maxWidth,
   showCloseButton = true,
   closeOnBackdropClick = true,
-  zIndex = 99999
+  zIndex = 99999,
+  /** Saat true: backdrop, ESC, dan tombol tutup tidak menutup modal (mis. proses hapus sedang berjalan). */
+  preventClose = false,
 }) {
   const resolvedMaxWidth = maxWidth || (size && sizeToMaxWidth[size]) || 'max-w-2xl'
   // Prevent body scroll when modal is open
@@ -37,7 +39,7 @@ function Modal({
   // Handle ESC key
   useEffect(() => {
     const handleEscape = (e) => {
-      if (e.key === 'Escape' && isOpen && onClose) {
+      if (e.key === 'Escape' && isOpen && onClose && !preventClose) {
         onClose()
       }
     }
@@ -49,7 +51,7 @@ function Modal({
     return () => {
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [isOpen, onClose])
+  }, [isOpen, onClose, preventClose])
 
   if (!isOpen) return null
 
@@ -69,7 +71,7 @@ function Modal({
             alignItems: 'center',
             justifyContent: 'center'
           }}
-          onClick={closeOnBackdropClick ? onClose : undefined}
+          onClick={closeOnBackdropClick && !preventClose ? onClose : undefined}
         >
           {/* Backdrop */}
           <motion.div
@@ -106,7 +108,7 @@ function Modal({
             {title && (
               <div className="px-4 pt-5 pb-2 border-b dark:border-gray-700 flex items-center justify-between">
                 <h2 className="text-lg font-bold dark:text-gray-200">{title}</h2>
-                {showCloseButton && (
+                {showCloseButton && !preventClose && (
                   <button
                     onClick={onClose}
                     className="text-gray-500 hover:text-gray-700 text-2xl dark:text-gray-400 dark:hover:text-gray-200 transition-colors"

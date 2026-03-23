@@ -19,7 +19,8 @@ class RoleConfig
      */
     const APPS = [
         'uwaba' => 'Aplikasi UWABA',
-        'mybeddian' => 'Aplikasi Mybeddian'
+        'mybeddian' => 'Aplikasi Mybeddian',
+        'wa' => 'WhatsApp',
     ];
 
     /**
@@ -28,10 +29,12 @@ class RoleConfig
      * Format: 'role_key' => ['app1', 'app2', ...]
      */
     const ROLE_ALLOWED_APPS = [
-        'super_admin' => ['uwaba'],
+        'super_admin' => ['uwaba', 'wa'],
         'admin_uwaba' => ['uwaba'],
         'petugas_uwaba' => ['uwaba'],
         'admin_lembaga' => [],
+        /** Tarbiyah: akses menu Domisili + Lembaga di eBeddien (bukan UWABA pembayaran). */
+        'tarbiyah' => ['uwaba'],
         'wali_kelas' => [],
         'guru' => [],
         'waka_lembaga' => [],
@@ -89,6 +92,10 @@ class RoleConfig
             'view_reports'
         ],
         'admin_lembaga' => [
+            'manage_santri',
+            'view_reports'
+        ],
+        'tarbiyah' => [
             'manage_santri',
             'view_reports'
         ],
@@ -161,6 +168,7 @@ class RoleConfig
         'admin_uwaba' => 'Admin UWABA',
         'petugas_uwaba' => 'Petugas UWABA',
         'admin_lembaga' => 'Admin Lembaga',
+        'tarbiyah' => 'Tarbiyah',
         'wali_kelas' => 'Wali Kelas',
         'guru' => 'Guru',
         'waka_lembaga' => 'Waka Lembaga',
@@ -175,7 +183,9 @@ class RoleConfig
         'admin_ugt' => 'Admin UGT (Urusan Guru Tugas)',
         'admin_kalender' => 'Admin Kalender',
         'koordinator_ugt' => 'Koordinator UGT',
-        'santri' => 'Santri'
+        'santri' => 'Santri',
+        /** Token JWT saat pengurus punya lebih dari satu role (bukan baris di tabel role). */
+        'multi_role' => 'Beberapa role',
     ];
 
     /**
@@ -266,6 +276,28 @@ class RoleConfig
         $roleKey = strtolower($roleKey);
         
         return isset(self::ROLE_LABELS[$roleKey]);
+    }
+
+    /**
+     * Role yang membuat baris pengurus___role dianggap "tidak dibatasi satu lembaga"
+     * (gabungan multi-role: cukup satu role ini → akses semua lembaga untuk scope data).
+     */
+    private const ROLE_KEYS_UNRESTRICTED_LEMBAGA = [
+        'super_admin',
+        'admin_uwaba',
+        'petugas_uwaba',
+        'admin_ugt',
+        'koordinator_ugt',
+    ];
+
+    /**
+     * True jika role ini secara kebijakan tidak di-scope ke satu lembaga saja.
+     */
+    public static function roleHasUnrestrictedLembagaScope(string $roleKey): bool
+    {
+        $k = str_replace(' ', '_', strtolower(trim($roleKey)));
+
+        return in_array($k, self::ROLE_KEYS_UNRESTRICTED_LEMBAGA, true);
     }
 }
 

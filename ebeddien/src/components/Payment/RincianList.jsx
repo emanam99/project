@@ -415,46 +415,63 @@ function RincianList({ santriId, mode = 'tunggakan' }) {
       <Modal
         isOpen={showDeleteModal}
         onClose={handleCloseDeleteModal}
-        title={`Konfirmasi Hapus ${mode === 'khusus' ? 'Pembayaran Khusus' : 'Tunggakan'}`}
+        title={mode === 'khusus' ? 'Konfirmasi hapus item khusus' : 'Konfirmasi hapus item tunggakan'}
         maxWidth="max-w-md"
         closeOnBackdropClick={!deleting}
+        preventClose={deleting}
       >
-        <div className="p-6">
-          <div className="mb-4">
-            <p className="text-gray-700 dark:text-gray-300 mb-4">
-              Apakah Anda yakin ingin menghapus {mode === 'khusus' ? 'pembayaran khusus' : 'tunggakan'} ini?
-            </p>
-            {itemToDelete && (
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-                <p className="font-medium text-gray-800 dark:text-gray-200 mb-2">
-                  {itemToDelete.keterangan_1 || 'Tidak ada keterangan'}
-                </p>
-                {itemToDelete.keterangan_2 && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    {itemToDelete.keterangan_2}
-                  </p>
-                )}
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Total:</span>
-                  <span className="font-semibold text-gray-800 dark:text-gray-200">
-                    Rp {parseInt(itemToDelete.wajib || itemToDelete.total || 0).toLocaleString()}
-                  </span>
-                </div>
-                {parseInt(itemToDelete.bayar || 0) > 0 && (
-                  <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
-                    <p className="text-xs text-red-600 dark:text-red-400 font-medium">
-                      ⚠️ Item ini memiliki pembayaran sebesar Rp {parseInt(itemToDelete.bayar || 0).toLocaleString()}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-            <p className="text-sm text-red-600 dark:text-red-400 mb-4 font-medium">
-              ⚠️ Tindakan ini tidak dapat dibatalkan!
-            </p>
+        <div className="space-y-4">
+          <div className="flex justify-center">
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/40"
+              aria-hidden
+            >
+              <svg
+                className="h-6 w-6 text-red-600 dark:text-red-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+                />
+              </svg>
+            </div>
           </div>
+          <p className="text-center text-sm text-gray-600 dark:text-gray-300">
+            Apakah Anda yakin ingin menghapus {mode === 'khusus' ? 'item khusus' : 'item tunggakan'} ini?
+          </p>
+          {itemToDelete && (
+            <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-700/80">
+              <p className="mb-2 font-medium text-gray-800 dark:text-gray-100">
+                {itemToDelete.keterangan_1 || 'Tidak ada keterangan'}
+              </p>
+              {itemToDelete.keterangan_2 && (
+                <p className="mb-2 text-sm text-gray-600 dark:text-gray-300">{itemToDelete.keterangan_2}</p>
+              )}
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-sm text-gray-600 dark:text-gray-400">Total</span>
+                <span className="font-semibold text-gray-800 dark:text-gray-100">
+                  Rp {parseInt(itemToDelete.wajib || itemToDelete.total || 0).toLocaleString('id-ID')}
+                </span>
+              </div>
+              {parseInt(itemToDelete.bayar || 0) > 0 && (
+                <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 dark:border-red-800 dark:bg-red-900/20">
+                  <p className="text-xs font-medium text-red-600 dark:text-red-400">
+                    Item ini memiliki pembayaran Rp {parseInt(itemToDelete.bayar || 0).toLocaleString('id-ID')}.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <p className="text-center text-xs text-red-600 dark:text-red-400">
+            Tindakan ini tidak dapat dibatalkan.
+          </p>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
             <button
               type="button"
               onClick={handleCloseDeleteModal}

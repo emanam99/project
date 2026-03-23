@@ -532,7 +532,10 @@ function Berkas() {
         id: forceUpdate && existingId ? String(existingId) : null, // Jika update, gunakan ID yang ada
         id_admin: user?.id || null,
         tahun_hijriyah: tahunAjaranHijriyah,
-        tahun_masehi: tahunAjaranMasehi
+        tahun_masehi: tahunAjaranMasehi,
+        id_registrasi: user?.id_registrasi != null && user.id_registrasi !== ''
+          ? String(user.id_registrasi)
+          : ''
       }
       
       console.log('Sending payload:', biodataPayload)
@@ -556,6 +559,9 @@ function Berkas() {
           ...user,
           id: newId,
           nis: nisToShow,
+          id_registrasi: biodataResponse.data.id_registrasi != null
+            ? Number(biodataResponse.data.id_registrasi)
+            : (user?.id_registrasi ?? null),
           nama: biodata.nama || user.nama || '',
           role_key: user.role_key || 'santri',
           role_label: user.role_label || 'Santri',
@@ -852,30 +858,15 @@ function Berkas() {
     <div className="h-full overflow-y-auto bg-white dark:bg-gray-900 rounded-lg shadow-sm p-4">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-3">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
               Berkas
             </h2>
-            <div className="flex items-center gap-3">
-              {hasUnsavedData && (
-                <span className="text-sm text-orange-600 dark:text-orange-400 font-medium">
-                  Ada perubahan yang belum tersimpan
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setHasUnsavedData(true)
-                  setIsBerkasOffcanvasOpen(true)
-                }}
-                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
-                title="Upload Berkas"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                </svg>
-                Upload
-              </button>
-            </div>
+            {hasUnsavedData && (
+              <span className="text-sm text-orange-600 dark:text-orange-400 font-medium shrink-0">
+                Ada perubahan yang belum tersimpan
+              </span>
+            )}
           </div>
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
             <p className="text-sm text-blue-800 dark:text-blue-200">

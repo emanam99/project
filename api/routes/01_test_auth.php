@@ -24,6 +24,5 @@ return function (\Slim\App $app): void {
     $app->post('/api/auth/login', [AuthController::class, 'login']);
     $app->post('/api/auth/login-nik', [AuthController::class, 'loginNik']);
     $app->get('/api/auth/verify', [AuthController::class, 'verify']);
-    $app->post('/api/auth/view-as', [AuthController::class, 'setViewAs'])->add(new AuthMiddleware());
     $app->get('/api/auth/csrf-token', [AuthController::class, 'getCsrfToken']);
 };

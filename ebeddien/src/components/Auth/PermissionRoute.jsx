@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { userMatchesAnyAllowedRole } from '../../utils/roleAccess'
 import { useEffect, useState } from 'react'
 
 // Factory function untuk membuat PermissionRoute dengan permission tertentu
@@ -72,16 +73,8 @@ export function createFinanceRoute() {
       return <Navigate to="/" replace />
     }
     const hasPermission = user.permissions.includes(requiredPermission)
-    const hasRole = () => {
-      if (!user || !allowedRoles?.length) return false
-      if (user.all_roles?.length) {
-        const userRoles = user.all_roles.map((r) => (r || '').toLowerCase()).filter(Boolean)
-        return allowedRoles.some((r) => userRoles.includes(r.toLowerCase()))
-      }
-      const roleKey = (user.role_key || user.level || '').toLowerCase()
-      return allowedRoles.map((r) => r.toLowerCase()).includes(roleKey)
-    }
-    if (!hasPermission || !hasRole()) {
+    const hasRole = userMatchesAnyAllowedRole(user, allowedRoles)
+    if (!hasPermission || !hasRole) {
       return <Navigate to="/" replace />
     }
     return <Outlet />

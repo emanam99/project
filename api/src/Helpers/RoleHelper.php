@@ -13,6 +13,229 @@ class RoleHelper
     private static $db = null;
 
     /**
+     * Gabungan scope lembaga (semua role setara; ambil yang paling luas).
+     * Jika ada role global / lembaga_id kosong pada baris manapun → akses semua lembaga.
+     * Jika semua baris terikat lembaga konkret → union id lembaga.
+     *
+     * @return array{lembaga_scope_all: bool, lembaga_ids: string[]}
+     */
+    public static function computeLembagaAccessUnion(int $pengurusId): array
+    {
+        $rows = self::getUserRoles($pengurusId);
+        if ($rows === []) {
+            return ['lembaga_scope_all' => false, 'lembaga_ids' => []];
+        }
+        foreach ($rows as $row) {
+            $rk = str_replace(' ', '_', strtolower(trim((string)($row['role_key'] ?? ''))));
+            if ($rk !== '' && RoleConfig::roleHasUnrestrictedLembagaScope($rk)) {
+                return ['lembaga_scope_all' => true, 'lembaga_ids' => []];
+            }
+        }
+        foreach ($rows as $row) {
+            $lid = $row['lembaga_id'] ?? null;
+            $lidStr = $lid !== null && $lid !== '' ? trim((string) $lid) : '';
+            if ($lidStr === '') {
+                return ['lembaga_scope_all' => true, 'lembaga_ids' => []];
+            }
+        }
+        $ids = [];
+        foreach ($rows as $row) {
+            $lid = $row['lembaga_id'] ?? null;
+            if ($lid !== null && $lid !== '') {
+                $ids[trim((string) $lid)] = true;
+            }
+        }
+
+        return ['lembaga_scope_all' => false, 'lembaga_ids' => array_keys($ids)];
+    }
+
+    /**
+     * Filter SQL untuk list registrasi PSB (daftar_formal / daftar_diniyah = id lembaga).
+     * null = tanpa filter. ['empty' => true] = tidak ada baris yang boleh ditampilkan.
+     *
+     * @return null|array{empty?: bool, clause?: string, params?: list<string>}
+     */
+    public static function buildPendaftarLembagaSqlFilter(int $pengurusId): ?array
+    {
+        $scope = self::computeLembagaAccessUnion($pengurusId);
+        if ($scope['lembaga_scope_all']) {
+            return null;
+        }
+        $ids = $scope['lembaga_ids'];
+        if ($ids === []) {
+            return ['empty' => true];
+        }
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+
+        return [
+            'clause' => "(r.daftar_formal IN ($ph) OR r.daftar_diniyah IN ($ph))",
+            'params' => array_merge(array_values($ids), array_values($ids)),
+        ];
+    }
+
+    /**
+     * Filter list pendaftar PSB dari gabungan scope lembaga semua role pengurus.
+     *
+     * @return null|array{empty?: bool, clause?: string, params?: list<string>}
+     */
+    public static function resolvePendaftarLembagaSqlFilter(?array $user, ?int $pengurusId): ?array
+    {
+        if ($pengurusId !== null && $pengurusId > 0) {
+            return self::buildPendaftarLembagaSqlFilter($pengurusId);
+        }
+
+        return null;
+    }
+
+    /**
+     * Daftar key role unik untuk token / verify — urutan alfabetis (hak akses = gabungan semua, urutan tidak penting).
+     */
+    public static function getAllRoleKeysNormalizedForPengurus(int $pengurusId): array
+    {
+        $rows = self::getUserRoles($pengurusId);
+        $keys = [];
+        foreach ($rows as $r) {
+            $k = str_replace(' ', '_', strtolower(trim((string)($r['role_key'] ?? ''))));
+            if ($k !== '') {
+                $keys[$k] = true;
+            }
+        }
+        $out = array_keys($keys);
+        sort($out);
+        return $out;
+    }
+
+    /** True jika pengurus memiliki role super_admin (salah satu dari banyak role). */
+    public static function pengurusHasSuperAdminRole(int $pengurusId): bool
+    {
+        return in_array('super_admin', self::getAllRoleKeysNormalizedForPengurus($pengurusId), true);
+    }
+
+    /**
+     * Union role dari payload JWT: role_key / user_role / level + all_roles (aman untuk multi_role).
+     *
+     * @return list<string>
+     */
+    public static function normalizeTokenRoleKeysUnion(array $user): array
+    {
+        $keys = [];
+        foreach (['role_key', 'user_role', 'level', 'role'] as $field) {
+            if (!isset($user[$field]) || $user[$field] === '' || $user[$field] === null) {
+                continue;
+            }
+            $k = str_replace(' ', '_', strtolower(trim((string) $user[$field])));
+            if ($k !== '') {
+                $keys[$k] = true;
+            }
+        }
+        if (!empty($user['all_roles']) && is_array($user['all_roles'])) {
+            foreach ($user['all_roles'] as $r) {
+                $k = str_replace(' ', '_', strtolower(trim((string) $r)));
+                if ($k !== '') {
+                    $keys[$k] = true;
+                }
+            }
+        }
+        $out = array_keys($keys);
+        sort($out);
+
+        return $out;
+    }
+
+    /** True jika salah satu role di token ada di $roleKeys (multi_role aman). */
+    public static function tokenHasAnyRoleKey(array $user, array $roleKeys): bool
+    {
+        $want = [];
+        foreach ($roleKeys as $rk) {
+            $want[str_replace(' ', '_', strtolower(trim((string) $rk)))] = true;
+        }
+        if ($want === []) {
+            return false;
+        }
+        foreach (self::normalizeTokenRoleKeysUnion($user) as $u) {
+            if (isset($want[$u])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Role pengurus/staff (bukan konteks hanya-santri di app daftar). */
+    private const TOKEN_STAFF_ROLE_KEYS = [
+        'super_admin', 'admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'admin_psb', 'petugas_psb',
+        'admin_ijin', 'petugas_ijin', 'admin_umroh', 'petugas_umroh', 'admin_ugt', 'koordinator_ugt',
+        'admin_kalender', 'tarbiyah', 'wali_kelas', 'guru', 'waka_lembaga', 'ketua_lembaga',
+        'admin_cashless', 'petugas_cashless', 'toko',
+    ];
+
+    /**
+     * True jika token layaknya login aplikasi daftar (santri): user_id bukan pengurus.id.
+     * Multi-role dengan staff apa pun → false.
+     */
+    public static function tokenIsSantriDaftarContext(array $user): bool
+    {
+        $union = self::normalizeTokenRoleKeysUnion($user);
+        foreach ($union as $k) {
+            if (in_array($k, self::TOKEN_STAFF_ROLE_KEYS, true)) {
+                return false;
+            }
+        }
+        if (!empty($user['santri_id'])) {
+            return true;
+        }
+
+        return in_array('santri', $union, true);
+    }
+
+    /** Boleh query biodata/registrasi/transaksi santri lain (PSB + super_admin). */
+    public static function tokenCanQueryAnyPendaftaranSantri(array $user): bool
+    {
+        return self::tokenHasAnyRoleKey($user, ['super_admin', 'admin_psb', 'petugas_psb']);
+    }
+
+    /**
+     * Koordinator UGT dibatasi ke madrasah sendiri, kecuali ada super_admin / admin_ugt di token.
+     */
+    public static function tokenMadrasahApplyKoordinatorScope(array $user): bool
+    {
+        return self::tokenHasAnyRoleKey($user, ['koordinator_ugt'])
+            && !self::tokenHasAnyRoleKey($user, ['super_admin', 'admin_ugt']);
+    }
+
+    /** True jika salah satu role di token boleh mengakses app (RoleConfig), aman multi_role / all_roles. */
+    public static function tokenCanAccessAppFromRoleConfig(array $user, string $appKey): bool
+    {
+        $app = strtolower(trim($appKey));
+        if ($app === '') {
+            return false;
+        }
+        foreach (self::normalizeTokenRoleKeysUnion($user) as $k) {
+            if ($k !== '' && RoleConfig::canAccessApp($k, $app)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** True jika salah satu role di token punya permission menurut RoleConfig (gabungan union). */
+    public static function tokenHasPermissionFromRoleConfig(array $user, string $permission): bool
+    {
+        $perm = strtolower(trim($permission));
+        if ($perm === '') {
+            return false;
+        }
+        foreach (self::normalizeTokenRoleKeysUnion($user) as $k) {
+            if ($k !== '' && RoleConfig::hasPermission($k, $perm)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Dapatkan koneksi database
      */
     private static function getDb()
@@ -31,65 +254,26 @@ class RoleHelper
      */
     public static function getUserRole(int $pengurusId): ?array
     {
-        try {
-            $db = self::getDb();
-            
-            // Cek apakah tabel pengurus___role dan role ada
-            $tablesCheck = $db->query("SHOW TABLES LIKE 'pengurus___role'")->fetch();
-            if (!$tablesCheck) {
-                error_log("RoleHelper: Table pengurus___role tidak ditemukan");
-                return null;
-            }
-            
-            $tablesCheck2 = $db->query("SHOW TABLES LIKE 'role'")->fetch();
-            if (!$tablesCheck2) {
-                error_log("RoleHelper: Table role tidak ditemukan");
-                return null;
-            }
-            
-            // Query role dari tabel pengurus___role
-            $stmt = $db->prepare("
-                SELECT 
-                    r.`key` as role_key,
-                    r.label as role_label,
-                    pr.lembaga_id,
-                    pr.id as pengurus_role_id
-                FROM pengurus___role pr
-                INNER JOIN role r ON pr.role_id = r.id
-                WHERE pr.pengurus_id = ?
-                ORDER BY pr.tanggal_dibuat DESC
-                LIMIT 1
-            ");
-            
-            $stmt->execute([$pengurusId]);
-            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
-            if (!$result) {
-                error_log("RoleHelper: Tidak ada role ditemukan untuk pengurus_id: $pengurusId");
-                return null;
-            }
-            
-            // Normalize role_key (trim dan lowercase untuk konsistensi)
-            $roleKey = trim(strtolower($result['role_key'] ?? ''));
-            
-            // Log untuk debugging
-            error_log("RoleHelper::getUserRole - Found role for user ID $pengurusId: role_key='$roleKey', label='{$result['role_label']}'");
-            
-            if (empty($roleKey)) {
-                error_log("RoleHelper::getUserRole - WARNING: role_key is empty after normalization for user ID: $pengurusId");
-            }
-            
-            return [
-                'role_key' => $roleKey,
-                'role_label' => $result['role_label'] ?? '',
-                'lembaga_id' => $result['lembaga_id'],
-                'pengurus_role_id' => $result['pengurus_role_id']
-            ];
-        } catch (\Exception $e) {
-            error_log("RoleHelper::getUserRole error: " . $e->getMessage());
-            error_log("RoleHelper::getUserRole stack trace: " . $e->getTraceAsString());
+        $all = self::getUserRoles($pengurusId);
+        if ($all === []) {
+            error_log("RoleHelper: Tidak ada role ditemukan untuk pengurus_id: $pengurusId");
             return null;
         }
+        usort($all, function (array $a, array $b): int {
+            return strcmp((string)($a['role_key'] ?? ''), (string)($b['role_key'] ?? ''));
+        });
+        $result = $all[0];
+        $roleKey = trim(strtolower((string)($result['role_key'] ?? '')));
+        error_log("RoleHelper::getUserRole - First alphabetical role for pengurus_id $pengurusId: role_key='$roleKey'");
+        if ($roleKey === '') {
+            error_log("RoleHelper::getUserRole - WARNING: role_key is empty after normalization for user ID: $pengurusId");
+        }
+        return [
+            'role_key' => $roleKey,
+            'role_label' => $result['role_label'] ?? '',
+            'lembaga_id' => $result['lembaga_id'],
+            'pengurus_role_id' => $result['pengurus_role_id']
+        ];
     }
 
     /**
@@ -139,6 +323,7 @@ class RoleHelper
         try {
             $db = self::getDb();
             
+            // Urutan baris stabil; hak akses = gabungan semua baris (tanpa role utama).
             $stmt = $db->prepare("
                 SELECT 
                     r.`key` as role_key,
@@ -148,7 +333,7 @@ class RoleHelper
                 FROM pengurus___role pr
                 INNER JOIN role r ON pr.role_id = r.id
                 WHERE pr.pengurus_id = ?
-                ORDER BY pr.tanggal_dibuat DESC
+                ORDER BY pr.id ASC
             ");
             
             $stmt->execute([$pengurusId]);
@@ -177,59 +362,69 @@ class RoleHelper
      */
     public static function getRoleInfoForToken(int $pengurusId): array
     {
-        // Ambil semua role user (bukan hanya yang pertama)
         $userRoles = self::getUserRoles($pengurusId);
-        
+
         if (empty($userRoles)) {
-            // Fallback: jika tidak ada role di database, return default
             return [
                 'role_key' => null,
                 'role_label' => 'Tidak ada role',
                 'allowed_apps' => [],
                 'permissions' => [],
-                'lembaga_id' => null
+                'lembaga_id' => null,
+                'lembaga_scope_all' => false,
+                'lembaga_ids' => [],
             ];
         }
-        
-        // Role pertama (terbaru) digunakan untuk role_key dan role_label (backward compatibility)
-        $primaryRole = $userRoles[0];
-        $roleKey = strtolower(trim($primaryRole['role_key'] ?? ''));
-        
-        // Gabungkan allowed_apps dari semua role
+
         $allAllowedApps = [];
         $allPermissions = [];
-        
+
         foreach ($userRoles as $role) {
-            $currentRoleKey = strtolower(trim($role['role_key'] ?? ''));
-            if (!empty($currentRoleKey)) {
-                $apps = RoleConfig::getAllowedApps($currentRoleKey);
-                $perms = RoleConfig::getPermissions($currentRoleKey);
-                
-                // Merge apps (unique)
-                $allAllowedApps = array_unique(array_merge($allAllowedApps, $apps));
-                
-                // Merge permissions (unique)
-                $allPermissions = array_unique(array_merge($allPermissions, $perms));
+            $currentRoleKey = strtolower(trim((string)($role['role_key'] ?? '')));
+            if ($currentRoleKey !== '') {
+                $allAllowedApps = array_unique(array_merge($allAllowedApps, RoleConfig::getAllowedApps($currentRoleKey)));
+                $allPermissions = array_unique(array_merge($allPermissions, RoleConfig::getPermissions($currentRoleKey)));
             }
         }
-        
-        // Convert back to indexed array
+
         $allAllowedApps = array_values($allAllowedApps);
         $allPermissions = array_values($allPermissions);
-        
-        // Log untuk debugging
-        error_log("RoleHelper::getRoleInfoForToken - User ID: $pengurusId, Total roles: " . count($userRoles));
-        error_log("RoleHelper::getRoleInfoForToken - Primary role_key: $roleKey");
-        error_log("RoleHelper::getRoleInfoForToken - All role keys: " . json_encode(array_column($userRoles, 'role_key')));
-        error_log("RoleHelper::getRoleInfoForToken - Combined allowed_apps: " . json_encode($allAllowedApps));
-        error_log("RoleHelper::getRoleInfoForToken - Combined permissions: " . json_encode($allPermissions));
-        
+
+        $uniqueKeys = [];
+        foreach ($userRoles as $role) {
+            $k = strtolower(trim((string)($role['role_key'] ?? '')));
+            if ($k !== '') {
+                $uniqueKeys[$k] = true;
+            }
+        }
+        $keyList = array_keys($uniqueKeys);
+        sort($keyList);
+
+        if (count($keyList) <= 1) {
+            $roleKey = $keyList[0] ?? '';
+            $roleLabel = $userRoles[0]['role_label'] ?? RoleConfig::getRoleLabel($roleKey);
+        } else {
+            $roleKey = 'multi_role';
+            $roleLabel = 'Beberapa role';
+        }
+
+        $scope = self::computeLembagaAccessUnion($pengurusId);
+        $lembagaIds = $scope['lembaga_ids'];
+        $lembagaIdSingle = null;
+        if (!$scope['lembaga_scope_all'] && count($lembagaIds) === 1) {
+            $lembagaIdSingle = $lembagaIds[0];
+        }
+
+        error_log('RoleHelper::getRoleInfoForToken - pengurus_id=' . $pengurusId . ' keys=' . json_encode($keyList) . ' scope_all=' . ($scope['lembaga_scope_all'] ? '1' : '0'));
+
         return [
             'role_key' => $roleKey,
-            'role_label' => $primaryRole['role_label'] ?? '',
+            'role_label' => $roleLabel,
             'allowed_apps' => $allAllowedApps,
             'permissions' => $allPermissions,
-            'lembaga_id' => $primaryRole['lembaga_id'] ?? null
+            'lembaga_id' => $lembagaIdSingle,
+            'lembaga_scope_all' => $scope['lembaga_scope_all'],
+            'lembaga_ids' => $lembagaIds,
         ];
     }
 

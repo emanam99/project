@@ -327,7 +327,8 @@ export const pendaftaranAPI = {
   getBiodata: async (idSantri = null) => {
     const params = new URLSearchParams()
     if (idSantri) params.append('id_santri', idSantri)
-    const url = params.toString() ? `/pendaftaran/get-biodata?${params.toString()}` : '/pendaftaran/get-biodata'
+    params.append('_t', Date.now())
+    const url = `/pendaftaran/get-biodata?${params.toString()}`
     const response = await api.get(url)
     return response.data
   },

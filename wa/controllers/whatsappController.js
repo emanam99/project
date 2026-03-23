@@ -344,6 +344,8 @@ export const connectWhatsApp = async (req, res) => {
   try {
     const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
     const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    /** true = paksa QR baru (hindari response cache dari connect sebelumnya) */
+    const refreshQr = req.body?.refreshQr === true;
     if (countSessions() >= MAX_SESSIONS && !clientsBySession[safeId]) {
       const st = getWaStatus(safeId);
       const hasBaileys = st.status === 'connected' || st.status === 'connecting';
@@ -371,7 +373,62 @@ export const connectWhatsApp = async (req, res) => {
         },
       });
     }
-    if (dataStatus.status === 'connecting' && (dataStatus.qrCode || dataStatus.baileysQrCode)) {
+
+    // Puppeteer sudah login: jangan destroy client. Tanpa refreshQr kembalikan status; dengan refreshQr hanya putus & init ulang Baileys (QR langkah 2).
+    if (dataStatus.status === 'connected' && clientsBySession[safeId]) {
+      if (refreshQr) {
+        await disconnectBaileys(safeId);
+        try {
+          await initBaileys(safeId);
+        } catch (err) {
+          console.error('[WA] initBaileys setelah refresh QR:', err?.message || err);
+        }
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const st = getWaStatus(safeId);
+          if (st.baileysQrCode || st.baileysStatus === 'connected') break;
+        }
+        const st = getWaStatus(safeId);
+        return res.json({
+          success: true,
+          message: st.baileysQrCode
+            ? 'Scan QR Baileys (Langkah 2).'
+            : st.baileysStatus === 'connected'
+              ? 'Baileys terhubung.'
+              : 'Memulai ulang Baileys...',
+          data: {
+            sessionId: safeId,
+            status: st.status,
+            qrCode: null,
+            phoneNumber: st.phoneNumber || null,
+            baileysStatus: st.baileysStatus || 'disconnected',
+            baileysQrCode: st.baileysQrCode || null,
+            baileysPhoneNumber: st.baileysPhoneNumber || null,
+          },
+        });
+      }
+      return res.json({
+        success: true,
+        message: 'WhatsApp sudah login. Scan QR Baileys jika belum.',
+        data: {
+          sessionId: safeId,
+          status: dataStatus.status,
+          qrCode: null,
+          phoneNumber: dataStatus.phoneNumber || null,
+          baileysStatus: dataStatus.baileysStatus,
+          baileysQrCode: dataStatus.baileysQrCode || null,
+          baileysPhoneNumber: dataStatus.baileysPhoneNumber || null,
+        },
+      });
+    }
+
+    // Hanya kembalikan QR cache jika client masih hidup & peminta tidak minta QR baru (hindari respons yang sama terus saat klik "Muat ulang").
+    if (
+      !refreshQr &&
+      dataStatus.status === 'connecting' &&
+      (dataStatus.qrCode || dataStatus.baileysQrCode) &&
+      clientsBySession[safeId]
+    ) {
       return res.json({
         success: true,
         message: 'Scan QR code di bawah (Langkah 1: login WA).',

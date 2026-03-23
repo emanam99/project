@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { umrohTabunganAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
+import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import { motion } from 'framer-motion'
 import TabunganFormOffcanvas from './TabunganFormOffcanvas'
@@ -10,7 +11,7 @@ import DeleteTabunganModal from './DeleteTabunganModal'
 function TabunganList({ jamaahId, jamaahData }) {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
-  const isSuperAdmin = user?.role_key === 'super_admin' || user?.level?.toLowerCase() === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
   const [tabunganList, setTabunganList] = useState([])
   const [loading, setLoading] = useState(false)
   const [saldo, setSaldo] = useState(0)

@@ -1007,16 +1007,19 @@ class AuthControllerV2
             $allowedApps = [];
             $permissions = [];
             $lembagaId = null;
+            $lembagaScopeAll = false;
+            $lembagaIds = [];
             $primaryRoleKey = 'user';
             $primaryRoleLabel = 'User';
 
             if ($pengurusId !== null) {
                 $roleInfoPengurus = RoleHelper::getRoleInfoForToken($pengurusId);
-                $allRolesPengurus = RoleHelper::getUserRoles($pengurusId);
-                $allRoleKeys = array_column($allRolesPengurus, 'role_key');
+                $allRoleKeys = RoleHelper::getAllRoleKeysNormalizedForPengurus($pengurusId);
                 $allowedApps = array_merge($allowedApps, $roleInfoPengurus['allowed_apps'] ?? []);
                 $permissions = array_merge($permissions, $roleInfoPengurus['permissions'] ?? []);
                 $lembagaId = $roleInfoPengurus['lembaga_id'] ?? null;
+                $lembagaScopeAll = (bool)($roleInfoPengurus['lembaga_scope_all'] ?? false);
+                $lembagaIds = $roleInfoPengurus['lembaga_ids'] ?? [];
                 $primaryRoleKey = $roleInfoPengurus['role_key'] ?? 'pengurus';
                 $primaryRoleLabel = $roleInfoPengurus['role_label'] ?? 'Pengurus';
             }
@@ -1047,6 +1050,9 @@ class AuthControllerV2
                 }
             }
 
+            $allRoleKeys = array_values(array_unique($allRoleKeys));
+            sort($allRoleKeys);
+
             $allowedApps = array_values(array_unique($allowedApps));
             $permissions = array_values(array_unique($permissions));
 
@@ -1056,13 +1062,16 @@ class AuthControllerV2
                 'role_label' => $primaryRoleLabel,
                 'allowed_apps' => $allowedApps,
                 'permissions' => $permissions,
-                'lembaga_id' => $lembagaId
+                'lembaga_id' => $lembagaId,
+                'lembaga_scope_all' => $lembagaScopeAll,
+                'lembaga_ids' => $lembagaIds,
             ];
 
             $this->db->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?")->execute([$usersId]);
 
             $jti = bin2hex(random_bytes(16));
             // user_id: untuk uwaba = pengurus.id (backward compat); untuk santri-only = users.id. users_id: selalu users.id (untuk session & multi-role).
+            $isRealSuperAdmin = $pengurusId !== null && in_array('super_admin', $allRoleKeys, true);
             $tokenPayload = [
                 'user_id' => $pengurusId ?? $usersId,
                 'users_id' => $usersId,
@@ -1076,6 +1085,9 @@ class AuthControllerV2
                 'allowed_apps' => $roleInfo['allowed_apps'],
                 'permissions' => $roleInfo['permissions'],
                 'lembaga_id' => $roleInfo['lembaga_id'],
+                'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
+                'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
+                'is_real_super_admin' => $isRealSuperAdmin,
             ];
             if ($pengurusId !== null) {
                 $tokenPayload['id_pengurus'] = $pengurusId;
@@ -1184,6 +1196,8 @@ class AuthControllerV2
                 'allowed_apps' => $allowedApps,
                 'permissions' => $roleInfo['permissions'],
                 'lembaga_id' => $roleInfo['lembaga_id'],
+                'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
+                'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
                 'level' => $roleInfo['role_key'],
             ];
             if ($pengurusId !== null) {
@@ -1200,6 +1214,7 @@ class AuthControllerV2
                 $loginUser['toko_id'] = $tokoId;
                 $loginUser['toko_nama'] = $tokoNama;
             }
+            $loginUser['is_real_super_admin'] = $isRealSuperAdmin;
             $loginData = [
                 'token' => $token,
                 'user' => $loginUser,
@@ -1436,13 +1451,13 @@ class AuthControllerV2
     {
         try {
             $payload = $request->getAttribute('user');
-            $roleKey = $payload['role_key'] ?? '';
+            $pArr = is_array($payload) ? $payload : [];
             $userIdFromToken = (int)($payload['user_id'] ?? 0);
             if ($userIdFromToken <= 0) {
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $noWa = '';
-            if ($roleKey === 'santri') {
+            if (RoleHelper::tokenIsSantriDaftarContext($pArr)) {
                 $stmt = $this->db->prepare("SELECT no_wa FROM users WHERE id = ?");
                 $stmt->execute([$userIdFromToken]);
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -1567,7 +1582,7 @@ class AuthControllerV2
     {
         try {
             $payload = $request->getAttribute('user');
-            $roleKey = $payload['role_key'] ?? '';
+            $pArr = is_array($payload) ? $payload : [];
             $userIdFromToken = (int)($payload['user_id'] ?? 0);
             if ($userIdFromToken <= 0) {
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
@@ -1583,7 +1598,7 @@ class AuthControllerV2
             $idPengurusRecipient = null;
             $idSantriRecipient = isset($payload['santri_id']) ? (int)$payload['santri_id'] : null;
 
-            if ($roleKey === 'santri') {
+            if (RoleHelper::tokenIsSantriDaftarContext($pArr)) {
                 $userId = $userIdFromToken;
                 $stmt = $this->db->prepare("SELECT no_wa FROM users WHERE id = ?");
                 $stmt->execute([$userId]);
@@ -1627,7 +1642,7 @@ class AuthControllerV2
             $baseUrl = $this->getFrontendBaseUrl($request, $config);
             $link = $baseUrl . '/ubah-password?token=' . urlencode($plainToken);
             $message = "Link ubah password (aktif 15 menit):\n" . $link;
-            $tujuan = $roleKey === 'santri' ? 'santri' : 'pengurus';
+            $tujuan = RoleHelper::tokenIsSantriDaftarContext($pArr) ? 'santri' : 'pengurus';
             $logContext = ['id_santri' => $idSantriRecipient, 'id_pengurus' => $idPengurusRecipient, 'tujuan' => $tujuan, 'id_pengurus_pengirim' => null, 'kategori' => 'password_reset', 'sumber' => 'auth'];
             $sendResult = WhatsAppService::sendMessage($noWaDisplay, $message, null, $logContext);
             if (!$sendResult['success']) {

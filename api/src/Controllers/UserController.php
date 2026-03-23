@@ -7,6 +7,7 @@ use App\Auth\PasswordHelper;
 use App\Helpers\AuditLogger;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -69,14 +70,11 @@ class UserController
             }
 
             $currentUser = $request->getAttribute('user');
-            $currentPengurusId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : 0;
+            $cu = is_array($currentUser) ? $currentUser : [];
+            $currentPengurusId = isset($cu['user_id']) ? (int) $cu['user_id'] : 0;
             $targetPengurusId = (int) $userId;
-            $roleKey = strtolower(trim((string)($currentUser['role_key'] ?? $currentUser['user_role'] ?? '')));
-            $allRoles = is_array($currentUser['all_roles'] ?? null)
-                ? array_map('strtolower', array_map('trim', $currentUser['all_roles']))
-                : [];
-            $isSuperAdmin = ($roleKey === 'super_admin') || in_array('super_admin', $allRoles);
-            $isAdminUgt = ($roleKey === 'admin_ugt') || in_array('admin_ugt', $allRoles);
+            $isSuperAdmin = RoleHelper::tokenHasAnyRoleKey($cu, ['super_admin']);
+            $isAdminUgt = RoleHelper::tokenHasAnyRoleKey($cu, ['admin_ugt']);
             $canEditAny = $isSuperAdmin || $isAdminUgt;
             if ($targetPengurusId !== $currentPengurusId && !$canEditAny) {
                 return $this->jsonResponse($response, [
@@ -411,14 +409,11 @@ class UserController
             }
 
             $currentUser = $request->getAttribute('user');
-            $currentPengurusId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : 0;
+            $cu = is_array($currentUser) ? $currentUser : [];
+            $currentPengurusId = isset($cu['user_id']) ? (int) $cu['user_id'] : 0;
             $requestedId = (int) $id;
-            $roleKey = strtolower(trim((string)($currentUser['role_key'] ?? $currentUser['user_role'] ?? '')));
-            $allRoles = is_array($currentUser['all_roles'] ?? null)
-                ? array_map('strtolower', array_map('trim', $currentUser['all_roles']))
-                : [];
-            $isSuperAdmin = ($roleKey === 'super_admin') || in_array('super_admin', $allRoles);
-            $isAdminUgt = ($roleKey === 'admin_ugt') || in_array('admin_ugt', $allRoles);
+            $isSuperAdmin = RoleHelper::tokenHasAnyRoleKey($cu, ['super_admin']);
+            $isAdminUgt = RoleHelper::tokenHasAnyRoleKey($cu, ['admin_ugt']);
             $canViewAny = $isSuperAdmin || $isAdminUgt;
             if ($requestedId !== $currentPengurusId && !$canViewAny) {
                 return $this->jsonResponse($response, [

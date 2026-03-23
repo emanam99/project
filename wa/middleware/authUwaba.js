@@ -8,6 +8,19 @@
 const DEFAULT_UWABA_BASE = 'http://localhost/api/public/api';
 const UWABA_API_BASE = process.env.UWABA_API_BASE_URL?.trim() || (process.env.NODE_ENV === 'production' ? '' : DEFAULT_UWABA_BASE);
 
+/** Sama seperti eBeddien: token bisa role_key "multi_role" sementara super_admin ada di all_roles / is_real_super_admin */
+function payloadHasSuperAdmin(d) {
+  if (!d || typeof d !== 'object') return false;
+  if (d.is_real_super_admin === true) return true;
+  const rk = String(d.role_key || d.user_role || d.level || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
+  if (rk === 'super_admin') return true;
+  const roles = Array.isArray(d.all_roles) ? d.all_roles : [];
+  return roles.some((r) => String(r || '').toLowerCase().trim().replace(/\s+/g, '_') === 'super_admin');
+}
+
 export const authUwaba = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -77,9 +90,9 @@ export const authUwaba = async (req, res, next) => {
       });
     }
 
-    // Cek akses: super_admin selalu boleh; role lain harus punya 'wa' di allowed_apps
+    // Cek akses: super_admin (termasuk multi-role) selalu boleh; role lain harus punya 'wa' di allowed_apps
     const roleKey = (data.data.role_key || data.data.user_role || data.data.level || '').toString().toLowerCase();
-    const isSuperAdmin = roleKey === 'super_admin';
+    const isSuperAdmin = payloadHasSuperAdmin(data.data);
     const allowedApps = data.data.allowed_apps || [];
     const hasWaAccess = Array.isArray(allowedApps) && allowedApps.includes('wa');
     if (!isSuperAdmin && Array.isArray(allowedApps) && allowedApps.length > 0 && !hasWaAccess) {

@@ -2,6 +2,7 @@ import { useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
+import { userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../../utils/roleAccess'
 import { navMenuItems } from '../../../config/navMenuConfig'
 import { getMenuIcon } from '../Beranda/index.jsx'
 
@@ -50,20 +51,12 @@ export default function SemuaMenu() {
   const scrollRef = useRef(null)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const hasRole = (roles) => {
-    if (!user || !roles || !Array.isArray(roles)) return false
-    if (user.all_roles?.length) {
-      const userRoles = user.all_roles.map((r) => (r || '').toLowerCase()).filter(Boolean)
-      return roles.some((r) => userRoles.includes(r.toLowerCase()))
-    }
-    const roleKey = (user.role_key || user.level || '').toLowerCase()
-    return roles.map((r) => r.toLowerCase()).includes(roleKey)
-  }
+  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
   const hasPermission = (permission) => {
     if (!user?.permissions || !Array.isArray(user.permissions)) return false
     return user.permissions.includes(permission)
   }
-  const isSuperAdmin = user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
 
   const allowedMenus = useMemo(() => {
     return navMenuItems.filter((item) => {

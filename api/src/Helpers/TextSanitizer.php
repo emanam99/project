@@ -15,7 +15,7 @@ class TextSanitizer
     public const NUMERIC_OR_SPECIAL_FIELDS = [
         'id', 'grup', 'nis', 'nik', 'nik_ayah', 'nik_ibu', 'nik_wali', 'no_kk',
         'rt', 'rw', 'kode_pos', 'anak_ke', 'jumlah_saudara', 'saudara_di_pesantren',
-        'id_kamar', 'id_diniyah', 'id_formal', 'id_admin', 'id_santri',
+        'id_kamar', 'id_diniyah', 'id_formal', 'id_admin', 'id_santri', 'id_registrasi',
         'tanggal_lahir', 'tanggal_lahir_ayah', 'tanggal_lahir_ibu', 'tanggal_lahir_wali',
         'lulus_madrasah', 'lulus_sekolah', 'npsn', 'nsm',
         'penghasilan_ayah', 'penghasilan_ibu', 'penghasilan_wali',

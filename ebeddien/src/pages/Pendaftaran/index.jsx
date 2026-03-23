@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { createPortal } from 'react-dom'
@@ -6,6 +6,13 @@ import BiodataPendaftaran from './components/BiodataPendaftaran'
 import BerkasTabPanel from './components/BerkasTabPanel'
 import PembayaranBox from './components/PembayaranBox'
 import SearchOffcanvas from '../../components/Biodata/SearchOffcanvas'
+
+const VALID_TABS = ['biodata', 'berkas', 'pembayaran']
+
+function parseTabFromSearch(searchString) {
+  const t = new URLSearchParams(searchString).get('tab')
+  return VALID_TABS.includes(t) ? t : 'biodata'
+}
 
 function Pendaftaran() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -26,9 +33,14 @@ function Pendaftaran() {
     }
     return null
   })
-  const [activeTab, setActiveTab] = useState('biodata') // HP: 'biodata' | 'berkas' | 'pembayaran'
-  const [rightColumnTab, setRightColumnTab] = useState('berkas') // PC: 'berkas' | 'pembayaran'
-  const [pendingBerkasFile, setPendingBerkasFile] = useState(null) // File dari return editor (dari tab Biodata)
+  const [activeTab, setActiveTab] = useState(() =>
+    typeof window !== 'undefined' ? parseTabFromSearch(window.location.search) : 'biodata'
+  ) // HP
+  const [rightColumnTab, setRightColumnTab] = useState(() => {
+    if (typeof window === 'undefined') return 'berkas'
+    const t = parseTabFromSearch(window.location.search)
+    return t === 'pembayaran' ? 'pembayaran' : 'berkas'
+  }) // PC: 'berkas' | 'pembayaran'
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isDesktop, setIsDesktop] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0) // Key untuk trigger refresh PembayaranBox
@@ -104,6 +116,24 @@ function Pendaftaran() {
       }
     }
   }, [currentSantri, searchParams, setSearchParams])
+
+  // Sinkron tab dari URL (?tab=biodata|berkas|pembayaran)
+  useEffect(() => {
+    const t = searchParams.get('tab')
+    if (!VALID_TABS.includes(t)) return
+    setActiveTab(t)
+    if (t === 'pembayaran') setRightColumnTab('pembayaran')
+    else if (t === 'berkas') setRightColumnTab('berkas')
+  }, [searchParams])
+
+  const persistTabToUrl = useCallback(
+    (tab) => {
+      const next = new URLSearchParams(searchParams)
+      next.set('tab', tab)
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams]
+  )
   
   // Tampilkan konten sesuai tab (HP) atau kolom (PC)
   useEffect(() => {
@@ -143,7 +173,10 @@ function Pendaftaran() {
         {/* Tab Navigation HP/Tablet: 3 tab Biodata | Berkas | Pembayaran */}
         <div className="lg:hidden flex mb-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden flex-shrink-0">
           <button
-            onClick={() => setActiveTab('biodata')}
+            onClick={() => {
+              setActiveTab('biodata')
+              persistTabToUrl('biodata')
+            }}
             className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1 transition-colors ${
               activeTab === 'biodata'
                 ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
@@ -156,7 +189,10 @@ function Pendaftaran() {
             <span>Biodata</span>
           </button>
           <button
-            onClick={() => setActiveTab('berkas')}
+            onClick={() => {
+              setActiveTab('berkas')
+              persistTabToUrl('berkas')
+            }}
             className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1 transition-colors ${
               activeTab === 'berkas'
                 ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
@@ -169,7 +205,10 @@ function Pendaftaran() {
             <span>Berkas</span>
           </button>
           <button
-            onClick={() => setActiveTab('pembayaran')}
+            onClick={() => {
+              setActiveTab('pembayaran')
+              persistTabToUrl('pembayaran')
+            }}
             className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1 transition-colors ${
               activeTab === 'pembayaran'
                 ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
@@ -194,11 +233,6 @@ function Pendaftaran() {
               externalSantriId={currentSantri?.nis}
               onOpenSearch={() => setIsSearchOpen(true)}
               hideBerkasSection
-              onReturnFromEditor={(file) => {
-                setPendingBerkasFile(file)
-                setActiveTab('berkas')
-                setRightColumnTab('berkas')
-              }}
               onBiodataSaved={() => setRefreshKey((prev) => prev + 1)}
               onDataChange={(data) => {
                 const isInvalid =
@@ -229,7 +263,10 @@ function Pendaftaran() {
             {/* Tab Berkas | Pembayaran (hanya tampil di PC) */}
             <div className="hidden lg:flex mb-1.5 bg-white dark:bg-gray-800 rounded-t-lg shadow-sm overflow-hidden flex-shrink-0 border-b border-gray-200 dark:border-gray-600">
               <button
-                onClick={() => setRightColumnTab('berkas')}
+                onClick={() => {
+                  setRightColumnTab('berkas')
+                  persistTabToUrl('berkas')
+                }}
                 className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1.5 transition-colors ${
                   rightColumnTab === 'berkas'
                     ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
@@ -242,7 +279,10 @@ function Pendaftaran() {
                 Berkas
               </button>
               <button
-                onClick={() => setRightColumnTab('pembayaran')}
+                onClick={() => {
+                  setRightColumnTab('pembayaran')
+                  persistTabToUrl('pembayaran')
+                }}
                 className={`flex-1 py-1.5 text-sm text-center border-b-2 font-medium flex items-center justify-center gap-1.5 transition-colors ${
                   rightColumnTab === 'pembayaran'
                     ? 'border-teal-600 dark:border-teal-400 text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
@@ -261,11 +301,7 @@ function Pendaftaran() {
               ref={berkasRef}
               className="flex-1 min-h-0 overflow-hidden flex flex-col bg-white dark:bg-gray-800 rounded-lg lg:rounded-t-none shadow-md p-4 lg:p-6"
             >
-              <BerkasTabPanel
-                santriId={currentSantri?.nis}
-                pendingFileFromEditor={pendingBerkasFile}
-                onConsumePendingFile={() => setPendingBerkasFile(null)}
-              />
+              <BerkasTabPanel santriId={currentSantri?.nis} />
             </div>
 
             {/* Kotak Pembayaran (HP: saat tab Pembayaran; PC: saat tab Pembayaran) */}

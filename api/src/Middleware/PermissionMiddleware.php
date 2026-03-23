@@ -2,7 +2,6 @@
 
 namespace App\Middleware;
 
-use App\Config\RoleConfig;
 use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -49,13 +48,15 @@ class PermissionMiddleware implements MiddlewareInterface
                 ->withHeader('Content-Type', 'application/json; charset=utf-8');
         }
 
-        // Ambil role dari user - prioritaskan role_key (sistem role baru)
-        // Urutan fallback: role_key -> user_role -> level
-        // Catatan: role_key adalah field utama untuk sistem role baru
-        // Fallback ke field lain hanya untuk backward compatibility
-        $roleKey = $user['role_key'] ?? $user['user_role'] ?? $user['level'] ?? null;
+        $unionKeys = RoleHelper::normalizeTokenRoleKeysUnion($user);
+        $roleKeyForLog = $unionKeys !== [] ? implode(',', $unionKeys) : '';
 
-        if (!$roleKey) {
+        $permsArr = $user['permissions'] ?? null;
+        $hasPermsArray = is_array($permsArr) && count($permsArr) > 0;
+        $hasAllRoles = !empty($user['all_roles']) && is_array($user['all_roles']);
+        $pengurusId = RoleHelper::getPengurusIdFromPayload($user);
+
+        if ($unionKeys === [] && !$hasPermsArray && !$hasAllRoles && ($pengurusId === null || $pengurusId <= 0)) {
             error_log("PermissionMiddleware: Role tidak ditemukan. User data: " . json_encode($user));
             $response = new Response();
             $response->getBody()->write(json_encode([
@@ -67,41 +68,27 @@ class PermissionMiddleware implements MiddlewareInterface
                 ->withHeader('Content-Type', 'application/json; charset=utf-8');
         }
 
-        $roleKey = strtolower($roleKey);
-
-        // Cek permission - prioritaskan permissions array dari token (sudah digabungkan dari semua roles)
-        // Jika permissions array ada, gunakan itu. Jika tidak, gunakan RoleHelper untuk cek semua roles user
         $hasPermission = false;
-        
-        if (isset($user['permissions']) && is_array($user['permissions'])) {
-            // Gunakan permissions array dari token (sudah digabungkan dari semua roles)
-            $hasPermission = in_array(strtolower($this->requiredPermission), array_map('strtolower', $user['permissions']));
-            
-            error_log("PermissionMiddleware: Checking permission from token. Required: {$this->requiredPermission}, User permissions: " . json_encode($user['permissions']) . ", Has permission: " . ($hasPermission ? 'true' : 'false'));
-        } else {
-            // Fallback: gunakan RoleHelper untuk cek semua roles user (jika user_id tersedia)
-            if (isset($user['user_id']) || isset($user['id'])) {
-                $userId = $user['user_id'] ?? $user['id'];
-                $hasPermission = RoleHelper::hasPermission($userId, $this->requiredPermission);
-                
-                error_log("PermissionMiddleware: Checking permission via RoleHelper for user ID: $userId, Required: {$this->requiredPermission}, Has permission: " . ($hasPermission ? 'true' : 'false'));
-            } else {
-                // Fallback terakhir: cek permission dari role_key tunggal (untuk backward compatibility)
-                $hasPermission = RoleConfig::hasPermission($roleKey, $this->requiredPermission);
-                
-                error_log("PermissionMiddleware: Checking permission from single role. Role: $roleKey, Required: {$this->requiredPermission}, Has permission: " . ($hasPermission ? 'true' : 'false'));
-            }
+        if ($hasPermsArray) {
+            $hasPermission = in_array($this->requiredPermission, array_map('strtolower', $permsArr), true);
+        }
+        if (!$hasPermission && $pengurusId !== null && $pengurusId > 0) {
+            $hasPermission = RoleHelper::hasPermission($pengurusId, $this->requiredPermission);
+        }
+        if (!$hasPermission) {
+            $hasPermission = RoleHelper::tokenHasPermissionFromRoleConfig($user, $this->requiredPermission);
         }
 
         if (!$hasPermission) {
-            error_log("PermissionMiddleware: Permission ditolak. User role: $roleKey, Required permission: {$this->requiredPermission}, User permissions: " . json_encode($user['permissions'] ?? []));
+            error_log("PermissionMiddleware: Permission ditolak. User roles: $roleKeyForLog, Required permission: {$this->requiredPermission}, User permissions: " . json_encode($user['permissions'] ?? []));
             
             $response = new Response();
             $response->getBody()->write(json_encode([
                 'success' => false,
                 'message' => "Akses ditolak. Anda tidak memiliki permission untuk melakukan aksi ini.",
                 'required_permission' => $this->requiredPermission,
-                'your_role' => $roleKey,
+                'your_role' => $unionKeys[0] ?? '',
+                'your_roles' => $unionKeys,
                 'your_permissions' => $user['permissions'] ?? []
             ], JSON_UNESCAPED_UNICODE));
             return $response

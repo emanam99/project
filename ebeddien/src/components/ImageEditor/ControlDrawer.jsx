@@ -36,7 +36,7 @@ function ControlDrawer({
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-5 right-5 w-11 h-11 bg-teal-600/90 hover:bg-teal-700 text-white rounded-full shadow-lg z-40 flex items-center justify-center transition-all hover:scale-105 backdrop-blur-sm"
+        className="fixed right-5 w-11 h-11 bg-teal-600/90 hover:bg-teal-700 text-white rounded-full shadow-lg z-40 flex items-center justify-center transition-all hover:scale-105 backdrop-blur-sm max-sm:bottom-20 sm:bottom-5"
       >
         <svg
           className={`w-5 h-5 transition-transform ${isOpen ? 'rotate-180' : ''}`}

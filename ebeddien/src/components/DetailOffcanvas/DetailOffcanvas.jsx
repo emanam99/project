@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { pengeluaranAPI, lembagaAPI, pemasukanAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
+import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import { useRencanaKomentarNotification } from '../../hooks/useRencanaKomentarNotification'
 import Modal from '../Modal/Modal'
 import PrintPengeluaranOffcanvas from '../../pages/Keuangan/Pengeluaran/components/PrintPengeluaranOffcanvas'
@@ -570,12 +571,10 @@ function DetailOffcanvas({
   const canDeleteKomentar = (item) => {
     if (!item || !user) return false
     const userId = user?.id || user?.user_id
-    const userLevel = user?.level || user?.role
-    // Bisa hapus jika user adalah author atau super admin
-    return item.id_admin == userId || userLevel === 'super_admin'
+    return item.id_admin == userId || userHasSuperAdminAccess(user)
   }
 
-  const isSuperAdmin = user?.all_roles?.includes('super_admin') || user?.role_key === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
 
   const handleDeletePengeluaran = async () => {
     if (!detailData?.id) return

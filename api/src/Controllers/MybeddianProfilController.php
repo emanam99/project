@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -86,11 +87,11 @@ class MybeddianProfilController
             if (empty($payload)) {
                 return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk santri atau toko'], 403);
             }
-            $roleKey = strtolower(trim($payload['role_key'] ?? $payload['user_role'] ?? ''));
+            $pArr = is_array($payload) ? $payload : [];
             $santriId = isset($payload['santri_id']) ? (int) $payload['santri_id'] : null;
             $tokoId = isset($payload['toko_id']) ? (int) $payload['toko_id'] : null;
-            $isToko = ($roleKey === 'toko' && $tokoId > 0) || $tokoId > 0;
-            $isSantri = ($roleKey === 'santri' && $santriId > 0) || $santriId > 0;
+            $isToko = $tokoId > 0;
+            $isSantri = $santriId > 0 || RoleHelper::tokenIsSantriDaftarContext($pArr);
             if (!$isSantri && !$isToko) {
                 return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk santri atau toko'], 403);
             }
@@ -122,13 +123,16 @@ class MybeddianProfilController
                     $nama = $tokoRow['nama_toko'];
                     $foto_profil = $tokoRow['foto_path'];
                 }
-            } elseif ($santriId > 0) {
-                $stmtSantri = $this->db->prepare("SELECT nama, foto_profil FROM santri WHERE id = ?");
-                $stmtSantri->execute([$santriId]);
-                $santriRow = $stmtSantri->fetch(\PDO::FETCH_ASSOC);
-                if ($santriRow) {
-                    $nama = $santriRow['nama'];
-                    $foto_profil = $santriRow['foto_profil'];
+            } elseif ($santriId > 0 || RoleHelper::tokenIsSantriDaftarContext($pArr)) {
+                $sid = $santriId > 0 ? $santriId : (int) ($payload['user_id'] ?? $payload['id'] ?? 0);
+                if ($sid > 0) {
+                    $stmtSantri = $this->db->prepare("SELECT nama, foto_profil FROM santri WHERE id = ?");
+                    $stmtSantri->execute([$sid]);
+                    $santriRow = $stmtSantri->fetch(\PDO::FETCH_ASSOC);
+                    if ($santriRow) {
+                        $nama = $santriRow['nama'];
+                        $foto_profil = $santriRow['foto_profil'];
+                    }
                 }
             }
 

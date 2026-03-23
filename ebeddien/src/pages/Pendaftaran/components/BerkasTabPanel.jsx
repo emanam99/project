@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
 import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { compressImage } from '../../../utils/imageCompression'
@@ -10,15 +9,15 @@ import BerkasOffcanvas from './BerkasOffcanvas'
 import FilePreviewOffcanvas from '../../../components/FilePreview/FilePreviewOffcanvas'
 import CameraScanner from '../../../components/CameraScanner/CameraScanner'
 import Modal from '../../../components/Modal/Modal'
+import ImageEditorModal from '../../../components/ImageEditor/ImageEditorModal'
 import { useBerkasManagement } from './hooks/useBerkasManagement'
 
 /**
  * Panel tab Berkas (kotak tersendiri). Dipakai di halaman Pendaftaran dengan tab Biodata | Berkas | Pembayaran (HP)
  * atau tab Berkas | Pembayaran di kolom kanan (PC).
  */
-function BerkasTabPanel({ santriId, pendingFileFromEditor = null, onConsumePendingFile }) {
+function BerkasTabPanel({ santriId }) {
   const { showNotification } = useNotification()
-  const navigate = useNavigate()
   const localId = santriId && /^\d{7}$/.test(String(santriId).trim()) ? String(santriId).trim() : null
 
   const berkasManagement = useBerkasManagement(localId || '')
@@ -55,6 +54,8 @@ function BerkasTabPanel({ santriId, pendingFileFromEditor = null, onConsumePendi
   const [existingBerkasToReplace, setExistingBerkasToReplace] = useState(null)
   const [selectedFile, setSelectedFile] = useState(null)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
+  const [cameraImageEditorOpen, setCameraImageEditorOpen] = useState(false)
+  const [cameraImageFileForEditor, setCameraImageFileForEditor] = useState(null)
 
   // KK Sama dengan Santri & berkas not available (sama seperti BiodataPendaftaran)
   const [kkSamaDenganSantri, setKkSamaDenganSantri] = useState(() => {
@@ -188,22 +189,38 @@ function BerkasTabPanel({ santriId, pendingFileFromEditor = null, onConsumePendi
     if (localId) fetchBerkasList(localId)
   }, [localId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pending file from editor: buka offcanvas dan pertahankan jenis berkas dari sessionStorage
-  useEffect(() => {
-    if (pendingFileFromEditor && localId) {
-      const savedJenis = sessionStorage.getItem('uploadingBerkasJenis')
-      if (savedJenis) setSelectedJenisBerkas(savedJenis)
-      setSelectedFile(pendingFileFromEditor)
-      setIsBerkasOffcanvasOpen(true)
-      onConsumePendingFile?.()
-    }
-  }, [pendingFileFromEditor, localId]) // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleGantiClickAndOpen = (berkas) => {
     handleGantiClickBerkas(berkas)
     setExistingBerkasToReplace(berkas)
     setIsBerkasOffcanvasOpen(true)
   }
+
+  const applyCompressIfNeeded = useCallback(async (editedFile) => {
+    const compressibleImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    const fileExtension = editedFile.name.split('.').pop()?.toLowerCase()
+    const compressibleExtensions = ['jpg', 'jpeg', 'png', 'webp']
+    const isCompressibleImage =
+      (compressibleImageTypes.includes(editedFile.type) || compressibleExtensions.includes(fileExtension)) &&
+      editedFile.size > 1024 * 1024
+    if (!isCompressibleImage) return editedFile
+    try {
+      return await compressImage(editedFile, 1)
+    } catch (err) {
+      console.error(err)
+      return editedFile
+    }
+  }, [])
+
+  const handleCameraImageEditorSave = useCallback(
+    async (editedFile) => {
+      const fileToUse = await applyCompressIfNeeded(editedFile)
+      const savedJenis = sessionStorage.getItem('uploadingBerkasJenis')
+      if (savedJenis) setSelectedJenisBerkas(savedJenis)
+      setSelectedFile(fileToUse)
+      setIsBerkasOffcanvasOpen(true)
+    },
+    [applyCompressIfNeeded, setSelectedJenisBerkas, setIsBerkasOffcanvasOpen]
+  )
 
   const handleCameraCapture = async (file) => {
     if (!file) {
@@ -218,10 +235,9 @@ function BerkasTabPanel({ santriId, pendingFileFromEditor = null, onConsumePendi
       }
       const jenisBerkas = sessionStorage.getItem('uploadingBerkasJenis')
       sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas || 'Ijazah SD Sederajat')
-      const returnPath = localId ? `/pendaftaran?nis=${localId}` : '/pendaftaran'
-      sessionStorage.setItem('editorReturnPage', returnPath)
       setShowCameraScanner(false)
-      navigate('/pendaftaran/editor', { state: { file: fileToUse } })
+      setCameraImageFileForEditor(fileToUse)
+      setCameraImageEditorOpen(true)
     } catch (err) {
       showNotification('Gagal memproses file dari kamera. Silakan coba lagi.', 'error')
     }
@@ -237,6 +253,16 @@ function BerkasTabPanel({ santriId, pendingFileFromEditor = null, onConsumePendi
 
   return (
     <div className="h-full overflow-y-auto min-h-0 flex flex-col">
+      <ImageEditorModal
+        isOpen={cameraImageEditorOpen}
+        imageFile={cameraImageFileForEditor}
+        onClose={() => {
+          setCameraImageEditorOpen(false)
+          setCameraImageFileForEditor(null)
+        }}
+        onSave={handleCameraImageEditorSave}
+        zIndex={10060}
+      />
       <BerkasSection
         sectionRef={{ current: null }}
         standalone

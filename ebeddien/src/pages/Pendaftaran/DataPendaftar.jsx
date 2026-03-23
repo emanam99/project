@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { pendaftaranAPI, lembagaAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useAuthStore } from '../../store/authStore'
+import { userHasSuperAdminAccess, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
 import { useNotification } from '../../contexts/NotificationContext'
 import ExportPendaftarOffcanvas from './components/ExportPendaftarOffcanvas'
 import BulkEditPendaftarOffcanvas from './components/BulkEditPendaftarOffcanvas'
@@ -18,6 +19,14 @@ function DataPendaftar() {
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
   const { user, getEffectiveLembagaId } = useAuthStore()
   const effectiveLembagaId = getEffectiveLembagaId?.() ?? user?.lembaga_id ?? null
+  const lembagaScopeAll = user?.lembaga_scope_all === true
+  const scopedLembagaIds = useMemo(() => {
+    if (Array.isArray(user?.lembaga_ids) && user.lembaga_ids.length > 0) {
+      return [...new Set(user.lembaga_ids.map((x) => String(x).trim()).filter(Boolean))]
+    }
+    const lid = effectiveLembagaId != null && effectiveLembagaId !== '' ? String(effectiveLembagaId) : ''
+    return lid ? [lid] : []
+  }, [user?.lembaga_ids, effectiveLembagaId])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [pendaftarList, setPendaftarList] = useState([])
@@ -36,6 +45,7 @@ function DataPendaftar() {
   const [statusMuridFilter, setStatusMuridFilter] = useState('')
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' })
   const [userLembaga, setUserLembaga] = useState(null)
+  const [userLembagas, setUserLembagas] = useState([])
   const [loadingLembaga, setLoadingLembaga] = useState(false)
   const [selectedPendaftar, setSelectedPendaftar] = useState(null)
   const [isDetailOffcanvasOpen, setIsDetailOffcanvasOpen] = useState(false)
@@ -111,44 +121,65 @@ function DataPendaftar() {
   }
 
   // Cek apakah user adalah super_admin
-  const isSuperAdmin = user?.role_key === 'super_admin' || user?.all_roles?.includes('super_admin')
+  const isSuperAdmin = userHasSuperAdminAccess(user)
   
-  // Cek apakah user adalah admin_PSB atau petugas_PSB
-  const isPsbUser = user?.role_key === 'admin_psb' || user?.role_key === 'petugas_psb' || 
-                    user?.all_roles?.includes('admin_psb') || user?.all_roles?.includes('petugas_psb')
+  // Cek apakah user adalah admin_PSB atau petugas_PSB (aman untuk multi_role / all_roles)
+  const isPsbUser = userMatchesAnyAllowedRole(user, ['admin_psb', 'petugas_psb'])
   
-  // Cek apakah kategori lembaga user adalah Pesantren (bisa akses semua seperti super_admin)
-  const isPesantrenUser = userLembaga?.kategori === 'Pesantren'
-  
-  // User dengan akses penuh (super_admin atau kategori Pesantren)
-  const hasFullAccess = isSuperAdmin || isPesantrenUser
+  // Kategori Pesantren pada salah satu lembaga ter-scope → perilaku seperti akses penuh di UI filter
+  const isPesantrenUser = userLembagas.some((l) => l?.kategori === 'Pesantren')
 
-  // Load lembaga data untuk user (termasuk saat super_admin "coba sebagai" role + lembaga)
-  useEffect(() => {
-    if (effectiveLembagaId) {
-      loadUserLembaga()
+  /** Gabungan role: scope semua lembaga dari token, atau super_admin, atau lembaga Pesantren */
+  const hasFullAccess = isSuperAdmin || lembagaScopeAll || isPesantrenUser
+
+  const applyScopedLembagaToRows = useCallback((rows) => {
+    if (hasFullAccess || scopedLembagaIds.length === 0) return rows
+    if (scopedLembagaIds.length === 1 && userLembaga?.id && (userLembaga.kategori === 'Formal' || userLembaga.kategori === 'Diniyah')) {
+      if (userLembaga.kategori === 'Formal') {
+        return rows.filter((p) => String(p.formal ?? p.daftar_formal ?? '') === String(userLembaga.id))
+      }
+      return rows.filter((p) => String(p.diniyah ?? p.daftar_diniyah ?? '') === String(userLembaga.id))
     }
-  }, [effectiveLembagaId])
+    const idSet = new Set(scopedLembagaIds.map(String))
+    return rows.filter((p) => {
+      const f = String(p.formal ?? p.daftar_formal ?? '')
+      const d = String(p.diniyah ?? p.daftar_diniyah ?? '')
+      return idSet.has(f) || idSet.has(d)
+    })
+  }, [hasFullAccess, scopedLembagaIds, userLembaga])
+
+  // Load data lembaga untuk filter (satu atau beberapa id dari gabungan role)
+  useEffect(() => {
+    if (lembagaScopeAll || scopedLembagaIds.length === 0) {
+      setUserLembaga(null)
+      setUserLembagas([])
+      return
+    }
+    let cancelled = false
+    setLoadingLembaga(true)
+    Promise.all(scopedLembagaIds.map((id) => lembagaAPI.getById(id)))
+      .then((results) => {
+        if (cancelled) return
+        const list = results.filter((r) => r?.success && r?.data).map((r) => r.data)
+        setUserLembagas(list)
+        setUserLembaga(list[0] ?? null)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Error loading user lembaga:', err)
+          setUserLembaga(null)
+          setUserLembagas([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingLembaga(false)
+      })
+    return () => { cancelled = true }
+  }, [lembagaScopeAll, scopedLembagaIds.join('|')])
 
   useEffect(() => {
     loadPendaftarData()
   }, [tahunAjaran, tahunAjaranMasehi])
-
-  const loadUserLembaga = async () => {
-    if (!effectiveLembagaId) return
-    
-    setLoadingLembaga(true)
-    try {
-      const result = await lembagaAPI.getById(effectiveLembagaId)
-      if (result.success && result.data) {
-        setUserLembaga(result.data)
-      }
-    } catch (err) {
-      console.error('Error loading user lembaga:', err)
-    } finally {
-      setLoadingLembaga(false)
-    }
-  }
 
   // Dynamic unique values untuk filter (dengan count)
   // Filter berdasarkan role dan kategori lembaga
@@ -167,6 +198,7 @@ function DataPendaftar() {
 
   const dynamicUniqueFormal = useMemo(() => {
     let filtered = pendaftarList
+    filtered = applyScopedLembagaToRows(filtered)
     if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (diniyahFilter) filtered = filtered.filter(p => sameLembagaForMemo((p.daftar_diniyah ?? p.diniyah), diniyahFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
@@ -180,10 +212,11 @@ function DataPendaftar() {
       count: filtered.filter(p => sameLembagaForMemo(p.daftar_formal ?? p.formal, val)).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
-  }, [pendaftarList, statusPendaftarFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess])
+  }, [pendaftarList, statusPendaftarFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, applyScopedLembagaToRows])
 
   const dynamicUniqueDiniyah = useMemo(() => {
     let filtered = pendaftarList
+    filtered = applyScopedLembagaToRows(filtered)
     if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (formalFilter) filtered = filtered.filter(p => sameLembagaForMemo((p.daftar_formal ?? p.formal), formalFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
@@ -197,11 +230,12 @@ function DataPendaftar() {
       count: filtered.filter(p => sameLembagaForMemo(p.daftar_diniyah ?? p.diniyah, val)).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, applyScopedLembagaToRows])
 
   const dynamicUniqueKeteranganStatus = useMemo(() => {
     let filtered = pendaftarList
-    
+    filtered = applyScopedLembagaToRows(filtered)
+
     // Apply existing filters
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
@@ -209,96 +243,70 @@ function DataPendaftar() {
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang || '') === gelombangFilter)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
-    
-    // Filter by lembaga if not full access
-    if (!hasFullAccess) {
-      if (userLembaga?.kategori === 'Formal' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.formal === userLembaga.id)
-      } else if (userLembaga?.kategori === 'Diniyah' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.diniyah === userLembaga.id)
-      }
-    }
-    
+
     const values = [...new Set(filtered.map(p => p.keterangan_status).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
       count: filtered.filter(p => p.keterangan_status === val).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, userLembaga])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, applyScopedLembagaToRows])
 
   const dynamicUniqueGelombang = useMemo(() => {
     let filtered = pendaftarList
+    filtered = applyScopedLembagaToRows(filtered)
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
     if (diniyahFilter) filtered = filtered.filter(p => (p.daftar_diniyah ?? p.diniyah) === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '').trim() === statusMuridFilter)
-    if (!hasFullAccess) {
-      if (userLembaga?.kategori === 'Formal' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.formal === userLembaga.id)
-      } else if (userLembaga?.kategori === 'Diniyah' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.diniyah === userLembaga.id)
-      }
-    }
     const values = [...new Set(filtered.map(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) : null).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
       count: filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === val : false).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, userLembaga])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, applyScopedLembagaToRows])
 
   const dynamicUniqueStatusSantri = useMemo(() => {
     let filtered = pendaftarList
+    filtered = applyScopedLembagaToRows(filtered)
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
     if (diniyahFilter) filtered = filtered.filter(p => (p.daftar_diniyah ?? p.diniyah) === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusMuridFilter) filtered = filtered.filter(p => (p.status_murid || '') === statusMuridFilter)
-    if (!hasFullAccess) {
-      if (userLembaga?.kategori === 'Formal' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.formal === userLembaga.id)
-      } else if (userLembaga?.kategori === 'Diniyah' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.diniyah === userLembaga.id)
-      }
-    }
     const values = [...new Set(filtered.map(p => (p.status_santri != null && p.status_santri !== '') ? String(p.status_santri) : null).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
       count: filtered.filter(p => (p.status_santri || '') === val).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusMuridFilter, hasFullAccess, userLembaga])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusMuridFilter, hasFullAccess, applyScopedLembagaToRows])
 
   const dynamicUniqueStatusMurid = useMemo(() => {
     let filtered = pendaftarList
+    filtered = applyScopedLembagaToRows(filtered)
     if (statusPendaftarFilter && hasFullAccess) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (formalFilter) filtered = filtered.filter(p => (p.daftar_formal ?? p.formal) === formalFilter)
     if (diniyahFilter) filtered = filtered.filter(p => (p.daftar_diniyah ?? p.diniyah) === diniyahFilter)
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
     if (gelombangFilter) filtered = filtered.filter(p => (p.gelombang != null && p.gelombang !== '') ? String(p.gelombang) === gelombangFilter : false)
     if (statusSantriFilter) filtered = filtered.filter(p => (p.status_santri || '') === statusSantriFilter)
-    if (!hasFullAccess) {
-      if (userLembaga?.kategori === 'Formal' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.formal === userLembaga.id)
-      } else if (userLembaga?.kategori === 'Diniyah' && userLembaga?.id) {
-        filtered = filtered.filter(p => p.diniyah === userLembaga.id)
-      }
-    }
     const values = [...new Set(filtered.map(p => (p.status_murid != null && p.status_murid !== '') ? String(p.status_murid).trim() : null).filter(Boolean))]
     const counts = values.map(val => ({
       value: val,
       count: filtered.filter(p => (p.status_murid || '').trim() === val).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, hasFullAccess, userLembaga])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, hasFullAccess, applyScopedLembagaToRows])
 
   // Filter data berdasarkan search query dan filter lainnya
   useEffect(() => {
     let filtered = pendaftarList
+    filtered = applyScopedLembagaToRows(filtered)
 
     // Filter by status pendaftar (hanya untuk super_admin atau kategori Pesantren)
     if (statusPendaftarFilter && hasFullAccess) {
@@ -376,7 +384,7 @@ function DataPendaftar() {
     }
 
     setFilteredList(filtered)
-  }, [searchQuery, pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, sortConfig, isSuperAdmin, userLembaga])
+  }, [searchQuery, pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, sortConfig, isSuperAdmin, applyScopedLembagaToRows])
 
   const loadPendaftarData = async () => {
     setLoading(true)

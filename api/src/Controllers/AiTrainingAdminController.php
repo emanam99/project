@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -53,7 +54,9 @@ class AiTrainingAdminController
             return $nama;
         }
 
-        return trim((string) ($user['role_key'] ?? 'super_admin')) ?: 'admin';
+        $keys = RoleHelper::normalizeTokenRoleKeysUnion($user);
+
+        return ($keys[0] ?? '') !== '' ? $keys[0] : 'admin';
     }
 
     private function resolveUsersId(?array $user, \PDO $pdo): ?int

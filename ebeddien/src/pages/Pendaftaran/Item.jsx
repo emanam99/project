@@ -5,15 +5,14 @@ import { Navigate } from 'react-router-dom'
 import { pendaftaranAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
+import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import SubNavPendaftaran from './components/SubNavPendaftaran'
 
 function Item() {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
   
-  // Check if user is super_admin
-  const roleKey = (user?.role_key || user?.level || '').toLowerCase()
-  const isSuperAdmin = roleKey === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
   
   // Redirect if not super_admin
   if (!isSuperAdmin) {

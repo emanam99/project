@@ -248,17 +248,18 @@ function PembayaranOffcanvas({
         setShowDeleteModal(false)
         setDeletePaymentId(null)
         setDeletePaymentAmount(0)
-        // Refresh payment history
         fetchPaymentHistory()
-        // Call onPaymentSuccess untuk refresh rincian
         if (onPaymentSuccess) onPaymentSuccess()
       } else {
-        showNotification(result.message || 'Gagal menghapus pembayaran', 'error')
+        const msg = result.message || 'Gagal menghapus pembayaran'
+        showNotification(msg, 'error')
+        throw new Error(msg)
       }
     } catch (err) {
       console.error('Error deleting payment:', err)
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menghapus pembayaran'
       showNotification(errorMessage, 'error')
+      throw err
     } finally {
       setSaving(false)
     }
@@ -818,7 +819,7 @@ function PembayaranOffcanvas({
             }}
             onConfirm={handleConfirmDelete}
             paymentAmount={deletePaymentAmount}
-            santriId={santriId}
+            title="Konfirmasi hapus pembayaran PSB"
           />
 
           {/* Upload Bukti TF Modal - form upload di offcanvas (sama seperti aplikasi daftar) */}

@@ -32,6 +32,12 @@ class WhatsAppService
 
     private const THROTTLE_DAYS = 5;
 
+    /**
+     * Sementara: nonaktifkan semua notif WA template PSB (sendPsb*): daftar, berkas, pembayaran (termasuk iPayMu),
+     * status transaksi, dan diverifikasi. Set false untuk mengaktifkan kembali.
+     */
+    private const PSB_FLOW_WA_NOTIF_DISABLED = true;
+
     private static function getConfig(): array
     {
         $config = require __DIR__ . '/../../config.php';
@@ -1102,6 +1108,9 @@ class WhatsAppService
      */
     public static function sendPsbBiodataTerdaftar(array $santriData, array $phoneNumbers, array $logOptions = []): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         if (empty($numbers)) {
             return;
@@ -1136,6 +1145,9 @@ class WhatsAppService
      */
     public static function addPendingBiodataTerdaftar(int $idSantri, array $phoneNumbers, array $context, array $logOptions = []): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         if (empty($numbers)) {
             return;
@@ -1243,6 +1255,9 @@ class WhatsAppService
      */
     public static function sendPsbBerkasLengkap(array $santriData, array $listAda, array $listTidakAda, array $phoneNumbers): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         if (empty($numbers)) {
             return;
@@ -1271,6 +1286,9 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranLink(string $noWa, string $nama, string $mode = 'open', ?int $idSantri = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $formatted = self::formatPhoneNumber($noWa);
         if (strlen($formatted) < 10) {
             return;
@@ -1299,6 +1317,9 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranBerhasil(string $noWa, string $nama, $nominal, ?int $idSantri = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $formatted = self::formatPhoneNumber($noWa);
         if (strlen($formatted) < 10) {
             return;
@@ -1333,6 +1354,9 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranIpaymuOrder(array $phoneNumbers, string $nama, $amount, $adminFee, $total, string $paymentMethod, string $paymentChannel, string $vaOrCode, string $link = '', ?int $idSantri = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         if ($vaOrCode === '') {
             return;
         }
@@ -1388,6 +1412,9 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranIpaymuQris(array $phoneNumbers, string $nama, $amount, $adminFee, $total, string $qrCode, string $link = '', ?int $idSantri = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $base64 = self::qrCodeToBase64($qrCode);
         if ($base64 === null || $base64 === '') {
             error_log('WhatsAppService sendPsbPembayaranIpaymuQris: qrCode tidak bisa dikonversi ke base64');
@@ -1422,6 +1449,9 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranDibatalkan(array $phoneNumbers, string $nama, ?int $idSantri = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         if (empty($numbers)) {
             return;
@@ -1446,6 +1476,9 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranGagal(array $phoneNumbers, string $nama, ?int $idSantri = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         if (empty($numbers)) {
             return;
@@ -1470,6 +1503,9 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranKadaluarsa(array $phoneNumbers, string $nama, ?int $idSantri = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         if (empty($numbers)) {
             return;
@@ -1517,6 +1553,9 @@ class WhatsAppService
      */
     public static function sendPsbSudahDiverifikasi(array $phoneNumbers, array $biodata, ?int $idPengurus = null): void
     {
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         if (empty($numbers)) {
             return;

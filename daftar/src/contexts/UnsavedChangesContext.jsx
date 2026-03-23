@@ -9,16 +9,12 @@ export function UnsavedChangesProvider({ children }) {
   const [pendingNavigation, setPendingNavigation] = useState(null)
 
   const setUnsavedChanges = useCallback((hasChanges, saveCallback = null, validateCallback = null) => {
-    if (hasChanges) {
-      console.log('[UnsavedChangesContext] setUnsavedChanges(true) dipanggil')
-    }
     setHasUnsavedChanges(hasChanges)
     setOnSaveCallback(() => saveCallback)
     setOnValidateCallback(() => validateCallback)
   }, [])
 
   const clearUnsavedChanges = useCallback(() => {
-    console.log('[UnsavedChangesContext] clearUnsavedChanges() dipanggil')
     setHasUnsavedChanges(false)
     setOnSaveCallback(null)
     setOnValidateCallback(null)

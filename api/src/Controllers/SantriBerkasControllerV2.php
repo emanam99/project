@@ -6,6 +6,7 @@ use App\Database;
 use App\Helpers\SantriHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
+use App\Helpers\RoleHelper;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -103,7 +104,8 @@ class SantriBerkasControllerV2
     {
         try {
             $user = $request->getAttribute('user');
-            $idAdmin = (isset($user['role_key']) && $user['role_key'] === 'santri') ? null : ($user['user_id'] ?? $user['id'] ?? null);
+            $userArr = is_array($user) ? $user : [];
+            $idAdmin = RoleHelper::tokenIsSantriDaftarContext($userArr) ? null : ($userArr['user_id'] ?? $userArr['id'] ?? null);
 
             $parsedBody = $request->getParsedBody();
             $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
@@ -243,16 +245,13 @@ class SantriBerkasControllerV2
     {
         try {
             $user = $request->getAttribute('user');
-            $roleKey = is_array($user) ? strtolower(trim($user['role_key'] ?? $user['user_role'] ?? '')) : '';
+            $userArr = is_array($user) ? $user : [];
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
 
-            if ($roleKey === 'santri') {
-                // Untuk role santri, utamakan id dari token (anti-IDOR).
-                // Namun untuk kasus santri baru yang belum punya id di token (user_id/null),
-                // izinkan fallback ke id_santri dari query agar berkas pertama langsung terbaca
-                // setelah biodata disimpan, tanpa perlu logout/login.
-                $idFromToken = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+            if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
+                // Konteks santri-app: utamakan id dari token (anti-IDOR). Fallback query jika token belum berisi id (santri baru).
+                $idFromToken = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
                 if ($idFromToken !== null && $idFromToken !== '') {
                     $idSantri = $idFromToken;
                 }
@@ -392,7 +391,8 @@ class SantriBerkasControllerV2
     {
         try {
             $user = $request->getAttribute('user');
-            $idAdmin = (isset($user['role_key']) && $user['role_key'] === 'santri') ? null : ($user['user_id'] ?? $user['id'] ?? null);
+            $userArr = is_array($user) ? $user : [];
+            $idAdmin = RoleHelper::tokenIsSantriDaftarContext($userArr) ? null : ($userArr['user_id'] ?? $userArr['id'] ?? null);
 
             $parsedBody = $request->getParsedBody();
             $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
@@ -577,7 +577,8 @@ class SantriBerkasControllerV2
     {
         try {
             $user = $request->getAttribute('user');
-            $idAdmin = (isset($user['role_key']) && $user['role_key'] === 'santri') ? null : ($user['user_id'] ?? $user['id'] ?? null);
+            $userArr = is_array($user) ? $user : [];
+            $idAdmin = RoleHelper::tokenIsSantriDaftarContext($userArr) ? null : ($userArr['user_id'] ?? $userArr['id'] ?? null);
 
             $parsedBody = $request->getParsedBody();
             $idSantri = $parsedBody['id_santri'] ?? null;

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -373,16 +374,8 @@ class PengeluaranRencanaFileControllerV2
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'File tidak ditemukan'], 404);
             }
             $isOwner = ($file['id_admin'] == $idAdmin);
-            $userRolesStmt = $this->db->prepare("SELECT r.key as role_key FROM pengurus___role pr INNER JOIN role r ON pr.role_id = r.id WHERE pr.pengurus_id = ?");
-            $userRolesStmt->execute([$idAdmin]);
-            $roles = $userRolesStmt->fetchAll();
-            $isSuperAdmin = false;
-            foreach ($roles as $r) {
-                if (($r['role_key'] ?? '') === 'super_admin') {
-                    $isSuperAdmin = true;
-                    break;
-                }
-            }
+            $idAdminInt = (int) ($idAdmin ?? 0);
+            $isSuperAdmin = $idAdminInt > 0 && RoleHelper::pengurusHasSuperAdminRole($idAdminInt);
             if (!$isOwner && !$isSuperAdmin) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Anda tidak memiliki izin untuk menghapus file ini'], 403);
             }

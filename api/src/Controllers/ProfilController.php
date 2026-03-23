@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -29,6 +30,15 @@ class ProfilController
             }
 
             $idAdmin = intval($idAdmin);
+            $u = $request->getAttribute('user');
+            $uArr = is_array($u) ? $u : [];
+            if (!$this->canQueryTotalPembayaranForAdmin($uArr, $idAdmin)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak',
+                    'total' => 0,
+                ], 403);
+            }
             // Gunakan CURDATE() langsung dari MySQL untuk memastikan konsistensi dengan timezone database
             // Timezone sudah di-set ke Asia/Jakarta (WIB) di Database.php dan index.php
 
@@ -86,6 +96,23 @@ class ProfilController
                 'total' => 0
             ], 500);
         }
+    }
+
+    /**
+     * Hanya super_admin (token atau DB) yang boleh melihat total untuk id_admin lain; selain itu hanya data sendiri (pengurus.id).
+     */
+    private function canQueryTotalPembayaranForAdmin(array $uArr, int $requestedAdminId): bool
+    {
+        if (RoleHelper::tokenHasAnyRoleKey($uArr, ['super_admin'])) {
+            return true;
+        }
+        $pid = RoleHelper::getPengurusIdFromPayload($uArr);
+        if ($pid !== null && $pid > 0 && RoleHelper::pengurusHasSuperAdminRole($pid)) {
+            return true;
+        }
+        $tokenAdminId = isset($uArr['user_id']) ? (int) $uArr['user_id'] : (int) ($uArr['id'] ?? 0);
+
+        return $tokenAdminId > 0 && $tokenAdminId === $requestedAdminId;
     }
 
     private function getTotalFromTable(string $table, ?int $idAdmin, string $dateColumn): float

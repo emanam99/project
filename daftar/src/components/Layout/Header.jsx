@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../store/authStore'
+import { useBiodataViewStore } from '../../store/biodataViewStore'
 import { useThemeStore } from '../../store/themeStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { APP_VERSION } from '../../config/version'
@@ -12,6 +13,8 @@ function Header() {
   const appEnv = getAppEnv()
   const isStaging = appEnv === 'staging'
   const { user } = useAuthStore()
+  const biodataViewMode = useBiodataViewStore((s) => s.biodataViewMode)
+  const enterBiodataEditMode = useBiodataViewStore((s) => s.enterBiodataEditMode)
   const { theme, toggleTheme } = useThemeStore()
   const { tahunHijriyah, tahunMasehi, loadTahunAjaran, lastUpdated } = useTahunAjaranStore()
   const location = useLocation()
@@ -42,6 +45,11 @@ function Header() {
   }, [loadTahunAjaran])
 
   // Get page title based on route
+  const isBiodataRoute = () => {
+    const path = location.pathname
+    return path === '/biodata' || path.startsWith('/biodata')
+  }
+
   const getPageTitle = () => {
     const path = location.pathname
     if (path === '/' || path === '/dashboard') return 'Dashboard'
@@ -128,6 +136,16 @@ function Header() {
 
       {/* Right Section - Theme Toggle & User */}
       <div className="relative flex items-center gap-3 flex-shrink-0">
+        {isBiodataRoute() && biodataViewMode === 'read' && (
+          <button
+            type="button"
+            onClick={() => enterBiodataEditMode()}
+            className="px-3 py-2 rounded-lg bg-white/20 hover:bg-white/30 border border-white/40 text-white text-sm font-semibold transition-colors whitespace-nowrap"
+            title="Ubah data biodata"
+          >
+            Ubah
+          </button>
+        )}
         {/* Theme Toggle Button */}
         <button
           onClick={toggleTheme}
@@ -178,8 +196,22 @@ function Header() {
                   </div>
                   <div className="font-semibold text-gray-800 dark:text-gray-200 text-base">{user?.nama || 'Santri'}</div>
                   {user?.nik && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">NIK: {user.nik}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">NIK: {user.nik}</div>
                   )}
+                  <div className="mt-2 w-full text-left space-y-0.5 text-[11px] text-gray-600 dark:text-gray-300 font-mono border-t border-gray-100 dark:border-gray-600 pt-2">
+                    <div>
+                      <span className="text-gray-400 dark:text-gray-500">NIS</span>
+                      <span className="ml-1">{user?.nis != null && String(user.nis).trim() !== '' ? user.nis : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 dark:text-gray-500">ID Santri</span>
+                      <span className="ml-1">{user?.id != null && String(user.id).trim() !== '' ? user.id : '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 dark:text-gray-500">ID Registrasi</span>
+                      <span className="ml-1">{user?.id_registrasi != null && user.id_registrasi !== '' ? user.id_registrasi : '—'}</span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>

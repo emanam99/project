@@ -4,14 +4,14 @@ import { motion } from 'framer-motion'
 import { pendaftaranAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
+import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import SubNavPendaftaran from './components/SubNavPendaftaran'
 
 function Simulasi() {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
 
-  const roleKey = (user?.role_key || user?.level || '').toLowerCase()
-  const isSuperAdmin = roleKey === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
   if (!isSuperAdmin) {
     return <Navigate to="/" replace />
   }

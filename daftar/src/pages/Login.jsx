@@ -6,7 +6,8 @@ import { useThemeStore } from '../store/themeStore'
 import { useTahunAjaranStore } from '../store/tahunAjaranStore'
 import { authAPI, pendaftaranAPI } from '../services/api'
 import { APP_VERSION } from '../config/version'
-import { getGambarUrl } from '../config/images'
+import DaftarAuthLeftPanel from '../components/Auth/DaftarAuthLeftPanel'
+import PendaftaranInfoOffcanvas from '../components/Auth/PendaftaranInfoOffcanvas'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -34,7 +35,16 @@ function Login() {
   const [checkingNik, setCheckingNik] = useState(false)
   const [nikExists, setNikExists] = useState(null)
   const [showInfoModal, setShowInfoModal] = useState(false)
-  const { tahunHijriyah, tahunMasehi, loadTahunAjaran, refreshTahunAjaran } = useTahunAjaranStore()
+  const [pendaftaranInfoOpen, setPendaftaranInfoOpen] = useState(false)
+  const [isMd, setIsMd] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : false
+  )
+  const [flipPhase, setFlipPhase] = useState('idle')
+  const prevThemeRef = useRef(null)
+  const { tahunHijriyah, tahunMasehi, refreshTahunAjaran } = useTahunAjaranStore()
+  const { setAuth } = useAuthStore()
+  const { theme, toggleTheme } = useThemeStore()
+  const navigate = useNavigate()
 
   useEffect(() => {
     refreshTahunAjaran()
@@ -43,11 +53,44 @@ function Login() {
     return () => window.removeEventListener('focus', handleFocus)
   }, [refreshTahunAjaran])
 
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const update = () => setIsMd(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    if (!pendaftaranInfoOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [pendaftaranInfoOpen])
+
+  useEffect(() => {
+    if (prevThemeRef.current === null) {
+      prevThemeRef.current = theme
+      return
+    }
+    if (prevThemeRef.current !== theme) {
+      prevThemeRef.current = theme
+      setFlipPhase('close')
+    }
+  }, [theme])
+
+  const handleInputCloseComplete = () => {
+    if (flipPhase === 'close') setFlipPhase('open')
+  }
+
+  const handleInputOpenComplete = () => {
+    if (flipPhase === 'open') setFlipPhase('idle')
+  }
+
   const checkedNikRef = useRef(null)
   const checkingRef = useRef(false)
-  const { setAuth } = useAuthStore()
-  const { theme, toggleTheme } = useThemeStore()
-  const navigate = useNavigate()
 
   const handleNikChange = (e) => {
     const value = e.target.value.replace(/\D/g, '')
@@ -114,7 +157,6 @@ function Login() {
       const response = await authAPI.login(nik)
       if (response.success) {
         const user = response.data.user
-        const hasSantriId = user != null && user.id != null && user.id !== ''
         try { sessionStorage.setItem('daftar_login_nik', nik) } catch (e) { /* ignore */ }
         const userToSet = user ? { ...user, nik: user.nik || nik } : user
         setAuth(response.data.token, userToSet)
@@ -158,135 +200,128 @@ function Login() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row relative overflow-hidden bg-gray-950">
-      {/* Animated gradient background - full screen */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-30 md:opacity-40"
-          style={{ backgroundImage: `url(${getGambarUrl('/gedung.jpeg')})` }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-900/90 via-gray-900/95 to-primary-800/90" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(45,212,191,0.15),transparent)]" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/20 rounded-full blur-[128px] animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-primary-400/15 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.03\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-80" />
-      </div>
+    <div className="w-full min-h-screen flex relative overflow-y-auto md:overflow-hidden">
+      <DaftarAuthLeftPanel tahunHijriyah={tahunHijriyah} tahunMasehi={tahunMasehi} />
 
-      {/* Theme toggle */}
-      <motion.button
-        onClick={toggleTheme}
-        className="fixed top-5 right-5 z-50 p-2.5 rounded-xl bg-white/10 dark:bg-white/10 backdrop-blur-md border border-white/20 text-white hover:bg-white/20 transition-all duration-200 shadow-lg"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        aria-label="Toggle theme"
+      {/* Desktop: toggle tema di pemisah kiri/kanan */}
+      <div
+        className="hidden md:flex fixed z-50 flex-col gap-2 p-2 rounded-full bg-white/95 dark:bg-gray-800/95 backdrop-blur-md shadow-lg border border-gray-200/60 dark:border-gray-600/60"
+        style={{ left: 'calc(100% - 480px)', top: '50%', transform: 'translate(-50%, -50%)' }}
       >
-        {theme === 'dark' ? (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-          </svg>
-        ) : (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-          </svg>
-        )}
-      </motion.button>
-
-      {/* Left: Branding (desktop) */}
-      <div className="hidden md:flex flex-1 flex-col justify-center items-center relative z-10 px-12">
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="max-w-md text-center"
+        <motion.button
+          type="button"
+          onClick={toggleTheme}
+          className="flex items-center justify-center w-10 h-10 rounded-full text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors"
+          style={{ perspective: '120px' }}
+          whileTap={{ scale: 0.92 }}
+          aria-label="Ganti tema gelap/terang"
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={theme}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              className="mb-8"
-            >
-              <img
-                src={theme === 'dark' ? '/images/icon/dark.webp' : '/images/icon/light.webp'}
-                alt="Logo eBeddien"
-                className="w-40 h-40 mx-auto object-contain drop-shadow-2xl"
-              />
-            </motion.div>
-          </AnimatePresence>
-          <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-2 drop-shadow-lg">
-            Pendaftaran
-          </h1>
-          <p className="text-primary-200/90 text-sm font-medium">
-            Pendaftaran Santri
-          </p>
-          <p className="text-white/60 text-xs mt-4">
-            Tahun Ajaran: <span className="font-semibold text-white/90">{tahunHijriyah || '-'}</span>
-            <span className="mx-1">/</span>
-            <span className="font-semibold text-white/90">{tahunMasehi || '-'}</span>
-          </p>
-        </motion.div>
+          <span className="relative w-5 h-5 block">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={theme}
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ rotateY: -90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: 90, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                {theme === 'dark' ? (
+                  <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+        </motion.button>
       </div>
 
-      {/* Right: Login form */}
-      <div className="flex-1 flex items-center justify-center p-6 md:p-10 relative z-10 min-h-[60vh] md:min-h-0">
+      <div
+        className="w-full md:w-[480px] flex items-start md:items-center justify-center pt-[max(0.5rem,env(safe-area-inset-top))] md:pt-0 px-4 pb-24 md:pb-8 md:px-10 relative z-10 login-bg-gradient min-h-screen md:min-h-0"
+        style={{ perspective: '1400px' }}
+      >
         <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
-          className="w-full max-w-[420px]"
+          className="w-full max-w-[400px] relative z-10 md:mx-0 -mt-1 md:mt-0"
         >
           <motion.div
             variants={itemVariants}
-            className="relative rounded-3xl bg-white/95 dark:bg-gray-900/95 backdrop-blur-2xl shadow-2xl border border-white/20 dark:border-white/10 overflow-hidden"
+            className="relative px-4 pt-2 pb-3 md:p-10 md:rounded-3xl md:bg-white/90 md:dark:bg-gray-800/90 md:backdrop-blur-xl md:border md:border-white/40 md:dark:border-gray-600/40 md:login-card-glow"
           >
-            {/* Card glow */}
-            <div className="absolute -inset-px bg-gradient-to-b from-white/20 to-transparent rounded-3xl opacity-50 pointer-events-none" />
-            <div className="relative p-8 md:p-10">
-              {/* Mobile: logo + title */}
-              <div className="md:hidden text-center mb-6">
-                <img
-                  src={theme === 'dark' ? '/images/icon/dark.webp' : '/images/icon/light.webp'}
-                  alt="Logo"
-                  className="w-36 h-36 mx-auto object-contain mb-3"
-                />
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">Pendaftaran</h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Tahun Ajaran: {tahunHijriyah || '-'} / {tahunMasehi || '-'}
-                </p>
+            <div className="md:hidden text-center mb-4" style={{ perspective: '800px' }}>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={theme}
+                  className="inline-block"
+                  initial={{ rotateY: -90, opacity: 0 }}
+                  animate={{ rotateY: 0, opacity: 1 }}
+                  exit={{ rotateY: 90, opacity: 0 }}
+                  transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+                  style={{ transformStyle: 'preserve-3d' }}
+                >
+                  <motion.img
+                    src={theme === 'dark' ? '/images/icon/dark.webp' : '/images/icon/light.webp'}
+                    alt="Logo Pendaftaran Santri"
+                    className="w-32 h-32 mx-auto object-contain drop-shadow-lg mb-1"
+                    whileHover={{ scale: 1.03 }}
+                  />
+                </motion.div>
+              </AnimatePresence>
+              <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100 leading-tight mt-0.5">Pendaftaran</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-snug">
+                Tahun ajaran {tahunHijriyah || '—'} / {tahunMasehi || '—'}
+              </p>
+              <div className="flex justify-center gap-1.5 mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                <span className="font-mono">v{APP_VERSION}</span>
               </div>
+            </div>
 
-              {/* Desktop: title only */}
-              <div className="hidden md:block text-center mb-6">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Masuk</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Masukkan NIK untuk melanjutkan</p>
-              </div>
+            <div className="hidden md:block text-center mb-8">
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1 tracking-tight">Masuk</h2>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Masukkan NIK untuk melanjutkan formulir</p>
+            </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <motion.div variants={itemVariants} className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      NIK (Nomor Induk Kependudukan)
-                    </label>
+            <form onSubmit={handleSubmit} className="space-y-3 md:space-y-5" style={{ perspective: '600px' }}>
+              <motion.div
+                variants={itemVariants}
+                className="space-y-1.5 md:space-y-2"
+                style={{ transformStyle: 'preserve-3d', transformOrigin: 'bottom center' }}
+                animate={{ rotateX: flipPhase === 'close' ? 90 : flipPhase === 'open' ? 0 : 0 }}
+                transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
+              >
+                <label className="block w-full text-center text-sm font-medium text-gray-500 dark:text-gray-400 tracking-wide">
+                  NIK (Nomor Induk Kependudukan)
+                </label>
+                <div
+                  className={`rounded-xl border-2 bg-white/95 dark:bg-gray-800/95 md:bg-gray-50/50 md:dark:bg-gray-700/50 overflow-hidden transition-all ${
+                    focusedInput === 'nik'
+                      ? 'border-primary-500 ring-2 ring-primary-500/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex justify-end items-center px-3 pt-2 pb-1 border-b border-gray-200/90 dark:border-gray-600/80 bg-gray-50/90 dark:bg-gray-800/80 md:bg-gray-100/50 md:dark:bg-gray-900/40">
                     <button
                       type="button"
                       onClick={() => setShowInfoModal(true)}
-                      className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-xs font-medium transition-colors border border-amber-200/50 dark:border-amber-700/50"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Info NIK
+                      Info
                     </button>
                   </div>
-                  <div
-                    className={`relative flex items-center rounded-xl border-2 bg-gray-50 dark:bg-gray-800/50 transition-all duration-200 ${
-                      focusedInput === 'nik'
-                        ? 'border-primary-500 ring-4 ring-primary-500/20 dark:ring-primary-400/20'
-                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
-                    }`}
-                  >
-                    <span className="pl-4 text-gray-400 dark:text-gray-500">
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
                       </svg>
@@ -301,80 +336,152 @@ function Login() {
                       onFocus={() => setFocusedInput('nik')}
                       onBlur={() => setFocusedInput(null)}
                       maxLength={16}
-                      className="flex-1 py-3.5 pr-4 bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-base"
+                      className="w-full pl-12 pr-16 py-3 border-0 rounded-none bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-0 text-base"
                       placeholder="16 digit NIK"
                       required
                       autoFocus
                     />
                     {nik.length > 0 && (
-                      <span className="pr-4 text-xs font-mono text-gray-400 dark:text-gray-500">
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-gray-400 dark:text-gray-500 pointer-events-none">
                         {nik.length}/16
                       </span>
                     )}
                   </div>
+                </div>
 
-                  {nikValidation && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`text-xs ${nik.length < 16 ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}
-                    >
-                      {nikValidation}
-                    </motion.p>
-                  )}
-                  {checkingNik && (
-                    <motion.p
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="text-xs text-primary-600 dark:text-primary-400 flex items-center gap-2"
-                    >
-                      <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Mengecek data santri...
-                    </motion.p>
-                  )}
-                </motion.div>
-
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
+                {nikValidation && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 text-sm font-medium"
+                    className={`text-xs ${nik.length < 16 ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}
                   >
-                    {error}
-                  </motion.div>
+                    {nikValidation}
+                  </motion.p>
                 )}
+                {checkingNik && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="text-xs text-primary-600 dark:text-primary-400 flex items-center gap-2"
+                  >
+                    <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Mengecek data santri...
+                  </motion.p>
+                )}
+              </motion.div>
 
-                <motion.button
-                  variants={itemVariants}
-                  type="submit"
-                  disabled={loading || checkingNik || nik.length !== 16}
-                  className="w-full relative py-4 rounded-xl font-semibold text-white overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-500 hover:to-primary-600 focus:ring-4 focus:ring-primary-500/30 shadow-lg hover:shadow-xl active:scale-[0.98]"
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 px-4 py-3 text-sm"
                 >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    {(loading || checkingNik) && (
-                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                    )}
+                  <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{error}</span>
+                </motion.div>
+              )}
+
+              <motion.button
+                variants={itemVariants}
+                type="submit"
+                disabled={loading || checkingNik || nik.length !== 16}
+                className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow"
+                whileHover={{ scale: loading || checkingNik || nik.length !== 16 ? 1 : 1.01 }}
+                whileTap={{ scale: 0.99 }}
+              >
+                {loading || checkingNik ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
                     {getButtonText()}
                   </span>
-                  <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] hover:translate-x-[100%] transition-transform duration-700" />
-                </motion.button>
+                ) : (
+                  getButtonText()
+                )}
+              </motion.button>
 
-                <p className="text-center text-xs text-gray-400 dark:text-gray-500 font-mono pt-1">
+              <div className="hidden md:flex flex-col items-center gap-2 pt-1">
+                <p className="text-center text-xs text-gray-400 dark:text-gray-500 font-mono">
                   Versi {APP_VERSION}
                 </p>
-              </form>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setPendaftaranInfoOpen(true)}
+                  className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 hover:underline transition-colors"
+                >
+                  Info pendaftaran
+                </button>
+              </div>
+            </form>
           </motion.div>
         </motion.div>
       </div>
 
-      {/* Info Modal */}
+      {/* Mobile: Tema + Info — sejajar, pola eBeddien (ikon + label kecil, gap-8) */}
+      <div
+        className="md:hidden fixed left-0 right-0 flex justify-center items-end gap-8 z-40 px-4"
+        style={{ bottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))' }}
+      >
+        <motion.button
+          type="button"
+          onClick={toggleTheme}
+          className="flex flex-col items-center justify-center gap-0.5 text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 active:opacity-80"
+          style={{ perspective: '140px' }}
+          whileTap={{ scale: 0.96 }}
+          aria-label="Ganti tema gelap/terang"
+        >
+          <span className="relative w-7 h-7 block">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={theme}
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ rotateY: -90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: 90, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                {theme === 'dark' ? (
+                  <svg className="w-7 h-7 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </span>
+          <span className="text-[10px] font-medium leading-tight">Tema</span>
+        </motion.button>
+        <motion.button
+          type="button"
+          onClick={() => setPendaftaranInfoOpen(true)}
+          className="flex flex-col items-center justify-center gap-0.5 text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 active:opacity-80"
+          whileTap={{ scale: 0.96 }}
+          aria-label="Info pendaftaran"
+        >
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-[10px] font-medium leading-tight">Info</span>
+        </motion.button>
+      </div>
+
+      <PendaftaranInfoOffcanvas
+        open={pendaftaranInfoOpen}
+        onClose={() => setPendaftaranInfoOpen(false)}
+        isMd={isMd}
+      />
+
       <AnimatePresence>
         {showInfoModal && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -394,6 +501,7 @@ function Login() {
               <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
                 <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Informasi NIK</h3>
                 <button
+                  type="button"
                   onClick={() => setShowInfoModal(false)}
                   className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
@@ -410,6 +518,7 @@ function Login() {
               </div>
               <div className="p-4 bg-gray-50 dark:bg-gray-700/50 flex justify-end">
                 <button
+                  type="button"
                   onClick={() => setShowInfoModal(false)}
                   className="px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-medium transition-colors"
                 >

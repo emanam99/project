@@ -84,6 +84,8 @@ export const useAuthStore = create((set) => ({
         id: user.id,
         nama: user.nama,
         nik: user.nik,
+        nis: user.nis != null && String(user.nis).trim() !== '' ? String(user.nis).trim() : null,
+        id_registrasi: user.id_registrasi != null && user.id_registrasi !== '' ? Number(user.id_registrasi) : null,
         role_key: user.role_key || 'user',
         role_label: user.role_label || 'user',
         allowed_apps: user.allowed_apps || [],
@@ -127,6 +129,8 @@ export const useAuthStore = create((set) => ({
             id: payload.user_id || payload.id,
             nama: payload.user_name || payload.nama,
             nik: payload.nik || null,
+            nis: payload.nis != null && String(payload.nis).trim() !== '' ? String(payload.nis).trim() : null,
+            id_registrasi: payload.id_registrasi != null && payload.id_registrasi !== '' ? Number(payload.id_registrasi) : null,
             role_key: payload.role_key || 'user',
             role_label: payload.role_label || 'user',
             allowed_apps: payload.allowed_apps || [],
@@ -146,6 +150,8 @@ export const useAuthStore = create((set) => ({
             id: payload.user_id || payload.id,
             nama: payload.user_name || payload.nama,
             nik: payload.nik || null,
+            nis: payload.nis != null && String(payload.nis).trim() !== '' ? String(payload.nis).trim() : null,
+            id_registrasi: payload.id_registrasi != null && payload.id_registrasi !== '' ? Number(payload.id_registrasi) : null,
             role_key: payload.role_key || 'user',
             role_label: payload.role_label || 'user',
             allowed_apps: payload.allowed_apps || [],
@@ -174,6 +180,12 @@ export const useAuthStore = create((set) => ({
             const parsed = JSON.parse(saved)
             if (parsed.nik != null && String(parsed.nik).trim() !== '') {
               user = { ...user, nik: parsed.nik }
+            }
+            if ((user.nis == null || String(user.nis).trim() === '') && parsed.nis != null && String(parsed.nis).trim() !== '') {
+              user = { ...user, nis: String(parsed.nis).trim() }
+            }
+            if ((user.id_registrasi == null || Number.isNaN(user.id_registrasi)) && parsed.id_registrasi != null && parsed.id_registrasi !== '') {
+              user = { ...user, id_registrasi: Number(parsed.id_registrasi) }
             }
           }
           if ((!user.nik || String(user.nik).trim() === '') && typeof sessionStorage !== 'undefined') {

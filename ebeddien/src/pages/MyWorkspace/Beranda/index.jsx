@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
+import { userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../../utils/roleAccess'
 
 const KalenderPage = lazy(() => import('../../Kalender/index.jsx'))
 
@@ -243,16 +244,7 @@ export default function Beranda() {
   const [dashboardPendaftaranLoading, setDashboardPendaftaranLoading] = useState(false)
   const [waktuSekarang, setWaktuSekarang] = useState(() => new Date())
 
-  const hasRole = (roles) => {
-    if (!user || !roles || !Array.isArray(roles)) return false
-    if (user.all_roles && Array.isArray(user.all_roles) && user.all_roles.length > 0) {
-      const userRoles = user.all_roles.map((r) => (r || '').toLowerCase()).filter(Boolean)
-      const allowed = roles.map((r) => r.toLowerCase())
-      return userRoles.some((r) => allowed.includes(r))
-    }
-    const roleKey = (user.role_key || user.level || '').toLowerCase()
-    return roles.map((r) => r.toLowerCase()).includes(roleKey)
-  }
+  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
   const hasRoleUwaba = hasRole(['admin_uwaba', 'petugas_uwaba'])
   const hasRoleAdminUwaba = hasRole(['admin_uwaba', 'super_admin'])
   const hasRolePsb = hasRole(['admin_psb', 'petugas_psb', 'super_admin'])
@@ -378,7 +370,7 @@ export default function Beranda() {
     if (!user?.permissions || !Array.isArray(user.permissions)) return false
     return user.permissions.includes(permission)
   }
-  const isSuperAdmin = user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
 
   const BERANDA_GROUP_ORDER = [
     'My Workspace', 'Pendaftaran', 'UWABA', 'UGT', 'Cashless', 'Keuangan',

@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\PengurusHelper;
+use App\Helpers\RoleHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -34,8 +35,9 @@ class MadrasahController
     {
         try {
             $user = $request->getAttribute('user');
-            $roleKey = isset($user['role_key']) ? strtolower((string) $user['role_key']) : '';
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : null;
+            $userArr = is_array($user) ? $user : [];
+            $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
 
             $sql = "
                 SELECT m.*,
@@ -51,7 +53,7 @@ class MadrasahController
                 LEFT JOIN users uk ON uk.id = pk.id_user
             ";
             $params = [];
-            if ($roleKey === 'koordinator_ugt' && $pengurusId > 0) {
+            if ($applyKoordinatorScope) {
                 $sql .= " WHERE m.id_koordinator = ?";
                 $params[] = $pengurusId;
             }
@@ -80,7 +82,7 @@ class MadrasahController
                         LEFT JOIN pengurus pk ON pk.id = m.id_koordinator
                         LEFT JOIN users uk ON uk.id = pk.id_user
                     ";
-                    $sqlFallback .= ($roleKey === 'koordinator_ugt' && $pengurusId > 0) ? " WHERE m.id_koordinator = ?" : "";
+                    $sqlFallback .= $applyKoordinatorScope ? " WHERE m.id_koordinator = ?" : "";
                     $sqlFallback .= " ORDER BY m.nama ASC";
                     if ($params !== []) {
                         $stmt = $this->db->prepare($sqlFallback);
@@ -173,9 +175,10 @@ class MadrasahController
             }
 
             $user = $request->getAttribute('user');
-            $roleKey = isset($user['role_key']) ? strtolower((string) $user['role_key']) : '';
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : null;
-            if ($roleKey === 'koordinator_ugt' && $pengurusId > 0) {
+            $userArr = is_array($user) ? $user : [];
+            $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
+            if ($applyKoordinatorScope) {
                 $idKoord = isset($row['id_koordinator']) ? (int) $row['id_koordinator'] : null;
                 if ($idKoord !== $pengurusId) {
                     return $this->jsonResponse($response, [
@@ -207,8 +210,9 @@ class MadrasahController
     {
         try {
             $user = $request->getAttribute('user');
-            $roleKey = isset($user['role_key']) ? strtolower((string) $user['role_key']) : '';
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : null;
+            $userArr = is_array($user) ? $user : [];
+            $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
 
             $data = $request->getParsedBody();
             $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
@@ -237,7 +241,7 @@ class MadrasahController
             if ($id_koordinator_raw !== null && $id_koordinator_raw !== '') {
                 $id_koordinator = is_numeric($id_koordinator_raw) ? PengurusHelper::resolveIdByNip($this->db, $id_koordinator_raw) : null;
             }
-            if ($roleKey === 'koordinator_ugt' && $pengurusId > 0) {
+            if ($applyKoordinatorScope) {
                 $id_koordinator = $pengurusId;
             }
             if ($id_koordinator !== null && (int) $id_koordinator <= 0) {
@@ -387,8 +391,9 @@ class MadrasahController
             }
 
             $user = $request->getAttribute('user');
-            $roleKey = isset($user['role_key']) ? strtolower((string) $user['role_key']) : '';
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : null;
+            $userArr = is_array($user) ? $user : [];
+            $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
 
             $stmtOld = $this->db->prepare("SELECT * FROM madrasah WHERE id = ?");
             $stmtOld->execute([$id]);
@@ -399,7 +404,7 @@ class MadrasahController
                     'message' => 'Madrasah tidak ditemukan'
                 ], 404);
             }
-            if ($roleKey === 'koordinator_ugt' && $pengurusId > 0 && (int) ($oldMadrasah['id_koordinator'] ?? 0) !== $pengurusId) {
+            if ($applyKoordinatorScope && (int) ($oldMadrasah['id_koordinator'] ?? 0) !== $pengurusId) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Madrasah tidak ditemukan'
@@ -433,7 +438,7 @@ class MadrasahController
             if ($id_koordinator_raw !== null && $id_koordinator_raw !== '') {
                 $id_koordinator = is_numeric($id_koordinator_raw) ? PengurusHelper::resolveIdByNip($this->db, $id_koordinator_raw) : null;
             }
-            if ($roleKey === 'koordinator_ugt' && $pengurusId > 0) {
+            if ($applyKoordinatorScope) {
                 $id_koordinator = $pengurusId;
             }
             if ($id_koordinator !== null && (int) $id_koordinator <= 0) {

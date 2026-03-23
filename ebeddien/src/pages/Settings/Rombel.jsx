@@ -5,6 +5,7 @@ import { rombelAPI, lembagaAPI, waliKelasAPI, pengurusAPI, santriAPI, lulusanAPI
 import { useNotification } from '../../contexts/NotificationContext'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useAuthStore } from '../../store/authStore'
+import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import OffcanvasPindahRombel from '../../components/Modal/OffcanvasPindahRombel'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import PrintAbsenOffcanvas from './components/PrintAbsenOffcanvas'
@@ -20,7 +21,8 @@ const normalizeStatus = (s) => {
 function Rombel() {
   const { showNotification } = useNotification()
   const { options: tahunAjaranOptions } = useTahunAjaranStore()
-  const isSuperAdmin = useAuthStore((s) => (s.user?.role_key || s.user?.level || '').toLowerCase() === 'super_admin')
+  const user = useAuthStore((s) => s.user)
+  const isSuperAdmin = userHasSuperAdminAccess(user)
   const [rombelList, setRombelList] = useState([])
   const [lembagaMaster, setLembagaMaster] = useState([])
   const [loading, setLoading] = useState(true)

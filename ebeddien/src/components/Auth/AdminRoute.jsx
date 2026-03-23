@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { userMatchesAnyAllowedRole } from '../../utils/roleAccess'
 import { useEffect, useState } from 'react'
 
 function AdminRoute() {
@@ -28,10 +29,7 @@ function AdminRoute() {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // Check if user has admin or super_admin role
-  // Prioritize role_key from new role system, fallback to level for backward compatibility
-  const roleKey = (user?.role_key || user?.level || '').toLowerCase()
-  const isAdmin = roleKey === 'admin' || roleKey === 'super_admin'
+  const isAdmin = userMatchesAnyAllowedRole(user, ['admin', 'super_admin'])
   
   if (!user || !isAdmin) {
     // Don't redirect, just show nothing or error message

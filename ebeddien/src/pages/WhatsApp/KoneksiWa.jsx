@@ -38,6 +38,50 @@ const TABS = [
   { id: 'warmer', label: 'Warmer' }
 ]
 
+/** WA mengganti QR sekitar tiap 20 d — hitung mundur + refresh status; tombol paksa hubung ulang untuk QR baru. */
+const QR_COUNTDOWN_SECONDS = 20
+
+function WaQrCountdownBlock({ title, qrSrc, alt, sessionId, fetchStatus, onReloadQr, reloadDisabled }) {
+  const [sec, setSec] = useState(QR_COUNTDOWN_SECONDS)
+
+  useEffect(() => {
+    if (!qrSrc) return undefined
+    let remaining = QR_COUNTDOWN_SECONDS
+    setSec(QR_COUNTDOWN_SECONDS)
+    const id = setInterval(() => {
+      remaining -= 1
+      if (remaining < 1) {
+        remaining = QR_COUNTDOWN_SECONDS
+        fetchStatus()
+      }
+      setSec(remaining)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [qrSrc, fetchStatus])
+
+  return (
+    <div className="flex flex-col items-center py-3">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2 text-center px-1">{title}</p>
+      <img src={qrSrc} alt={alt} className="w-48 h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-600 bg-white" />
+      <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 w-full max-w-sm">
+        <p className="text-xs text-gray-600 dark:text-gray-400 text-center sm:text-left">
+          QR berubah otomatis sekitar{' '}
+          <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-300">{sec}</span>
+          {' '}detik — segera scan.
+        </p>
+        <button
+          type="button"
+          onClick={() => onReloadQr(sessionId)}
+          disabled={reloadDisabled}
+          className="shrink-0 self-center px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Muat ulang QR
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function KoneksiWa() {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
@@ -449,10 +493,12 @@ export default function KoneksiWa() {
   const connectedSessionsForTest = Object.entries(data.sessions || {}).filter(([, s]) => s?.status === 'connected' || s?.baileysStatus === 'connected')
   const effectiveTestSessionId = connectedSessionsForTest.some(([id]) => id === testSessionId) ? testSessionId : (connectedSessionsForTest[0]?.[0] || 'default')
 
-  const handleConnect = async (sessionId = 'default') => {
+  const handleConnect = async (sessionId = 'default', connectOpts = {}) => {
     setActionLoading(`connect-${sessionId}`)
     try {
-      const res = await waBackendAPI.connect(sessionId)
+      const res = await waBackendAPI.connect(sessionId, {
+        refreshQr: connectOpts.refreshQr === true
+      })
       if (res?.success) {
         showNotification(res?.message || 'Memulai koneksi. Scan QR code jika muncul.', 'success')
         setData(prev => ({
@@ -478,6 +524,8 @@ export default function KoneksiWa() {
       setActionLoading(null)
     }
   }
+
+  const handleRefreshWaQr = (sessionId) => handleConnect(sessionId, { refreshQr: true })
 
   const handleDisconnect = async (sessionId = 'default') => {
     setActionLoading(`disconnect-${sessionId}`)
@@ -785,20 +833,28 @@ export default function KoneksiWa() {
                       <p className="text-sm text-amber-600 dark:text-amber-400 py-2">Memulai sesi (Puppeteer)... QR akan muncul di sini dalam beberapa detik. Jika tidak muncul, coba klik Hubungkan lagi.</p>
                     )}
                     {((s?.status || s?.baileysStatus) === 'connecting') && (s?.qrCode || s?.baileysQrCode) && (
-                      <div className="flex flex-col items-center py-3">
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Langkah 1: Scan QR untuk login WA (di HP akan muncul &quot;Perangkat tertaut&quot; / Linked devices)</p>
-                        <img src={s.qrCode || s.baileysQrCode || ''} alt="QR WhatsApp" className="w-48 h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-600 bg-white" />
-                        <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">QR diperbarui otomatis setiap ~20 detik</p>
-                      </div>
+                      <WaQrCountdownBlock
+                        title='Langkah 1: Scan QR untuk login WA (di HP akan muncul "Perangkat tertaut" / Linked devices)'
+                        qrSrc={s.qrCode || s.baileysQrCode || ''}
+                        alt="QR WhatsApp"
+                        sessionId={sessionId}
+                        fetchStatus={fetchStatus}
+                        onReloadQr={handleRefreshWaQr}
+                        reloadDisabled={!!actionLoading}
+                      />
                     )}
                     {s?.status === 'connected' && (s?.baileysQrCode || s?.baileysStatus === 'connecting') && (
                       <div className="flex flex-col items-center py-3 rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 mt-2">
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Langkah 2: Scan QR untuk mengaktifkan kirim pesan & cek nomor (Baileys)</p>
                         {s?.baileysQrCode ? (
-                          <>
-                            <img src={s.baileysQrCode} alt="QR Baileys" className="w-48 h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-600 bg-white" />
-                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">QR diperbarui otomatis setiap ~20 detik</p>
-                          </>
+                          <WaQrCountdownBlock
+                            title="Langkah 2: Scan QR untuk mengaktifkan kirim pesan & cek nomor (Baileys)"
+                            qrSrc={s.baileysQrCode}
+                            alt="QR Baileys"
+                            sessionId={sessionId}
+                            fetchStatus={fetchStatus}
+                            onReloadQr={handleRefreshWaQr}
+                            reloadDisabled={!!actionLoading}
+                          />
                         ) : (
                           <p className="text-xs text-amber-600 dark:text-amber-400 py-2">Memuat QR Baileys...</p>
                         )}

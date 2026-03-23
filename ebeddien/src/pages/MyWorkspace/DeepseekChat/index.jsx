@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { deepseekAPI } from '../../../services/api'
 import { useAuthStore } from '../../../store/authStore'
+import { userHasSuperAdminAccess } from '../../../utils/roleAccess'
 import {
   getStoredDeepseekToken,
   getStoredDeepseekSessionId,
@@ -86,28 +87,6 @@ function padSuggestedPromptsWithFallback(fromApi) {
     if (out.length >= 3) break
   }
   return out.slice(0, 3)
-}
-
-/** Di lokal, default tab superadmin = mode utama (API server + data training). */
-function getDefaultAiChatModeForEnv() {
-  if (typeof window === 'undefined') {
-    return 'proxy'
-  }
-  if (import.meta.env.DEV) {
-    return 'api'
-  }
-  const h = window.location.hostname.toLowerCase()
-  if (h === 'localhost' || h === '127.0.0.1') {
-    return 'api'
-  }
-  const privateLan =
-    h.startsWith('192.168.') ||
-    h.startsWith('10.') ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h)
-  if (privateLan) {
-    return 'api'
-  }
-  return 'proxy'
 }
 
 const CHAT_FONT_STORAGE_KEY = 'ebeddien_chat_font_scale'
@@ -292,9 +271,9 @@ function TypingIndicator({ nameClass = 'text-xs', statusClass = 'text-xs' }) {
 }
 
 export default function DeepseekChat() {
-  const { user, getEffectiveRole } = useAuthStore()
-  const effectiveRole = (getEffectiveRole?.() ?? (user?.role_key || user?.level || '').toLowerCase()) || ''
-  const isSuperAdminTraining = effectiveRole === 'super_admin'
+  const { user } = useAuthStore()
+  const isSuperAdminTraining = userHasSuperAdminAccess(user)
+  const canUseAlternativeMode = isSuperAdminTraining
 
   const [accountEmail, setAccountEmail] = useState(null)
   const [accountLoading, setAccountLoading] = useState(true)
@@ -316,8 +295,8 @@ export default function DeepseekChat() {
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const [searchEnabled, setSearchEnabled] = useState(false)
 
-  /** Mode utama = API server + training; alternatif = proxy Node (superadmin). */
-  const [aiChatMode, setAiChatMode] = useState(() => getDefaultAiChatModeForEnv())
+  /** Mode utama = API server + training (default); alternatif = proxy (hanya super admin). */
+  const [aiChatMode, setAiChatMode] = useState('api')
   const [apiOfficialMessages, setApiOfficialMessages] = useState([])
   const [apiOfficialInput, setApiOfficialInput] = useState('')
   const [apiOfficialModel, setApiOfficialModel] = useState('deepseek-chat')
@@ -385,6 +364,12 @@ export default function DeepseekChat() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [applyAutoHeight, input, apiOfficialInput])
+
+  useEffect(() => {
+    if (!canUseAlternativeMode && aiChatMode === 'proxy') {
+      setAiChatMode('api')
+    }
+  }, [canUseAlternativeMode, aiChatMode])
 
   useEffect(() => {
     const el = messagesContainerRef.current
@@ -861,6 +846,7 @@ export default function DeepseekChat() {
         accountLoading={accountLoading}
         aiChatMode={aiChatMode}
         setAiChatMode={setAiChatMode}
+        canUseAlternativeMode={canUseAlternativeMode}
         chatFontScale={chatFontScale}
         setChatFontScale={setChatFontScale}
         chatHeaderMenuOpen={chatHeaderMenuOpen}
@@ -881,6 +867,7 @@ export default function DeepseekChat() {
     chatFontScale,
     chatHeaderMenuOpen,
     isSuperAdminTraining,
+    canUseAlternativeMode,
     apiOfficialBusy,
     dsToken,
     sessionBusy,

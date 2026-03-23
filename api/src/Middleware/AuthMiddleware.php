@@ -4,7 +4,7 @@ namespace App\Middleware;
 
 use App\Auth\JwtAuth;
 use App\Database;
-use App\Helpers\ViewAsHelper;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -55,11 +55,11 @@ class AuthMiddleware implements MiddlewareInterface
         }
 
         // Session V2 (jika token punya jti): cek session masih ada & update last_activity. Jika tidak ada = revoked/pruned (limit 3 device) → 401.
-        // Pengecualian: role santri (aplikasi mybeddian) tidak cek session — cukup JWT valid, data dari tabel santri.
-        $roleKey = strtolower(trim($payload['role_key'] ?? $payload['user_role'] ?? ''));
-        $isSantri = ($roleKey === 'santri' || isset($payload['santri_id']));
+        // Pengecualian: konteks app daftar (santri saja, tanpa staff di token) — tidak cek session; multi_role dengan staff tetap cek session.
+        $payloadArr = is_array($payload) ? $payload : [];
+        $isSantriDaftarOnly = RoleHelper::tokenIsSantriDaftarContext($payloadArr);
         $jti = $payload['jti'] ?? null;
-        if ($jti !== null && !$isSantri) {
+        if ($jti !== null && !$isSantriDaftarOnly) {
             $sessionHash = hash('sha256', $jti);
             $userIdFromToken = (int)($payload['user_id'] ?? 0);
             $usersId = isset($payload['users_id']) && (int)$payload['users_id'] > 0
@@ -95,13 +95,14 @@ class AuthMiddleware implements MiddlewareInterface
             error_log("AuthMiddleware: token valid user_id=" . $uid);
         }
 
-        // Endpoint view-as harus melihat role asli (super_admin), bukan role efektif; jika tidak, saat "melihat sebagai" role lain akan dapat 403.
-        $path = $request->getUri()->getPath();
-        $isViewAsEndpoint = (strpos($path, 'auth/view-as') !== false);
-
-        if (!$isViewAsEndpoint) {
-            // Super admin "coba sebagai": ganti identitas dengan role/lembaga yang dipilih agar semua API konsisten
-            $payload = ViewAsHelper::mergePayloadWithViewAs($payload);
+        // Token lama mungkin belum berisi is_real_super_admin — isi dari DB agar middleware/controller konsisten.
+        if (!isset($payload['is_real_super_admin'])) {
+            $pid = RoleHelper::getPengurusIdFromPayload($payload);
+            if ($pid !== null && $pid > 0) {
+                $payload['is_real_super_admin'] = RoleHelper::pengurusHasSuperAdminRole($pid);
+            } else {
+                $payload['is_real_super_admin'] = false;
+            }
         }
 
         // Attach user data ke request untuk digunakan di controller

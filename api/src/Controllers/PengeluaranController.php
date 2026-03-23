@@ -1769,21 +1769,11 @@ class PengeluaranController
                 ], 404);
             }
 
-            // Hanya bisa dihapus oleh pembuat komentar atau super admin
+            // Hanya bisa dihapus oleh pembuat komentar atau super admin (multi-role aman)
             $isOwner = $komentarData['id_admin'] == $idAdmin;
-            $isSuperAdmin = false;
-            
-            // Cek apakah user adalah super admin menggunakan RoleHelper
-            if ($idAdmin) {
-                $userRoles = RoleHelper::getUserRoles((int)$idAdmin);
-                foreach ($userRoles as $role) {
-                    if (isset($role['role_key']) && $role['role_key'] === 'super_admin') {
-                        $isSuperAdmin = true;
-                        break;
-                    }
-                }
-            }
-            
+            $idAdminInt = (int) ($idAdmin ?? 0);
+            $isSuperAdmin = $idAdminInt > 0 && RoleHelper::pengurusHasSuperAdminRole($idAdminInt);
+
             if (!$isOwner && !$isSuperAdmin) {
                 return $this->jsonResponse($response, [
                     'success' => false,
@@ -2150,28 +2140,11 @@ class PengeluaranController
                 ], 404);
             }
 
-            // Cek apakah user adalah pemilik file atau super admin
+            // Cek apakah user adalah pemilik file atau super admin (multi-role aman)
             $isOwner = ($file['id_admin'] == $idAdmin);
-            $isSuperAdmin = false;
-            
-            // Cek role user
-            $userRolesSql = "SELECT r.key as role_key 
-                            FROM pengurus___role pr 
-                            INNER JOIN role r ON pr.role_id = r.id 
-                            WHERE pr.pengurus_id = ?";
-            $userRolesStmt = $this->db->prepare($userRolesSql);
-            $userRolesStmt->execute([$idAdmin]);
-            $userRoles = $userRolesStmt->fetchAll();
-            
-            if ($userRoles) {
-                foreach ($userRoles as $role) {
-                    if (isset($role['role_key']) && $role['role_key'] === 'super_admin') {
-                        $isSuperAdmin = true;
-                        break;
-                    }
-                }
-            }
-            
+            $idAdminInt = (int) ($idAdmin ?? 0);
+            $isSuperAdmin = $idAdminInt > 0 && RoleHelper::pengurusHasSuperAdminRole($idAdminInt);
+
             if (!$isOwner && !$isSuperAdmin) {
                 return $this->jsonResponse($response, [
                     'success' => false,

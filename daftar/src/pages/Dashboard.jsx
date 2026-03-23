@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useTahunAjaranStore } from '../store/tahunAjaranStore'
 import { pendaftaranAPI, resetCsrfToken } from '../services/api'
+import { FEATURE_DAFTAR_WA_NOTIF_UI } from '../config/featureFlags'
 
 const NOMOR_WA_PENDAFTARAN = '6285123123399'
 
@@ -135,6 +136,11 @@ function Dashboard() {
 
   // Load biodata (nomor WA user) dan status kontak
   useEffect(() => {
+    if (!FEATURE_DAFTAR_WA_NOTIF_UI) {
+      setWaFromBiodata({ noTelpon: '', noWaSantri: '', nama: '', nik: '' })
+      setKontakStatus({ telpon: null, waSantri: null })
+      return
+    }
     if (!user?.id) {
       setWaFromBiodata({ noTelpon: '', noWaSantri: '', nama: '', nik: '' })
       setKontakStatus({ telpon: null, waSantri: null })
@@ -803,7 +809,7 @@ function Dashboard() {
         )}
 
         {/* Nomor WA — hanya untuk santri yang sudah tersimpan (punya id/NIS) */}
-        {user?.id && (
+        {user?.id && FEATURE_DAFTAR_WA_NOTIF_UI && (
         <>
         <section className="mt-8 mb-6 rounded-xl border border-emerald-200/80 dark:border-emerald-800/80 bg-gradient-to-b from-emerald-50/80 to-white dark:from-emerald-950/40 dark:to-gray-900 overflow-hidden shadow-sm">
           <div className="px-4 py-4 md:px-6 md:py-5">

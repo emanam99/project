@@ -10,6 +10,7 @@ export default function EbeddienChatHeaderMain({
   accountLoading,
   aiChatMode,
   setAiChatMode,
+  canUseAlternativeMode = false,
   chatFontScale,
   setChatFontScale,
   chatHeaderMenuOpen,
@@ -58,37 +59,43 @@ export default function EbeddienChatHeaderMain({
             className="overflow-hidden border-t border-white/15"
           >
             <div className="space-y-4 bg-black/15 px-3 py-3 sm:px-4 sm:py-4">
-              <div>
-                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-primary-100/90">Mode</p>
-                <div
-                  className="flex w-full rounded-xl border border-white/25 bg-white/5 p-0.5"
-                  role="group"
-                  aria-label={`Mode ${assistantName}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setAiChatMode('proxy')}
-                    className={
-                      aiChatMode === 'proxy'
-                        ? 'flex-1 rounded-lg bg-white/25 py-2 text-xs font-semibold text-white shadow-sm'
-                        : 'flex-1 rounded-lg py-2 text-xs font-medium text-primary-100 hover:bg-white/10'
-                    }
+              {canUseAlternativeMode ? (
+                <div>
+                  <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-primary-100/90">Mode</p>
+                  <div
+                    className="flex w-full rounded-xl border border-white/25 bg-white/5 p-0.5"
+                    role="group"
+                    aria-label={`Mode ${assistantName}`}
                   >
-                    Alternatif
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAiChatMode('api')}
-                    className={
-                      aiChatMode === 'api'
-                        ? 'flex-1 rounded-lg bg-white/25 py-2 text-xs font-semibold text-white shadow-sm'
-                        : 'flex-1 rounded-lg py-2 text-xs font-medium text-primary-100 hover:bg-white/10'
-                    }
-                  >
-                    Utama
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setAiChatMode('api')}
+                      className={
+                        aiChatMode === 'api'
+                          ? 'flex-1 rounded-lg bg-white/25 py-2 text-xs font-semibold text-white shadow-sm'
+                          : 'flex-1 rounded-lg py-2 text-xs font-medium text-primary-100 hover:bg-white/10'
+                      }
+                    >
+                      Utama
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAiChatMode('proxy')}
+                      className={
+                        aiChatMode === 'proxy'
+                          ? 'flex-1 rounded-lg bg-white/25 py-2 text-xs font-semibold text-white shadow-sm'
+                          : 'flex-1 rounded-lg py-2 text-xs font-medium text-primary-100 hover:bg-white/10'
+                      }
+                    >
+                      Alternatif
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <p className="text-[11px] text-primary-100/85">
+                  Mode utama — asisten memakai API server eBeddien dan data pelatihan lembaga.
+                </p>
+              )}
 
               <div>
                 <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-primary-100/90">

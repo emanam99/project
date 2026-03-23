@@ -1,17 +1,18 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useEffect, useState } from 'react'
+import { getUserRoleKeysLower, userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../utils/roleAccess'
 
 /**
  * RoleRoute - Route guard yang memastikan user memiliki salah satu role yang diizinkan
  * @param {Array<string>} allowedRoles - Array role yang diizinkan mengakses route ini
+ * @param {boolean} [allowIfRealSuperAdmin] - Jika true, user dengan role super_admin (gabungan all_roles) tetap boleh
  * @param {ReactNode} children - Optional children untuk direct component wrapping
  */
-function RoleRoute({ allowedRoles = [], children }) {
-  const { isAuthenticated, user, checkAuth, getEffectiveRole } = useAuthStore()
+function RoleRoute({ allowedRoles = [], allowIfRealSuperAdmin = false, children }) {
+  const { isAuthenticated, user, checkAuth } = useAuthStore()
   const [isChecking, setIsChecking] = useState(true)
   const location = useLocation()
-  const effectiveRole = getEffectiveRole?.() ?? (user?.role_key || user?.level || '').toLowerCase()
 
   useEffect(() => {
     // Check auth on mount
@@ -38,23 +39,23 @@ function RoleRoute({ allowedRoles = [], children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // Cek akses pakai effectiveRole (super_admin yang "coba sebagai" role X dianggap sebagai role X)
-  const hasAllowedRole = user && allowedRoles.length > 0 && allowedRoles.map(r => r.toLowerCase()).includes(effectiveRole)
+  const isSuperAdminUser = userHasSuperAdminAccess(user)
+  const hasAllowedRole =
+    userMatchesAnyAllowedRole(user, allowedRoles) || (allowIfRealSuperAdmin && isSuperAdminUser)
 
   // Check if user has one of the allowed roles
   if (!user || !hasAllowedRole) {
-    // Redirect to first accessible page or home
-    // Redirect berdasarkan effectiveRole
-    if (effectiveRole && allowedRoles.length > 0) {
-      if (['admin_psb', 'petugas_psb', 'super_admin'].includes(effectiveRole)) {
+    const keys = getUserRoleKeysLower(user)
+    const hasAny = (candidates) => candidates.some((r) => keys.includes(r))
+    if (keys.length > 0 && allowedRoles.length > 0) {
+      if (hasAny(['admin_psb', 'petugas_psb', 'super_admin'])) {
         return <Navigate to="/pendaftaran" replace />
       }
-      if (['petugas_uwaba', 'admin_uwaba', 'super_admin'].includes(effectiveRole)) {
+      if (hasAny(['petugas_uwaba', 'admin_uwaba', 'super_admin'])) {
         return <Navigate to="/uwaba" replace />
       }
     }
-    
-    // Default redirect to profil or login
+
     return <Navigate to="/profil" replace />
   }
 

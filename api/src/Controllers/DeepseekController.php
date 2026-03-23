@@ -34,6 +34,21 @@ class DeepseekController
     }
 
     /**
+     * Mode alternatif (login penyedia + proxy Node): hanya super admin (JWT / middleware mengisi is_real_super_admin).
+     */
+    private function requireDeepseekAlternativeAccess(array $userPayload, Response $response): ?Response
+    {
+        if (empty($userPayload['is_real_super_admin'])) {
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'Mode alternatif hanya untuk super admin.',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
      * Eksekusi cURL POST JSON dengan retry ringan untuk jaringan local yang fluktuatif.
      *
      * @return array{raw:string|false,http_code:int,curl_error:string,curl_errno:int}
@@ -569,6 +584,10 @@ class DeepseekController
             if (!is_array($payload)) {
                 return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
             }
+            $deny = $this->requireDeepseekAlternativeAccess($payload, $response);
+            if ($deny !== null) {
+                return $deny;
+            }
 
             $body = $request->getParsedBody();
             if (!is_array($body)) {
@@ -782,6 +801,10 @@ class DeepseekController
             if (!is_array($userPayload)) {
                 return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
             }
+            $deny = $this->requireDeepseekAlternativeAccess($userPayload, $response);
+            if ($deny !== null) {
+                return $deny;
+            }
 
             $body = $request->getParsedBody();
             if (!is_array($body)) {
@@ -826,6 +849,10 @@ class DeepseekController
             $userPayload = $request->getAttribute('user');
             if (!is_array($userPayload)) {
                 return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+            $deny = $this->requireDeepseekAlternativeAccess($userPayload, $response);
+            if ($deny !== null) {
+                return $deny;
             }
 
             $body = $request->getParsedBody();
@@ -930,7 +957,7 @@ class DeepseekController
     private const DEEPSEEK_OPENAI_BASE = 'https://api.deepseek.com';
 
     /**
-     * POST /api/deepseek/api-chat — superadmin only.
+     * POST /api/deepseek/api-chat — mode utama; semua user terautentikasi.
      * Memanggil https://api.deepseek.com/chat/completions (format OpenAI).
      *
      * Body JSON: { "model"?: "deepseek-chat"|"deepseek-reasoner", "messages": [...], "session_id"?: string }

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\PengurusAdminIdHelper;
 use App\Helpers\SantriHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -300,10 +301,19 @@ class PaymentController
                 ], 400);
             }
             $amount = (float)$input['amount'];
-            $admin = $input['admin'];
-            $idAdmin = $input['id_admin'];
             $hijriyah = $input['hijriyah'];
             $via = $input['via'];
+            $idAdmin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
+            if ($idAdmin === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: tidak dapat menentukan admin pengurus.',
+                ], 403);
+            }
+            $admin = PengurusAdminIdHelper::fetchPengurusNama($this->db, $idAdmin) ?? trim((string) ($input['admin'] ?? ''));
+            if ($admin === '') {
+                $admin = 'Admin';
+            }
 
             $this->db->beginTransaction();
 
@@ -405,7 +415,7 @@ class PaymentController
 
             try {
                 // Cek apakah data pembayaran ada (tanpa FOR UPDATE karena tidak diperlukan)
-                $sqlSelectBayar = "SELECT id, nominal, {$idKolomReferensi} FROM {$tabelBayar} WHERE id = ?";
+                $sqlSelectBayar = "SELECT id, nominal, id_admin, {$idKolomReferensi} FROM {$tabelBayar} WHERE id = ?";
                 $stmtSelect = $this->db->prepare($sqlSelectBayar);
                 $stmtSelect->execute([$idBayar]);
                 $payment = $stmtSelect->fetch(\PDO::FETCH_ASSOC);
@@ -417,6 +427,15 @@ class PaymentController
                         'success' => false,
                         'message' => "Data pembayaran dengan ID {$idBayar} tidak ditemukan di tabel {$tabelBayar}."
                     ], 404);
+                }
+
+                $uArr = is_array($request->getAttribute('user')) ? $request->getAttribute('user') : [];
+                if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $payment['id_admin'] ?? null)) {
+                    $this->db->rollBack();
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat menghapus.',
+                    ], 403);
                 }
 
                 // Hapus pembayaran dari tabel riwayat
@@ -537,7 +556,13 @@ class PaymentController
             $wajib = (float)$input['total']; // Input masih 'total' untuk backward compatibility
             $tahunAjaran = $input['tahun_ajaran'];
             $lembaga = $input['lembaga'];
-            $idAdmin = $input['id_admin'] ?? null;
+            $idAdmin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
+            if ($idAdmin === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: tidak dapat menentukan admin pengurus.',
+                ], 403);
+            }
             $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
             
             $sqlInsert = "INSERT INTO {$tabel} (id_santri, keterangan_1, keterangan_2, wajib, tahun_ajaran, lembaga, tanggal_dibuat, id_admin) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -598,8 +623,14 @@ class PaymentController
             $wajib = (float)$input['total']; // Input masih 'total' untuk backward compatibility
             $tahunAjaran = $input['tahun_ajaran'] ?? null;
             $lembaga = $input['lembaga'] ?? null;
-            $idAdmin = $input['id_admin'] ?? null;
-            
+            $idAdmin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
+            if ($idAdmin === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: tidak dapat menentukan admin pengurus.',
+                ], 403);
+            }
+
             // Ambil baris lengkap untuk audit (old_data)
             $sqlSelect = "SELECT * FROM {$tabel} WHERE id = ?";
             $stmtSelect = $this->db->prepare($sqlSelect);
@@ -676,15 +707,30 @@ class PaymentController
             $stmtOld = $this->db->prepare("SELECT * FROM {$tabel} WHERE id = ?");
             $stmtOld->execute([$id]);
             $oldRow = $stmtOld->fetch(\PDO::FETCH_ASSOC);
-            
+
+            if (!$oldRow) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Data tidak ditemukan.',
+                ], 404);
+            }
+
+            $uArr = PengurusAdminIdHelper::userArrayFromRequest($request);
+            if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $oldRow['id_admin'] ?? null)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat menghapus.',
+                ], 403);
+            }
+
             $sqlDelete = "DELETE FROM {$tabel} WHERE id=?";
             $stmtDelete = $this->db->prepare($sqlDelete);
             $stmtDelete->execute([$id]);
-            if ($oldRow) {
-                $u = $request->getAttribute('user');
-                $idAdminResolved = isset($u['user_id']) ? (int) $u['user_id'] : (isset($u['id']) ? (int) $u['id'] : null);
-                UserAktivitasLogger::log(null, $idAdminResolved, UserAktivitasLogger::ACTION_DELETE, $tabel, $id, $oldRow, null, $request);
+            $idAdminResolved = isset($uArr['user_id']) ? (int) $uArr['user_id'] : (int) ($uArr['id'] ?? 0);
+            if ($idAdminResolved <= 0) {
+                $idAdminResolved = (int) ($oldRow['id_admin'] ?? 0);
             }
+            UserAktivitasLogger::log(null, $idAdminResolved > 0 ? $idAdminResolved : null, UserAktivitasLogger::ACTION_DELETE, $tabel, $id, $oldRow, null, $request);
             
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -896,9 +942,18 @@ class PaymentController
             $via = $input['via'] ?? 'Cash';
             $tahunAjaran = $input['tahun_ajaran'] ?? '';
             $hijriyah = $input['hijriyah'] ?? '';
-            $idAdmin = $input['id_admin'] ?? 1;
-            $admin = $input['admin'] ?? 'Admin';
-            
+            $idAdmin = PengurusAdminIdHelper::resolveFromRequest($request, $input['id_admin'] ?? 0);
+            if ($idAdmin === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: tidak dapat menentukan admin pengurus.',
+                ], 403);
+            }
+            $admin = PengurusAdminIdHelper::fetchPengurusNama($this->db, $idAdmin) ?? trim((string) ($input['admin'] ?? ''));
+            if ($admin === '') {
+                $admin = 'Admin';
+            }
+
             if ($idSantriParam === '' || $idSantriParam === null || empty($nominal) || empty($tahunAjaran)) {
                 return $this->jsonResponse($response, [
                     'success' => false,
@@ -1003,9 +1058,18 @@ class PaymentController
                     'message' => 'Pembayaran tidak ditemukan'
                 ], 404);
             }
-            $user = $request->getAttribute('user');
-            $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
-            
+            $uArr = is_array($request->getAttribute('user')) ? $request->getAttribute('user') : [];
+            if (!PengurusAdminIdHelper::actorMayModifyRowPengurusId($uArr, $oldBayar['id_admin'] ?? null)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak: hanya pemilik pencatatan atau super_admin yang dapat menghapus.',
+                ], 403);
+            }
+            $idAdmin = isset($uArr['user_id']) ? (int) $uArr['user_id'] : (int) ($uArr['id'] ?? 0);
+            if ($idAdmin <= 0) {
+                $idAdmin = (int) ($oldBayar['id_admin'] ?? 0);
+            }
+
             // Coba hapus pembayaran
             // Jika error karena trigger yang bermasalah, nonaktifkan trigger dan coba lagi
             $triggerName = 'trg_backup_before_delete_uwaba_bayar';

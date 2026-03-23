@@ -411,7 +411,7 @@ function UwabaPaymentOffcanvas({
             }}
             onConfirm={handleConfirmDelete}
             paymentAmount={deletePaymentAmount}
-            santriId={santriId}
+            title="Konfirmasi hapus pembayaran UWABA"
           />
         </>
       )}

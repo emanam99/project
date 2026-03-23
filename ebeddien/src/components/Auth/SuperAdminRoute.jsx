@@ -1,12 +1,12 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import { useEffect, useState } from 'react'
 
 function SuperAdminRoute({ children }) {
-  const { isAuthenticated, user, checkAuth, getEffectiveRole, isRealSuperAdmin } = useAuthStore()
+  const { isAuthenticated, user, checkAuth } = useAuthStore()
   const [isChecking, setIsChecking] = useState(true)
   const location = useLocation()
-  const pathname = location.pathname || ''
 
   useEffect(() => {
     checkAuth()
@@ -26,16 +26,9 @@ function SuperAdminRoute({ children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  const realSuperAdmin = isRealSuperAdmin?.() ?? (user && (user?.role_key || user?.level || '').toLowerCase() === 'super_admin')
-  const effectiveRole = getEffectiveRole?.() ?? (user?.role_key || user?.level || '').toLowerCase()
+  const canSuperAdminRoutes = userHasSuperAdminAccess(user)
 
-  // Halaman Role & Akses selalu boleh diakses oleh super_admin asli (meski sedang "coba sebagai" role lain)
-  if (pathname === '/settings/role-akses' && realSuperAdmin) {
-    return children || <Outlet />
-  }
-
-  // Route super_admin lainnya: hanya boleh jika effectiveRole === super_admin (tidak sedang "coba sebagai" role lain)
-  if (!user || effectiveRole !== 'super_admin') {
+  if (!user || !canSuperAdminRoutes) {
     return <Navigate to="/" replace />
   }
 

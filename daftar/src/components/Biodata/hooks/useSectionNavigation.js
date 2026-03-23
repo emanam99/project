@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 
 /**
  * Custom hook untuk mengelola navigasi section dengan sidebar
+ * @param {unknown} [reobserveKey] — jika berubah (mis. mode baca/ubah), observer dipasang ulang ke DOM baru
  */
-export const useSectionNavigation = () => {
+export const useSectionNavigation = (reobserveKey) => {
   const [activeSection, setActiveSection] = useState('dataDiri')
   
   // Create refs for each section
@@ -70,17 +71,22 @@ export const useSectionNavigation = () => {
 
     const observer = new IntersectionObserver(observerCallback, observerOptions)
 
-    // Observe semua sections
-    Object.values(sectionRefs).forEach((ref) => {
-      if (ref.current) {
-        observer.observe(ref.current)
-      }
-    })
+    const attach = () => {
+      Object.values(sectionRefs).forEach((ref) => {
+        if (ref.current) {
+          observer.observe(ref.current)
+        }
+      })
+    }
+
+    attach()
+    const raf = requestAnimationFrame(() => attach())
 
     return () => {
+      cancelAnimationFrame(raf)
       observer.disconnect()
     }
-  }, [])
+  }, [reobserveKey])
   
   return {
     sectionRefs,

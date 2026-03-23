@@ -357,6 +357,7 @@ function ImageEditor({ imageFile, onSave, onCancel }) {
       <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-4">
         <div className="flex items-center justify-between">
           <button
+            type="button"
             onClick={onCancel}
             className="px-4 py-2 bg-black/50 hover:bg-black/70 text-white rounded-lg transition-colors backdrop-blur-sm flex items-center gap-2"
           >
@@ -367,6 +368,7 @@ function ImageEditor({ imageFile, onSave, onCancel }) {
           </button>
           <h2 className="text-white font-semibold text-lg">Edit Gambar</h2>
           <button
+            type="button"
             onClick={handleSave}
             className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors flex items-center gap-2"
           >

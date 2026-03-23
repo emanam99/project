@@ -5,6 +5,7 @@ import { useRef, useEffect, useState, useMemo } from 'react'
 import { getNavFavorites, setNavFavorites, toggleNavFavorite } from '../../utils/navFavorites'
 import { getExpandedMenuItemsMeta } from '../../config/menuConfig'
 import { getIcon } from '../../config/menuIcons'
+import { userHasSuperAdminAccess, userHasAnyAdminCap, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
 
 const navItems = [
   {
@@ -92,9 +93,8 @@ function Navigation() {
   const [menuLocked, setMenuLocked] = useState(true)
   
   const userLevel = user?.level?.toLowerCase()
-  const userRole = (user?.role_key || user?.level || '').toLowerCase()
-  const isAdminOrSuperAdmin = user && (userLevel === 'admin' || userRole === 'admin_uwaba' || userRole === 'admin_psb' || userRole === 'admin_lembaga' || userRole === 'super_admin')
-  const isSuperAdmin = user && userRole === 'super_admin'
+  const isSuperAdmin = userHasSuperAdminAccess(user)
+  const isAdminOrSuperAdmin = user && (userLevel === 'admin' || userHasAnyAdminCap(user))
   
   // Helper untuk cek permission
   const hasPermission = (permission) => {
@@ -104,25 +104,8 @@ function Navigation() {
     return user.permissions.includes(permission)
   }
   
-  // Helper untuk cek role - support multiple roles
-  const hasRole = (roles) => {
-    if (!user || !roles || !Array.isArray(roles)) {
-      return false
-    }
-    
-    // Cek dari all_roles (array semua role user) jika ada
-    if (user.all_roles && Array.isArray(user.all_roles) && user.all_roles.length > 0) {
-      const userRoles = user.all_roles.map(r => (r || '').toLowerCase()).filter(r => r) // Filter out empty strings
-      const allowedRoles = roles.map(r => r.toLowerCase())
-      const hasAccess = userRoles.some(userRole => allowedRoles.includes(userRole))
-      
-      return hasAccess
-    }
-    
-    // Fallback: cek role_key utama
-    const userRole = (user.role_key || user.level || '').toLowerCase()
-    return roles.map(r => r.toLowerCase()).includes(userRole)
-  }
+  // Gabungan all_roles + role_key utama + normalisasi spasi → underscore (aman untuk multi_role)
+  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
   
   // Tentukan role utama user dengan prioritas: UWABA > PSB > Umroh > Ijin
   const hasUwabaRole = hasRole(['admin_uwaba', 'petugas_uwaba', 'super_admin'])

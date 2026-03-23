@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { santriAPI, pendaftaranAPI } from '../../../services/api'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useAuthStore } from '../../../store/authStore'
+import { userMatchesAnyAllowedRole } from '../../../utils/roleAccess'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { extractTanggalLahirFromNIK, extractGenderFromNIK } from '../../../utils/nikUtils'
 import BerkasOffcanvas from './BerkasOffcanvas'
 import FilePreviewOffcanvas from '../../../components/FilePreview/FilePreviewOffcanvas'
 import CameraScanner from '../../../components/CameraScanner/CameraScanner'
+import ImageEditorModal from '../../../components/ImageEditor/ImageEditorModal'
 import Modal from '../../../components/Modal/Modal'
 import { formatFileSize } from './utils/fileUtils'
 import { compressImage } from '../../../utils/imageCompression'
@@ -29,9 +30,7 @@ import StatusPendaftaranSection from './sections/StatusPendaftaranSection'
 import KategoriPendidikanSection from './sections/KategoriPendidikanSection'
 import BerkasSection from './sections/BerkasSection'
 
-function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBiodataSaved, hideBerkasSection = false, onReturnFromEditor }) {
-  const location = useLocation()
-  const navigate = useNavigate()
+function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBiodataSaved, hideBerkasSection = false }) {
   const { showNotification } = useNotification()
   const [formData, setFormData] = useState({
     // NIS
@@ -174,6 +173,8 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   const [focusedField, setFocusedField] = useState(null)
   const [existingBerkasToReplace, setExistingBerkasToReplace] = useState(null)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
+  const [cameraImageEditorOpen, setCameraImageEditorOpen] = useState(false)
+  const [cameraImageFileForEditor, setCameraImageFileForEditor] = useState(null)
   const [selectedFile, setSelectedFile] = useState(null)
   const fileRef = useRef(null)
   const [showDeleteRegistrasiModal, setShowDeleteRegistrasiModal] = useState(false)
@@ -449,39 +450,32 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
     }
   }
 
-  // Handle return from editor
-  useEffect(() => {
-    if (location.state?.returnFromEditor) {
-      const loadEditedFile = async () => {
-        try {
-          const imageData = sessionStorage.getItem('editedImageData')
-          const imageMeta = sessionStorage.getItem('editedImageMeta')
-          if (imageData && imageMeta) {
-            const meta = JSON.parse(imageMeta)
-            const response = await fetch(imageData)
-            const blob = await response.blob()
-            const file = new File([blob], meta.name, {
-              type: meta.type || 'image/jpeg',
-              lastModified: meta.lastModified || Date.now()
-            })
-            sessionStorage.removeItem('editedImageData')
-            sessionStorage.removeItem('editedImageMeta')
-            sessionStorage.removeItem('editorReturnPage')
-            if (hideBerkasSection && onReturnFromEditor) {
-              onReturnFromEditor(file)
-            } else {
-              setSelectedFile(file)
-              setIsBerkasOffcanvasOpen(true)
-            }
-          }
-        } catch (error) {
-          console.error('Error loading edited file:', error)
-          showNotification('Gagal memuat file yang sudah diedit', 'error')
-        }
-      }
-      loadEditedFile()
+  const applyCompressIfNeededCamera = useCallback(async (editedFile) => {
+    const compressibleImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    const fileExtension = editedFile.name.split('.').pop()?.toLowerCase()
+    const compressibleExtensions = ['jpg', 'jpeg', 'png', 'webp']
+    const isCompressibleImage =
+      (compressibleImageTypes.includes(editedFile.type) || compressibleExtensions.includes(fileExtension)) &&
+      editedFile.size > 1024 * 1024
+    if (!isCompressibleImage) return editedFile
+    try {
+      return await compressImage(editedFile, 1)
+    } catch (err) {
+      console.error(err)
+      return editedFile
     }
-  }, [location.state, showNotification, hideBerkasSection, onReturnFromEditor])
+  }, [])
+
+  const handleCameraImageEditorSave = useCallback(
+    async (editedFile) => {
+      const fileToUse = await applyCompressIfNeededCamera(editedFile)
+      const jenisBerkas = sessionStorage.getItem('uploadingBerkasJenis')
+      if (jenisBerkas) setSelectedJenisBerkas(jenisBerkas)
+      setSelectedFile(fileToUse)
+      setIsBerkasOffcanvasOpen(true)
+    },
+    [applyCompressIfNeededCamera, setSelectedJenisBerkas, setIsBerkasOffcanvasOpen]
+  )
 
   // Handle camera capture
   const handleCameraCapture = async (file) => {
@@ -511,14 +505,11 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
         }
       }
 
-      // Simpan jenisBerkas sebelum redirect ke editor
       const jenisBerkas = sessionStorage.getItem('uploadingBerkasJenis')
       sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas || 'Ijazah SD Sederajat')
-      sessionStorage.setItem('editorReturnPage', localId ? `/pendaftaran?nis=${localId}` : '/pendaftaran')
-      
-      // Redirect ke halaman editor untuk gambar dari kamera (sudah dikompres jika perlu)
       setShowCameraScanner(false)
-      navigate('/pendaftaran/editor', { state: { file: fileToUse } })
+      setCameraImageFileForEditor(fileToUse)
+      setCameraImageEditorOpen(true)
     } catch (err) {
       console.error('Error in handleCameraCapture:', err)
       showNotification('Gagal memproses file dari kamera. Silakan coba lagi.', 'error')
@@ -537,11 +528,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   // Note: showNotification sudah dideklarasikan di atas (baris 35)
   
   // Cek apakah user memiliki role untuk melihat tombol hapus
-  const hasDeletePermission = () => {
-    if (!user) return false
-    const userRole = (user.role_key || user.level || '').toLowerCase()
-    return userRole === 'super_admin' || userRole === 'admin_psb'
-  }
+  const hasDeletePermission = () => userMatchesAnyAllowedRole(user, ['super_admin', 'admin_psb'])
   
   // WhatsApp checking hook
   const waCheck = useWhatsAppCheck(showNotification)
@@ -1879,6 +1866,16 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
               jenisBerkas={sessionStorage.getItem('uploadingBerkasJenis')}
             />
           )}
+          <ImageEditorModal
+            isOpen={cameraImageEditorOpen}
+            imageFile={cameraImageFileForEditor}
+            onClose={() => {
+              setCameraImageEditorOpen(false)
+              setCameraImageFileForEditor(null)
+            }}
+            onSave={handleCameraImageEditorSave}
+            zIndex={10060}
+          />
           {createPortal(
             <FilePreviewOffcanvas
               file={previewFile}

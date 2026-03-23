@@ -6,6 +6,8 @@ use App\Database;
 use App\Helpers\SantriHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
+use App\Helpers\PengurusAdminIdHelper;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -223,6 +225,34 @@ class SantriBerkasController
         }
     }
 
+    /** Konteks app daftar: hanya id_santri dari token. Staff PSB/super_admin / non-santri-app: tanpa batasan di sini. */
+    private function ensureSantriDaftarOwnsSantriId(array $userArr, int $idSantriPk): bool
+    {
+        if (RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr)) {
+            return true;
+        }
+        if (!RoleHelper::tokenIsSantriDaftarContext($userArr)) {
+            return true;
+        }
+        $tid = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
+        if ($tid === null || $tid === '') {
+            return false;
+        }
+        $resolvedToken = SantriHelper::resolveId($this->db, $tid);
+
+        return $resolvedToken !== null && (int) $resolvedToken === (int) $idSantriPk;
+    }
+
+    /** @param array<string,mixed> $berkasRow */
+    private function ensureSantriDaftarOwnsBerkasRow(array $userArr, array $berkasRow): bool
+    {
+        if (!isset($berkasRow['id_santri'])) {
+            return false;
+        }
+
+        return $this->ensureSantriDaftarOwnsSantriId($userArr, (int) $berkasRow['id_santri']);
+    }
+
     /**
      * POST /api/santri-berkas/upload - Upload berkas santri
      */
@@ -231,12 +261,15 @@ class SantriBerkasController
         try {
             // Get user dari session/token
             $user = $request->getAttribute('user');
-            // Jika yang login adalah santri, id_admin harus null karena id_admin merujuk ke tabel pengurus
-            $idAdmin = (isset($user['role_key']) && $user['role_key'] === 'santri') ? null : ($user['user_id'] ?? $user['id'] ?? null);
+            $userArr = is_array($user) ? $user : [];
 
             // Get form data
             $parsedBody = $request->getParsedBody();
             $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
+            // Konteks app daftar (santri): id_admin null — kolom merujuk ke pengurus
+            $idAdmin = RoleHelper::tokenIsSantriDaftarContext($userArr)
+                ? null
+                : PengurusAdminIdHelper::resolveEffectivePengurusId($userArr, $parsedBody['id_admin'] ?? 0);
             $idSantri = $parsedBody['id_santri'] ?? null;
             $jenisBerkas = $parsedBody['jenis_berkas'] ?? null;
             $keterangan = $parsedBody['keterangan'] ?? null;
@@ -265,6 +298,13 @@ class SantriBerkasController
                 ], 404);
             }
             $idSantri = $idSantriResolved;
+
+            if (!$this->ensureSantriDaftarOwnsSantriId($userArr, (int) $idSantri)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak'
+                ], 403);
+            }
 
             // Cek apakah ada file yang di-upload
             $uploadedFiles = $request->getUploadedFiles();
@@ -637,9 +677,18 @@ class SantriBerkasController
     public function getBerkasList(Request $request, Response $response): Response
     {
         try {
+            $user = $request->getAttribute('user');
+            $userArr = is_array($user) ? $user : [];
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
             $jenisBerkas = $queryParams['jenis_berkas'] ?? null;
+
+            if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
+                $idFromToken = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
+                if ($idFromToken !== null && $idFromToken !== '') {
+                    $idSantri = $idFromToken;
+                }
+            }
 
             if (!$idSantri) {
                 return $this->jsonResponse($response, [
@@ -648,12 +697,20 @@ class SantriBerkasController
                 ], 400);
             }
 
+            $resolvedId = SantriHelper::resolveId($this->db, $idSantri);
+            if ($resolvedId === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Santri tidak ditemukan'
+                ], 404);
+            }
+
             // Build query
             $sql = "SELECT b.*, p.nama AS admin_nama
                     FROM santri___berkas b
                     LEFT JOIN pengurus p ON b.id_admin = p.id
                     WHERE b.id_santri = ?";
-            $params = [$idSantri];
+            $params = [$resolvedId];
 
             if ($jenisBerkas && $jenisBerkas !== '') {
                 $sql .= " AND b.jenis_berkas = ?";
@@ -709,6 +766,14 @@ class SantriBerkasController
                 ], 404);
             }
 
+            $userArr = is_array($request->getAttribute('user')) ? $request->getAttribute('user') : [];
+            if (!$this->ensureSantriDaftarOwnsBerkasRow($userArr, $berkas)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak'
+                ], 403);
+            }
+
             // Cek apakah path_file masih digunakan oleh berkas lain
             $checkPathSql = "SELECT COUNT(*) as count FROM santri___berkas WHERE path_file = ? AND id != ?";
             $checkPathStmt = $this->db->prepare($checkPathSql);
@@ -754,8 +819,7 @@ class SantriBerkasController
         try {
             // Get user dari session/token
             $user = $request->getAttribute('user');
-            // Jika yang login adalah santri, id_admin harus null karena id_admin merujuk ke tabel pengurus
-            $idAdmin = (isset($user['role_key']) && $user['role_key'] === 'santri') ? null : ($user['user_id'] ?? $user['id'] ?? null);
+            $userArr = is_array($user) ? $user : [];
 
             // Get form data
             $parsedBody = $request->getParsedBody();
@@ -782,6 +846,27 @@ class SantriBerkasController
                     'success' => false,
                     'message' => 'Berkas tidak ditemukan'
                 ], 404);
+            }
+
+            if (!$this->ensureSantriDaftarOwnsBerkasRow($userArr, $berkasLama)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak'
+                ], 403);
+            }
+
+            $idAdmin = null;
+            if (!RoleHelper::tokenIsSantriDaftarContext($userArr)) {
+                $idResolved = PengurusAdminIdHelper::resolveEffectivePengurusId($userArr, $parsedBody['id_admin'] ?? 0);
+                if ($idResolved !== null) {
+                    $idAdmin = $idResolved;
+                } else {
+                    $prev = $berkasLama['id_admin'] ?? null;
+                    $idAdmin = ($prev !== null && $prev !== '') ? (int) $prev : null;
+                    if ($idAdmin === 0) {
+                        $idAdmin = null;
+                    }
+                }
             }
 
             // Get uploaded file
@@ -889,6 +974,7 @@ class SantriBerkasController
     public function downloadBerkas(Request $request, Response $response): Response
     {
         try {
+            $userArr = is_array($request->getAttribute('user')) ? $request->getAttribute('user') : [];
             $queryParams = $request->getQueryParams();
             $idBerkas = $queryParams['id'] ?? null;
 
@@ -910,6 +996,13 @@ class SantriBerkasController
                     'success' => false,
                     'message' => 'Berkas tidak ditemukan'
                 ], 404);
+            }
+
+            if (!$this->ensureSantriDaftarOwnsBerkasRow($userArr, $berkas)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak'
+                ], 403);
             }
 
             // Path file (dari config UPLOADS_BASE_PATH)
@@ -949,13 +1042,15 @@ class SantriBerkasController
     public function linkBerkas(Request $request, Response $response): Response
     {
         try {
-            // Get user dari session/token
             $user = $request->getAttribute('user');
-            $idAdmin = $user['id'] ?? null;
+            $userArr = is_array($user) ? $user : [];
 
             // Get form data
             $parsedBody = $request->getParsedBody();
             $parsedBody = is_array($parsedBody) ? TextSanitizer::sanitizeStringValues($parsedBody, []) : [];
+            $idAdmin = RoleHelper::tokenIsSantriDaftarContext($userArr)
+                ? null
+                : PengurusAdminIdHelper::resolveEffectivePengurusId($userArr, $parsedBody['id_admin'] ?? 0);
             $idSantri = $parsedBody['id_santri'] ?? null;
             $jenisBerkas = $parsedBody['jenis_berkas'] ?? null;
             $idBerkasSource = $parsedBody['id_berkas_source'] ?? null; // ID berkas yang akan di-link
@@ -965,6 +1060,22 @@ class SantriBerkasController
                     'success' => false,
                     'message' => 'Parameter id_santri, jenis_berkas, dan id_berkas_source wajib diisi'
                 ], 400);
+            }
+
+            $idSantriResolved = SantriHelper::resolveId($this->db, $idSantri);
+            if ($idSantriResolved === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Santri tidak ditemukan (id/NIS tidak valid)'
+                ], 404);
+            }
+            $idSantri = $idSantriResolved;
+
+            if (!$this->ensureSantriDaftarOwnsSantriId($userArr, (int) $idSantri)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak'
+                ], 403);
             }
 
             // Cek apakah sudah ada berkas dengan jenis_berkas yang sama untuk santri ini

@@ -37,5 +37,5 @@ return function (\Slim\App $app): void {
         $group->put('/{id}', [ManageUsersController::class, 'updateUser']);
         $group->delete('/{id}', [ManageUsersController::class, 'deleteUser']);
         $group->post('/{id}/send-reset-password-link', [ManageUsersController::class, 'sendResetPasswordLink']);
-    })->add(new RoleMiddleware(['super_admin', 'admin_ugt']))->add(new AuthMiddleware());
+    })->add(new RoleMiddleware(['super_admin', 'admin_ugt', 'tarbiyah']))->add(new AuthMiddleware());
 };

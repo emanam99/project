@@ -414,7 +414,11 @@ function PaymentOffcanvas({ isOpen, onClose, item, mode, santriId, onPaymentSucc
         }}
         onConfirm={handleConfirmDelete}
         paymentAmount={deletePaymentAmount}
-        santriId={santriId}
+        title={
+          mode === 'khusus'
+            ? 'Konfirmasi hapus pembayaran khusus'
+            : 'Konfirmasi hapus pembayaran tunggakan'
+        }
       />
     </AnimatePresence>
   )

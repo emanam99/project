@@ -609,17 +609,9 @@ class ManageUsersController
                 ], 404);
             }
             
-            // Prevent deleting super_admin (optional safety check)
-            // Cek apakah user memiliki role super_admin menggunakan RoleHelper
-            $userRoles = RoleHelper::getUserRoles((int)$userId);
-            $hasSuperAdminRole = false;
-            foreach ($userRoles as $role) {
-                if (isset($role['role_key']) && $role['role_key'] === 'super_admin') {
-                    $hasSuperAdminRole = true;
-                    break;
-                }
-            }
-            
+            // Prevent deleting super_admin (salah satu dari banyak role pengurus target)
+            $hasSuperAdminRole = RoleHelper::pengurusHasSuperAdminRole((int) $userId);
+
             if ($hasSuperAdminRole) {
                 // Get current user from request
                 $currentUser = $request->getAttribute('user');

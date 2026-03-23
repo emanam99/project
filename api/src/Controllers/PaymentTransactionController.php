@@ -8,6 +8,7 @@ use App\Services\PaymentGateway\iPaymuService;
 use App\Services\PaymentGateway\PaymentGatewayConfig;
 use App\Services\PaymentGateway\PaymentGatewayLogger;
 use App\Services\WhatsAppService;
+use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -230,10 +231,10 @@ class PaymentTransactionController
                     // Penting: Di aplikasi daftar, login NIK memakai user_id = santri.id (bukan users.id), jadi untuk role santri jangan set id_user dari JWT.
                     $idUser = null;
                     $userPayload = $request->getAttribute('user');
-                    if ($userPayload && !empty($userPayload['user_id'])) {
-                        $uid = (int) $userPayload['user_id'];
-                        $roleKey = strtolower(trim($userPayload['role_key'] ?? $userPayload['user_role'] ?? ''));
-                        $isSantri = ($roleKey === 'santri' || isset($userPayload['santri_id']));
+                    $userArr = is_array($userPayload) ? $userPayload : [];
+                    if ($userArr !== [] && !empty($userArr['user_id'])) {
+                        $uid = (int) $userArr['user_id'];
+                        $isSantri = RoleHelper::tokenIsSantriDaftarContext($userArr);
                         if ($isSantri) {
                             // Aplikasi daftar: JWT user_id = santri.id, bukan users.id. payment.id_user FK ke users.id → jangan isi id_user (notif Pendaftaran pakai id_santri).
                             $idUser = null;
