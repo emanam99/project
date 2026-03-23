@@ -116,6 +116,7 @@ const Fitur = lazy(() => import('./pages/Settings/Fitur'))
 const TahunAjaranPage = lazy(() => import('./pages/Settings/TahunAjaran'))
 const Notifikasi = lazy(() => import('./pages/Settings/Notifikasi'))
 const Watzap = lazy(() => import('./pages/Settings/Watzap'))
+const WaInteractiveMenu = lazy(() => import('./pages/Settings/WaInteractiveMenu'))
 const DataSantri = lazy(() => import('./pages/Santri/DataSantri'))
 const DataLulusan = lazy(() => import('./pages/Lulusan/DataLulusan'))
 const Daerah = lazy(() => import('./pages/Domisili/Daerah'))
@@ -1207,6 +1208,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Watzap />
+                </Suspense>
+              } 
+            />
+            <Route 
+              path="/settings/wa-interactive-menu" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <WaInteractiveMenu />
                 </Suspense>
               } 
             />

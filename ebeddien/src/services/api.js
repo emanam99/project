@@ -2243,6 +2243,26 @@ export const watzapAPI = {
   }
 }
 
+/** Menu WA interaktif (Super Admin) — pohon menu & balasan otomatis */
+export const waInteractiveMenuAPI = {
+  getSettings: async () => {
+    const response = await api.get('/wa-interactive-menu/settings')
+    return response.data
+  },
+  putSettings: async (data) => {
+    const response = await api.put('/wa-interactive-menu/settings', data)
+    return response.data
+  },
+  getTree: async () => {
+    const response = await api.get('/wa-interactive-menu/tree')
+    return response.data
+  },
+  putTree: async (data) => {
+    const response = await api.put('/wa-interactive-menu/tree', data)
+    return response.data
+  }
+}
+
 // Jabatan API (Super Admin only)
 export const jabatanAPI = {
   getAll: async (params = {}) => {

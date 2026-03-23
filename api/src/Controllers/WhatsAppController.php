@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Database;
 use App\Helpers\TextSanitizer;
 use App\Services\DaftarNotifFlow;
+use App\Services\WaInteractiveMenuService;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -256,14 +257,26 @@ class WhatsAppController
             $id = (int) $db->lastInsertId();
             error_log('WhatsAppController::incoming saved id=' . $id . ' from=' . $nomorTujuan);
 
-            $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $fromJid !== '' ? $fromJid : null);
+            $jid = $fromJid !== '' ? $fromJid : null;
+            $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $jid);
+            $isDaftarNotif = $reply !== null && $reply !== '';
+            if (!$isDaftarNotif) {
+                $reply = WaInteractiveMenuService::handle($nomorTujuan, $message, $jid);
+            }
             if ($reply !== null && $reply !== '') {
-                $logContext = ['id_santri' => null, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'daftar_notif', 'sumber' => 'api_wa'];
-                error_log('WhatsAppController::incoming daftar_notif reply to ' . $nomorTujuan . ' len=' . strlen($reply) . ($fromJid !== '' ? ' jid=' . $fromJid : ''));
-                $sendResult = WhatsAppService::sendMessage($nomorTujuan, $reply, null, $logContext, $fromJid !== '' ? $fromJid : null);
+                $logContext = [
+                    'id_santri' => null,
+                    'id_pengurus' => null,
+                    'tujuan' => 'wali_santri',
+                    'id_pengurus_pengirim' => null,
+                    'kategori' => $isDaftarNotif ? 'daftar_notif' : 'wa_interactive_menu',
+                    'sumber' => 'api_wa',
+                ];
+                error_log('WhatsAppController::incoming ' . ($isDaftarNotif ? 'daftar_notif' : 'wa_interactive_menu') . ' reply to ' . $nomorTujuan . ' len=' . strlen($reply) . ($jid ? ' jid=' . $jid : ''));
+                $sendResult = WhatsAppService::sendMessage($nomorTujuan, $reply, null, $logContext, $jid);
                 error_log('WhatsAppController::incoming sendMessage result: success=' . ($sendResult['success'] ? '1' : '0') . ' msg=' . ($sendResult['message'] ?? ''));
             } else {
-                error_log('WhatsAppController::incoming daftar_notif: no reply (handle returned null). from=' . $nomorTujuan . ' message_preview=' . substr($message, 0, 60));
+                error_log('WhatsAppController::incoming: no auto reply. from=' . $nomorTujuan . ' message_preview=' . substr($message, 0, 60));
             }
 
             return $this->json($response, ['success' => true, 'message' => 'OK', 'id' => $id], 200);

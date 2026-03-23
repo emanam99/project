@@ -8,6 +8,7 @@ use App\Controllers\SettingsController;
 use App\Controllers\UserAktivitasController;
 use App\Controllers\TahunAjaranController;
 use App\Controllers\WatzapController;
+use App\Controllers\WaInteractiveMenuController;
 use App\Controllers\KontakController;
 
 return function (\Slim\App $app): void {
@@ -28,6 +29,13 @@ return function (\Slim\App $app): void {
         $group->get('/webhooks', [WatzapController::class, 'getWebhooks']);
         $group->post('/set-webhook', [WatzapController::class, 'setWebhook']);
         $group->post('/send', [WatzapController::class, 'send']);
+    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+
+    $app->group('/api/wa-interactive-menu', function ($group) {
+        $group->get('/settings', [WaInteractiveMenuController::class, 'getSettings']);
+        $group->put('/settings', [WaInteractiveMenuController::class, 'putSettings']);
+        $group->get('/tree', [WaInteractiveMenuController::class, 'getTree']);
+        $group->put('/tree', [WaInteractiveMenuController::class, 'putTree']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     $app->group('/api/kontak', function ($group) {

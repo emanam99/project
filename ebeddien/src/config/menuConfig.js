@@ -104,6 +104,7 @@ export const MENU_ITEMS = [
   { path: '/settings/fitur', label: 'Fitur', iconKey: 'cube', group: 'Setting', requiresSuperAdmin: true },
   { path: '/settings/notifikasi', label: 'Notifikasi', iconKey: 'bell', group: 'Setting', requiresSuperAdmin: true },
   { path: '/settings/watzap', label: 'WatZap', iconKey: 'whatsapp', group: 'Setting', requiresSuperAdmin: true },
+  { path: '/settings/wa-interactive-menu', label: 'Menu WA interaktif', iconKey: 'chat', group: 'Setting', requiresSuperAdmin: true },
   { path: '/manage-uploads', label: 'Kelola File', iconKey: 'folder', group: 'Setting', requiresSuperAdmin: true },
   { path: '/whatsapp-koneksi', label: 'WhatsApp', iconKey: 'whatsapp', group: 'Setting', requiresSuperAdmin: true },
   { path: '/juara/data-juara', label: 'Data Juara', iconKey: 'trophy', group: 'Setting', requiresSuperAdmin: true },

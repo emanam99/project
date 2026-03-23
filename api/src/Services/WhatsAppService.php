@@ -589,8 +589,9 @@ class WhatsAppService
         // Cek siap_terima_notif untuk nomor kontak (biodata), bukan nomor tujuan kirim
         $kontakStatus = self::getKontakStatus($originalPhone);
         $isDaftarNotifReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'daftar_notif';
-        // Balasan flow "Daftar Notifikasi" harus tetap dikirim ke user (mereka sedang daftar); skip cek siap_terima hanya untuk kiriman lain.
-        if (!$isDaftarNotifReply && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
+        $isWaInteractiveMenuReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'wa_interactive_menu';
+        // Balasan flow "Daftar Notifikasi" & menu interaktif WA harus tetap dikirim; skip cek siap_terima hanya untuk kiriman lain.
+        if (!$isDaftarNotifReply && !$isWaInteractiveMenuReply && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
             if ($logContext !== null) {
                 self::logSentMessage(
                     $originalPhone,
@@ -659,8 +660,8 @@ class WhatsAppService
         }
 
         if (self::getNotificationProvider() === 'watzap') {
-            if ($logContext !== null && ($logContext['kategori'] ?? '') === 'daftar_notif') {
-                error_log('WhatsAppService: daftar_notif kirim via WatZap (bukan WA server). Tidak ada POST ke Node.');
+            if ($logContext !== null && in_array(($logContext['kategori'] ?? ''), ['daftar_notif', 'wa_interactive_menu'], true)) {
+                error_log('WhatsAppService: ' . ($logContext['kategori'] ?? '') . ' kirim via WatZap (bukan WA server). Tidak ada POST ke Node.');
             }
             $res = \App\Services\WatzapService::sendMessage($phone, $message, '');
             if ($res['success'] && $logContext !== null) {
