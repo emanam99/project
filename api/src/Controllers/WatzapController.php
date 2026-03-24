@@ -146,6 +146,158 @@ class WatzapController
         return '';
     }
 
+    /**
+     * Cari string pertama dengan key tertentu di array nested (Baileys/WatZap).
+     *
+     * @param array<string, mixed> $arr
+     */
+    private static function findStringByKeyDeep(array $arr, string $key, int $depth = 0): string
+    {
+        if ($depth > 10) {
+            return '';
+        }
+        if (\array_key_exists($key, $arr) && (\is_string($arr[$key]) || \is_int($arr[$key]) || \is_float($arr[$key]))) {
+            $t = trim((string) $arr[$key]);
+            if ($t !== '') {
+                return $t;
+            }
+        }
+        foreach ($arr as $v) {
+            if (\is_array($v)) {
+                $found = self::findStringByKeyDeep($v, $key, $depth + 1);
+                if ($found !== '') {
+                    return $found;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Kandidat nomor pengirim yang plausibel dari payload webhook.
+     * Menerima MSISDN normal (62...) dan id numerik tertentu dari provider (mis. LID) agar tidak drop event.
+     */
+    private static function isPlausibleSenderDigits(string $digits): bool
+    {
+        if ($digits === '') {
+            return false;
+        }
+        $len = strlen($digits);
+        if ($len < 10 || $len > 18) {
+            return false;
+        }
+        if (!preg_match('/^\d+$/', $digits)) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Ambil MSISDN pengirim dari webhook WatZap/Baileys.
+     * Prioritas: phone_number / sender_pn (bukan part JID @lid — itu bukan nomor HP).
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $payload
+     */
+    private static function resolveSenderPhoneFromWebhook(array $data, array $payload): string
+    {
+        $candidates = [];
+        $push = function (string $s) use (&$candidates): void {
+            $s = trim($s);
+            if ($s !== '') {
+                $candidates[] = $s;
+            }
+        };
+
+        foreach (['phone_number', 'phone_no', 'senderPhone', 'sender_phone', 'sender_pn', 'senderPn'] as $k) {
+            if (isset($payload[$k]) && (\is_string($payload[$k]) || \is_int($payload[$k]) || \is_float($payload[$k]))) {
+                $push((string) $payload[$k]);
+            }
+        }
+        if (isset($payload['key']) && \is_array($payload['key'])) {
+            foreach (['sender_pn', 'senderPn'] as $k) {
+                if (isset($payload['key'][$k]) && (\is_string($payload['key'][$k]) || \is_int($payload['key'][$k]) || \is_float($payload['key'][$k]))) {
+                    $push((string) $payload['key'][$k]);
+                }
+            }
+        }
+        foreach (['sender_pn', 'sender_pn_if', 'senderPhone', 'sender_phone', 'phone_number', 'phone_no'] as $k) {
+            $s = self::findStringByKeyDeep($payload, $k, 0);
+            if ($s !== '') {
+                $push($s);
+            }
+            $s2 = self::findStringByKeyDeep($data, $k, 0);
+            if ($s2 !== '') {
+                $push($s2);
+            }
+        }
+        foreach (['from', 'sender', 'phone'] as $k) {
+            if (isset($payload[$k]) && (\is_string($payload[$k]) || \is_int($payload[$k]) || \is_float($payload[$k]))) {
+                $push((string) $payload[$k]);
+            }
+        }
+        if (!empty($payload['jid']) && \is_string($payload['jid'])) {
+            $jid = trim($payload['jid']);
+            if ($jid !== '' && !preg_match('/@(lid|g\.us|broadcast|newsletter)/i', $jid)) {
+                $local = preg_replace('/@.*$/', '', $jid) ?? '';
+                $push($local);
+            }
+        }
+        if (isset($payload['key']) && \is_array($payload['key'])) {
+            $jid = trim((string) ($payload['key']['remoteJid'] ?? $payload['key']['participant'] ?? ''));
+            if ($jid !== '' && !preg_match('/@(lid|g\.us|broadcast|newsletter)/i', $jid)) {
+                $local = preg_replace('/@.*$/', '', $jid) ?? '';
+                $push($local);
+            }
+        }
+
+        $seen = [];
+        foreach ($candidates as $raw) {
+            $digits = preg_replace('/\D/', '', $raw) ?? '';
+            if ($digits === '') {
+                continue;
+            }
+            if (strpos($digits, '0') === 0) {
+                $digits = '62' . substr($digits, 1);
+            }
+            if (isset($seen[$digits])) {
+                continue;
+            }
+            $seen[$digits] = true;
+            if (self::isPlausibleSenderDigits($digits)) {
+                return $digits;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Webhook WatZap / Baileys yang bukan pesan chat (typing, creds, presence, koneksi).
+     * Dibiarkan 200 OK tanpa log MSISDN — bukan bug.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $payload
+     */
+    private static function isWatzapNonMessageNoise(array $data, array $payload): bool
+    {
+        $root = isset($data['event_type']) ? strtolower((string) $data['event_type']) : '';
+        $inner = isset($payload['event_type']) ? strtolower((string) $payload['event_type']) : '';
+
+        if (in_array($root, ['presence.update', 'presence_update', 'connection.update', 'connection_update'], true)) {
+            return true;
+        }
+        if (in_array($inner, ['creds.update', 'creds_update', 'connection.update', 'connection_update'], true)) {
+            return true;
+        }
+        if ($root === 'engine.event' && in_array($inner, ['creds.update', 'creds_update'], true)) {
+            return true;
+        }
+
+        return false;
+    }
+
     private function jsonResponse(Response $response, array $data, int $statusCode): Response
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
@@ -252,21 +404,22 @@ class WatzapController
             return $this->jsonResponse($response, ['success' => true], 200);
         }
 
+        $payload = isset($data['payload']) && is_array($data['payload']) ? $data['payload']
+            : (isset($data['data']) && is_array($data['data']) ? $data['data'] : $data);
+
+        if (self::isWatzapNonMessageNoise($data, $payload)) {
+            return $this->jsonResponse($response, ['success' => true], 200);
+        }
+
         $logPrefix = 'WatZap webhook: ';
         error_log($logPrefix . substr(json_encode($data, JSON_UNESCAPED_UNICODE), 0, 800));
 
-        $payload = isset($data['payload']) && is_array($data['payload']) ? $data['payload']
-            : (isset($data['data']) && is_array($data['data']) ? $data['data'] : $data);
-        $from = trim((string) ($payload['from'] ?? $payload['sender'] ?? $payload['phone'] ?? $payload['phone_number'] ?? $payload['phoneNo'] ?? $payload['phone_no'] ?? $payload['jid'] ?? ''));
-        if ($from === '' && isset($payload['key']) && is_array($payload['key'])) {
-            $jid = trim((string) ($payload['key']['remoteJid'] ?? $payload['key']['participant'] ?? ''));
-            if ($jid !== '') {
-                $from = preg_replace('/@.*$/', '', $jid) ?? '';
-                $from = trim((string) $from);
-            }
-        }
+        $from = self::resolveSenderPhoneFromWebhook($data, $payload);
         $message = self::extractIncomingMessageText($data, $payload);
         $messageId = isset($payload['messageId']) ? trim((string) $payload['messageId']) : (isset($payload['message_id']) ? trim((string) $payload['message_id']) : (isset($payload['id']) ? trim((string) $payload['id']) : null));
+        if ($from === '' && ($message !== '' || ($messageId !== null && $messageId !== ''))) {
+            error_log($logPrefix . 'tidak ada MSISDN plausibel (pastikan payload punya phone_number / sender_pn; JID @lid bukan nomor HP).');
+        }
         $fromMe = isset($payload['fromMe'])
             ? (bool) $payload['fromMe']
             : (isset($payload['from_me']) ? (bool) $payload['from_me'] : false);
@@ -275,9 +428,9 @@ class WatzapController
         if ($fromMe) {
             return $this->jsonResponse($response, ['success' => true], 200);
         }
-        if ($from !== '' && strlen(WhatsAppService::formatPhoneNumber($from)) >= 10) {
+        if ($from !== '') {
             try {
-                $nomorTujuan = WhatsAppService::formatPhoneNumber($from);
+                $nomorTujuan = $from;
                 $db = Database::getInstance()->getConnection();
 
                 if ($messageId !== null && $messageId !== '') {

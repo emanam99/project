@@ -9,6 +9,29 @@ namespace App\Services;
  */
 class WatzapService
 {
+    /**
+     * Beberapa endpoint WatZap tetap HTTP 200 tetapi secara bisnis gagal (contoh: "Invalid WhatsApp Number").
+     *
+     * @param array<string, mixed> $data
+     */
+    private static function isBusinessSuccess(array $data): bool
+    {
+        if (isset($data['success']) && is_bool($data['success'])) {
+            return $data['success'];
+        }
+        if (isset($data['status']) && is_bool($data['status'])) {
+            return $data['status'];
+        }
+        if (isset($data['ok']) && is_bool($data['ok'])) {
+            return $data['ok'];
+        }
+        $msg = strtolower(trim((string) ($data['message'] ?? $data['error'] ?? '')));
+        if ($msg !== '' && (str_contains($msg, 'invalid') || str_contains($msg, 'gagal') || str_contains($msg, 'error'))) {
+            return false;
+        }
+        return true;
+    }
+
     private static function getConfig(): array
     {
         $config = require __DIR__ . '/../../config.php';
@@ -104,8 +127,9 @@ class WatzapService
             $data = json_decode($bodyStr, true) ?? [];
 
             if ($code >= 200 && $code < 300) {
+                $businessOk = is_array($data) ? self::isBusinessSuccess($data) : true;
                 return [
-                    'success' => true,
+                    'success' => $businessOk,
                     'data' => $data,
                     'message' => $data['message'] ?? 'OK',
                 ];
@@ -183,10 +207,12 @@ class WatzapService
 
     /**
      * Kirim pesan teks via WatZap.
-     * Body sesuai dokumentasi: api_key, number_key ("ALL" atau key dari dashboard), phone_no, message.
+     * Body utama: api_key, number_key, phone_no, message.
+     * Jika $chatId diisi, ikut dikirim sebagai chat_id (untuk provider yang mendukung balas via chat id / @lid).
+     *
      * @param string $numberKey "ALL" atau number key dari WatZap; kosong = pakai default dari config (ALL).
      */
-    public static function sendMessage(string $phoneNumber, string $message, string $numberKey = ''): array
+    public static function sendMessage(string $phoneNumber, string $message, string $numberKey = '', ?string $chatId = null): array
     {
         $phone = WhatsAppService::formatPhoneNumber($phoneNumber);
         if (strlen($phone) < 10) {
@@ -204,6 +230,50 @@ class WatzapService
             'phone_no' => $phone,
             'message' => $message,
         ];
+        if (is_string($chatId) && trim($chatId) !== '') {
+            $body['chat_id'] = trim($chatId);
+        }
+
+        $res = self::request('POST', '/send_message', $body);
+
+        if ($res['success']) {
+            return [
+                'success' => true,
+                'message' => $res['message'] ?? 'Pesan terkirim',
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => $res['message'] ?? 'Gagal mengirim',
+        ];
+    }
+
+    /**
+     * Kirim pesan via WatZap tanpa normalisasi 62 (untuk payload tertentu seperti chat @lid).
+     * Dipakai sebagai fallback saat provider mengirim sender id numerik non-MSISDN.
+     */
+    public static function sendMessageRaw(string $phoneRaw, string $message, string $numberKey = '', ?string $chatId = null): array
+    {
+        $phone = preg_replace('/\D/', '', $phoneRaw) ?? '';
+        if ($phone === '' || strlen($phone) < 10 || strlen($phone) > 18) {
+            return ['success' => false, 'message' => 'Nomor tidak valid'];
+        }
+
+        $cfg = self::getConfig();
+        if ($cfg['api_key'] === '') {
+            return ['success' => false, 'message' => 'WATZAP_API_KEY belum di-set di .env'];
+        }
+
+        $body = [
+            'api_key' => $cfg['api_key'],
+            'number_key' => $numberKey !== '' ? $numberKey : $cfg['number_key'],
+            'phone_no' => $phone,
+            'message' => $message,
+        ];
+        if (is_string($chatId) && trim($chatId) !== '') {
+            $body['chat_id'] = trim($chatId);
+        }
 
         $res = self::request('POST', '/send_message', $body);
 

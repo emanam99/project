@@ -54,6 +54,29 @@ class AuthControllerV2
         }
     }
 
+    private function getUsersDuplicateFieldMessage(\PDOException $e): ?string
+    {
+        $info = $e->errorInfo ?? [];
+        $sqlState = (string) ($e->getCode() ?? '');
+        $driverCode = isset($info[1]) ? (int) $info[1] : 0;
+        if ($sqlState !== '23000' && $driverCode !== 1062) {
+            return null;
+        }
+
+        $errorText = strtolower((string) ($info[2] ?? $e->getMessage() ?? ''));
+        if (strpos($errorText, 'no_wa') !== false) {
+            return 'Nomor WA sudah dipakai';
+        }
+        if (strpos($errorText, 'email') !== false) {
+            return 'Email sudah dipakai';
+        }
+        if (strpos($errorText, 'username') !== false) {
+            return 'Username sudah dipakai';
+        }
+
+        return 'Data akun sudah dipakai';
+    }
+
     private function userSetupTokensHasEntityColumns(): bool
     {
         if ($this->setupTokensHasEntityColumnsCache !== null) {
@@ -527,9 +550,9 @@ class AuthControllerV2
             try {
                 $ins->execute([$username, $passwordHash, $noWa, $email]);
             } catch (\PDOException $pdoEx) {
-                $info = $pdoEx->errorInfo ?? [];
-                if ($pdoEx->getCode() === '23000' || (isset($info[1]) && (int) $info[1] === 1062)) {
-                    return $this->json($response, ['success' => false, 'message' => 'Username sudah dipakai'], 400);
+                $duplicateMessage = $this->getUsersDuplicateFieldMessage($pdoEx);
+                if ($duplicateMessage !== null) {
+                    return $this->json($response, ['success' => false, 'message' => $duplicateMessage], 400);
                 }
                 throw $pdoEx;
             }
@@ -877,9 +900,9 @@ class AuthControllerV2
             try {
                 $ins->execute([$username, $passwordHash, $noWa, $email]);
             } catch (\PDOException $pdoEx) {
-                $info = $pdoEx->errorInfo ?? [];
-                if ($pdoEx->getCode() === '23000' || (isset($info[1]) && (int) $info[1] === 1062)) {
-                    return $this->json($response, ['success' => false, 'message' => 'Username sudah dipakai'], 400);
+                $duplicateMessage = $this->getUsersDuplicateFieldMessage($pdoEx);
+                if ($duplicateMessage !== null) {
+                    return $this->json($response, ['success' => false, 'message' => $duplicateMessage], 400);
                 }
                 throw $pdoEx;
             }
@@ -1506,6 +1529,11 @@ class AuthControllerV2
             } elseif (strpos($noWaBaruNorm, '62') !== 0) {
                 $noWaBaruNorm = '62' . $noWaBaruNorm;
             }
+            $checkNoWaStmt = $this->db->prepare("SELECT id FROM users WHERE no_wa = ? AND id <> ? LIMIT 1");
+            $checkNoWaStmt->execute([$noWaBaruNorm, $usersId]);
+            if ($checkNoWaStmt->fetch(\PDO::FETCH_ASSOC)) {
+                return $this->json($response, ['success' => false, 'message' => 'Nomor WA sudah dipakai'], 400);
+            }
             $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             $otpHash = hash('sha256', $otp);
             $expiresAt = date('Y-m-d H:i:s', time() + 600); // 10 menit
@@ -1564,7 +1592,15 @@ class AuthControllerV2
             if (!$row) {
                 return $this->json($response, ['success' => false, 'message' => 'Kode OTP salah atau sudah kadaluarsa'], 400);
             }
-            $this->db->prepare("UPDATE users SET no_wa = ?, no_wa_verified_at = NOW() WHERE id = ?")->execute([$noWaBaruNorm, $usersId]);
+            try {
+                $this->db->prepare("UPDATE users SET no_wa = ?, no_wa_verified_at = NOW() WHERE id = ?")->execute([$noWaBaruNorm, $usersId]);
+            } catch (\PDOException $pdoEx) {
+                $duplicateMessage = $this->getUsersDuplicateFieldMessage($pdoEx);
+                if ($duplicateMessage !== null) {
+                    return $this->json($response, ['success' => false, 'message' => $duplicateMessage], 400);
+                }
+                throw $pdoEx;
+            }
             $this->db->prepare("DELETE FROM user___wa_change_otp WHERE user_id = ? AND no_wa_baru = ?")->execute([$usersId, $noWaBaruNorm]);
             AuditLogger::log((string)$usersId, 'wa_changed', ['no_wa_baru' => $noWaBaruNorm], $this->getClientIp($request), true);
             return $this->json($response, ['success' => true, 'message' => 'Nomor WhatsApp berhasil diubah.'], 200);

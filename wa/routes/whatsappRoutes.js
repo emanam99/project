@@ -6,11 +6,14 @@ import {
   connectWhatsApp,
   disconnectWhatsApp,
   logoutWhatsApp,
+  deleteSlotWhatsApp,
   sendMessage,
   editMessage,
   checkNumber,
   getChatMessages,
   wakeWhatsApp,
+  isWaEngineEnabled,
+  setWaEngineEnabled,
 } from '../controllers/whatsappController.js';
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch((err) => {
@@ -51,5 +54,17 @@ router.use((req, res, next) => {
 router.post('/connect', wrap(connectWhatsApp));
 router.post('/disconnect', wrap(disconnectWhatsApp));
 router.post('/logout', wrap(logoutWhatsApp));
+router.post('/delete-slot', wrap(deleteSlotWhatsApp));
+router.post('/server/stop', wrap(async (_req, res) => {
+  await setWaEngineEnabled(false);
+  return res.json({ success: true, message: 'Server WA dihentikan sementara.', data: { waEngineEnabled: false } });
+}));
+router.post('/server/start', wrap(async (_req, res) => {
+  await setWaEngineEnabled(true);
+  return res.json({ success: true, message: 'Server WA dijalankan kembali.', data: { waEngineEnabled: true } });
+}));
+router.get('/server/status', wrap(async (_req, res) => {
+  return res.json({ success: true, data: { waEngineEnabled: isWaEngineEnabled() } });
+}));
 
 export default router;

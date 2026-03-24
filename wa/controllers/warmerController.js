@@ -8,6 +8,7 @@ import { isPuppeteerReady, sendMessagePuppeteer } from './whatsappController.js'
 
 const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
 const apiKey = (process.env.WA_API_KEY || '').trim();
+const WARMER_FETCH_TIMEOUT_MS = Number(process.env.WARMER_FETCH_TIMEOUT_MS || 8000);
 
 let warmerRunning = false;
 let warmerAbort = false;
@@ -16,6 +17,16 @@ const pairRestUntil = {}; // pairId -> timestamp ms
 /** Urutan pick skrip / pesan per pasangan+tema (import pertama dulu) */
 const pickConversationIndex = {}; // key -> integer
 const pickMessageIndex = {}; // key -> integer
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = WARMER_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function getPairsUrl() {
   if (!apiBase) return null;
@@ -39,7 +50,7 @@ async function fetchPairs() {
   const url = getPairsUrl();
   if (!url || !apiKey) return [];
   try {
-    const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    const res = await fetchWithTimeout(url, { headers: { 'X-API-Key': apiKey } });
     if (!res.ok) return [];
     const data = await res.json();
     return data?.data || [];
@@ -53,7 +64,7 @@ async function pickMessage(category, language, index = 0) {
   const url = getPickMessageUrl(category, language, index);
   if (!url || !apiKey) return null;
   try {
-    const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    const res = await fetchWithTimeout(url, { headers: { 'X-API-Key': apiKey } });
     if (!res.ok) return null;
     const data = await res.json();
     const content = data?.data?.content;
@@ -68,7 +79,7 @@ async function pickConversation(category, language, index = 0) {
   const url = getPickConversationUrl(category, language, index);
   if (!url || !apiKey) return [];
   try {
-    const res = await fetch(url, { headers: { 'X-API-Key': apiKey } });
+    const res = await fetchWithTimeout(url, { headers: { 'X-API-Key': apiKey } });
     if (!res.ok) return [];
     const data = await res.json();
     const list = data?.data;
@@ -246,6 +257,18 @@ async function warmerLoop() {
     seen.add(key);
     return true;
   });
+  // Hapus state lama agar map tidak tumbuh tak terbatas.
+  const activePairKeys = new Set(pairs.map((p) => ((p.id != null && p.id !== '') ? String(p.id) : `${p.session_id_1 || 'default'}_${p.session_id_2}`)));
+  for (const key of Object.keys(pairCounts)) if (!activePairKeys.has(key)) delete pairCounts[key];
+  for (const key of Object.keys(pairRestUntil)) if (!activePairKeys.has(key)) delete pairRestUntil[key];
+  for (const key of Object.keys(pickConversationIndex)) {
+    const belongsToActivePair = Array.from(activePairKeys).some((pairKey) => key === pairKey || key.startsWith(pairKey + '_'));
+    if (!belongsToActivePair) delete pickConversationIndex[key];
+  }
+  for (const key of Object.keys(pickMessageIndex)) {
+    const belongsToActivePair = Array.from(activePairKeys).some((pairKey) => key === pairKey || key.startsWith(pairKey + '_'));
+    if (!belongsToActivePair) delete pickMessageIndex[key];
+  }
   // Jalankan semua pasangan dalam satu putaran (paralel) agar pasangan ke-2 dan seterusnya ikut jalan
   await Promise.all(pairs.map((pair) => runPairLoop(pair).catch((e) => {
     console.warn('[Warmer] Pair', pair.id ?? `${pair.session_id_1}_${pair.session_id_2}`, 'error:', e?.message);

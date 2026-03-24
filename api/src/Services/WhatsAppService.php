@@ -317,7 +317,7 @@ class WhatsAppService
      * Simpan log pesan WA ke tabel whatsapp.
      * Jika wa_message_id diset, nanti message_ack dari server WA bisa update status (sent/delivered/read).
      *
-     * @param string $nomorTujuan Nomor (08xxx/62xxx); disimpan dalam format 62xxx
+     * @param string $nomorTujuan Nomor tujuan; untuk chat @lid bisa berupa id numerik mentah
      * @param string $isiPesan Isi pesan
      * @param int $punyaGambar 0 atau 1
      * @param string $status terkirim|gagal|sent|delivered|read
@@ -332,7 +332,13 @@ class WhatsAppService
      */
     private static function logSentMessage(string $nomorTujuan, string $isiPesan, int $punyaGambar, string $status, ?string $responseMessage, ?int $idSantri, ?int $idPengurus, string $tujuan, ?int $idPengurusPengirim, string $kategori, string $sumber, ?string $waMessageId = null): void
     {
-        $nomorNormal = self::formatPhoneNumber($nomorTujuan);
+        $digitsRaw = preg_replace('/\D/', '', (string) $nomorTujuan) ?? '';
+        $isRawNonMsisdn = $digitsRaw !== ''
+            && strlen($digitsRaw) >= 10
+            && strlen($digitsRaw) <= 18
+            && strpos($digitsRaw, '62') !== 0
+            && strpos($digitsRaw, '0') !== 0;
+        $nomorNormal = $isRawNonMsisdn ? $digitsRaw : self::formatPhoneNumber($nomorTujuan);
         try {
             $db = Database::getInstance()->getConnection();
             $cols = ['id_santri', 'id_pengurus', 'tujuan', 'id_pengurus_pengirim', 'kategori', 'sumber', 'nomor_tujuan', 'isi_pesan', 'punya_gambar', 'status', 'response_message'];
@@ -582,6 +588,11 @@ class WhatsAppService
      */
     public static function sendMessage(string $noWa, string $message, ?string $instance = null, ?array $logContext = null, ?string $chatId = null): array
     {
+        $rawDigitsInput = preg_replace('/\D/', '', (string) $noWa) ?? '';
+        $isLidChat = is_string($chatId) && preg_match('/@lid$/i', trim($chatId)) === 1;
+        $rawLooksNonMsisdn = $rawDigitsInput !== '' && strpos($rawDigitsInput, '62') !== 0 && strpos($rawDigitsInput, '0') !== 0;
+        $useRawLidTarget = $isLidChat && $rawLooksNonMsisdn;
+
         $originalPhone = self::formatPhoneNumber($noWa);
         if (strlen($originalPhone) < 10) {
             return ['success' => false, 'message' => 'Nomor tidak valid'];
@@ -610,10 +621,15 @@ class WhatsAppService
             return ['success' => true, 'message' => 'Kontak tidak menerima notifikasi (diatur di Daftar Kontak)'];
         }
 
-        // Resolve tujuan kirim: jika kontak punya nomor_kanonik (user daftar dari nomor lain), kirim ke nomor itu
-        $delivery = self::resolveDeliveryTarget($originalPhone);
-        $phone = $delivery['nomor'];
-        $chatId = $chatId ?? $delivery['chatId'];
+        // Untuk chat @lid non-MSISDN, jangan normalisasi ke 62 dan jangan resolve nomor kanonik.
+        // Balas ke target mentah agar sesuai identitas yang diberikan provider.
+        if ($useRawLidTarget) {
+            $phone = $rawDigitsInput;
+        } else {
+            $delivery = self::resolveDeliveryTarget($originalPhone);
+            $phone = $delivery['nomor'];
+            $chatId = $chatId ?? $delivery['chatId'];
+        }
 
         $kategori = $logContext !== null ? ($logContext['kategori'] ?? null) : null;
         $idSantri = $logContext['id_santri'] ?? null;
@@ -663,7 +679,12 @@ class WhatsAppService
             if ($logContext !== null && in_array(($logContext['kategori'] ?? ''), ['daftar_notif', 'wa_interactive_menu'], true)) {
                 error_log('WhatsAppService: ' . ($logContext['kategori'] ?? '') . ' kirim via WatZap (bukan WA server). Tidak ada POST ke Node.');
             }
-            $res = \App\Services\WatzapService::sendMessage($phone, $message, '');
+            if ($isLidChat && $rawLooksNonMsisdn) {
+                $res = \App\Services\WatzapService::sendMessageRaw($rawDigitsInput, $message, '', $chatId);
+                error_log('WhatsAppService: WatZap kirim fallback raw sender untuk chat @lid, phone_no=' . $rawDigitsInput . ', chat_id=' . (string) $chatId);
+            } else {
+                $res = \App\Services\WatzapService::sendMessage($phone, $message, '', $chatId);
+            }
             if ($res['success'] && $logContext !== null) {
                 self::logSentMessage(
                     $phone,

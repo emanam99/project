@@ -14,6 +14,19 @@ use App\Database;
  */
 class DaftarNotifFlow
 {
+    /**
+     * Untuk chat @lid, jangan paksa normalisasi 62 agar key session/pending konsisten dengan payload provider.
+     */
+    private static function normalizeIncomingNumber(string $nomor, ?string $fromJid): string
+    {
+        $digits = preg_replace('/\D/', '', trim($nomor)) ?? '';
+        $isLid = is_string($fromJid) && preg_match('/@lid$/i', trim($fromJid)) === 1;
+        if ($isLid && $digits !== '') {
+            return $digits;
+        }
+        return WhatsAppService::formatPhoneNumber($nomor);
+    }
+
     private const MSG_SUDAH_SIMPAN = "Apakah anda sudah menyimpan nomor ini?? [iya/belum]... jika belum silahkan save nomor ini lebih dulu.";
     private const MSG_MAU_AKTIFKAN = "Apakah anda ingin mengaktifkan notifikasi whatsapp atas nama santri tersebut? [iya/tidak]";
     private const MSG_AKTIF = "Notifikasi WhatsApp telah diaktifkan untuk nomor ini.";
@@ -29,13 +42,13 @@ class DaftarNotifFlow
      */
     public static function handle(string $nomor, string $message, ?string $fromJid = null): ?string
     {
-        $nomor = WhatsAppService::formatPhoneNumber($nomor);
+        $fromJid = $fromJid !== null && $fromJid !== '' ? trim($fromJid) : null;
+        $nomor = self::normalizeIncomingNumber($nomor, $fromJid);
         if (strlen($nomor) < 10) {
             error_log('DaftarNotifFlow: nomor too short after format: ' . $nomor);
             return null;
         }
         $message = trim($message);
-        $fromJid = $fromJid !== null && $fromJid !== '' ? trim($fromJid) : null;
         $db = Database::getInstance()->getConnection();
 
         $tableCheck = $db->query("SHOW TABLES LIKE 'daftar_notif_pending'");

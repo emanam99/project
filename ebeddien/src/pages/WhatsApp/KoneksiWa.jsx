@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
@@ -7,7 +7,7 @@ import api, { waBackendAPI, whatsappTemplateAPI, warmerAPI, warmerNodeAPI } from
 import { checkWhatsAppNumber } from '../../utils/whatsappCheck'
 
 const POLL_INTERVAL_CONNECTING = 2000
-const POLL_INTERVAL_IDLE = 5000
+const POLL_INTERVAL_IDLE = 10000
 const MAX_WA_SESSIONS = 10
 const KATEGORI_OPTIONS = ['umum', 'pendaftaran', 'uwaba', 'keuangan', 'lainnya']
 
@@ -31,6 +31,19 @@ function getNextSessionId(sessions) {
   return null
 }
 
+function sessionSlotLabel(sessionId) {
+  if (sessionId === 'default') return 'WhatsApp 1'
+  return `WhatsApp ${String(sessionId).replace(/^wa/, '')}`
+}
+
+/** Selesai alur di lembar koneksi: WA Web sudah connected; Baileys selesai atau tidak perlu scan lanjut. */
+function isSlotConnectFlowDone(s) {
+  if (!s || s.status !== 'connected') return false
+  if (s.baileysStatus === 'connected') return true
+  if (s.baileysStatus === 'connecting' || s.baileysQrCode) return false
+  return true
+}
+
 const TABS = [
   { id: 'koneksi', label: 'Koneksi' },
   { id: 'tes', label: 'Tes' },
@@ -38,14 +51,14 @@ const TABS = [
   { id: 'warmer', label: 'Warmer' }
 ]
 
-/** WA mengganti QR sekitar tiap 20 d — hitung mundur + refresh status; tombol paksa hubung ulang untuk QR baru. */
+/** WA mengganti QR sekitar tiap 20 d — hitung mundur; refresh status hanya jika autoPollStatus (hemat request). */
 const QR_COUNTDOWN_SECONDS = 20
 
-function WaQrCountdownBlock({ title, qrSrc, alt, sessionId, fetchStatus, onReloadQr, reloadDisabled }) {
+function WaQrCountdownBlock({ title, qrSrc, alt, sessionId, fetchStatus, onReloadQr, reloadDisabled, autoPollStatus = true }) {
   const [sec, setSec] = useState(QR_COUNTDOWN_SECONDS)
 
   useEffect(() => {
-    if (!qrSrc) return undefined
+    if (!qrSrc || !autoPollStatus) return undefined
     let remaining = QR_COUNTDOWN_SECONDS
     setSec(QR_COUNTDOWN_SECONDS)
     const id = setInterval(() => {
@@ -57,7 +70,7 @@ function WaQrCountdownBlock({ title, qrSrc, alt, sessionId, fetchStatus, onReloa
       setSec(remaining)
     }, 1000)
     return () => clearInterval(id)
-  }, [qrSrc, fetchStatus])
+  }, [qrSrc, fetchStatus, autoPollStatus])
 
   return (
     <div className="flex flex-col items-center py-3">
@@ -65,9 +78,19 @@ function WaQrCountdownBlock({ title, qrSrc, alt, sessionId, fetchStatus, onReloa
       <img src={qrSrc} alt={alt} className="w-48 h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-600 bg-white" />
       <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 w-full max-w-sm">
         <p className="text-xs text-gray-600 dark:text-gray-400 text-center sm:text-left">
-          QR berubah otomatis sekitar{' '}
-          <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-300">{sec}</span>
-          {' '}detik — segera scan.
+          {autoPollStatus ? (
+            <>
+              QR berubah otomatis sekitar{' '}
+              <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-300">{sec}</span>
+              {' '}detik — segera scan.
+            </>
+          ) : (
+            <>
+              QR WhatsApp biasanya kedaluwarsa sekitar{' '}
+              <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-300">{sec}</span>
+              {' '}detik. Jika tidak jalan, klik Muat ulang.
+            </>
+          )}
         </p>
         <button
           type="button"
@@ -100,6 +123,13 @@ export default function KoneksiWa() {
   const [checkResult, setCheckResult] = useState(null)
   const [checking, setChecking] = useState(false)
   const [testSessionId, setTestSessionId] = useState('default')
+  const [waEngineEnabled, setWaEngineEnabled] = useState(true)
+  const fetchStatusInFlightRef = useRef(false)
+  /** Lembar hubungkan WA: tidak spam getQr; QR hanya lewat tombol Muat QR. */
+  const [connectDrawerSessionId, setConnectDrawerSessionId] = useState(null)
+  const [connectDrawerSuccess, setConnectDrawerSuccess] = useState(false)
+  const [connectDrawerError, setConnectDrawerError] = useState(null)
+  const [connectDrawerBusy, setConnectDrawerBusy] = useState(false)
 
   // Template tab state
   const [templateList, setTemplateList] = useState([])
@@ -144,16 +174,20 @@ export default function KoneksiWa() {
   const [warmerSubTab, setWarmerSubTab] = useState('pasangan')
 
   const fetchStatus = useCallback(async () => {
+    if (fetchStatusInFlightRef.current) return
+    fetchStatusInFlightRef.current = true
     try {
       const res = await waBackendAPI.getStatus()
       setBackendUnavailable(false)
       setBackendErrorHint(null)
       if (res?.success && res?.data) {
         const d = res.data
+        setWaEngineEnabled(d.waEngineEnabled !== false)
         if (d.sessions && typeof d.sessions === 'object') {
           // Gabungkan dengan state saat ini; setiap slot punya ruang sendiri agar tidak saling bentrok
           setData(prev => {
             const merged = { ...prev.sessions }
+            let changed = false
             for (const [sid, back] of Object.entries(d.sessions)) {
               const prevS = merged[sid]
               const backStatus = back?.status || back?.baileysStatus
@@ -163,9 +197,33 @@ export default function KoneksiWa() {
                 merged[sid] = { ...prevS }
                 continue
               }
-              merged[sid] = back
+              const nextObj = { ...(back || {}) }
+              // Status endpoint sekarang ringan (tanpa QR). Jangan timpa QR existing dengan null saat masih connecting.
+              const isConnecting = (nextObj.status === 'connecting' || nextObj.baileysStatus === 'connecting')
+              if (isConnecting && prevS) {
+                if (nextObj.qrCode == null && prevS.qrCode) nextObj.qrCode = prevS.qrCode
+                if (nextObj.baileysQrCode == null && prevS.baileysQrCode) nextObj.baileysQrCode = prevS.baileysQrCode
+              }
+              const isSame =
+                prevS &&
+                prevS.status === nextObj.status &&
+                prevS.phoneNumber === nextObj.phoneNumber &&
+                prevS.baileysStatus === nextObj.baileysStatus &&
+                prevS.baileysPhoneNumber === nextObj.baileysPhoneNumber &&
+                prevS.qrCode === nextObj.qrCode &&
+                prevS.baileysQrCode === nextObj.baileysQrCode
+              if (!isSame) {
+                merged[sid] = nextObj
+                changed = true
+              }
             }
-            return { sessions: merged }
+            for (const sid of Object.keys(merged)) {
+              if (!Object.prototype.hasOwnProperty.call(d.sessions, sid)) {
+                delete merged[sid]
+                changed = true
+              }
+            }
+            return changed ? { sessions: merged } : prev
           })
         } else {
           setData(prev => ({
@@ -196,18 +254,42 @@ export default function KoneksiWa() {
       )
       setData(prev => ({ ...prev, sessions: prev.sessions || {} }))
     } finally {
+      fetchStatusInFlightRef.current = false
       setLoading(false)
     }
   }, [])
 
   const hasConnecting = Object.values(data.sessions || {}).some(s => s?.status === 'connecting' || s?.baileysStatus === 'connecting')
-  const hasConnectingNoQr = Object.values(data.sessions || {}).some(s => (s?.status === 'connecting' || s?.baileysStatus === 'connecting') && !(s?.qrCode || s?.baileysQrCode))
+  const connectDrawerOpen = !!connectDrawerSessionId
+
   useEffect(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return undefined
     fetchStatus()
-    const ms = hasConnectingNoQr ? 1000 : (hasConnecting ? POLL_INTERVAL_CONNECTING : POLL_INTERVAL_IDLE)
+    const ms = connectDrawerOpen
+      ? POLL_INTERVAL_CONNECTING
+      : (hasConnecting ? 5000 : POLL_INTERVAL_IDLE)
     const interval = setInterval(fetchStatus, ms)
     return () => clearInterval(interval)
-  }, [fetchStatus, hasConnecting, hasConnectingNoQr])
+  }, [fetchStatus, hasConnecting, connectDrawerOpen])
+
+  /** Saat slot di lembar hubungkan mencapai langkah selesai, tampilkan layar sukses (tanpa menutup otomatis). */
+  useEffect(() => {
+    if (!connectDrawerSessionId || connectDrawerSuccess) return
+    const s = data.sessions?.[connectDrawerSessionId]
+    if (isSlotConnectFlowDone(s)) {
+      setConnectDrawerSuccess(true)
+      setConnectDrawerError(null)
+    }
+  }, [connectDrawerSessionId, connectDrawerSuccess, data.sessions])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchStatus()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [fetchStatus])
 
   const fetchTemplateList = useCallback(async () => {
     setTemplateLoading(true)
@@ -272,6 +354,7 @@ export default function KoneksiWa() {
   // Auto refresh status warmer (pasangan) tiap 5 detik saat tab Warmer > Pasangan aktif
   useEffect(() => {
     if (activeTab !== 'warmer' || warmerSubTab !== 'pasangan') return
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return undefined
     const t = setInterval(fetchWarmerNodeStatus, 5000)
     return () => clearInterval(t)
   }, [activeTab, warmerSubTab, fetchWarmerNodeStatus])
@@ -493,41 +576,108 @@ export default function KoneksiWa() {
   const connectedSessionsForTest = Object.entries(data.sessions || {}).filter(([, s]) => s?.status === 'connected' || s?.baileysStatus === 'connected')
   const effectiveTestSessionId = connectedSessionsForTest.some(([id]) => id === testSessionId) ? testSessionId : (connectedSessionsForTest[0]?.[0] || 'default')
 
-  const handleConnect = async (sessionId = 'default', connectOpts = {}) => {
-    setActionLoading(`connect-${sessionId}`)
+  const openConnectDrawer = (sessionId = 'default') => {
+    if (!waEngineEnabled) {
+      showNotification('Server WA sedang dihentikan. Jalankan dulu server WA.', 'warning')
+      return
+    }
+    setConnectDrawerSessionId(sessionId)
+    setConnectDrawerSuccess(false)
+    setConnectDrawerError(null)
+  }
+
+  const closeConnectDrawer = useCallback(() => {
+    setConnectDrawerSessionId(null)
+    setConnectDrawerSuccess(false)
+    setConnectDrawerError(null)
+    fetchStatus()
+  }, [fetchStatus])
+
+  /** Satu klik = satu pasangan request connect (opsional refresh) + getQr — tidak ada polling QR otomatis. */
+  const handleDrawerLoadQr = async (refreshQr = false) => {
+    const sid = connectDrawerSessionId
+    if (!sid) return
+    setConnectDrawerBusy(true)
+    setConnectDrawerError(null)
     try {
-      const res = await waBackendAPI.connect(sessionId, {
-        refreshQr: connectOpts.refreshQr === true
-      })
-      if (res?.success) {
-        showNotification(res?.message || 'Memulai koneksi. Scan QR code jika muncul.', 'success')
-        setData(prev => ({
-          sessions: {
-            ...prev.sessions,
-            [sessionId]: {
-              status: res?.data?.status ?? 'connecting',
-              qrCode: res?.data?.qrCode ?? null,
-              phoneNumber: res?.data?.phoneNumber ?? null,
-              baileysStatus: res?.data?.baileysStatus ?? 'disconnected',
-              baileysQrCode: res?.data?.baileysQrCode ?? null,
-              baileysPhoneNumber: res?.data?.baileysPhoneNumber ?? null
+      const res = await waBackendAPI.connect(sid, { refreshQr: refreshQr === true })
+      if (!res?.success) {
+        const raw = String(res?.message || '')
+        if (/timeout/i.test(raw)) {
+          const qrRes = await waBackendAPI.getQr(sid)
+          const qr = qrRes?.data
+          if (qr?.sessionId === sid && (qr?.qrCode || qr?.baileysQrCode)) {
+            setData(prev => {
+              const cur = prev.sessions?.[sid] || {}
+              return {
+                sessions: {
+                  ...prev.sessions,
+                  [sid]: {
+                    ...cur,
+                    qrCode: qr.qrCode ?? cur.qrCode ?? null,
+                    baileysQrCode: qr.baileysQrCode ?? cur.baileysQrCode ?? null
+                  }
+                }
+              }
+            })
+            await fetchStatus()
+            return
+          }
+        }
+        const msg = /timeout/i.test(raw)
+          ? 'Permintaan ke server WA terlalu lama. Sesi mungkin tetap berjalan di latar — tunggu beberapa detik lalu klik Muat QR lagi.'
+          : (raw || 'Gagal memulai koneksi')
+        setConnectDrawerError(msg)
+        return
+      }
+      const payload = res?.data || {}
+      setData(prev => ({
+        sessions: {
+          ...prev.sessions,
+          [sid]: {
+            ...(prev.sessions?.[sid] || {}),
+            status: payload.status ?? prev.sessions?.[sid]?.status ?? 'connecting',
+            qrCode: payload.qrCode ?? prev.sessions?.[sid]?.qrCode ?? null,
+            phoneNumber: payload.phoneNumber ?? prev.sessions?.[sid]?.phoneNumber ?? null,
+            baileysStatus: payload.baileysStatus ?? prev.sessions?.[sid]?.baileysStatus ?? 'disconnected',
+            baileysQrCode: payload.baileysQrCode ?? prev.sessions?.[sid]?.baileysQrCode ?? null,
+            baileysPhoneNumber: payload.baileysPhoneNumber ?? prev.sessions?.[sid]?.baileysPhoneNumber ?? null
+          }
+        }
+      }))
+      const qrRes = await waBackendAPI.getQr(sid)
+      const qr = qrRes?.data
+      if (qr && qr.sessionId === sid) {
+        setData(prev => {
+          const cur = prev.sessions?.[sid] || {}
+          return {
+            sessions: {
+              ...prev.sessions,
+              [sid]: {
+                ...cur,
+                qrCode: qr.qrCode ?? cur.qrCode ?? null,
+                baileysQrCode: qr.baileysQrCode ?? cur.baileysQrCode ?? null
+              }
             }
           }
-        }))
-        fetchStatus()
-      } else {
-        showNotification(res?.message || 'Gagal menghubungkan', 'error')
+        })
       }
+      await fetchStatus()
     } catch (e) {
-      showNotification('Backend WA tidak terjangkau. Pastikan server WA berjalan.', 'error')
+      setConnectDrawerError(e?.message || 'Backend WA tidak terjangkau.')
     } finally {
-      setActionLoading(null)
+      setConnectDrawerBusy(false)
     }
   }
 
-  const handleRefreshWaQr = (sessionId) => handleConnect(sessionId, { refreshQr: true })
+  const handleDrawerReloadQr = () => handleDrawerLoadQr(true)
 
   const handleDisconnect = async (sessionId = 'default') => {
+    if (connectDrawerSessionId === sessionId) {
+      setConnectDrawerSessionId(null)
+      setConnectDrawerSuccess(false)
+      setConnectDrawerError(null)
+    }
     setActionLoading(`disconnect-${sessionId}`)
     try {
       const res = await waBackendAPI.disconnect(sessionId)
@@ -558,20 +708,31 @@ export default function KoneksiWa() {
   }
 
   const handleLogout = async (sessionId = 'default') => {
-    if (!window.confirm('Logout akan menghapus sesi WhatsApp ini. Untuk pakai lagi harus scan QR. Lanjutkan?')) return
+    const s = data.sessions?.[sessionId]
+    const connected =
+      s?.status === 'connected' || s?.baileysStatus === 'connected'
+    const msg = connected
+      ? 'Logout akan menghapus sesi WhatsApp ini di server (file auth). Untuk pakai lagi harus scan QR. Lanjutkan?'
+      : 'Bersihkan file sesi di server untuk slot ini?\n\nDirekomendasikan jika QR tidak muncul, koneksi macet, atau sisa sesi lama setelah pembaruan. Setelah ini Anda harus scan QR lagi. Lanjutkan?'
+    if (!window.confirm(msg)) return
+    if (connectDrawerSessionId === sessionId) {
+      setConnectDrawerSessionId(null)
+      setConnectDrawerSuccess(false)
+      setConnectDrawerError(null)
+    }
     setActionLoading(`logout-${sessionId}`)
     try {
       const res = await waBackendAPI.logout(sessionId)
       if (res?.success) {
-        showNotification(res?.message || 'Logout berhasil.', 'success')
-        setData(prev => {
+        showNotification(res?.message || 'Sesi server dibersihkan.', 'success')
+        setData((prev) => {
           const next = { ...prev.sessions }
           delete next[sessionId]
           return { sessions: next }
         })
         fetchStatus()
       } else {
-        showNotification(res?.message || 'Gagal logout', 'error')
+        showNotification(res?.message || 'Gagal membersihkan sesi', 'error')
       }
     } catch (e) {
       showNotification('Backend WA tidak terjangkau.', 'error')
@@ -581,6 +742,10 @@ export default function KoneksiWa() {
   }
 
   const handleTambahKoneksi = () => {
+    if (!waEngineEnabled) {
+      showNotification('Server WA sedang dihentikan. Jalankan dulu server WA.', 'warning')
+      return
+    }
     const nextId = getNextSessionId(data.sessions)
     if (!nextId) {
       showNotification(`Maksimal ${MAX_WA_SESSIONS} koneksi WA.`, 'warning')
@@ -590,7 +755,7 @@ export default function KoneksiWa() {
       sessions: {
         ...prev.sessions,
         [nextId]: {
-          status: 'connecting',
+          status: 'disconnected',
           qrCode: null,
           phoneNumber: null,
           baileysStatus: 'disconnected',
@@ -599,10 +764,14 @@ export default function KoneksiWa() {
         }
       }
     }))
-    handleConnect(nextId)
+    showNotification('Slot baru ditambahkan. Tekan "Hubungkan" pada slot untuk mulai koneksi.', 'info')
   }
 
   const handleSendTest = async () => {
+    if (!waEngineEnabled) {
+      showNotification('Server WA sedang dihentikan. Jalankan dulu server WA.', 'warning')
+      return
+    }
     const phone = testPhone.trim()
     const msg = testMessage.trim()
     if (!phone) {
@@ -633,6 +802,10 @@ export default function KoneksiWa() {
   }
 
   const handleCheckNumber = async () => {
+    if (!waEngineEnabled) {
+      showNotification('Server WA sedang dihentikan. Jalankan dulu server WA.', 'warning')
+      return
+    }
     const phone = checkPhone.trim()
     if (!phone) {
       showNotification('Masukkan nomor yang ingin dicek', 'warning')
@@ -746,6 +919,74 @@ export default function KoneksiWa() {
   const isConnected = sessionsList.some(([, s]) => s?.status === 'connected')
   const isBaileysReady = sessionsList.some(([, s]) => s?.baileysStatus === 'connected')
 
+  const handleDeleteSlot = async (sessionId = 'default') => {
+    if (!window.confirm('Hapus slot ini dari daftar dan bersihkan file sesi di server?')) return
+    if (connectDrawerSessionId === sessionId) {
+      setConnectDrawerSessionId(null)
+      setConnectDrawerSuccess(false)
+      setConnectDrawerError(null)
+    }
+    setActionLoading(`delete-slot-${sessionId}`)
+    try {
+      const res = await waBackendAPI.deleteSlot(sessionId)
+      if (res?.success) {
+        showNotification(res?.message || 'Slot WA dihapus', 'success')
+        setData((prev) => {
+          const next = { ...prev.sessions }
+          delete next[sessionId]
+          return { sessions: next }
+        })
+        fetchStatus()
+      } else {
+        showNotification(res?.message || 'Gagal menghapus slot', 'error')
+      }
+    } catch (e) {
+      showNotification('Backend WA tidak terjangkau.', 'error')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleStopWaServer = async () => {
+    if (!window.confirm('Stop server WA sementara? Semua sesi WA akan diputus.')) return
+    setConnectDrawerSessionId(null)
+    setConnectDrawerSuccess(false)
+    setConnectDrawerError(null)
+    setActionLoading('wa-server-stop')
+    try {
+      const res = await waBackendAPI.stopServer()
+      if (res?.success) {
+        showNotification(res?.message || 'Server WA dihentikan', 'success')
+        setWaEngineEnabled(false)
+        fetchStatus()
+      } else {
+        showNotification(res?.message || 'Gagal menghentikan server WA', 'error')
+      }
+    } catch (e) {
+      showNotification('Backend WA tidak terjangkau.', 'error')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleStartWaServer = async () => {
+    setActionLoading('wa-server-start')
+    try {
+      const res = await waBackendAPI.startServer()
+      if (res?.success) {
+        showNotification(res?.message || 'Server WA dijalankan', 'success')
+        setWaEngineEnabled(true)
+        fetchStatus()
+      } else {
+        showNotification(res?.message || 'Gagal menjalankan server WA', 'error')
+      }
+    } catch (e) {
+      showNotification('Backend WA tidak terjangkau.', 'error')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   if (loading && !anyHasQr) {
     return (
       <div className="h-full flex items-center justify-center min-h-[200px]">
@@ -806,15 +1047,42 @@ export default function KoneksiWa() {
                 )}
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                   <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Koneksi</span>
-                  <span
-                    className={`text-sm font-semibold px-2 py-0.5 rounded ${
-                      isConnected ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
-                      : anyConnecting ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                      : 'bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-300'
-                    }`}
-                  >
-                    {sessionsList.length} slot · {isConnected ? 'Ada yang terhubung' : anyConnecting ? 'Menghubungkan...' : 'Semua putus'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-sm font-semibold px-2 py-0.5 rounded ${
+                        !waEngineEnabled
+                          ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                          : isConnected
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                            : anyConnecting
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                              : 'bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      {!waEngineEnabled
+                        ? 'Server WA berhenti'
+                        : `${sessionsList.length} slot · ${isConnected ? 'Ada yang terhubung' : anyConnecting ? 'Menghubungkan...' : 'Semua putus'}`}
+                    </span>
+                    {waEngineEnabled ? (
+                      <button
+                        type="button"
+                        onClick={handleStopWaServer}
+                        disabled={!!actionLoading}
+                        className="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                      >
+                        {actionLoading === 'wa-server-stop' ? 'Stopping...' : 'Stop server WA'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleStartWaServer}
+                        disabled={!!actionLoading}
+                        className="px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20BD5A] text-white text-sm disabled:opacity-50"
+                      >
+                        {actionLoading === 'wa-server-start' ? 'Starting...' : 'Start server WA'}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {sessionsList.map(([sessionId, s]) => (
                   <div key={sessionId} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 p-4 mb-4">
@@ -829,51 +1097,62 @@ export default function KoneksiWa() {
                     {(s?.phoneNumber || s?.baileysPhoneNumber) && (
                       <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Nomor: {s.phoneNumber || s.baileysPhoneNumber}</div>
                     )}
-                    {((s?.status || s?.baileysStatus) === 'connecting') && !(s?.qrCode || s?.baileysQrCode) && (
-                      <p className="text-sm text-amber-600 dark:text-amber-400 py-2">Memulai sesi (Puppeteer)... QR akan muncul di sini dalam beberapa detik. Jika tidak muncul, coba klik Hubungkan lagi.</p>
-                    )}
-                    {((s?.status || s?.baileysStatus) === 'connecting') && (s?.qrCode || s?.baileysQrCode) && (
-                      <WaQrCountdownBlock
-                        title='Langkah 1: Scan QR untuk login WA (di HP akan muncul "Perangkat tertaut" / Linked devices)'
-                        qrSrc={s.qrCode || s.baileysQrCode || ''}
-                        alt="QR WhatsApp"
-                        sessionId={sessionId}
-                        fetchStatus={fetchStatus}
-                        onReloadQr={handleRefreshWaQr}
-                        reloadDisabled={!!actionLoading}
-                      />
-                    )}
-                    {s?.status === 'connected' && (s?.baileysQrCode || s?.baileysStatus === 'connecting') && (
-                      <div className="flex flex-col items-center py-3 rounded-lg bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 mt-2">
-                        {s?.baileysQrCode ? (
-                          <WaQrCountdownBlock
-                            title="Langkah 2: Scan QR untuk mengaktifkan kirim pesan & cek nomor (Baileys)"
-                            qrSrc={s.baileysQrCode}
-                            alt="QR Baileys"
-                            sessionId={sessionId}
-                            fetchStatus={fetchStatus}
-                            onReloadQr={handleRefreshWaQr}
-                            reloadDisabled={!!actionLoading}
-                          />
-                        ) : (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 py-2">Memuat QR Baileys...</p>
-                        )}
-                      </div>
+                    {(s?.status || s?.baileysStatus) === 'connecting' && connectDrawerSessionId !== sessionId && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 px-2 border border-amber-200/80 dark:border-amber-800/60">
+                        Sesi sedang dipersiapkan di server. Buka lembar koneksi untuk memuat QR (tombol di bawah).
+                      </p>
                     )}
                     <div className="flex flex-wrap items-center gap-2 pt-2">
                       {s?.status === 'connected' ? (
-                        <>
-                          <button type="button" onClick={() => handleDisconnect(sessionId)} disabled={!!actionLoading} className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">Putus</button>
-                          <button type="button" onClick={() => handleLogout(sessionId)} disabled={!!actionLoading} className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50">Logout (hapus sesi)</button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => handleDisconnect(sessionId)}
+                          disabled={!!actionLoading}
+                          className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                        >
+                          Putus
+                        </button>
                       ) : (s?.status || s?.baileysStatus) === 'connecting' ? (
-                        <span className="text-sm text-amber-600 dark:text-amber-400">Tunggu scan QR...</span>
+                        <button
+                          type="button"
+                          onClick={() => openConnectDrawer(sessionId)}
+                          disabled={!!actionLoading}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm disabled:opacity-50"
+                        >
+                          {connectDrawerSessionId === sessionId ? 'Lembar koneksi…' : 'Buka lembar koneksi'}
+                        </button>
                       ) : (
-                        <button type="button" onClick={() => handleConnect(sessionId)} disabled={!!actionLoading} className="px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20BD5A] text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                          {actionLoading === `connect-${sessionId}` ? 'Memulai...' : 'Hubungkan'}
+                        <button
+                          type="button"
+                          onClick={() => openConnectDrawer(sessionId)}
+                          disabled={!!actionLoading}
+                          className="px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20BD5A] text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Hubungkan
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => handleLogout(sessionId)}
+                        disabled={!!actionLoading}
+                        title="Hapus data sesi & auth di server WA (Baileys/Puppeteer). Pakai jika QR tidak keluar atau slot macet setelah update."
+                        className="px-3 py-1.5 rounded-lg border border-amber-400/80 dark:border-amber-600 text-amber-900 dark:text-amber-100 text-sm bg-amber-50/90 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === `logout-${sessionId}` ? 'Membersihkan...' : 'Bersihkan sesi server'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSlot(sessionId)}
+                        disabled={!!actionLoading}
+                        title="Hapus slot dari daftar (termasuk file sesi tersisa di server)."
+                        className="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 text-sm hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === `delete-slot-${sessionId}` ? 'Menghapus...' : 'Hapus slot'}
+                      </button>
                     </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-snug">
+                      Tombol bersihkan selalu bisa dipakai walau belum terhubung: menghapus sisa sesi di disk agar QR baru bisa muncul.
+                    </p>
                   </div>
                 ))}
                 {canTambah && (
@@ -1174,6 +1453,166 @@ export default function KoneksiWa() {
       {/* Offcanvas bawah + modal hapus: di-render ke body agar di atas nav bawah (z-[100]) */}
       {createPortal(
         <>
+          <AnimatePresence>
+            {connectDrawerSessionId && (
+              <>
+                <motion.div
+                  key="wa-connect-backdrop"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => !connectDrawerBusy && closeConnectDrawer()}
+                  className="fixed inset-0 bg-black/40 z-[110]"
+                />
+                <motion.div
+                  key="wa-connect-panel"
+                  initial={{ y: '100%' }}
+                  animate={{ y: 0 }}
+                  exit={{ y: '100%' }}
+                  transition={{ type: 'tween', duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                  className="fixed bottom-0 inset-x-0 z-[111] flex flex-col max-h-[90vh] w-full sm:left-0 sm:right-0 sm:mx-auto sm:w-[calc(100%-2rem)] sm:max-w-md sm:max-h-[calc(100vh-2rem)] rounded-t-xl sm:rounded-xl bg-white dark:bg-gray-800 shadow-xl border-t sm:border border-gray-200 dark:border-gray-700"
+                >
+                  <div className="flex-shrink-0 flex justify-center pt-2 pb-1 sm:pt-3">
+                    <span className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" aria-hidden />
+                  </div>
+                  <div className="px-4 pb-2 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 pr-2">
+                      Hubungkan {sessionSlotLabel(connectDrawerSessionId)}
+                    </h3>
+                    <button
+                      type="button"
+                      disabled={connectDrawerBusy}
+                      onClick={closeConnectDrawer}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-300 disabled:opacity-50"
+                      aria-label="Tutup"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                  <div className="px-4 py-4 overflow-y-auto flex-1 min-h-0 space-y-4">
+                    {connectDrawerSuccess ? (
+                      <div className="flex flex-col items-center justify-center py-8 px-2 text-center">
+                        <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center mb-4">
+                          <svg className="w-9 h-9 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">Koneksi berhasil</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 max-w-xs">
+                          WhatsApp untuk slot ini sudah terhubung. Tekan Oke untuk kembali ke daftar.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={closeConnectDrawer}
+                          className="mt-6 px-6 py-2.5 rounded-lg bg-[#25D366] hover:bg-[#20BD5A] text-white text-sm font-semibold"
+                        >
+                          Oke
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Satu kali klik <span className="font-medium text-gray-800 dark:text-gray-200">Muat QR</span> mengirim permintaan ke server (tidak diperbarui otomatis berulang). Scan dengan WhatsApp di HP: menu Perangkat tertaut.
+                        </p>
+                        {connectDrawerError && (
+                          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                            {connectDrawerError}
+                          </div>
+                        )}
+                        {(() => {
+                          const ds = data.sessions?.[connectDrawerSessionId]
+                          const wwebConnecting = ds?.status === 'connecting'
+                          const wwebOk = ds?.status === 'connected'
+                          const primarySrc = ds?.qrCode || (!wwebOk ? ds?.baileysQrCode : null)
+                          const showPrimaryQr = !wwebOk && primarySrc
+                          const baileysNeed =
+                            wwebOk &&
+                            (ds?.baileysStatus === 'connecting' || !!ds?.baileysQrCode) &&
+                            ds?.baileysStatus !== 'connected'
+
+                          return (
+                            <>
+                              {!wwebOk && (
+                                <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40 p-3">
+                                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Langkah 1 — Login WhatsApp Web</p>
+                                  {showPrimaryQr ? (
+                                    <WaQrCountdownBlock
+                                      title="Scan QR ini di WhatsApp di HP Anda"
+                                      qrSrc={primarySrc}
+                                      alt="QR WhatsApp"
+                                      sessionId={connectDrawerSessionId}
+                                      fetchStatus={fetchStatus}
+                                      onReloadQr={() => handleDrawerReloadQr()}
+                                      reloadDisabled={connectDrawerBusy}
+                                      autoPollStatus={false}
+                                    />
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center min-h-[200px] rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800/50 px-4 text-center">
+                                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                                        {wwebConnecting && !primarySrc
+                                          ? 'Sesi sedang dimulai di server. Tekan Muat QR untuk mengambil gambar QR.'
+                                          : 'Tekan Muat QR untuk meminta kode dari server.'}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {baileysNeed && (
+                                <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40 p-3">
+                                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Langkah 2 — Aktivasi pesan cepat (Baileys)</p>
+                                  {ds?.baileysQrCode ? (
+                                    <WaQrCountdownBlock
+                                      title="Scan QR kedua jika diminta (kirim & cek nomor)"
+                                      qrSrc={ds.baileysQrCode}
+                                      alt="QR Baileys"
+                                      sessionId={connectDrawerSessionId}
+                                      fetchStatus={fetchStatus}
+                                      onReloadQr={() => handleDrawerReloadQr()}
+                                      reloadDisabled={connectDrawerBusy}
+                                      autoPollStatus={false}
+                                    />
+                                  ) : (
+                                    <p className="text-sm text-amber-700 dark:text-amber-300 py-4 text-center">Menunggu QR langkah 2… Klik Muat QR.</p>
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          )
+                        })()}
+                        <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-1">
+                          <button
+                            type="button"
+                            disabled={connectDrawerBusy}
+                            onClick={() => handleDrawerLoadQr(false)}
+                            className="flex-1 min-w-[140px] px-4 py-2.5 rounded-lg bg-[#25D366] hover:bg-[#20BD5A] text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {connectDrawerBusy ? 'Memuat…' : 'Muat QR'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={connectDrawerBusy}
+                            onClick={() => handleDrawerReloadQr()}
+                            className="flex-1 min-w-[140px] px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                          >
+                            Muat ulang QR
+                          </button>
+                          <button
+                            type="button"
+                            disabled={connectDrawerBusy}
+                            onClick={closeConnectDrawer}
+                            className="flex-1 min-w-[100px] px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                          >
+                            Tutup
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
           <AnimatePresence>
             {formOpen && (
               <>

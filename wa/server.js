@@ -21,11 +21,24 @@ import { getWaStatus } from './store/waStatus.js';
 import authRoutes from './routes/authRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import warmerRoutes from './routes/warmerRoutes.js';
-import { initWaOnStart, getSessionIdsFromDisk } from './controllers/whatsappController.js';
+import { initWaOnStart, getSessionIdsFromDisk, isWaEngineEnabled } from './controllers/whatsappController.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5175';
+const SESSION_IDS_CACHE_TTL_MS = Number(process.env.WA_SESSION_IDS_CACHE_TTL_MS || 5000);
+let sessionIdsCache = [];
+let sessionIdsCacheAt = 0;
+
+function getSessionIdsFromDiskCached() {
+  const now = Date.now();
+  if (sessionIdsCacheAt > 0 && (now - sessionIdsCacheAt) < SESSION_IDS_CACHE_TTL_MS) {
+    return sessionIdsCache;
+  }
+  sessionIdsCache = getSessionIdsFromDisk();
+  sessionIdsCacheAt = now;
+  return sessionIdsCache;
+}
 
 /** Izinkan origin: localhost, 127.0.0.1, atau host berakhiran .alutsmani.id / persis alutsmani.id */
 function isAllowedOrigin(origin) {
@@ -58,9 +71,11 @@ app.use(express.json());
 app.get('/api/whatsapp/status', (req, res) => {
   res.setHeader('X-WA-Endpoint', 'status-public');
   try {
+    const includeQr = String(req.query?.includeQr || '').trim() === '1';
     const sessionId = req.query?.sessionId;
     const data = getWaStatus(sessionId || undefined);
-    const diskIds = getSessionIdsFromDisk();
+    data.waEngineEnabled = isWaEngineEnabled();
+    const diskIds = getSessionIdsFromDiskCached();
     if (data.sessions && typeof data.sessions === 'object') {
       const empty = { status: 'disconnected', qrCode: null, phoneNumber: null, baileysStatus: 'disconnected', baileysQrCode: null, baileysPhoneNumber: null };
       for (const id of diskIds) {
@@ -68,6 +83,19 @@ app.get('/api/whatsapp/status', (req, res) => {
           data.sessions[id] = { ...empty };
         }
       }
+      // Endpoint status default dibuat ringan: QR diambil lewat endpoint terpisah /api/whatsapp/qr.
+      if (!includeQr) {
+        for (const id of Object.keys(data.sessions)) {
+          if (data.sessions[id]) {
+            data.sessions[id].qrCode = null;
+            data.sessions[id].baileysQrCode = null;
+          }
+        }
+      }
+    }
+    if (!includeQr) {
+      data.qrCode = null;
+      data.baileysQrCode = null;
     }
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ success: true, data }));
@@ -75,8 +103,42 @@ app.get('/api/whatsapp/status', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({
       success: true,
-      data: { sessions: {}, status: 'disconnected', qrCode: null, phoneNumber: null },
+      data: { sessions: {}, status: 'disconnected', qrCode: null, phoneNumber: null, waEngineEnabled: isWaEngineEnabled() },
     }));
+  }
+});
+
+// Endpoint QR terpisah agar polling status tetap ringan.
+app.get('/api/whatsapp/qr', (req, res) => {
+  res.setHeader('X-WA-Endpoint', 'qr-public');
+  try {
+    const sessionId = req.query?.sessionId;
+    const data = getWaStatus(sessionId || undefined);
+    if (sessionId) {
+      return res.json({
+        success: true,
+        data: {
+          sessionId,
+          status: data?.status || 'disconnected',
+          baileysStatus: data?.baileysStatus || 'disconnected',
+          qrCode: data?.qrCode || null,
+          baileysQrCode: data?.baileysQrCode || null,
+        },
+      });
+    }
+    const sessions = data?.sessions && typeof data.sessions === 'object' ? data.sessions : {};
+    const qrSessions = {};
+    for (const [sid, s] of Object.entries(sessions)) {
+      qrSessions[sid] = {
+        status: s?.status || 'disconnected',
+        baileysStatus: s?.baileysStatus || 'disconnected',
+        qrCode: s?.qrCode || null,
+        baileysQrCode: s?.baileysQrCode || null,
+      };
+    }
+    return res.json({ success: true, data: { sessions: qrSessions } });
+  } catch (e) {
+    return res.json({ success: true, data: { sessions: {} } });
   }
 });
 

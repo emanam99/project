@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, rmSync, mkdirSync, readdirSync } from 'fs';
 import qrcode from 'qrcode';
-import { setWaStatus, getWaStatus } from '../store/waStatus.js';
+import { setWaStatus, getWaStatus, deleteWaSession } from '../store/waStatus.js';
 import {
   initBaileys,
   disconnectBaileys,
@@ -27,6 +27,63 @@ const DEFAULT_SESSION = 'default';
 const MAX_SESSIONS = 10;
 
 const clientsBySession = {};
+let waEngineEnabled = true;
+const WA_FORWARD_TIMEOUT_MS = Number(process.env.WA_FORWARD_TIMEOUT_MS || 8000);
+const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = WA_FORWARD_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function getSafeSessionId(rawSessionId) {
+  const sessionId = (rawSessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
+  return sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+}
+
+export function isWaEngineEnabled() {
+  return waEngineEnabled;
+}
+
+export async function setWaEngineEnabled(enabled) {
+  const next = enabled === true;
+  waEngineEnabled = next;
+  if (next) {
+    return;
+  }
+
+  const activeSessionIds = Object.keys(clientsBySession);
+  for (const id of activeSessionIds) {
+    const current = clientsBySession[id];
+    if (current) {
+      try {
+        await current.destroy();
+      } catch (_) {}
+      delete clientsBySession[id];
+    }
+    await disconnectBaileys(id);
+    setWaStatus(id, {
+      status: 'disconnected',
+      qrCode: null,
+      phoneNumber: null,
+      baileysStatus: 'disconnected',
+      baileysQrCode: null,
+      baileysPhoneNumber: null,
+    });
+  }
+}
+
+function respondWaEngineStopped(res) {
+  return res.status(503).json({
+    success: false,
+    message: 'Server WA sedang dihentikan sementara. Jalankan lagi untuk memakai fitur WA.',
+  });
+}
 
 export function isPuppeteerReady(sessionId) {
   const id = sessionId || DEFAULT_SESSION;
@@ -140,9 +197,6 @@ function createClient(sessionId) {
     '--disable-default-apps',
     '--disable-popup-blocking',
     '--disable-translate',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
     '--disable-component-update',
     '--disable-domain-reliability',
     '--disable-sync',
@@ -215,13 +269,13 @@ function createClient(sessionId) {
   c.on('message', async (msg) => {
     try {
       if (msg.fromMe) {
-        console.log('[WA Puppeteer] skip: pesan fromMe');
+        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] skip: pesan fromMe');
         return;
       }
       const fromRaw = (msg.from || '').replace(/@c\.us$/i, '').replace(/@s\.whatsapp\.net$/i, '').trim();
       const digits = fromRaw.replace(/\D/g, '');
       if (digits.length < 10) {
-        console.log('[WA Puppeteer] skip: nomor terlalu pendek', fromRaw);
+        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] skip: nomor terlalu pendek', fromRaw);
         return;
       }
       const from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
@@ -236,11 +290,11 @@ function createClient(sessionId) {
       const url = apiBase + waPath;
       const fromJid = (typeof msg.from === 'string' && msg.from.includes('@')) ? msg.from : null;
       const payload = { from: from62, message: body, messageId: messageId || undefined, sessionId: id, from_jid: fromJid || undefined };
-      console.log('[WA Puppeteer] Pesan masuk dari ' + from62 + (fromJid ? ' jid=' + fromJid : '') + ' len=' + body.length + ', forward ke API ' + url);
-      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] Pesan masuk dari ' + from62 + (fromJid ? ' jid=' + fromJid : '') + ' len=' + body.length + ', forward ke API ' + url);
+      const res = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) {
         const waPort = process.env.PORT || '3001';
-        console.log('[WA Puppeteer] Forward OK. Jika tidak dapat balasan: cek error_log PHP; pastikan api/.env punya WA_API_URL=http://127.0.0.1:' + waPort + '/api/whatsapp/send dan WA_API_KEY.');
+        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] Forward OK. Jika tidak dapat balasan: cek error_log PHP; pastikan api/.env punya WA_API_URL=http://127.0.0.1:' + waPort + '/api/whatsapp/send dan WA_API_KEY.');
       } else {
         console.error('[WA Puppeteer] Forward gagal: HTTP ' + res.status);
       }
@@ -287,6 +341,7 @@ function countSessions() {
 
 /** Restore sesi default dari disk (Puppeteer). QR login selalu dari Puppeteer dulu. */
 export function initWaOnStart() {
+  if (!waEngineEnabled) return;
   const defaultPath = getSessionPath(DEFAULT_SESSION);
   if (!existsSync(defaultPath)) return;
   try {
@@ -310,8 +365,8 @@ export function initWaOnStart() {
 /** Trigger koneksi WA jika sedang off. Dipanggil dari API PHP saat pendaftar menekan "Aktifkan notifikasi". */
 export const wakeWhatsApp = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || req.query?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    if (!waEngineEnabled) return respondWaEngineStopped(res);
+    const safeId = getSafeSessionId(req.body?.sessionId || req.query?.sessionId || DEFAULT_SESSION);
     if (isBaileysConnected(safeId)) {
       return res.json({ success: true, message: 'WA sudah aktif.', data: { status: 'connected' } });
     }
@@ -342,8 +397,8 @@ export const wakeWhatsApp = async (req, res) => {
 
 export const connectWhatsApp = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    if (!waEngineEnabled) return respondWaEngineStopped(res);
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     /** true = paksa QR baru (hindari response cache dari connect sebelumnya) */
     const refreshQr = req.body?.refreshQr === true;
     if (countSessions() >= MAX_SESSIONS && !clientsBySession[safeId]) {
@@ -378,24 +433,15 @@ export const connectWhatsApp = async (req, res) => {
     if (dataStatus.status === 'connected' && clientsBySession[safeId]) {
       if (refreshQr) {
         await disconnectBaileys(safeId);
-        try {
-          await initBaileys(safeId);
-        } catch (err) {
+        initBaileys(safeId).catch((err) => {
           console.error('[WA] initBaileys setelah refresh QR:', err?.message || err);
-        }
-        for (let i = 0; i < 20; i++) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const st = getWaStatus(safeId);
-          if (st.baileysQrCode || st.baileysStatus === 'connected') break;
-        }
+        });
         const st = getWaStatus(safeId);
         return res.json({
           success: true,
-          message: st.baileysQrCode
-            ? 'Scan QR Baileys (Langkah 2).'
-            : st.baileysStatus === 'connected'
-              ? 'Baileys terhubung.'
-              : 'Memulai ulang Baileys...',
+          message: st.baileysStatus === 'connected'
+            ? 'Baileys terhubung.'
+            : 'Memulai ulang Baileys. Gunakan tombol "Muat QR" untuk mengambil QR terbaru.',
           data: {
             sessionId: safeId,
             status: st.status,
@@ -462,19 +508,14 @@ export const connectWhatsApp = async (req, res) => {
       setWaStatus(safeId, { status: 'disconnected', qrCode: null });
       delete clientsBySession[safeId];
     });
-
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 1500));
-      const st = getWaStatus(safeId);
-      if (st.qrCode || st.status === 'connected') break;
-    }
-
     const st = getWaStatus(safeId);
     const qr = st.qrCode || null;
-    const status = st.status || 'disconnected';
+    const status = st.status || 'connecting';
     return res.json({
       success: true,
-      message: qr ? 'Scan QR di bawah (Langkah 1: login WA).' : status === 'connected' ? 'Sudah terhubung.' : 'Memulai koneksi...',
+      message: qr
+        ? 'Scan QR di bawah (Langkah 1: login WA).'
+        : 'Memulai koneksi. Gunakan tombol "Muat QR" untuk mengambil QR terbaru.',
       data: {
         sessionId: safeId,
         status,
@@ -495,8 +536,7 @@ export const connectWhatsApp = async (req, res) => {
 
 export const disconnectWhatsApp = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     const current = clientsBySession[safeId];
     if (current) {
       try {
@@ -521,8 +561,7 @@ export const disconnectWhatsApp = async (req, res) => {
 
 export const logoutWhatsApp = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     const current = clientsBySession[safeId];
     if (current) {
       try {
@@ -549,26 +588,61 @@ export const logoutWhatsApp = async (req, res) => {
   }
 };
 
+export const deleteSlotWhatsApp = async (req, res) => {
+  try {
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+
+    const current = clientsBySession[safeId];
+    if (current) {
+      try {
+        await current.destroy();
+      } catch (_) {}
+      delete clientsBySession[safeId];
+    }
+
+    await disconnectBaileys(safeId);
+
+    const sessionPath = getSessionPath(safeId);
+    if (existsSync(sessionPath)) rmSync(sessionPath, { recursive: true, force: true });
+    const baileysPath = getBaileysAuthPathForDelete(safeId);
+    if (existsSync(baileysPath)) rmSync(baileysPath, { recursive: true, force: true });
+
+    // Hapus baris slot dari status store agar tidak tampil lagi di UI.
+    deleteWaSession(safeId);
+
+    return res.json({
+      success: true,
+      message: 'Slot WA berhasil dihapus.',
+      data: { sessionId: safeId },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal menghapus slot WA',
+    });
+  }
+};
+
 export const sendMessage = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    if (!waEngineEnabled) return respondWaEngineStopped(res);
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     const { phoneNumber, message, imageBase64, imageMimetype, chatId: bodyChatId } = req.body || {};
     const text = typeof message === 'string' ? message : '';
     const chatIdOverride = typeof bodyChatId === 'string' && bodyChatId.trim() ? bodyChatId.trim() : null;
-    console.log('[WA] POST /send to ' + (phoneNumber || '') + (chatIdOverride ? ' chatId=' + chatIdOverride : '') + ' len=' + text.length);
+    if (WA_VERBOSE_LOG) console.log('[WA] POST /send to ' + (phoneNumber || '') + (chatIdOverride ? ' chatId=' + chatIdOverride : '') + ' len=' + text.length);
     let result;
     if (isBaileysConnected(safeId)) {
       result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype);
-      console.log('[WA] send via Baileys: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
+      if (WA_VERBOSE_LOG) console.log('[WA] send via Baileys: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
     } else if (isPuppeteerReady(safeId)) {
       if (imageBase64) {
         return res.status(200).json({ success: false, message: 'Kirim gambar hanya didukung setelah scan Langkah 2 (Baileys). Kirim teks saja untuk tes.' });
       }
       result = await sendMessagePuppeteer(safeId, phoneNumber, text, chatIdOverride);
-      console.log('[WA] send via Puppeteer: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
+      if (WA_VERBOSE_LOG) console.log('[WA] send via Puppeteer: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
     } else {
-      console.log('[WA] send: belum login (Baileys/Puppeteer tidak siap)');
+      if (WA_VERBOSE_LOG) console.log('[WA] send: belum login (Baileys/Puppeteer tidak siap)');
       return res.status(200).json({
         success: false,
         message: 'Belum login untuk session ini. Scan QR Langkah 1 di tab Koneksi WA.',
@@ -592,8 +666,8 @@ export const sendMessage = async (req, res) => {
 
 export const getChatMessages = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || req.query?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    if (!waEngineEnabled) return respondWaEngineStopped(res);
+    const safeId = getSafeSessionId(req.body?.sessionId || req.query?.sessionId || DEFAULT_SESSION);
     if (!isBaileysConnected(safeId)) {
       return res.status(200).json({ success: false, message: 'Belum login. Scan QR di tab Koneksi WA.', data: [] });
     }
@@ -613,8 +687,8 @@ export const getChatMessages = async (req, res) => {
 
 export const editMessage = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    if (!waEngineEnabled) return respondWaEngineStopped(res);
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     if (!isBaileysConnected(safeId)) {
       return res.status(200).json({ success: false, message: 'Belum login. Scan QR di tab Koneksi WA.' });
     }
@@ -637,8 +711,8 @@ export const editMessage = async (req, res) => {
 
 export const checkNumber = async (req, res) => {
   try {
-    const sessionId = (req.body?.sessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
-    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+    if (!waEngineEnabled) return respondWaEngineStopped(res);
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     const { phoneNumber } = req.body || {};
     let result;
     if (isBaileysConnected(safeId)) {

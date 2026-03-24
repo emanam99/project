@@ -21,6 +21,26 @@ class ManageUsersController
         $this->db = Database::getInstance()->getConnection();
     }
 
+    private function getUsersDuplicateFieldMessage(\PDOException $e): ?string
+    {
+        $info = $e->errorInfo ?? [];
+        $sqlState = (string) ($e->getCode() ?? '');
+        $driverCode = isset($info[1]) ? (int) $info[1] : 0;
+        if ($sqlState !== '23000' && $driverCode !== 1062) {
+            return null;
+        }
+
+        $errorText = strtolower((string) ($info[2] ?? $e->getMessage() ?? ''));
+        if (strpos($errorText, 'no_wa') !== false) {
+            return 'Nomor WA sudah dipakai';
+        }
+        if (strpos($errorText, 'email') !== false) {
+            return 'Email sudah dipakai';
+        }
+
+        return 'Data akun sudah dipakai';
+    }
+
     /**
      * GET /api/manage-users - Get all users with pagination and filters
      */
@@ -507,7 +527,18 @@ class ManageUsersController
                 }
                 if (!empty($userUpdates)) {
                     $userParams[] = $idUser;
-                    $this->db->prepare("UPDATE users SET " . implode(", ", $userUpdates) . " WHERE id = ?")->execute($userParams);
+                    try {
+                        $this->db->prepare("UPDATE users SET " . implode(", ", $userUpdates) . " WHERE id = ?")->execute($userParams);
+                    } catch (\PDOException $pdoEx) {
+                        $duplicateMessage = $this->getUsersDuplicateFieldMessage($pdoEx);
+                        if ($duplicateMessage !== null) {
+                            return $this->jsonResponse($response, [
+                                'success' => false,
+                                'message' => $duplicateMessage
+                            ], 400);
+                        }
+                        throw $pdoEx;
+                    }
                 }
                 // Reset password (users.password = NULL)
                 if (isset($data['reset_password']) && $data['reset_password'] === true) {
@@ -1697,7 +1728,15 @@ class ManageUsersController
             }
             $params[] = $userId;
             $sql = "UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?";
-            $this->db->prepare($sql)->execute($params);
+            try {
+                $this->db->prepare($sql)->execute($params);
+            } catch (\PDOException $pdoEx) {
+                $duplicateMessage = $this->getUsersDuplicateFieldMessage($pdoEx);
+                if ($duplicateMessage !== null) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => $duplicateMessage], 400);
+                }
+                throw $pdoEx;
+            }
 
             return $this->jsonResponse($response, ['success' => true, 'message' => 'No WA dan/atau email berhasil diperbarui'], 200);
         } catch (\Exception $e) {

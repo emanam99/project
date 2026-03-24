@@ -17,6 +17,18 @@ const SESSIONS_BASE = path.resolve(__dirname, '../whatsapp-sessions');
 const DEFAULT_SESSION = 'default';
 const sockRefBySession = {};
 const baileysStatusBySession = {};
+const WA_FORWARD_TIMEOUT_MS = Number(process.env.WA_FORWARD_TIMEOUT_MS || 8000);
+const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = WA_FORWARD_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function getBaileysStatusObj(sessionId) {
   const id = sessionId || DEFAULT_SESSION;
@@ -127,9 +139,9 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     const list = Array.isArray(messages) ? messages : [];
-    console.log('[WA Baileys] messages.upsert type="' + type + '" count=' + list.length + ' (setiap pesan masuk/update akan log ini)');
+    if (WA_VERBOSE_LOG) console.log('[WA Baileys] messages.upsert type="' + type + '" count=' + list.length + '"');
     if (type !== 'notify') {
-      console.log('[WA Baileys] skip: type bukan "notify" (nilai: ' + type + '), tidak diforward');
+      if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: type bukan "notify"');
       return;
     }
     const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
@@ -139,19 +151,19 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
     }
     for (const msg of list) {
       if (msg.key && msg.key.fromMe) {
-        console.log('[WA Baileys] skip: pesan fromMe (dari nomor ini), tidak diforward');
+        if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: fromMe');
         continue;
       }
       try {
         const remoteJid = (msg.key && msg.key.remoteJid) || '';
         if (!remoteJid.endsWith('@s.whatsapp.net') && !remoteJid.endsWith('@c.us')) {
-          console.log('[WA Baileys] skip: remoteJid tidak valid: ' + (remoteJid || '(kosong)'));
+          if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: remoteJid tidak valid');
           continue;
         }
         const fromRaw = remoteJid.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '');
         const digits = fromRaw.replace(/\D/g, '');
         if (digits.length < 10) {
-          console.log('[WA Baileys] skip: nomor terlalu pendek: ' + fromRaw);
+          if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: nomor terlalu pendek');
           continue;
         }
         const from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
@@ -166,9 +178,9 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
         const payload = { from: from62, message: body, messageId: messageId || undefined, sessionId: id };
         let lastOk = false;
         let lastErr = null;
-        for (let attempt = 1; attempt <= 5; attempt++) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             lastOk = res.ok;
             if (res.ok) break;
             lastErr = `HTTP ${res.status}`;
@@ -177,10 +189,10 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
           } catch (e) {
             lastErr = e?.message || String(e);
           }
-          if (attempt < 5) await new Promise((r) => setTimeout(r, 1000 * attempt));
+          if (attempt < 3) await new Promise((r) => setTimeout(r, 700 * attempt));
         }
         if (lastOk) {
-          console.log('[WA Baileys] Pesan masuk diforward ke API: from=' + from62 + ' len=' + body.length);
+          if (WA_VERBOSE_LOG) console.log('[WA Baileys] Pesan masuk diforward ke API');
         } else {
           console.error('[WA Baileys] Gagal forward pesan masuk ke API: from=' + from62 + ' error=' + (lastErr || 'timeout'));
         }
@@ -201,7 +213,7 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       const s = statusMap[u.update.status];
       if (!s) continue;
       try {
-        await fetch(apiBase + (apiBase.endsWith('/api') ? '/wa/message-status' : '/api/wa/message-status'), {
+        await fetchWithTimeout(apiBase + (apiBase.endsWith('/api') ? '/wa/message-status' : '/api/wa/message-status'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
           body: JSON.stringify({ messageId: u.key.id, status: s }),

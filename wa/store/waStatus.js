@@ -83,3 +83,10 @@ export function setWaStatus(sessionId, update) {
 export function getSessionIds() {
   return Object.keys(sessions);
 }
+
+export function deleteWaSession(sessionId) {
+  const id = sessionId || DEFAULT_SESSION;
+  if (Object.prototype.hasOwnProperty.call(sessions, id)) {
+    delete sessions[id];
+  }
+}

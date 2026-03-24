@@ -11,6 +11,19 @@ use App\Database;
  */
 class WaInteractiveMenuService
 {
+    /**
+     * Untuk chat @lid, simpan kunci sesi sesuai nomor mentah dari payload (tanpa normalisasi 62).
+     */
+    private static function normalizeIncomingNumber(string $nomor, ?string $fromJid): string
+    {
+        $digits = preg_replace('/\D/', '', trim($nomor)) ?? '';
+        $isLid = is_string($fromJid) && preg_match('/@lid$/i', trim($fromJid)) === 1;
+        if ($isLid && $digits !== '') {
+            return $digits;
+        }
+        return WhatsAppService::formatPhoneNumber($nomor);
+    }
+
     private const SETTING_KEY = 'wa_interactive_menu_enabled';
 
     public static function isEnabled(): bool
@@ -63,11 +76,11 @@ class WaInteractiveMenuService
         if (!self::isEnabled() || trim($message) === '') {
             return null;
         }
-        $nomor = WhatsAppService::formatPhoneNumber($nomor);
+        $fromJid = $fromJid !== null && $fromJid !== '' ? trim($fromJid) : null;
+        $nomor = self::normalizeIncomingNumber($nomor, $fromJid);
         if (strlen($nomor) < 10) {
             return null;
         }
-        $fromJid = $fromJid !== null && $fromJid !== '' ? trim($fromJid) : null;
         $db = Database::getInstance()->getConnection();
 
         $input = self::normalizeInput($message);

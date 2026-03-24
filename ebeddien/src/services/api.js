@@ -467,6 +467,37 @@ export const getWaBackendUrl = () => {
   return `${protocol}//${hostname}:3001`
 }
 
+const WA_HTTP_TIMEOUT_MS = 10000
+/** Memulai sesi Puppeteer/Baileys di VPS bisa >10s — jangan timeout prematur. */
+const WA_CONNECT_TIMEOUT_MS = Number(import.meta.env.VITE_WA_CONNECT_TIMEOUT_MS || 120000)
+/** Ambil QR bisa lambat saat CPU penuh. */
+const WA_QR_FETCH_TIMEOUT_MS = Number(import.meta.env.VITE_WA_QR_TIMEOUT_MS || 60000)
+const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = WA_HTTP_TIMEOUT_MS) => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+    const data = await res.json().catch(() => ({ success: false, message: 'Network error' }))
+    return { res, data }
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      return {
+        res: null,
+        data: { success: false, message: 'Permintaan melebihi batas waktu. Coba lagi.' }
+      }
+    }
+    return {
+      res: null,
+      data: { success: false, message: err?.message || 'Network error' }
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * API backend WA (Node): status, connect, disconnect, logout.
  * Request dengan Bearer token dari localStorage (kecuali getStatus bisa tanpa token).
@@ -474,15 +505,23 @@ export const getWaBackendUrl = () => {
 export const waBackendAPI = {
   getStatus: async () => {
     const base = getWaBackendUrl()
-    const res = await fetch(`${base}/api/whatsapp/status`, { method: 'GET', credentials: 'omit' })
-    const isJson = (res.headers.get('Content-Type') || '').toLowerCase().includes('application/json')
-    const data = isJson ? await res.json().catch(() => ({})) : {}
-    if (!res.ok) {
+    const { res, data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/status`, { method: 'GET', credentials: 'omit' })
+    if (!res || !res.ok) {
       return {
         success: false,
         data: { sessions: {}, status: 'disconnected', qrCode: null, phoneNumber: null },
-        statusCode: res.status
+        statusCode: res?.status || 0,
+        message: data?.message
       }
+    }
+    return data
+  },
+  getQr: async (sessionId = null, timeoutMs = WA_QR_FETCH_TIMEOUT_MS) => {
+    const base = getWaBackendUrl()
+    const q = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ''
+    const { res, data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/qr${q}`, { method: 'GET', credentials: 'omit' }, timeoutMs)
+    if (!res || !res.ok) {
+      return { success: false, data: sessionId ? { sessionId, qrCode: null, baileysQrCode: null } : { sessions: {} } }
     }
     return data
   },
@@ -495,21 +534,25 @@ export const waBackendAPI = {
     const token = localStorage.getItem('auth_token')
     const body = { sessionId: sessionId || 'default' }
     if (options.refreshQr === true) body.refreshQr = true
-    const res = await fetch(`${base}/api/whatsapp/connect`, {
+    const timeoutMs =
+      typeof options.timeoutMs === 'number' && options.timeoutMs > 0
+        ? options.timeoutMs
+        : WA_CONNECT_TIMEOUT_MS
+    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/connect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
       body: JSON.stringify(body)
-    })
-    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+    }, timeoutMs)
+    return data
   },
   /** @param {string} [sessionId] */
   disconnect: async (sessionId = 'default') => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
-    const res = await fetch(`${base}/api/whatsapp/disconnect`, {
+    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/disconnect`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -517,13 +560,13 @@ export const waBackendAPI = {
       },
       body: JSON.stringify({ sessionId: sessionId || 'default' })
     })
-    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+    return data
   },
   /** @param {string} [sessionId] */
   logout: async (sessionId = 'default') => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
-    const res = await fetch(`${base}/api/whatsapp/logout`, {
+    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/logout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -531,7 +574,45 @@ export const waBackendAPI = {
       },
       body: JSON.stringify({ sessionId: sessionId || 'default' })
     })
-    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+    return data
+  },
+  /** Hapus slot WA (state + file sesi) agar baris stale hilang dari daftar. */
+  deleteSlot: async (sessionId = 'default') => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/delete-slot`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ sessionId: sessionId || 'default' })
+    })
+    return data
+  },
+  stopServer: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/server/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+    return data
+  },
+  startServer: async () => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/server/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    })
+    return data
   },
   /**
    * Kirim pesan lewat backend WA (untuk tes di halaman Koneksi WA).
@@ -552,7 +633,7 @@ export const waBackendAPI = {
       body.imageBase64 = imageBase64
       body.imageMimetype = imageMimetype || 'image/png'
     }
-    const res = await fetch(`${base}/api/whatsapp/send`, {
+    const { res, data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/send`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -560,8 +641,7 @@ export const waBackendAPI = {
       },
       body: JSON.stringify(body)
     })
-    const data = await res.json().catch(() => ({ success: false, message: 'Network error' }))
-    if (!res.ok && !data.message) data.message = res.status === 503 ? 'Layanan WA sibuk. Coba lagi atau scan QR Baileys di tab Koneksi.' : 'Gagal mengirim pesan.'
+    if (res && !res.ok && !data.message) data.message = res.status === 503 ? 'Layanan WA sibuk. Coba lagi atau scan QR Baileys di tab Koneksi.' : 'Gagal mengirim pesan.'
     return data
   },
 
@@ -574,7 +654,7 @@ export const waBackendAPI = {
     const token = localStorage.getItem('auth_token')
     const body = { phoneNumber: (phoneNumber || '').trim() }
     if (sessionId) body.sessionId = sessionId
-    const res = await fetch(`${base}/api/whatsapp/check`, {
+    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/check`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -582,7 +662,7 @@ export const waBackendAPI = {
       },
       body: JSON.stringify(body)
     })
-    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+    return data
   }
 }
 
@@ -610,22 +690,22 @@ export const warmerNodeAPI = {
   getStatus: async () => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
-    const res = await fetch(`${base}/api/warmer/status`, {
+    const { data } = await fetchJsonWithTimeout(`${base}/api/warmer/status`, {
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
     })
-    return res.json().catch(() => ({ success: false, data: { running: false } }))
+    return data?.success ? data : { success: false, data: { running: false } }
   },
   start: async () => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
-    const res = await fetch(`${base}/api/warmer/start`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
-    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+    const { data } = await fetchJsonWithTimeout(`${base}/api/warmer/start`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+    return data
   },
   stop: async () => {
     const base = getWaBackendUrl()
     const token = localStorage.getItem('auth_token')
-    const res = await fetch(`${base}/api/warmer/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
-    return res.json().catch(() => ({ success: false, message: 'Network error' }))
+    const { data } = await fetchJsonWithTimeout(`${base}/api/warmer/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+    return data
   }
 }
 
