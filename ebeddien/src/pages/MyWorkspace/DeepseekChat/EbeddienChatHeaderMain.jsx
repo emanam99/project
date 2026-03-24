@@ -8,6 +8,8 @@ import { EbeddienChatAvatarLogo, EbeddienChatWordmark } from './EbeddienChatBran
 export default function EbeddienChatHeaderMain({
   assistantName,
   accountLoading,
+  aiTodayCount = 0,
+  aiDailyLimit = 5,
   aiChatMode,
   setAiChatMode,
   canUseAlternativeMode = false,
@@ -17,7 +19,8 @@ export default function EbeddienChatHeaderMain({
   setChatHeaderMenuOpen,
   isSuperAdminTraining,
   dsToken,
-  handleLogout
+  handleLogout,
+  onOpenAiUserSettings
 }) {
   return (
     <div className="shrink-0 rounded-none bg-primary-600 text-white shadow-md sm:rounded-t-lg dark:bg-primary-800">
@@ -34,6 +37,9 @@ export default function EbeddienChatHeaderMain({
             <EbeddienChatWordmark assistantName={assistantName} />
           </div>
         </div>
+        <span className="shrink-0 rounded-md border border-white/25 bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/95">
+          {aiTodayCount}/{aiDailyLimit}
+        </span>
         <span
           className={`shrink-0 rounded-lg p-1 text-white/90 transition-transform ${
             chatHeaderMenuOpen ? 'rotate-180' : ''
@@ -142,6 +148,16 @@ export default function EbeddienChatHeaderMain({
                     >
                       Training Chat
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenAiUserSettings?.()
+                        setChatHeaderMenuOpen(false)
+                      }}
+                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                    >
+                      User AI
+                    </button>
                   </div>
                 </div>
               ) : null}

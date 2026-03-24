@@ -18,6 +18,12 @@ return function (\Slim\App $app): void {
         $group->get('/chat-history', [DeepseekController::class, 'chatHistory']);
         /** Saran cepat acak dari data training (bank + training chat) — UI layar kosong. */
         $group->get('/training-suggestions', [DeepseekController::class, 'trainingSuggestedPrompts']);
+        /** Toggle per-user: akses AI via WhatsApp. */
+        $group->get('/whatsapp-access', [DeepseekController::class, 'getWhatsappAccess']);
+        $group->put('/whatsapp-access', [DeepseekController::class, 'putWhatsappAccess']);
+        /** Super admin: kelola limit + status AI user. */
+        $group->get('/admin/ai-users', [DeepseekController::class, 'adminListAiUsers']);
+        $group->put('/admin/ai-users/{id}', [DeepseekController::class, 'adminUpdateAiUser']);
     })->add(new AuthMiddleware());
 };
 

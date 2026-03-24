@@ -41,6 +41,7 @@ return function (\Slim\App $app): void {
     $app->group('/api/kontak', function ($group) {
         $group->get('', [KontakController::class, 'getList']);
         $group->patch('/{id}', [KontakController::class, 'update']);
+        $group->delete('/{id}', [KontakController::class, 'delete']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
 
     // Master Tahun Ajaran: GET bisa diakses semua user yang login; create/update hanya super_admin

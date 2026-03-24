@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\TextSanitizer;
+use App\Services\AiWhatsappBridgeService;
 use App\Services\DaftarNotifFlow;
 use App\Services\WaInteractiveMenuService;
 use App\Services\WhatsAppService;
@@ -260,8 +261,19 @@ class WhatsAppController
             $jid = $fromJid !== '' ? $fromJid : null;
             $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $jid);
             $isDaftarNotif = $reply !== null && $reply !== '';
+            $replySource = $isDaftarNotif ? 'daftar_notif' : null;
             if (!$isDaftarNotif) {
+                // Pengguna dengan "Akses AI dari WA" aktif: AI dulu, baru menu interaktif.
+                $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $jid);
+                if ($reply !== null && $reply !== '') {
+                    $replySource = 'ai_whatsapp';
+                }
+            }
+            if (!$isDaftarNotif && ($reply === null || $reply === '')) {
                 $reply = WaInteractiveMenuService::handle($nomorTujuan, $message, $jid);
+                if ($reply !== null && $reply !== '') {
+                    $replySource = 'wa_interactive_menu';
+                }
             }
             if ($reply !== null && $reply !== '') {
                 $logContext = [
@@ -269,14 +281,20 @@ class WhatsAppController
                     'id_pengurus' => null,
                     'tujuan' => 'wali_santri',
                     'id_pengurus_pengirim' => null,
-                    'kategori' => $isDaftarNotif ? 'daftar_notif' : 'wa_interactive_menu',
+                    'kategori' => $replySource ?? 'custom',
                     'sumber' => 'api_wa',
                 ];
-                error_log('WhatsAppController::incoming ' . ($isDaftarNotif ? 'daftar_notif' : 'wa_interactive_menu') . ' reply to ' . $nomorTujuan . ' len=' . strlen($reply) . ($jid ? ' jid=' . $jid : ''));
+                error_log('WhatsAppController::incoming ' . ($replySource ?? 'auto_reply') . ' reply to ' . $nomorTujuan . ' len=' . strlen($reply) . ($jid ? ' jid=' . $jid : ''));
                 $sendResult = WhatsAppService::sendMessage($nomorTujuan, $reply, null, $logContext, $jid);
                 error_log('WhatsAppController::incoming sendMessage result: success=' . ($sendResult['success'] ? '1' : '0') . ' msg=' . ($sendResult['message'] ?? ''));
             } else {
                 error_log('WhatsAppController::incoming: no auto reply. from=' . $nomorTujuan . ' message_preview=' . substr($message, 0, 60));
+                if (!$isDaftarNotif) {
+                    error_log(
+                        'WhatsAppController::incoming hint: Menu interaktif tidak mengembalikan teks (mati/tidak cocok). '
+                        . 'AI WA butuh baris di atas dari AiWhatsappBridgeService jika penyebabnya bukan nomor/profil.'
+                    );
+                }
             }
 
             return $this->json($response, ['success' => true, 'message' => 'OK', 'id' => $id], 200);

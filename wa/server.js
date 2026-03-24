@@ -150,7 +150,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/warmer', warmerRoutes);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   const uwabaBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
   const incomingUrl = uwabaBase ? (uwabaBase + (uwabaBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming')) : '(belum di-set)';
   console.log(`[WA] http://localhost:${PORT}`);
@@ -158,4 +158,18 @@ app.listen(PORT, () => {
   console.log(`[WA] Webhook pesan masuk: POST ${incomingUrl}`);
   console.log('[WA] CORS: *.alutsmani.id + localhost');
   initWaOnStart();
+});
+
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error('');
+    console.error(`[WA] Port ${PORT} sudah dipakai (EADDRINUSE).`);
+    console.error('    Hentikan proses Node lain di port ini, atau ubah PORT di .env (mis. PORT=3002).');
+    console.error('    Windows — cari PID:  netstat -ano | findstr :' + PORT);
+    console.error('    Lalu tutup:        taskkill /PID <nomor_pid> /F');
+    console.error('');
+    process.exit(1);
+  }
+  console.error('[WA] server.listen error:', err?.message || err);
+  process.exit(1);
 });

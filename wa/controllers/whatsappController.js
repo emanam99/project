@@ -11,6 +11,8 @@ import {
   initBaileys,
   disconnectBaileys,
   isBaileysConnected,
+  ensureBaileysReadyForSend,
+  humanizeLidSendError,
   sendMessageBaileys,
   getChatMessagesBaileys,
   editMessageBaileys,
@@ -25,6 +27,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_BASE = path.resolve(__dirname, '../whatsapp-sessions');
 const DEFAULT_SESSION = 'default';
 const MAX_SESSIONS = 10;
+
+/** Chromium bawaan Puppeteer sering rusak setelah PUPPETEER_SKIP_DOWNLOAD — pakai Chrome/Edge sistem jika ada. */
+function getPuppeteerExecutablePath() {
+  const fromEnv = (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  if (process.platform === 'win32') {
+    const candidates = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    ];
+    for (const p of candidates) {
+      if (p && existsSync(p)) return p;
+    }
+  }
+  if (process.platform === 'darwin') {
+    const mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    if (existsSync(mac)) return mac;
+  }
+  return null;
+}
+
+let loggedPuppeteerBrowserPath = false;
 
 const clientsBySession = {};
 let waEngineEnabled = true;
@@ -98,35 +126,79 @@ function formatPhoneForWwebjs(phone) {
   return n || null;
 }
 
+/** Bersihkan pesan error WA Web (sering menyertai URL stack trace). */
+function sanitizePuppeteerError(err) {
+  let s = String(err?.message || err || 'Gagal mengirim pesan');
+  s = s.replace(/\(\s*https?:\/\/[^)]+\)/g, '');
+  s = s.replace(/\s*https?:\/\/\S+/g, '');
+  s = s.replace(/\s*\([^)]*\.js:[^)]*\)/g, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  s = s.replace(/\s*\(\s*$/g, '').trim();
+  return s || 'Gagal mengirim pesan';
+}
+
 export async function sendMessagePuppeteer(sessionId, phoneNumber, text, chatIdOverride = null) {
   const id = sessionId || DEFAULT_SESSION;
   const c = clientsBySession[id];
   if (!c || !c.info) return { ok: false, error: 'Puppeteer belum siap' };
-  let chatId = chatIdOverride && typeof chatIdOverride === 'string' && chatIdOverride.includes('@') ? chatIdOverride : null;
-  if (!chatId) {
+
+  const sendOnce = async (jid) => {
+    if (typeof c.getChatById === 'function') {
+      try {
+        const chat = await c.getChatById(jid);
+        if (chat && typeof chat.sendMessage === 'function') {
+          return await chat.sendMessage(text || '(pesan kosong)');
+        }
+      } catch (_) {
+        /* WWebJS.getChat bisa gagal No LID — coba sendMessage langsung */
+      }
+    }
+    return await c.sendMessage(jid, text || '(pesan kosong)');
+  };
+
+  const jids = [];
+  if (chatIdOverride && typeof chatIdOverride === 'string' && chatIdOverride.includes('@')) {
+    jids.push(chatIdOverride.trim());
+  } else {
     const num = formatPhoneForWwebjs(phoneNumber);
     if (!num || num.length < 10) return { ok: false, error: 'Nomor tidak valid' };
-    chatId = num.includes('@') ? num : num + '@c.us';
-  }
-  const isLid = /@lid$/i.test(chatId);
-  try {
-    let msg;
-    if (isLid && typeof c.getChatById === 'function') {
-      const chat = await c.getChatById(chatId);
-      if (chat && typeof chat.sendMessage === 'function') {
-        msg = await chat.sendMessage(text || '(pesan kosong)');
-      } else {
-        msg = await c.sendMessage(chatId, text || '(pesan kosong)');
+    if (typeof c.getNumberId === 'function') {
+      for (const arg of [num, num + '@c.us']) {
+        try {
+          const wid = await c.getNumberId(arg);
+          if (wid && wid._serialized) jids.push(wid._serialized);
+        } catch (_) {
+          /* coba varian berikutnya */
+        }
       }
-    } else {
-      msg = await c.sendMessage(chatId, text || '(pesan kosong)');
     }
-    const senderNumber = c.info?.wid?.user || c.info?.wid?.id?.split(':')[0] || null;
-    return { ok: true, messageId: msg?.id?._serialized || msg?.id || null, senderPhoneNumber: senderNumber };
-  } catch (err) {
-    console.error('[WA Puppeteer] sendMessage error chatId=' + chatId + ': ' + (err?.message || err));
-    return { ok: false, error: err?.message || String(err) };
+    jids.push(num + '@c.us', num + '@s.whatsapp.net');
   }
+
+  const seen = new Set();
+  const unique = [];
+  for (const jid of jids) {
+    if (jid && !seen.has(jid)) {
+      seen.add(jid);
+      unique.push(jid);
+    }
+  }
+
+  let lastErr = null;
+  for (const jid of unique) {
+    try {
+      const msg = await sendOnce(jid);
+      const senderNumber = c.info?.wid?.user || c.info?.wid?.id?.split(':')[0] || null;
+      return { ok: true, messageId: msg?.id?._serialized || msg?.id || null, senderPhoneNumber: senderNumber };
+    } catch (err) {
+      lastErr = err;
+      if (process.env.WA_VERBOSE_LOG === 'true') {
+        console.warn('[WA Puppeteer] send gagal jid=' + jid + ': ' + (err?.message || err));
+      }
+    }
+  }
+  console.error('[WA Puppeteer] sendMessage habis retry, last=' + (lastErr?.message || lastErr));
+  return { ok: false, error: sanitizePuppeteerError(lastErr) };
 }
 
 async function checkNumberPuppeteer(sessionId, phoneNumber) {
@@ -208,16 +280,26 @@ function createClient(sessionId) {
     '--window-size=1024,768',
   ];
 
+  const puppeteerLaunch = {
+    headless: true,
+    defaultViewport: { width: 1024, height: 768 },
+    args: puppeteerArgs,
+  };
+  const chromeExe = getPuppeteerExecutablePath();
+  if (chromeExe) {
+    puppeteerLaunch.executablePath = chromeExe;
+    if (!loggedPuppeteerBrowserPath) {
+      loggedPuppeteerBrowserPath = true;
+      console.log('[WA] Puppeteer memakai browser sistem (hindari ICU error Chromium unduhan):', chromeExe);
+    }
+  }
+
   const clientConfig = {
     authStrategy: new LocalAuth({
       clientId: 'wa-uwaba-' + id,
       dataPath: SESSION_PATH,
     }),
-    puppeteer: {
-      headless: true,
-      defaultViewport: { width: 1024, height: 768 },
-      args: puppeteerArgs,
-    },
+    puppeteer: puppeteerLaunch,
     userAgent: getUserAgentForSession(id),
   };
 
@@ -272,6 +354,10 @@ function createClient(sessionId) {
         if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] skip: pesan fromMe');
         return;
       }
+      if (typeof msg.from === 'string' && /@g\.us$/i.test(msg.from)) {
+        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] skip: pesan grup');
+        return;
+      }
       const fromRaw = (msg.from || '').replace(/@c\.us$/i, '').replace(/@s\.whatsapp\.net$/i, '').trim();
       const digits = fromRaw.replace(/\D/g, '');
       if (digits.length < 10) {
@@ -289,7 +375,36 @@ function createClient(sessionId) {
       const waPath = apiBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming';
       const url = apiBase + waPath;
       const fromJid = (typeof msg.from === 'string' && msg.from.includes('@')) ? msg.from : null;
-      const payload = { from: from62, message: body, messageId: messageId || undefined, sessionId: id, from_jid: fromJid || undefined };
+      /** Chat @lid: "from" bukan MSISDN — coba dapatkan nomor asli agar cocok dengan users.no_wa & AI bridge. */
+      let canonicalNumber = null;
+      if (fromJid && /@lid$/i.test(fromJid) && typeof msg.getContact === 'function') {
+        try {
+          const contact = await msg.getContact();
+          const ser = contact?.id?._serialized || '';
+          const mCu = typeof ser === 'string' ? ser.match(/^(\d+)@c\.us$/i) : null;
+          if (mCu) {
+            const d = mCu[1];
+            canonicalNumber =
+              d.startsWith('62') ? d : d.startsWith('0') ? '62' + d.slice(1) : '62' + d;
+          } else if (typeof contact?.number === 'string') {
+            const d = contact.number.replace(/\D/g, '');
+            if (d.length >= 10 && d.length <= 13) {
+              canonicalNumber =
+                d.startsWith('62') ? d : d.startsWith('0') ? '62' + d.slice(1) : '62' + d;
+            }
+          }
+        } catch (_) {
+          /* tetap pakai from62 + fallback di API (whatsapp___kontak.nomor_kanonik) */
+        }
+      }
+      const payload = {
+        from: from62,
+        message: body,
+        messageId: messageId || undefined,
+        sessionId: id,
+        from_jid: fromJid || undefined,
+        ...(canonicalNumber ? { canonicalNumber } : {}),
+      };
       if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] Pesan masuk dari ' + from62 + (fromJid ? ' jid=' + fromJid : '') + ' len=' + body.length + ', forward ke API ' + url);
       const res = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) {
@@ -631,26 +746,47 @@ export const sendMessage = async (req, res) => {
     const text = typeof message === 'string' ? message : '';
     const chatIdOverride = typeof bodyChatId === 'string' && bodyChatId.trim() ? bodyChatId.trim() : null;
     if (WA_VERBOSE_LOG) console.log('[WA] POST /send to ' + (phoneNumber || '') + (chatIdOverride ? ' chatId=' + chatIdOverride : '') + ' len=' + text.length);
-    let result;
-    if (isBaileysConnected(safeId)) {
-      result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype);
-      if (WA_VERBOSE_LOG) console.log('[WA] send via Baileys: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
-    } else if (isPuppeteerReady(safeId)) {
-      if (imageBase64) {
-        return res.status(200).json({ success: false, message: 'Kirim gambar hanya didukung setelah scan Langkah 2 (Baileys). Kirim teks saja untuk tes.' });
-      }
-      result = await sendMessagePuppeteer(safeId, phoneNumber, text, chatIdOverride);
-      if (WA_VERBOSE_LOG) console.log('[WA] send via Puppeteer: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
-    } else {
+    const puppeteerOk = isPuppeteerReady(safeId);
+    if (!isBaileysConnected(safeId) && !puppeteerOk) {
+      await ensureBaileysReadyForSend(safeId).catch(() => {});
+    }
+    const baileysOk = isBaileysConnected(safeId);
+    if (!baileysOk && !puppeteerOk) {
       if (WA_VERBOSE_LOG) console.log('[WA] send: belum login (Baileys/Puppeteer tidak siap)');
       return res.status(200).json({
         success: false,
         message: 'Belum login untuk session ini. Scan QR Langkah 1 di tab Koneksi WA.',
       });
     }
+    if (imageBase64 && !baileysOk) {
+      return res.status(200).json({
+        success: false,
+        message: 'Kirim gambar hanya didukung setelah scan Langkah 2 (Baileys). Kirim teks saja untuk tes.',
+      });
+    }
+
+    let result = { ok: false, error: 'Gagal mengirim' };
+    if (imageBase64 && baileysOk) {
+      result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype);
+      if (WA_VERBOSE_LOG) console.log('[WA] send via Baileys (gambar): ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
+    } else if (!imageBase64) {
+      if (!baileysOk && puppeteerOk) {
+        await ensureBaileysReadyForSend(safeId).catch(() => {});
+      }
+      const baileysTry = isBaileysConnected(safeId);
+      if (baileysTry) {
+        result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype);
+        if (WA_VERBOSE_LOG) console.log('[WA] send via Baileys (teks): ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
+      }
+      if (!result.ok && puppeteerOk) {
+        result = await sendMessagePuppeteer(safeId, phoneNumber, text, chatIdOverride);
+        if (WA_VERBOSE_LOG) console.log('[WA] send via Puppeteer (fallback teks): ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
+      }
+    }
     if (!result.ok) {
       if (result.error === 'Nomor tidak valid') return res.status(400).json({ success: false, message: result.error });
-      return res.status(500).json({ success: false, message: result.error || 'Gagal mengirim pesan' });
+      const msg = humanizeLidSendError(String(result.error || '')) || 'Gagal mengirim pesan';
+      return res.status(200).json({ success: false, message: msg });
     }
     return res.json({
       success: true,

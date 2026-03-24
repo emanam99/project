@@ -586,6 +586,69 @@ export default function KoneksiWa() {
     setConnectDrawerError(null)
   }
 
+  const isSignedSession = (session) => {
+    if (!session) return false
+    return !!(session.phoneNumber || session.baileysPhoneNumber)
+  }
+
+  const handleConnectClick = async (sessionId = 'default') => {
+    if (!waEngineEnabled) {
+      showNotification('Server WA sedang dihentikan. Jalankan dulu server WA.', 'warning')
+      return
+    }
+
+    const session = data.sessions?.[sessionId]
+    const shouldQuickConnect = isSignedSession(session)
+    if (!shouldQuickConnect) {
+      openConnectDrawer(sessionId)
+      return
+    }
+
+    setActionLoading(`connect-${sessionId}`)
+    try {
+      const res = await waBackendAPI.connect(sessionId, { refreshQr: false })
+      if (!res?.success) {
+        openConnectDrawer(sessionId)
+        showNotification(res?.message || 'Gagal menghubungkan sesi. Silakan muat QR.', 'warning')
+        return
+      }
+
+      const payload = res?.data || {}
+      setData((prev) => ({
+        sessions: {
+          ...prev.sessions,
+          [sessionId]: {
+            ...(prev.sessions?.[sessionId] || {}),
+            status: payload.status ?? prev.sessions?.[sessionId]?.status ?? 'connecting',
+            qrCode: payload.qrCode ?? prev.sessions?.[sessionId]?.qrCode ?? null,
+            phoneNumber: payload.phoneNumber ?? prev.sessions?.[sessionId]?.phoneNumber ?? null,
+            baileysStatus: payload.baileysStatus ?? prev.sessions?.[sessionId]?.baileysStatus ?? 'disconnected',
+            baileysQrCode: payload.baileysQrCode ?? prev.sessions?.[sessionId]?.baileysQrCode ?? null,
+            baileysPhoneNumber: payload.baileysPhoneNumber ?? prev.sessions?.[sessionId]?.baileysPhoneNumber ?? null
+          }
+        }
+      }))
+
+      await fetchStatus()
+      const merged = { ...(session || {}), ...payload }
+      const needQr = !!(merged.qrCode || merged.baileysQrCode)
+      if (isSlotConnectFlowDone(merged)) {
+        showNotification('Sesi sudah login. Koneksi diproses langsung ke server.', 'success')
+        return
+      }
+      if (needQr || merged.status === 'connecting' || merged.baileysStatus === 'connecting') {
+        openConnectDrawer(sessionId)
+        return
+      }
+      showNotification('Permintaan hubungkan dikirim ke server.', 'info')
+    } catch (e) {
+      openConnectDrawer(sessionId)
+      showNotification(e?.message || 'Backend WA tidak terjangkau.', 'error')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   const closeConnectDrawer = useCallback(() => {
     setConnectDrawerSessionId(null)
     setConnectDrawerSuccess(false)
@@ -1115,7 +1178,7 @@ export default function KoneksiWa() {
                       ) : (s?.status || s?.baileysStatus) === 'connecting' ? (
                         <button
                           type="button"
-                          onClick={() => openConnectDrawer(sessionId)}
+                          onClick={() => handleConnectClick(sessionId)}
                           disabled={!!actionLoading}
                           className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm disabled:opacity-50"
                         >
@@ -1124,7 +1187,7 @@ export default function KoneksiWa() {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => openConnectDrawer(sessionId)}
+                          onClick={() => handleConnectClick(sessionId)}
                           disabled={!!actionLoading}
                           className="px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20BD5A] text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >

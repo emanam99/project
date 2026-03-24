@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useAuthStore } from '../../store/authStore'
 import { useSidebarStore } from '../../store/sidebarStore'
+import api from '../../services/api'
 import { getGambarUrl } from '../../config/images'
 import { getMenuItemsWithSeparators, GROUP_ORDER } from '../../config/menuConfig'
 import { getIcon } from '../../config/menuIcons'
@@ -28,6 +29,23 @@ function Sidebar() {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const hasSuperAdminMenu = userHasSuperAdminAccess(user)
+  const [aiMenuEnabled, setAiMenuEnabled] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.get('/deepseek/account')
+        if (cancelled) return
+        if (res?.data?.success) {
+          setAiMenuEnabled(res.data?.data?.ai_enabled !== false)
+        }
+      } catch (_) {
+        if (!cancelled) setAiMenuEnabled(true)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   // Ambil NIS/ID dari URL (pembayaran pakai nis, pendaftaran pakai id; bawa keduanya agar data santri tetap)
   const idFromUrl = searchParams.get('nis') || searchParams.get('id')
@@ -51,6 +69,9 @@ function Sidebar() {
       return user.permissions.includes(permission)
     }
     const canSee = (item) => {
+      if (item.path === '/chat-ai' && !aiMenuEnabled) {
+        return false
+      }
       if (item.path === '/settings/role-akses') {
         return hasSuperAdminMenu
       }
@@ -65,7 +86,7 @@ function Sidebar() {
     return navItems
       .map((item, i) => ({ item, groupIndex: groupIndices[i] }))
       .filter(({ item }) => canSee(item))
-  }, [user, groupIndices, hasSuperAdminMenu])
+  }, [user, groupIndices, hasSuperAdminMenu, aiMenuEnabled])
 
   // Grup untuk accordion: { groupIndex, label, items }
   const navGroups = useMemo(() => {

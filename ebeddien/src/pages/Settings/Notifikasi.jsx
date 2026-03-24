@@ -54,6 +54,7 @@ export default function Notifikasi() {
   const [kontakPage, setKontakPage] = useState(1)
   const [kontakLoading, setKontakLoading] = useState(false)
   const [kontakSearch, setKontakSearch] = useState('')
+  const [deletingKontakId, setDeletingKontakId] = useState(null)
   const kontakLimit = 20
 
   useEffect(() => {
@@ -214,6 +215,30 @@ export default function Notifikasi() {
 
   const hasMoreMessages = messages.length < messagesTotal
 
+  const handleDeleteKontak = async (kontak) => {
+    if (!kontak?.id) return
+    const nama = kontak.nama || '(tanpa nama)'
+    const nomor = kontak.nomor || '-'
+    const lid = kontak.nomor_kanonik || '-'
+    const ok = window.confirm(`Hapus kontak ini?\nNama: ${nama}\nNomor: ${nomor}\nLID: ${lid}`)
+    if (!ok) return
+    setDeletingKontakId(kontak.id)
+    try {
+      const res = await kontakAPI.delete(kontak.id)
+      if (res?.success) {
+        setKontakItems((prev) => prev.filter((x) => x.id !== kontak.id))
+        setKontakTotal((prev) => Math.max(0, prev - 1))
+        showNotification('Kontak berhasil dihapus', 'success')
+      } else {
+        showNotification(res?.message || 'Gagal menghapus kontak', 'error')
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || 'Gagal menghapus kontak', 'error')
+    } finally {
+      setDeletingKontakId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="h-full min-h-0 flex flex-col overflow-hidden">
@@ -332,7 +357,7 @@ export default function Notifikasi() {
             <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
               <div className="p-5 border-b border-gray-200 dark:border-gray-700">
                 <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Daftar kontak WA</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Nomor yang pernah menerima notifikasi. Matikan &quot;Siap terima notif&quot; agar nomor tersebut tidak lagi dikirimi notifikasi. Nomor unik (tidak double).</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Daftar kontak notifikasi. Tampilkan nama, nomor, dan LID agar pelacakan lebih mudah.</p>
               </div>
               <div className="p-4 space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -340,8 +365,8 @@ export default function Notifikasi() {
                     type="text"
                     value={kontakSearch}
                     onChange={(e) => { setKontakSearch(e.target.value); setKontakPage(1) }}
-                    placeholder="Cari nomor..."
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm w-48"
+                    placeholder="Cari nama, nomor, atau LID..."
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm w-full sm:w-72"
                   />
                 </div>
                 {kontakLoading ? (
@@ -354,44 +379,71 @@ export default function Notifikasi() {
                   </div>
                 ) : (
                   <>
-                    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-                      <table className="w-full text-sm text-left">
-                        <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-400">
-                          <tr>
-                            <th className="px-4 py-3 font-medium">Nomor</th>
-                            <th className="px-4 py-3 font-medium">Siap terima notif</th>
-                            <th className="px-4 py-3 font-medium">Terakhir diubah</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {kontakItems.map((k) => (
-                            <tr key={k.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                              <td className="px-4 py-3 font-mono text-gray-800 dark:text-gray-200">{k.nomor}</td>
-                              <td className="px-4 py-3">
-                                <button
-                                  type="button"
-                                  role="switch"
-                                  aria-checked={k.siap_terima_notif}
-                                  onClick={() => {
-                                    kontakAPI.updateSiapTerimaNotif(k.id, !k.siap_terima_notif)
-                                      .then((res) => {
-                                        if (res?.success) {
-                                          setKontakItems((prev) => prev.map((x) => x.id === k.id ? { ...x, siap_terima_notif: !k.siap_terima_notif } : x))
-                                          showNotification('Pengaturan kontak diperbarui', 'success')
-                                        } else showNotification(res?.message || 'Gagal', 'error')
-                                      })
-                                      .catch(() => showNotification('Gagal memperbarui kontak', 'error'))
-                                  }}
-                                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${k.siap_terima_notif ? 'bg-teal-600' : 'bg-gray-200 dark:bg-gray-600'}`}
-                                >
-                                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${k.siap_terima_notif ? 'translate-x-5' : 'translate-x-1'}`} />
-                                </button>
-                              </td>
-                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{k.updated_at ? new Date(k.updated_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '–'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                      <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {kontakItems.map((k) => {
+                          const displayName = (k.nama || '').trim() || 'Tanpa nama'
+                          const initial = displayName.charAt(0).toUpperCase() || '#'
+                          return (
+                            <li key={k.id} className="px-4 py-3 sm:px-5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 flex items-center justify-center font-semibold text-sm shrink-0">
+                                  {initial}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{displayName}</p>
+                                  <p className="mt-0.5 text-sm font-mono text-gray-700 dark:text-gray-200 truncate">{k.nomor}</p>
+                                  <div className="mt-1 flex flex-wrap gap-1.5">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                      LID: {k.nomor_kanonik || '–'}
+                                    </span>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${k.siap_terima_notif ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                                      {k.siap_terima_notif ? 'Siap notif' : 'Notif off'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={k.siap_terima_notif}
+                                    title={k.siap_terima_notif ? 'Matikan notifikasi kontak' : 'Aktifkan notifikasi kontak'}
+                                    onClick={() => {
+                                      kontakAPI.updateSiapTerimaNotif(k.id, !k.siap_terima_notif)
+                                        .then((res) => {
+                                          if (res?.success) {
+                                            setKontakItems((prev) => prev.map((x) => x.id === k.id ? { ...x, siap_terima_notif: !k.siap_terima_notif } : x))
+                                            showNotification('Pengaturan kontak diperbarui', 'success')
+                                          } else showNotification(res?.message || 'Gagal', 'error')
+                                        })
+                                        .catch(() => showNotification('Gagal memperbarui kontak', 'error'))
+                                    }}
+                                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 ${k.siap_terima_notif ? 'bg-teal-600' : 'bg-gray-200 dark:bg-gray-600'}`}
+                                  >
+                                    <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${k.siap_terima_notif ? 'translate-x-5' : 'translate-x-1'}`} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Hapus kontak"
+                                    aria-label={`Hapus kontak ${displayName}`}
+                                    onClick={() => handleDeleteKontak(k)}
+                                    disabled={deletingKontakId === k.id}
+                                    className="p-2 rounded-full text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-gray-400 dark:hover:text-red-300 dark:hover:bg-red-900/20 disabled:opacity-50"
+                                  >
+                                    {deletingKontakId === k.id ? (
+                                      <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12M10 11v6m4-6v6M9 7l1-2h4l1 2m-7 0l.7 11.2A2 2 0 0010.7 20h2.6a2 2 0 001.99-1.8L16 7" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
                     </div>
                     {kontakTotal > kontakLimit && (
                       <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">

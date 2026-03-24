@@ -7,8 +7,8 @@ use App\Database;
 /**
  * Layanan kirim pesan WhatsApp - memakai backend WA baru (wa/): wa.alutsmani.id / wa2.alutsmani.id.
  *
- * Konfigurasi: WA_API_URL (mis. https://wa.alutsmani.id/api/whatsapp/send), WA_API_KEY (harus sama dengan wa/.env).
- * Request: POST { phoneNumber, message } atau + imageBase64, imageMimetype; header X-API-Key.
+ * Konfigurasi: WA_API_URL, WA_API_KEY (harus sama dengan wa/.env), opsional WA_SESSION_ID (ID slot Node — sama dengan dropdown "Kirim tes").
+ * Request: POST { phoneNumber, message [, sessionId, chatId] } atau + imageBase64; header X-API-Key.
  * Semua pesan terkirim dicatat di tabel whatsapp (id_santri, id_pengurus, kategori, sumber).
  */
 class WhatsAppService
@@ -25,6 +25,20 @@ class WhatsAppService
 
     /** Pesanan pembayaran & pembatalan: tidak pakai batas 5 hari; hanya diblok jika sama dalam 1 menit. */
     private const THROTTLE_1MIN_ONLY_KATEGORI = [
+        'pembayaran_ipaymu_order',
+        'pembayaran_ipaymu_qris',
+        'pembayaran_dibatalkan',
+    ];
+    /** Kategori notifikasi yang dipicu dari alur pendaftaran. */
+    private const PENDAFTARAN_KATEGORI = [
+        'biodata_terdaftar',
+        'berkas_lengkap',
+        'sudah_diverifikasi',
+        'verifikasi',
+        'pembayaran_link',
+        'pembayaran_berhasil',
+        'pembayaran_gagal',
+        'pembayaran_kadaluarsa',
         'pembayaran_ipaymu_order',
         'pembayaran_ipaymu_qris',
         'pembayaran_dibatalkan',
@@ -46,7 +60,24 @@ class WhatsAppService
             'api_url' => getenv('WA_API_URL') ?: ($wa['api_url'] ?? 'https://wa.alutsmani.id/api/whatsapp/send'),
             'api_key' => getenv('WA_API_KEY') ?: ($wa['api_key'] ?? ''),
             'instance' => getenv('WA_INSTANCE') ?: ($wa['instance'] ?? 'uwaba1'),
+            'session_id' => trim((string) (getenv('WA_SESSION_ID') !== false ? getenv('WA_SESSION_ID') : ($wa['session_id'] ?? ''))),
         ];
+    }
+
+    /**
+     * Samakan session kirim dengan slot WA yang terhubung (Node: req.body.sessionId).
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private static function mergeWaSessionPayload(array $payload, array $cfg): array
+    {
+        $sid = trim((string) ($cfg['session_id'] ?? ''));
+        if ($sid !== '') {
+            $payload['sessionId'] = $sid;
+        }
+
+        return $payload;
     }
 
     /**
@@ -410,7 +441,7 @@ class WhatsAppService
      *
      * @param int $siapTerimaNotif 0 = tidak menerima, 1 = menerima (default 0 untuk kontak baru)
      */
-    public static function ensureKontak(string $nomorNormal, int $siapTerimaNotif = 0): void
+    public static function ensureKontak(string $nomorNormal, int $siapTerimaNotif = 0, ?string $nama = null): void
     {
         if (strlen($nomorNormal) < 10) {
             return;
@@ -421,8 +452,15 @@ class WhatsAppService
             if ($tableCheck->rowCount() === 0) {
                 return;
             }
-            $stmt = $db->prepare('INSERT IGNORE INTO whatsapp___kontak (nomor, siap_terima_notif) VALUES (?, ?)');
-            $stmt->execute([$nomorNormal, $siapTerimaNotif]);
+            $hasNamaCol = self::kontakTableHasNama($db);
+            $namaTrim = is_string($nama) ? trim($nama) : '';
+            if ($hasNamaCol && $namaTrim !== '') {
+                $stmt = $db->prepare('INSERT INTO whatsapp___kontak (nomor, nama, siap_terima_notif) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE nama = COALESCE(NULLIF(nama, ""), VALUES(nama))');
+                $stmt->execute([$nomorNormal, $namaTrim, $siapTerimaNotif]);
+            } else {
+                $stmt = $db->prepare('INSERT IGNORE INTO whatsapp___kontak (nomor, siap_terima_notif) VALUES (?, ?)');
+                $stmt->execute([$nomorNormal, $siapTerimaNotif]);
+            }
         } catch (\Throwable $e) {
             error_log('WhatsAppService::ensureKontak: ' . $e->getMessage());
         }
@@ -434,8 +472,9 @@ class WhatsAppService
      *
      * @param int $siapTerimaNotif 0 = tidak menerima, 1 = menerima
      * @param string|null $nomorKanonik Nomor dari form (No WA di pesan); jika ada, disimpan di kolom nomor_kanonik
+     * @param string|null $nama Nama kontak (jika tersedia)
      */
-    public static function setKontakNotif(string $nomor, int $siapTerimaNotif, ?string $nomorKanonik = null): void
+    public static function setKontakNotif(string $nomor, int $siapTerimaNotif, ?string $nomorKanonik = null, ?string $nama = null): void
     {
         $nomorNormal = self::formatPhoneNumber($nomor);
         if (strlen($nomorNormal) < 10) {
@@ -454,6 +493,8 @@ class WhatsAppService
                 return;
             }
             $hasKanonikCol = self::kontakTableHasNomorKanonik($db);
+            $hasNamaCol = self::kontakTableHasNama($db);
+            $namaTrim = is_string($nama) ? trim($nama) : '';
             // Cari baris yang nomor-nya (setelah dinormalisasi di PHP) sama, lalu update by id (paling pasti)
             $stmt = $db->prepare('SELECT id, nomor FROM whatsapp___kontak WHERE nomor = ? OR nomor LIKE ?');
             $stmt->execute([$nomorNormal, '%' . substr($nomorNormal, -10) . '%']); // exact atau mengandung 10 digit terakhir
@@ -467,9 +508,15 @@ class WhatsAppService
                 }
             }
             if ($idToUpdate !== null) {
-                if ($hasKanonikCol && $kanonikNormal !== null) {
+                if ($hasKanonikCol && $kanonikNormal !== null && $hasNamaCol && $namaTrim !== '') {
+                    $stmt = $db->prepare('UPDATE whatsapp___kontak SET siap_terima_notif = ?, nomor_kanonik = ?, nama = ?, updated_at = NOW() WHERE id = ?');
+                    $stmt->execute([$value, $kanonikNormal, $namaTrim, $idToUpdate]);
+                } else if ($hasKanonikCol && $kanonikNormal !== null) {
                     $stmt = $db->prepare('UPDATE whatsapp___kontak SET siap_terima_notif = ?, nomor_kanonik = ?, updated_at = NOW() WHERE id = ?');
                     $stmt->execute([$value, $kanonikNormal, $idToUpdate]);
+                } else if ($hasNamaCol && $namaTrim !== '') {
+                    $stmt = $db->prepare('UPDATE whatsapp___kontak SET siap_terima_notif = ?, nama = ?, updated_at = NOW() WHERE id = ?');
+                    $stmt->execute([$value, $namaTrim, $idToUpdate]);
                 } else {
                     $stmt = $db->prepare('UPDATE whatsapp___kontak SET siap_terima_notif = ?, updated_at = NOW() WHERE id = ?');
                     $stmt->execute([$value, $idToUpdate]);
@@ -490,18 +537,32 @@ class WhatsAppService
                     $stmt = $db->prepare('UPDATE whatsapp___kontak SET nomor_kanonik = ?, updated_at = NOW() WHERE nomor = ?');
                     $stmt->execute([$kanonikNormal, $nomorNormal]);
                 }
+                if ($updated > 0 && $hasNamaCol && $namaTrim !== '') {
+                    $stmt = $db->prepare('UPDATE whatsapp___kontak SET nama = ?, updated_at = NOW() WHERE nomor = ?');
+                    $stmt->execute([$namaTrim, $nomorNormal]);
+                }
                 if ($updated > 0) {
                     error_log('WhatsAppService::setKontakNotif: fallback UPDATE by nomor=' . $nomorNormal . ' rows_updated=' . $updated);
                 } else {
-                    $cols = $hasKanonikCol && $kanonikNormal !== null ? 'nomor, siap_terima_notif, nomor_kanonik' : 'nomor, siap_terima_notif';
-                    $vals = $hasKanonikCol && $kanonikNormal !== null ? '?, ?, ?' : '?, ?';
-                    $dup = $hasKanonikCol && $kanonikNormal !== null ? 'ON DUPLICATE KEY UPDATE siap_terima_notif = VALUES(siap_terima_notif), nomor_kanonik = VALUES(nomor_kanonik), updated_at = NOW()' : 'ON DUPLICATE KEY UPDATE siap_terima_notif = VALUES(siap_terima_notif), updated_at = NOW()';
-                    $stmt = $db->prepare("INSERT INTO whatsapp___kontak ({$cols}) VALUES ({$vals}) {$dup}");
+                    $cols = 'nomor, siap_terima_notif';
+                    $vals = '?, ?';
+                    $params = [$nomorNormal, $value];
+                    $dupParts = ['siap_terima_notif = VALUES(siap_terima_notif)', 'updated_at = NOW()'];
                     if ($hasKanonikCol && $kanonikNormal !== null) {
-                        $stmt->execute([$nomorNormal, $value, $kanonikNormal]);
-                    } else {
-                        $stmt->execute([$nomorNormal, $value]);
+                        $cols .= ', nomor_kanonik';
+                        $vals .= ', ?';
+                        $params[] = $kanonikNormal;
+                        $dupParts[] = 'nomor_kanonik = VALUES(nomor_kanonik)';
                     }
+                    if ($hasNamaCol && $namaTrim !== '') {
+                        $cols .= ', nama';
+                        $vals .= ', ?';
+                        $params[] = $namaTrim;
+                        $dupParts[] = 'nama = VALUES(nama)';
+                    }
+                    $dup = 'ON DUPLICATE KEY UPDATE ' . implode(', ', $dupParts);
+                    $stmt = $db->prepare("INSERT INTO whatsapp___kontak ({$cols}) VALUES ({$vals}) {$dup}");
+                    $stmt->execute($params);
                     error_log('WhatsAppService::setKontakNotif: insert/upsert nomor=' . $nomorNormal . ' siap_terima_notif=' . $value);
                 }
             }
@@ -517,6 +578,58 @@ class WhatsAppService
             return $stmt !== false && $stmt->rowCount() > 0;
         } catch (\Throwable $e) {
             return false;
+        }
+    }
+
+    private static function kontakTableHasNama(\PDO $db): bool
+    {
+        try {
+            $stmt = $db->query("SHOW COLUMNS FROM whatsapp___kontak LIKE 'nama'");
+            return $stmt !== false && $stmt->rowCount() > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private static function isPendaftaranContactContext(?array $logContext): bool
+    {
+        if ($logContext === null) {
+            return false;
+        }
+        $kategori = trim((string) ($logContext['kategori'] ?? ''));
+        return in_array($kategori, self::PENDAFTARAN_KATEGORI, true);
+    }
+
+    /**
+     * Nama kontak untuk penyimpanan otomatis dari flow pendaftaran.
+     * Format: "Nama Pendaftar (wali)" atau "Nama Pendaftar (santri)".
+     */
+    private static function deriveKontakLabelFromLogContext(?array $logContext): ?string
+    {
+        if (!self::isPendaftaranContactContext($logContext)) {
+            return null;
+        }
+        $idSantri = isset($logContext['id_santri']) && is_numeric($logContext['id_santri']) ? (int) $logContext['id_santri'] : 0;
+        if ($idSantri <= 0) {
+            return null;
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $stmt = $db->prepare('SELECT nama FROM santri WHERE id = ? LIMIT 1');
+            $stmt->execute([$idSantri]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $nama = trim((string) ($row['nama'] ?? ''));
+            if ($nama === '') {
+                return null;
+            }
+            $tujuan = trim((string) ($logContext['tujuan'] ?? ''));
+            $suffix = $tujuan === 'wali_santri' ? ' (wali)' : ($tujuan === 'santri' ? ' (santri)' : '');
+            if ($suffix !== '' && !preg_match('/\((wali|santri)\)\s*$/i', $nama)) {
+                $nama .= $suffix;
+            }
+            return $nama;
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 
@@ -601,8 +714,11 @@ class WhatsAppService
         $kontakStatus = self::getKontakStatus($originalPhone);
         $isDaftarNotifReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'daftar_notif';
         $isWaInteractiveMenuReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'wa_interactive_menu';
-        // Balasan flow "Daftar Notifikasi" & menu interaktif WA harus tetap dikirim; skip cek siap_terima hanya untuk kiriman lain.
-        if (!$isDaftarNotifReply && !$isWaInteractiveMenuReply && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
+        $isAiWhatsappReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'ai_whatsapp';
+        /** OTP ganti nomor WA: harus ke nomor yang diketik user, bukan nomor_kanonik & bukan diblok siap_terima_notif (sama perilaku "Kirim tes" dari UI). */
+        $isWaChangeOtp = $logContext !== null && ($logContext['kategori'] ?? '') === 'wa_change_otp';
+        // Balasan flow "Daftar Notifikasi", menu interaktif, AI WA, & OTP ganti nomor harus tetap dikirim; skip cek siap_terima untuk itu.
+        if (!$isDaftarNotifReply && !$isWaInteractiveMenuReply && !$isAiWhatsappReply && !$isWaChangeOtp && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
             if ($logContext !== null) {
                 self::logSentMessage(
                     $originalPhone,
@@ -625,6 +741,9 @@ class WhatsAppService
         // Balas ke target mentah agar sesuai identitas yang diberikan provider.
         if ($useRawLidTarget) {
             $phone = $rawDigitsInput;
+        } elseif ($isWaChangeOtp) {
+            // Jangan aliaskan ke nomor_kanonik — user sedang verifikasi nomor baru; UI tes juga kirim ke input mentah.
+            $phone = $originalPhone;
         } else {
             $delivery = self::resolveDeliveryTarget($originalPhone);
             $phone = $delivery['nomor'];
@@ -676,7 +795,7 @@ class WhatsAppService
         }
 
         if (self::getNotificationProvider() === 'watzap') {
-            if ($logContext !== null && in_array(($logContext['kategori'] ?? ''), ['daftar_notif', 'wa_interactive_menu'], true)) {
+            if ($logContext !== null && in_array(($logContext['kategori'] ?? ''), ['daftar_notif', 'wa_interactive_menu', 'ai_whatsapp'], true)) {
                 error_log('WhatsAppService: ' . ($logContext['kategori'] ?? '') . ' kirim via WatZap (bukan WA server). Tidak ada POST ke Node.');
             }
             if ($isLidChat && $rawLooksNonMsisdn) {
@@ -717,7 +836,7 @@ class WhatsAppService
                 );
             }
             if ($res['success'] && !$kontakStatus['exists']) {
-                self::ensureKontak($phone, 0);
+                self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
             }
             return ['success' => $res['success'], 'message' => $res['message']];
         }
@@ -745,10 +864,10 @@ class WhatsAppService
                     'Content-Type' => 'application/json',
                     'X-API-Key' => $apiKey,
                 ],
-                'json' => array_merge([
+                'json' => self::mergeWaSessionPayload(array_merge([
                     'phoneNumber' => $phone,
                     'message' => $message,
-                ], ($chatId !== null && $chatId !== '' ? ['chatId' => $chatId] : [])),
+                ], ($chatId !== null && $chatId !== '' ? ['chatId' => $chatId] : [])), $cfg),
             ]);
 
             $code = $response->getStatusCode();
@@ -780,7 +899,7 @@ class WhatsAppService
                     );
                 }
                 if (!$kontakStatus['exists']) {
-                    self::ensureKontak($phone, 0);
+                    self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
                 }
                 return $result;
             }
@@ -870,11 +989,11 @@ class WhatsAppService
                     'Content-Type' => 'application/json',
                     'X-API-Key' => $apiKey,
                 ],
-                'json' => [
+                'json' => self::mergeWaSessionPayload([
                     'phoneNumber' => $phone,
                     'messageId' => $msgId,
                     'newMessage' => $newBody,
-                ],
+                ], $cfg),
             ]);
 
             $code = $response->getStatusCode();
@@ -1004,6 +1123,7 @@ class WhatsAppService
             $payload['imageBase64'] = $imageBase64;
             $payload['imageMimetype'] = $imageMimetype;
         }
+        $payload = self::mergeWaSessionPayload($payload, $cfg);
 
         try {
             $client = new \GuzzleHttp\Client(['timeout' => 20]);
@@ -1041,7 +1161,7 @@ class WhatsAppService
                     );
                 }
                 if (!$kontakStatus['exists']) {
-                    self::ensureKontak($phone, 0);
+                    self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
                 }
                 return $result;
             }

@@ -428,17 +428,19 @@ export const authAPI = {
  * - Staging: frontend di *2.alutsmani.id → WA Node di https://wa2.alutsmani.id (folder `wa`, port 3003 di VPS).
  *   Jangan same-origin ke ebeddien2/dll. kecuali Anda memang reverse-proxy /api/whatsapp ke Node di vhost yang sama.
  * - Production: https://wa.alutsmani.id
- * - Override: VITE_WA_BACKEND_URL di .env (wajib jika domain/custom path beda).
+ * - Override: VITE_WA_BACKEND_URL (penuh) atau VITE_WA_BACKEND_PORT (default 3001) di .env.
+ *   Harus sama dengan PORT di wa/.env — kalau beda, fetch ke WA akan "Failed to fetch".
  */
 export const getWaBackendUrl = () => {
   const url = import.meta.env.VITE_WA_BACKEND_URL
   if (url && typeof url === 'string' && url.trim() !== '') {
     return url.trim().replace(/\/$/, '')
   }
+  const waPort = String(import.meta.env.VITE_WA_BACKEND_PORT || '3001').replace(/\D/g, '') || '3001'
   const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
   const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:'
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    return 'http://localhost:3001'
+    return `http://127.0.0.1:${waPort}`
   }
 
   const hl = hostname.toLowerCase()
@@ -464,7 +466,7 @@ export const getWaBackendUrl = () => {
     return 'https://wa.alutsmani.id'
   }
 
-  return `${protocol}//${hostname}:3001`
+  return `${protocol}//${hostname}:${waPort}`
 }
 
 const WA_HTTP_TIMEOUT_MS = 10000
@@ -489,9 +491,14 @@ const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = WA_HTTP_TIMEO
         data: { success: false, message: 'Permintaan melebihi batas waktu. Coba lagi.' }
       }
     }
+    const raw = err?.message || 'Network error'
+    const hint =
+      raw === 'Failed to fetch'
+        ? ' Tidak bisa ke server WA — pastikan `npm run dev` di folder wa jalan, port sama dengan VITE_WA_BACKEND_PORT (atau VITE_WA_BACKEND_URL) di ebeddien/.env, lalu restart Vite.'
+        : ''
     return {
       res: null,
-      data: { success: false, message: err?.message || 'Network error' }
+      data: { success: false, message: raw + hint }
     }
   } finally {
     clearTimeout(timer)
@@ -1824,6 +1831,10 @@ export const deepseekAPI = {
   /** Riwayat terakhir dari ai___chat; tanpa session_id = gabungan per user (mode utama). */
   getChatHistory: (params) => api.get('/deepseek/chat-history', { params }).then((r) => r.data),
   getTrainingSuggestions: () => api.get('/deepseek/training-suggestions').then((r) => r.data),
+  getWhatsappAccess: () => api.get('/deepseek/whatsapp-access').then((r) => r.data),
+  putWhatsappAccess: (enabled) => api.put('/deepseek/whatsapp-access', { enabled: !!enabled }).then((r) => r.data),
+  adminListAiUsers: (params = {}) => api.get('/deepseek/admin/ai-users', { params }).then((r) => r.data),
+  adminUpdateAiUser: (id, body = {}) => api.put(`/deepseek/admin/ai-users/${id}`, body).then((r) => r.data),
 }
 
 /** Bank Q&A + sesi training chat (ai___training, ai___training_sessions/messages) — hanya super_admin. */
@@ -2286,6 +2297,10 @@ export const kontakAPI = {
   },
   updateSiapTerimaNotif: async (id, siapTerimaNotif) => {
     const response = await api.patch(`/kontak/${id}`, { siap_terima_notif: siapTerimaNotif })
+    return response.data
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/kontak/${id}`)
     return response.data
   }
 }

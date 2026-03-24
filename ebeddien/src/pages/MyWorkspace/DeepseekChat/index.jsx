@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
@@ -27,6 +28,12 @@ function msgId() {
   } catch {
     return `m-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
   }
+}
+
+/** Pesan limit harian dari API PHP (GET account / 429 api-chat). */
+function isAiDailyLimitMessage(text) {
+  const s = String(text || '').toLowerCase()
+  return s.includes('limit akses ai') || s.includes('mencapai limit akses')
 }
 
 const ASSISTANT_NAME = 'eBeddien'
@@ -157,35 +164,50 @@ function SendIconButton({ disabled, busy, title = 'Kirim' }) {
   )
 }
 
-/** Toggle modern untuk opsi boolean (mode berpikir, cari web, dll.) — thumb pakai flex justify agar rapi. */
-function SwitchToggle({ checked, onChange, disabled, label, compact = false }) {
+/** Toggle modern untuk opsi boolean — `toggleFirst`: switch di kiri, label di kanan. */
+function SwitchToggle({ checked, onChange, disabled, label, compact = false, toggleFirst = false }) {
+  const labelEl = (
+    <span
+      className={
+        compact
+          ? 'select-none text-[10px] font-medium leading-none text-gray-600 dark:text-gray-400 inline-flex items-center gap-1 flex-wrap'
+          : 'select-none text-xs font-medium text-gray-600 dark:text-gray-400 inline-flex items-center gap-1 flex-wrap'
+      }
+    >
+      {label}
+    </span>
+  )
+  const switchEl = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`inline-flex shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900 ${
+        checked ? 'justify-end bg-primary-600' : 'justify-start bg-gray-200 dark:bg-gray-600'
+      } disabled:cursor-not-allowed disabled:opacity-45 ${compact ? 'h-5 w-9' : 'h-7 w-12'}`}
+    >
+      <span
+        className={`pointer-events-none rounded-full bg-white shadow-sm ring-1 ring-black/5 dark:ring-white/10 ${
+          compact ? 'h-3.5 w-3.5' : 'h-5 w-5'
+        }`}
+      />
+    </button>
+  )
   return (
     <div className={`inline-flex items-center ${compact ? 'gap-2' : 'gap-2.5'}`}>
-      <span
-        className={
-          compact
-            ? 'select-none text-[10px] font-medium leading-none text-gray-600 dark:text-gray-400'
-            : 'select-none text-xs font-medium text-gray-600 dark:text-gray-400'
-        }
-      >
-        {label}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`inline-flex shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900 ${
-          checked ? 'justify-end bg-primary-600' : 'justify-start bg-gray-200 dark:bg-gray-600'
-        } disabled:cursor-not-allowed disabled:opacity-45 ${compact ? 'h-5 w-9' : 'h-7 w-12'}`}
-      >
-        <span
-          className={`pointer-events-none rounded-full bg-white shadow-sm ring-1 ring-black/5 dark:ring-white/10 ${
-            compact ? 'h-3.5 w-3.5' : 'h-5 w-5'
-          }`}
-        />
-      </button>
+      {toggleFirst ? (
+        <>
+          {switchEl}
+          {labelEl}
+        </>
+      ) : (
+        <>
+          {labelEl}
+          {switchEl}
+        </>
+      )}
     </div>
   )
 }
@@ -294,6 +316,25 @@ export default function DeepseekChat() {
 
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const [searchEnabled, setSearchEnabled] = useState(false)
+  const [waAiEnabled, setWaAiEnabled] = useState(false)
+  const [waAiBusy, setWaAiBusy] = useState(false)
+  /** Nomor WA profil (ternormalisasi) yang dipakai backend untuk cocokkan pesan masuk WA → AI */
+  const [waProfileNumber, setWaProfileNumber] = useState('')
+  const [waProfileNumberOk, setWaProfileNumberOk] = useState(false)
+  const [aiFeatureEnabled, setAiFeatureEnabled] = useState(true)
+  const [aiDailyLimit, setAiDailyLimit] = useState(5)
+  const [aiTodayCount, setAiTodayCount] = useState(0)
+  const [adminAiUsersOpen, setAdminAiUsersOpen] = useState(false)
+  const [adminAiUsers, setAdminAiUsers] = useState([])
+  const [adminAiUsersTotal, setAdminAiUsersTotal] = useState(0)
+  const [adminAiUsersLoading, setAdminAiUsersLoading] = useState(false)
+  const [adminAiUsersSearch, setAdminAiUsersSearch] = useState('')
+  const [adminAiUsersStatus, setAdminAiUsersStatus] = useState('')
+  const [adminAiUsersPage, setAdminAiUsersPage] = useState(1)
+  const [adminAiUsersLimit] = useState(20)
+  const [editAiUser, setEditAiUser] = useState(null)
+  const [editAiUserLimit, setEditAiUserLimit] = useState('5')
+  const [editAiUserBusy, setEditAiUserBusy] = useState(false)
 
   /** Mode utama = API server + training (default); alternatif = proxy (hanya super admin). */
   const [aiChatMode, setAiChatMode] = useState('api')
@@ -301,7 +342,6 @@ export default function DeepseekChat() {
   const [apiOfficialInput, setApiOfficialInput] = useState('')
   const [apiOfficialModel, setApiOfficialModel] = useState('deepseek-chat')
   const [apiOfficialBusy, setApiOfficialBusy] = useState(false)
-  const [apiOfficialErr, setApiOfficialErr] = useState(null)
   /** Setelah GET /deepseek/chat-history selesai (mode API) — agar saran cepat tidak muncul sebelum riwayat. */
   const [apiHistoryFetched, setApiHistoryFetched] = useState(false)
   const [proxyHistoryFetched, setProxyHistoryFetched] = useState(false)
@@ -346,6 +386,19 @@ export default function DeepseekChat() {
     el.style.height = `${next}px`
     el.style.maxHeight = `${maxPx}px`
     el.style.overflowY = el.scrollHeight > maxPx ? 'auto' : 'hidden'
+  }, [])
+
+  /** Sinkronkan pemakaian/limit harian dari server (setelah chat sukses atau respons limit). */
+  const refreshAiUsageFromServer = useCallback(async () => {
+    try {
+      const res = await deepseekAPI.getAccount()
+      if (res?.success && res.data) {
+        setAiDailyLimit(Math.max(0, Number(res.data.ai_daily_limit ?? 5)))
+        setAiTodayCount(Math.max(0, Number(res.data.ai_today_count ?? 0)))
+      }
+    } catch {
+      /* noop */
+    }
   }, [])
 
   useLayoutEffect(() => {
@@ -418,9 +471,14 @@ export default function DeepseekChat() {
         if (cancelled) return
         if (res.success && res.data?.email) {
           setAccountEmail(res.data.email)
+          setAiFeatureEnabled(res.data?.ai_enabled !== false)
+          setAiDailyLimit(Math.max(0, Number(res?.data?.ai_daily_limit ?? 5)))
+          setAiTodayCount(Math.max(0, Number(res?.data?.ai_today_count ?? 0)))
         } else {
           setAccountEmail(null)
           setAccountError(res.message || 'Email tidak tersedia')
+          setAiDailyLimit(Math.max(0, Number(res?.data?.ai_daily_limit ?? 5)))
+          setAiTodayCount(Math.max(0, Number(res?.data?.ai_today_count ?? 0)))
         }
       } catch (e) {
         if (!cancelled) {
@@ -435,6 +493,114 @@ export default function DeepseekChat() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!isSuperAdminTraining || !adminAiUsersOpen) return
+    let cancelled = false
+    ;(async () => {
+      setAdminAiUsersLoading(true)
+      try {
+        const res = await deepseekAPI.adminListAiUsers({
+          page: adminAiUsersPage,
+          limit: adminAiUsersLimit,
+          search: adminAiUsersSearch || undefined,
+          status: adminAiUsersStatus || undefined
+        })
+        if (cancelled) return
+        if (res?.success) {
+          setAdminAiUsers(res?.data?.items || [])
+          setAdminAiUsersTotal(res?.data?.total || 0)
+        } else {
+          setAdminAiUsers([])
+          setAdminAiUsersTotal(0)
+        }
+      } catch {
+        if (!cancelled) {
+          setAdminAiUsers([])
+          setAdminAiUsersTotal(0)
+        }
+      } finally {
+        if (!cancelled) setAdminAiUsersLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isSuperAdminTraining, adminAiUsersOpen, adminAiUsersPage, adminAiUsersLimit, adminAiUsersSearch, adminAiUsersStatus])
+
+  const openEditAiUserLimit = (userRow) => {
+    setEditAiUser(userRow)
+    setEditAiUserLimit(String(userRow?.ai_daily_limit ?? 5))
+  }
+
+  const saveEditAiUserLimit = async () => {
+    if (!editAiUser?.id || editAiUserBusy) return
+    setEditAiUserBusy(true)
+    try {
+      const lim = Math.max(0, parseInt(editAiUserLimit, 10) || 0)
+      const res = await deepseekAPI.adminUpdateAiUser(editAiUser.id, { ai_daily_limit: lim })
+      if (res?.success) {
+        setAdminAiUsers((prev) => prev.map((x) => (x.id === editAiUser.id ? { ...x, ai_daily_limit: lim } : x)))
+        setEditAiUser(null)
+      }
+    } finally {
+      setEditAiUserBusy(false)
+    }
+  }
+
+  const toggleAdminAiUserEnabled = async (userRow, next) => {
+    if (!userRow?.id) return
+    const prev = !!userRow.ai_enabled
+    setAdminAiUsers((arr) => arr.map((x) => (x.id === userRow.id ? { ...x, ai_enabled: !!next } : x)))
+    try {
+      const res = await deepseekAPI.adminUpdateAiUser(userRow.id, { ai_enabled: !!next })
+      if (!res?.success) {
+        setAdminAiUsers((arr) => arr.map((x) => (x.id === userRow.id ? { ...x, ai_enabled: prev } : x)))
+      }
+    } catch {
+      setAdminAiUsers((arr) => arr.map((x) => (x.id === userRow.id ? { ...x, ai_enabled: prev } : x)))
+    }
+  }
+
+  useEffect(() => {
+    if (!accountEmail) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await deepseekAPI.getWhatsappAccess()
+        if (cancelled) return
+        if (res?.success && res?.data) {
+          setWaAiEnabled(!!res.data.enabled)
+          setWaProfileNumber(typeof res.data.no_wa_normalized === 'string' ? res.data.no_wa_normalized : '')
+          setWaProfileNumberOk(!!res.data.wa_number_ok)
+        }
+      } catch {
+        /* noop */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [accountEmail])
+
+  const handleToggleWaAi = async (next) => {
+    if (waAiBusy) return
+    const prev = waAiEnabled
+    setWaAiEnabled(next)
+    setWaAiBusy(true)
+    try {
+      const res = await deepseekAPI.putWhatsappAccess(next)
+      if (!res?.success) {
+        setWaAiEnabled(prev)
+      } else if (res?.data) {
+        setWaAiEnabled(!!res.data.enabled)
+        setWaProfileNumber(typeof res.data.no_wa_normalized === 'string' ? res.data.no_wa_normalized : '')
+        setWaProfileNumberOk(!!res.data.wa_number_ok)
+      }
+    } catch {
+      setWaAiEnabled(prev)
+    } finally {
+      setWaAiBusy(false)
+    }
+  }
 
   /** Muat 10 pasangan terakhir dari server (satu utas per pengguna / per sesi proxy). */
   useEffect(() => {
@@ -701,15 +867,16 @@ export default function DeepseekChat() {
         })
       }
       if (!out.success) {
-        setSendError(out.message || 'Gagal mendapat jawaban')
+        const errText = out.message || 'Gagal mendapat jawaban'
         setMessages((m) => [
           ...m,
           {
             id: msgId(),
             role: 'assistant',
-            content: `**Error:** ${out.message || 'Tidak ada jawaban'}`
+            content: errText
           }
         ])
+        if (isAiDailyLimitMessage(errText)) void refreshAiUsageFromServer()
         return
       }
       const d = out.data || {}
@@ -778,10 +945,11 @@ export default function DeepseekChat() {
           thinking: thinking || undefined
         }
       ])
+      void refreshAiUsageFromServer()
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Gagal mengirim'
-      setSendError(msg)
-      setMessages((m) => [...m, { id: msgId(), role: 'assistant', content: `**Error:** ${msg}` }])
+      setMessages((m) => [...m, { id: msgId(), role: 'assistant', content: msg }])
+      if (err.response?.status === 429 || isAiDailyLimitMessage(msg)) void refreshAiUsageFromServer()
     } finally {
       setSending(false)
     }
@@ -796,7 +964,6 @@ export default function DeepseekChat() {
     e?.preventDefault?.()
     const text = (typeof overrideText === 'string' ? overrideText : apiOfficialInput).trim()
     if (!text || apiOfficialBusy) return
-    setApiOfficialErr(null)
     setApiOfficialInput('')
     /** Satu giliran per request; 3 percakapan terakhir diambil server dari ai___chat (users_id + session_id). */
     const userMsg = { id: msgId(), role: 'user', content: text }
@@ -810,11 +977,8 @@ export default function DeepseekChat() {
       })
       if (!res.success) {
         const errText = res.message || 'Gagal'
-        setApiOfficialErr(errText)
-        setApiOfficialMessages((m) => [
-          ...m,
-          { id: msgId(), role: 'assistant', content: `**Error:** ${errText}` }
-        ])
+        setApiOfficialMessages((m) => [...m, { id: msgId(), role: 'assistant', content: errText }])
+        if (isAiDailyLimitMessage(errText)) void refreshAiUsageFromServer()
         return
       }
       const d = res.data || {}
@@ -827,10 +991,11 @@ export default function DeepseekChat() {
           thinking: d.reasoning || undefined
         }
       ])
+      void refreshAiUsageFromServer()
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Gagal mengirim'
-      setApiOfficialErr(msg)
-      setApiOfficialMessages((m) => [...m, { id: msgId(), role: 'assistant', content: `**Error:** ${msg}` }])
+      setApiOfficialMessages((m) => [...m, { id: msgId(), role: 'assistant', content: msg }])
+      if (err.response?.status === 429 || isAiDailyLimitMessage(msg)) void refreshAiUsageFromServer()
     } finally {
       setApiOfficialBusy(false)
     }
@@ -844,6 +1009,8 @@ export default function DeepseekChat() {
       <EbeddienChatHeaderMain
         assistantName={ASSISTANT_NAME}
         accountLoading={accountLoading}
+        aiTodayCount={aiTodayCount}
+        aiDailyLimit={aiDailyLimit}
         aiChatMode={aiChatMode}
         setAiChatMode={setAiChatMode}
         canUseAlternativeMode={canUseAlternativeMode}
@@ -857,12 +1024,15 @@ export default function DeepseekChat() {
         sessionBusy={sessionBusy}
         sending={sending}
         handleLogout={handleLogout}
+        onOpenAiUserSettings={() => setAdminAiUsersOpen(true)}
       />
     )
     return () => setHeaderFromLayout(null)
   }, [
     setHeaderFromLayout,
     accountLoading,
+    aiTodayCount,
+    aiDailyLimit,
     aiChatMode,
     chatFontScale,
     chatHeaderMenuOpen,
@@ -877,7 +1047,6 @@ export default function DeepseekChat() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden" style={{ minHeight: 0 }}>
-
             {accountLoading ? (
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6">
                 <div className="h-11 w-11 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
@@ -894,6 +1063,12 @@ export default function DeepseekChat() {
                   >
                     Buka Profil → isi / perbarui email
                   </Link>
+                </div>
+              </div>
+            ) : !aiFeatureEnabled ? (
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 chat-scrollbar overscroll-contain">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                  Akses AI untuk akun ini dinonaktifkan oleh super admin.
                 </div>
               </div>
             ) : aiChatMode === 'api' ? (
@@ -971,12 +1146,6 @@ export default function DeepseekChat() {
                   ) : null}
                 </div>
 
-                {apiOfficialErr ? (
-                  <div className="shrink-0 border-t border-red-100 dark:border-red-900/50 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-xs text-red-700 dark:text-red-300 sm:px-4">
-                    {apiOfficialErr}
-                  </div>
-                ) : null}
-
                 <div className="shrink-0 border-t border-gray-200 dark:border-gray-700 bg-white/95 p-3 dark:bg-gray-900/95 sm:p-4 backdrop-blur-sm max-sm:bg-white/80 max-sm:backdrop-blur-md dark:max-sm:bg-gray-900/85">
                   <form onSubmit={submitApiOfficial} className="flex gap-2.5 items-end">
                     <textarea
@@ -999,13 +1168,37 @@ export default function DeepseekChat() {
                       busy={apiOfficialBusy}
                     />
                   </form>
-                  <div className="mt-3 flex justify-center border-t border-dashed border-gray-200/90 pt-3 dark:border-gray-600/80">
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-dashed border-gray-200/90 pt-3 dark:border-gray-600/80">
                     <SwitchToggle
                       compact
-                      label="Berpikir mendalam"
+                      toggleFirst
+                      label="Berpikir"
                       checked={apiOfficialModel === 'deepseek-reasoner'}
                       disabled={apiOfficialBusy}
                       onChange={(on) => setApiOfficialModel(on ? 'deepseek-reasoner' : 'deepseek-chat')}
+                    />
+                    <SwitchToggle
+                      compact
+                      toggleFirst
+                      label={
+                        <>
+                          <span>Akses AI dari WA</span>
+                          {waProfileNumberOk ? (
+                            <span className="font-mono font-semibold text-gray-700 dark:text-gray-200">({waProfileNumber})</span>
+                          ) : (
+                            <Link
+                              to="/profil"
+                              className="font-medium text-primary-600 underline dark:text-primary-400"
+                              onClick={(ev) => ev.stopPropagation()}
+                            >
+                              (isi nomor)
+                            </Link>
+                          )}
+                        </>
+                      }
+                      checked={waAiEnabled}
+                      disabled={apiOfficialBusy || waAiBusy}
+                      onChange={handleToggleWaAi}
                     />
                   </div>
                 </div>
@@ -1176,6 +1369,133 @@ export default function DeepseekChat() {
               </div>
             )}
 
+      {createPortal(
+        <AnimatePresence>
+          {isSuperAdminTraining && adminAiUsersOpen ? (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setAdminAiUsersOpen(false)}
+                className="fixed inset-0 bg-black/40 z-[110]"
+              />
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'tween', duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                className="fixed bottom-0 inset-x-0 z-[111] flex flex-col max-h-[90vh] w-full sm:left-0 sm:right-0 sm:mx-auto sm:w-[calc(100%-2rem)] sm:max-w-2xl rounded-t-xl sm:rounded-xl bg-white dark:bg-gray-800 shadow-xl border-t sm:border border-gray-200 dark:border-gray-700"
+              >
+                <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Pengaturan User AI</h3>
+                  <button type="button" onClick={() => setAdminAiUsersOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    value={adminAiUsersSearch}
+                    onChange={(e) => { setAdminAiUsersSearch(e.target.value); setAdminAiUsersPage(1) }}
+                    placeholder="Cari nama, email, username, nomor WA..."
+                    className="flex-1 min-w-[220px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                  />
+                  <select
+                    value={adminAiUsersStatus}
+                    onChange={(e) => { setAdminAiUsersStatus(e.target.value); setAdminAiUsersPage(1) }}
+                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                  >
+                    <option value="">Status AI: Semua</option>
+                    <option value="active">Aktif</option>
+                    <option value="inactive">Nonaktif</option>
+                  </select>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  {adminAiUsersLoading ? (
+                    <div className="flex justify-center py-12"><div className="h-10 w-10 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" /></div>
+                  ) : (
+                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                      <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {adminAiUsers.map((u) => (
+                          <li key={u.id} className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{u.nama || u.username || u.email || `User #${u.id}`}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{u.email || '-'} {u.no_wa ? `· ${u.no_wa}` : ''}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Limit: {u.today_count}/{u.ai_daily_limit} hari ini</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditAiUserLimit(u)}
+                                  className="px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs hover:bg-gray-100 dark:hover:bg-gray-700"
+                                >
+                                  Limit
+                                </button>
+                                <SwitchToggle
+                                  compact
+                                  label="AI aktif"
+                                  checked={!!u.ai_enabled}
+                                  onChange={(next) => toggleAdminAiUserEnabled(u, next)}
+                                />
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                {adminAiUsersTotal > adminAiUsersLimit && (
+                  <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Total {adminAiUsersTotal} user</span>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={adminAiUsersPage <= 1} onClick={() => setAdminAiUsersPage((p) => Math.max(1, p - 1))} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50">Sebelumnya</button>
+                      <span className="text-gray-600 dark:text-gray-300">Halaman {adminAiUsersPage}</span>
+                      <button type="button" disabled={adminAiUsersPage * adminAiUsersLimit >= adminAiUsersTotal} onClick={() => setAdminAiUsersPage((p) => p + 1)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50">Selanjutnya</button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            </>
+          ) : null}
+        </AnimatePresence>,
+        document.body
+      )}
+      {createPortal(
+        <AnimatePresence>
+          {isSuperAdminTraining && editAiUser ? (
+            <>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-[120]" onClick={() => !editAiUserBusy && setEditAiUser(null)} />
+              <motion.div
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'tween', duration: 0.25 }}
+                className="fixed bottom-0 inset-x-0 z-[121] sm:left-1/2 sm:-translate-x-1/2 sm:max-w-md bg-white dark:bg-gray-800 rounded-t-xl border-t sm:rounded-xl sm:border shadow-xl"
+              >
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Ubah limit chat harian</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{editAiUser.nama || editAiUser.email || `User #${editAiUser.id}`}</p>
+                </div>
+                <div className="p-4">
+                  <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">Limit per hari (reset 00:00)</label>
+                  <input type="number" min="0" value={editAiUserLimit} onChange={(e) => setEditAiUserLimit(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm" />
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button type="button" onClick={() => setEditAiUser(null)} className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300">Batal</button>
+                    <button type="button" onClick={saveEditAiUserLimit} disabled={editAiUserBusy} className="px-3 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm disabled:opacity-50">
+                      {editAiUserBusy ? 'Menyimpan...' : 'Simpan'}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          ) : null}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   )
 }

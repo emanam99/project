@@ -5,10 +5,11 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node scripts/check-wa-deps.cjs && node server.js",
+    "dev": "node scripts/check-wa-deps.cjs && nodemon server.js",
     "clean": "node -e \"const fs=require('fs'),path=require('path'); const p=path.join(process.cwd(),'node_modules'); if(fs.existsSync(p)){ try { fs.rmSync(p,{recursive:true,maxRetries:3}); console.log('node_modules dihapus'); } catch(e){ console.error('Tutup semua proses Node/Chrome lalu coba lagi. Error:', e.message); process.exit(1); } }\"",
-    "reinstall": "npm run clean && npm install",
+    "install:safe": "node scripts/npm-install-skip-chrome.cjs",
+    "reinstall": "npm run clean && npm run install:safe",
     "ensure-browser": "node scripts/ensure-browser.cjs"
   },
   "dependencies": {

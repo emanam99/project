@@ -3,7 +3,7 @@
  */
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync } from 'fs';
 import qrcode from 'qrcode';
 import makeWASocket, {
   useMultiFileAuthState,
@@ -19,6 +19,17 @@ const sockRefBySession = {};
 const baileysStatusBySession = {};
 const WA_FORWARD_TIMEOUT_MS = Number(process.env.WA_FORWARD_TIMEOUT_MS || 8000);
 const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
+
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Pesan teknis LID → teks yang bisa ditampilkan ke pengguna (OTP, notifikasi). */
+export function humanizeLidSendError(raw) {
+  const s = String(raw || '');
+  if (!/no\s+lid|lid\s+for\s+user|missing\s+lid|lid\s+missing/i.test(s)) {
+    return s;
+  }
+  return 'WhatsApp membutuhkan sinkron kontak (LID) untuk nomor ini. Di halaman Koneksi WA pastikan Langkah 2 (Baileys) terhubung untuk slot yang sama dengan WA_SESSION_ID di api/.env. Jika sudah, buka sekali obrolan ke nomor tersebut di aplikasi WhatsApp di HP lalu coba lagi.';
+}
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = WA_FORWARD_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -64,6 +75,75 @@ function formatPhoneNumber(phone) {
 export function phoneToJid(phone) {
   const n = formatPhoneNumber(phone);
   return n ? n + '@s.whatsapp.net' : null;
+}
+
+/**
+ * Selesaikan JID tujuan lewat onWhatsApp (mapping PN ↔ LID). Mengurangi kegagalan kirim vs jid ditebak saja.
+ *
+ * @returns {{ jid: string } | { jid: null, reason: 'invalid' | 'not_registered' }}
+ */
+/** Urutan coba kirim: @lid dulu (MD sering wajib untuk PN baru), baru @s.whatsapp.net / @c.us. */
+function scoreJidForSendOrder(jid) {
+  const j = String(jid);
+  if (/@lid$/i.test(j)) return 0;
+  if (/@s\.whatsapp\.net$/i.test(j)) return 1;
+  if (/@c\.us$/i.test(j)) return 2;
+  return 3;
+}
+
+function buildOrderedUniqueJidsFromOnWa(arr, fallback) {
+  const list = Array.isArray(arr) ? arr.filter((x) => x && x.jid) : [];
+  const uniq = [...new Set(list.map((x) => String(x.jid)))];
+  uniq.sort((a, b) => scoreJidForSendOrder(a) - scoreJidForSendOrder(b));
+  if (fallback && !uniq.includes(fallback)) uniq.push(fallback);
+  return uniq;
+}
+
+/**
+ * Daftar JID untuk dicoba berurutan (kurangi gagal OTP / nomor baru).
+ * @returns {{ jids: string[], reason?: 'invalid' | 'not_registered' }}
+ */
+async function resolveSendJidsOrdered(sock, phoneNumber) {
+  const fallback = phoneToJid(phoneNumber);
+  if (!fallback) return { jids: [], reason: 'invalid' };
+  if (typeof sock.onWhatsApp !== 'function') {
+    return { jids: [fallback] };
+  }
+  try {
+    const n = formatPhoneNumber(phoneNumber);
+    if (!n) return { jids: [fallback] };
+    let raw = null;
+    try {
+      raw = await sock.onWhatsApp([n, fallback]);
+    } catch (_) {
+      raw = await sock.onWhatsApp(n);
+    }
+    let arr = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+    if (arr.length === 0) {
+      try {
+        raw = await sock.onWhatsApp(fallback);
+        arr = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+      } catch (_) {
+        /* noop */
+      }
+    }
+    const withJid = arr.filter((x) => x && x.jid);
+    if (withJid.length === 0) {
+      if (arr.some((x) => x && x.exists === false)) {
+        return { jids: [], reason: 'not_registered' };
+      }
+      return { jids: [fallback] };
+    }
+    return { jids: buildOrderedUniqueJidsFromOnWa(arr, fallback) };
+  } catch (e) {
+    if (WA_VERBOSE_LOG) console.warn('[WA Baileys] onWhatsApp:', e?.message);
+  }
+  return { jids: [fallback] };
+}
+
+async function resolveSendJid(sock, phoneNumber) {
+  const r = await resolveSendJidsOrdered(sock, phoneNumber);
+  return { jid: r.jids[0] || null, reason: r.reason };
 }
 
 export async function initBaileys(sessionId = DEFAULT_SESSION) {
@@ -156,6 +236,10 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       }
       try {
         const remoteJid = (msg.key && msg.key.remoteJid) || '';
+        if (/@g\.us$/i.test(remoteJid)) {
+          if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: pesan grup');
+          continue;
+        }
         if (!remoteJid.endsWith('@s.whatsapp.net') && !remoteJid.endsWith('@c.us')) {
           if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: remoteJid tidak valid');
           continue;
@@ -237,30 +321,78 @@ export function isBaileysConnected(sessionId = DEFAULT_SESSION) {
   return sockRefBySession[id] != null && getBaileysStatusObj(id).status === 'connected';
 }
 
+/** True jika folder auth Baileys punya file (pernah scan Langkah 2). */
+function hasBaileysAuthFiles(sessionId = DEFAULT_SESSION) {
+  const id = sessionId || DEFAULT_SESSION;
+  const authPath = getBaileysAuthPath(id);
+  if (!existsSync(authPath)) return false;
+  try {
+    return readdirSync(authPath).length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Setelah restart Node, socket Baileys kosong walau auth ada di disk — panggil init + tunggu open.
+ * Dipakai sebelum kirim agar OTP tidak jatuh ke Puppeteer (No LID).
+ */
+export async function ensureBaileysReadyForSend(sessionId = DEFAULT_SESSION, maxWaitMs = 14000) {
+  const id = sessionId || DEFAULT_SESSION;
+  if (isBaileysConnected(id)) return true;
+  if (!hasBaileysAuthFiles(id)) return false;
+  try {
+    await initBaileys(id);
+  } catch (e) {
+    if (WA_VERBOSE_LOG) console.warn('[WA Baileys] ensureBaileysReadyForSend init:', e?.message);
+  }
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    if (isBaileysConnected(id)) return true;
+    await new Promise((r) => setTimeout(r, 350));
+  }
+  return isBaileysConnected(id);
+}
+
 export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase64, imageMimetype) {
   const id = sessionId || DEFAULT_SESSION;
   const sock = sockRefBySession[id];
   const st = getBaileysStatusObj(id);
   if (!sock || st.status !== 'connected') return { ok: false, error: 'Baileys belum terhubung' };
-  const jid = phoneToJid(phoneNumber);
-  if (!jid) return { ok: false, error: 'Nomor tidak valid' };
-  try {
-    const content = (typeof text === 'string' ? text : '').trim() || '(pesan kosong)';
-    let result;
-    if (typeof imageBase64 === 'string' && imageBase64.trim().length > 0) {
-      const mimetype = (imageMimetype || 'image/png').split(';')[0].trim();
-      const buffer = Buffer.from(imageBase64.replace(/^data:image\/[^;]+;base64,/, '').trim(), 'base64');
-      result = await sock.sendMessage(jid, { image: buffer, caption: content }, {});
-    } else {
-      result = await sock.sendMessage(jid, { text: content }, {});
-    }
-    return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) };
+  const { jids, reason } = await resolveSendJidsOrdered(sock, phoneNumber);
+  if (jids.length === 0) {
+    return {
+      ok: false,
+      error: reason === 'not_registered' ? 'Nomor tidak terdaftar di WhatsApp' : 'Nomor tidak valid',
+    };
   }
+  const content = (typeof text === 'string' ? text : '').trim() || '(pesan kosong)';
+  const hasImage = typeof imageBase64 === 'string' && imageBase64.trim().length > 0;
+  let lastErr = null;
+  for (let i = 0; i < jids.length; i++) {
+    const jid = jids[i];
+    try {
+      if (!hasImage && typeof sock.presenceSubscribe === 'function') {
+        await sock.presenceSubscribe(jid).catch(() => {});
+        await delay(i === 0 ? 400 : 250);
+      }
+      let result;
+      if (hasImage) {
+        const mimetype = (imageMimetype || 'image/png').split(';')[0].trim();
+        const buffer = Buffer.from(imageBase64.replace(/^data:image\/[^;]+;base64,/, '').trim(), 'base64');
+        result = await sock.sendMessage(jid, { image: buffer, caption: content }, {});
+      } else {
+        result = await sock.sendMessage(jid, { text: content }, {});
+      }
+      return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
+    } catch (err) {
+      lastErr = err;
+      if (WA_VERBOSE_LOG) console.warn('[WA Baileys] sendMessage gagal jid=' + jid + ': ' + (err?.message || err));
+      await delay(350);
+    }
+  }
+  return { ok: false, error: humanizeLidSendError(lastErr?.message || lastErr) };
 }
-
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Kirim pesan dengan simulasi "sedang mengetik" (composing) sebelum kirim.
  * Catatan: Di Baileys indikator mengetik kadang tidak muncul (known issue). Tetap kirim presence agar bila WA mendukung akan terlihat. */
@@ -269,32 +401,48 @@ export async function sendMessageWithTypingBaileys(sessionId, phoneNumber, text,
   const sock = sockRefBySession[id];
   const st = getBaileysStatusObj(id);
   if (!sock || st.status !== 'connected') return { ok: false, error: 'Baileys belum terhubung' };
-  const jid = phoneToJid(phoneNumber);
-  if (!jid) return { ok: false, error: 'Nomor tidak valid' };
-  try {
-    const content = (typeof text === 'string' ? text : '').trim() || '(pesan kosong)';
-    const sec = Math.max(1, Math.min(10, Math.round(typingSeconds) || 2));
-    try {
-      if (typeof sock.presenceSubscribe === 'function') await sock.presenceSubscribe(jid);
-      await delay(400);
-      if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('available', jid);
-      await delay(350);
-      if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('composing', jid);
-      await delay(sec * 1000);
-      if (sec > 2) {
-        if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('composing', jid);
-        await delay(800);
-      }
-      if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('paused', jid);
-      await delay(250);
-    } catch (e) {
-      if (process.env.NODE_ENV !== 'production') console.warn('[WA Baileys] presence/typing:', e?.message);
-    }
-    const result = await sock.sendMessage(jid, { text: content }, {});
-    return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) };
+  const { jids, reason } = await resolveSendJidsOrdered(sock, phoneNumber);
+  if (jids.length === 0) {
+    return {
+      ok: false,
+      error: reason === 'not_registered' ? 'Nomor tidak terdaftar di WhatsApp' : 'Nomor tidak valid',
+    };
   }
+  const content = (typeof text === 'string' ? text : '').trim() || '(pesan kosong)';
+  const sec = Math.max(1, Math.min(10, Math.round(typingSeconds) || 2));
+  let lastErr = null;
+  for (let i = 0; i < jids.length; i++) {
+    const jid = jids[i];
+    try {
+      if (i === 0) {
+        try {
+          if (typeof sock.presenceSubscribe === 'function') await sock.presenceSubscribe(jid);
+          await delay(400);
+          if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('available', jid);
+          await delay(350);
+          if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('composing', jid);
+          await delay(sec * 1000);
+          if (sec > 2) {
+            if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('composing', jid);
+            await delay(800);
+          }
+          if (typeof sock.sendPresenceUpdate === 'function') await sock.sendPresenceUpdate('paused', jid);
+          await delay(250);
+        } catch (e) {
+          if (process.env.NODE_ENV !== 'production') console.warn('[WA Baileys] presence/typing:', e?.message);
+        }
+      } else {
+        if (typeof sock.presenceSubscribe === 'function') await sock.presenceSubscribe(jid).catch(() => {});
+        await delay(300);
+      }
+      const result = await sock.sendMessage(jid, { text: content }, {});
+      return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
+    } catch (err) {
+      lastErr = err;
+      await delay(350);
+    }
+  }
+  return { ok: false, error: humanizeLidSendError(lastErr?.message || lastErr) };
 }
 
 export async function getChatMessagesBaileys(sessionId, phoneNumber, limit = 50) {

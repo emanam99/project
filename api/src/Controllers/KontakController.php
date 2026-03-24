@@ -10,6 +10,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  * Daftar kontak WA (whatsapp___kontak). Super_admin only.
  * GET /api/kontak - list dengan pagination & search
  * PATCH /api/kontak/{id} - update siap_terima_notif
+ * DELETE /api/kontak/{id} - hapus kontak
  */
 class KontakController
 {
@@ -22,7 +23,7 @@ class KontakController
     }
 
     /**
-     * GET /api/kontak - Daftar kontak (nomor unik, siap_terima_notif). Pagination & search.
+     * GET /api/kontak - Daftar kontak (nomor unik, siap_terima_notif, nomor_kanonik/LID). Pagination & search.
      */
     public function getList(Request $request, Response $response): Response
     {
@@ -41,12 +42,25 @@ class KontakController
                 ], 200);
             }
 
+            $hasNamaCol = false;
+            try {
+                $namaCheck = $db->query("SHOW COLUMNS FROM whatsapp___kontak LIKE 'nama'");
+                $hasNamaCol = $namaCheck !== false && $namaCheck->rowCount() > 0;
+            } catch (\Throwable $e) {
+                $hasNamaCol = false;
+            }
             $where = '1=1';
             $bind = [];
             if ($search !== '') {
-                $where .= ' AND (nomor LIKE ? OR nomor LIKE ?)';
+                $where .= ' AND (nomor LIKE ? OR nomor LIKE ? OR nomor_kanonik LIKE ?';
                 $bind[] = '%' . $search . '%';
                 $bind[] = '%' . preg_replace('/\D/', '', $search) . '%';
+                $bind[] = '%' . $search . '%';
+                if ($hasNamaCol) {
+                    $where .= ' OR nama LIKE ?';
+                    $bind[] = '%' . $search . '%';
+                }
+                $where .= ')';
             }
 
             $countStmt = $db->prepare("SELECT COUNT(*) FROM whatsapp___kontak WHERE {$where}");
@@ -55,7 +69,8 @@ class KontakController
 
             $offset = ($page - 1) * $limit;
             $order = 'ORDER BY updated_at DESC, id DESC';
-            $listStmt = $db->prepare("SELECT id, nomor, siap_terima_notif, created_at, updated_at FROM whatsapp___kontak WHERE {$where} {$order} LIMIT {$limit} OFFSET {$offset}");
+            $selectNama = $hasNamaCol ? 'nama,' : 'NULL AS nama,';
+            $listStmt = $db->prepare("SELECT id, nomor, {$selectNama} nomor_kanonik, siap_terima_notif, created_at, updated_at FROM whatsapp___kontak WHERE {$where} {$order} LIMIT {$limit} OFFSET {$offset}");
             $listStmt->execute($bind);
 
             $items = [];
@@ -63,6 +78,8 @@ class KontakController
                 $items[] = [
                     'id' => (int) $row['id'],
                     'nomor' => $row['nomor'],
+                    'nama' => $row['nama'] ?? null,
+                    'nomor_kanonik' => $row['nomor_kanonik'] ?? null,
                     'siap_terima_notif' => (int) $row['siap_terima_notif'] === 1,
                     'created_at' => $row['created_at'],
                     'updated_at' => $row['updated_at'],
@@ -124,6 +141,39 @@ class KontakController
         } catch (\Throwable $e) {
             error_log('KontakController::update: ' . $e->getMessage());
             return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal memperbarui kontak'], 500);
+        }
+    }
+
+    /**
+     * DELETE /api/kontak/{id} - Hapus kontak berdasarkan ID
+     */
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) ($args['id'] ?? 0);
+        if ($id <= 0) {
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'ID tidak valid'], 400);
+        }
+
+        try {
+            $db = Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'whatsapp___kontak'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Tabel kontak belum ada'], 404);
+            }
+
+            $stmt = $db->prepare('DELETE FROM whatsapp___kontak WHERE id = ?');
+            $stmt->execute([$id]);
+            if ($stmt->rowCount() === 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Kontak tidak ditemukan'], 404);
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Kontak berhasil dihapus',
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('KontakController::delete: ' . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghapus kontak'], 500);
         }
     }
 }

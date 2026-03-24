@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Services\AiWhatsappBridgeService;
 use App\Services\DaftarNotifFlow;
 use App\Services\WaInteractiveMenuService;
 use App\Services\WatzapService;
@@ -462,8 +463,18 @@ class WatzapController
 
                 $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $fromJidFlow);
                 $isDaftarNotif = $reply !== null && $reply !== '';
+                $replyKind = $isDaftarNotif ? 'daftar_notif' : null;
                 if (!$isDaftarNotif) {
+                    $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $fromJidFlow);
+                    if ($reply !== null && $reply !== '') {
+                        $replyKind = 'ai_whatsapp';
+                    }
+                }
+                if (!$isDaftarNotif && ($reply === null || $reply === '')) {
                     $reply = WaInteractiveMenuService::handle($nomorTujuan, $message, $fromJidFlow);
+                    if ($reply !== null && $reply !== '') {
+                        $replyKind = 'wa_interactive_menu';
+                    }
                 }
                 if ($reply !== null && $reply !== '') {
                     $logContext = [
@@ -471,10 +482,10 @@ class WatzapController
                         'id_pengurus' => null,
                         'tujuan' => 'wali_santri',
                         'id_pengurus_pengirim' => null,
-                        'kategori' => $isDaftarNotif ? 'daftar_notif' : 'wa_interactive_menu',
+                        'kategori' => $replyKind ?? 'watzap_auto',
                         'sumber' => 'watzap',
                     ];
-                    error_log($logPrefix . ($isDaftarNotif ? 'daftar_notif' : 'wa_interactive_menu') . ' reply to ' . $nomorTujuan . ' len=' . strlen($reply));
+                    error_log($logPrefix . ($replyKind ?? 'auto') . ' reply to ' . $nomorTujuan . ' len=' . strlen($reply));
                     $sendResult = WhatsAppService::sendMessage($nomorTujuan, $reply, null, $logContext, $fromJidFlow);
                     error_log($logPrefix . 'sendMessage result: success=' . ($sendResult['success'] ? '1' : '0') . ' msg=' . ($sendResult['message'] ?? ''));
                 } else {

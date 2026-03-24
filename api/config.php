@@ -126,6 +126,8 @@ return [
         })()),
         'api_key' => env('WA_API_KEY', ''),
         'instance' => env('WA_INSTANCE', 'uwaba1'), // Tidak dikirim ke backend baru (satu sesi); tetap dipakai untuk log/sumber jika perlu.
+        /** ID slot WA Node (sama seperti di halaman Koneksi WA). Wajib jika OTP/notifikasi gagal (LID) tapi "Kirim tes" berhasil — samakan dengan slot yang terhubung. */
+        'session_id' => env('WA_SESSION_ID', ''),
     ],
     // WatZap (api.watzap.id) — untuk notifikasi WA via WatZap. Dipakai bila notification_provider = watzap.
     // Dokumentasi: https://api-docs.watzap.id/ | number_key "ALL" = pakai semua nomor terhubung.

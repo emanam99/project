@@ -73,6 +73,7 @@ class DaftarNotifFlow
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         }
         $pendingNomor = $row !== false ? trim((string) ($row['nomor'] ?? '')) : null;
+        $pendingNama = $row !== false ? trim((string) ($row['nama'] ?? '')) : '';
         $nomorKanonik = ($row !== false && $hasNomorKanonikCol && isset($row['nomor_kanonik'])) ? trim((string) $row['nomor_kanonik']) : null;
         if ($nomorKanonik !== null && $nomorKanonik !== '') {
             $nomorKanonik = WhatsAppService::formatPhoneNumber($nomorKanonik);
@@ -102,11 +103,13 @@ class DaftarNotifFlow
                 $aktif = self::isJawabanYa($message) ? 1 : 0;
                 error_log('DaftarNotifFlow: step 2 setKontakNotif pendingNomor=' . $pendingNomor . ' nomor_kanonik=' . ($nomorKanonik ?? 'null') . ' aktif=' . $aktif);
                 // Baris LID (dari WA): update siap_terima_notif saja, tidak isi nomor_kanonik
-                WhatsAppService::setKontakNotif($pendingNomor, $aktif);
+                $namaWali = $pendingNama !== '' ? ($pendingNama . ' (wali)') : null;
+                WhatsAppService::setKontakNotif($pendingNomor, $aktif, null, $namaWali);
                 // Baris nomor asli (dari form): update dan simpan LID di kolom nomor_kanonik (agar nomor=asli, nomor_kanonik=ID WA)
                 if ($nomorKanonik !== null && $nomorKanonik !== $pendingNomor) {
                     error_log('DaftarNotifFlow: step 2 setKontakNotif juga untuk nomor asli=' . $nomorKanonik . ' dengan nomor_kanonik=' . $pendingNomor);
-                    WhatsAppService::setKontakNotif($nomorKanonik, $aktif, $pendingNomor);
+                    $namaSantri = $pendingNama !== '' ? ($pendingNama . ' (santri)') : null;
+                    WhatsAppService::setKontakNotif($nomorKanonik, $aktif, $pendingNomor, $namaSantri);
                 }
                 return $aktif === 1 ? self::MSG_AKTIF : self::MSG_NONAKTIF;
             }
@@ -142,7 +145,8 @@ class DaftarNotifFlow
         }
 
         if ($hasNomorKanonikCol && $nomorKanonikFromMessage !== null) {
-            WhatsAppService::ensureKontak($nomorKanonikFromMessage, 0);
+            $namaSantri = is_string($nama) && trim($nama) !== '' ? (trim($nama) . ' (santri)') : null;
+            WhatsAppService::ensureKontak($nomorKanonikFromMessage, 0, $namaSantri);
         }
         if ($hasFromJidCol && $fromJid !== null) {
             if ($hasNomorKanonikCol && $nomorKanonikFromMessage !== null) {
