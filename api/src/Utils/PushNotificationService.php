@@ -236,5 +236,35 @@ class PushNotificationService
 
         return $this->sendToPengurus($pengurusIds, $title, $body, $options);
     }
+
+    /**
+     * Send push notification ke users.id (akan dipetakan ke pengurus.id lewat pengurus.id_user).
+     * Berguna untuk fitur chat yang berbasis users.id.
+     * @param array $userIds
+     */
+    public function sendToUserIds(array $userIds, string $title, string $body, array $options = []): array
+    {
+        if (empty($userIds)) {
+            return ['success' => 0, 'failed' => 0, 'errors' => []];
+        }
+
+        $normalized = array_values(array_unique(array_map(static fn($id) => (int) $id, $userIds)));
+        $normalized = array_values(array_filter($normalized, static fn($id) => $id > 0));
+        if (empty($normalized)) {
+            return ['success' => 0, 'failed' => 0, 'errors' => []];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($normalized), '?'));
+        $sql = "SELECT id FROM pengurus WHERE id_user IN ($placeholders)";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($normalized);
+        $pengurusIds = array_map(static fn($r) => (int) $r['id'], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+
+        if (empty($pengurusIds)) {
+            return ['success' => 0, 'failed' => 0, 'errors' => ['No pengurus mapping for user IDs']];
+        }
+
+        return $this->sendToPengurus($pengurusIds, $title, $body, $options);
+    }
 }
 

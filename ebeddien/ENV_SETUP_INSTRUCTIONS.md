@@ -30,6 +30,19 @@ Setelah setup, refresh browser dan cek console:
 - Seharusnya tidak ada error "VAPID public key tidak dikonfigurasi"
 - Seharusnya ada log "✅ VAPID public key available"
 
+## Base URL Gambar (penting untuk staging)
+
+Manifest PWA (icons + screenshots) memakai variabel `VITE_GAMBAR_BASE` dari `vite.config.js`.
+Jika variabel ini kosong, fallback-nya `'/gambar'` (relative), sehingga di staging bisa salah arah ke subdomain sendiri (contoh: `https://ebeddien2.../gambar/...`).
+
+Set di `ebeddien/.env`:
+
+```env
+VITE_GAMBAR_BASE=https://alutsmani.id/gambar
+```
+
+Lalu **rebuild** frontend (`npm run build`) agar `manifest.webmanifest` ikut ter-generate ulang.
+
 ## Backend WhatsApp (halaman Koneksi WA)
 
 Frontend memanggil **server Node** di folder `wa/` (status/QR/connect).

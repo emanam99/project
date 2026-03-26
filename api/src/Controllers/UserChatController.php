@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Database;
+use App\Utils\PushNotificationService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -94,6 +95,64 @@ class UserChatController
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row && !empty($row['id_user']) ? (int) $row['id_user'] : null;
+    }
+
+    /**
+     * Kirim Web Push ke penerima chat (jika punya subscription aktif).
+     */
+    private function sendPushForIncomingMessage(
+        \PDO $db,
+        int $fromUsersId,
+        int $toUsersId,
+        string $message,
+        int $conversationId
+    ): void {
+        if ($fromUsersId < 1 || $toUsersId < 1 || $fromUsersId === $toUsersId) {
+            return;
+        }
+
+        try {
+            $stmtSender = $db->prepare("
+                SELECT u.username, p.nama AS nama_pengurus
+                FROM users u
+                LEFT JOIN pengurus p ON p.id_user = u.id
+                WHERE u.id = ?
+                LIMIT 1
+            ");
+            $stmtSender->execute([$fromUsersId]);
+            $sender = $stmtSender->fetch(\PDO::FETCH_ASSOC) ?: [];
+            $senderName = $this->formatNamaUsername(
+                isset($sender['nama_pengurus']) ? (string) $sender['nama_pengurus'] : null,
+                isset($sender['username']) ? (string) $sender['username'] : '',
+                $fromUsersId
+            );
+
+            $preview = mb_substr(trim($message), 0, 120);
+            if ($preview === '') {
+                $preview = '(pesan baru)';
+            }
+
+            $push = new PushNotificationService();
+            $push->sendToUserIds(
+                [$toUsersId],
+                'Pesan baru',
+                $preview,
+                [
+                    'tag' => 'chat-message-' . $conversationId,
+                    'url' => '/chat?u=' . $fromUsersId,
+                    'data' => [
+                        'type' => 'chat_message',
+                        'conversation_id' => $conversationId,
+                        'from_user_id' => $fromUsersId,
+                        'to_user_id' => $toUsersId,
+                    ],
+                    'requireInteraction' => false,
+                    'sender_name' => $senderName,
+                ]
+            );
+        } catch (\Throwable $e) {
+            error_log('UserChatController::sendPushForIncomingMessage ' . $e->getMessage());
+        }
     }
 
     /** Ambil atau buat conversation private antara dua user. Boleh user1 === user2 (chat ke diri sendiri). */
@@ -501,6 +560,20 @@ class UserChatController
             $stmtDate->execute([$id]);
             $row = $stmtDate->fetch(\PDO::FETCH_ASSOC);
             $tanggalDibuat = $row ? ($row['tanggal_dibuat'] ?? date('Y-m-d H:i:s')) : date('Y-m-d H:i:s');
+
+            // Trigger PWA push untuk penerima (tetap bekerja saat app tidak dibuka).
+            $recipientId = 0;
+            if (isset($toIdResolved) && (int) $toIdResolved > 0) {
+                $recipientId = (int) $toIdResolved;
+            } elseif ($toId > 0) {
+                $resolvedTo = $this->resolveToUsersId($db, $toId);
+                if ($resolvedTo !== null) {
+                    $recipientId = (int) $resolvedTo;
+                }
+            }
+            if ($recipientId > 0) {
+                $this->sendPushForIncomingMessage($db, (int) $senderId, $recipientId, $message, (int) $conversationId);
+            }
 
             $response->getBody()->write(json_encode([
                 'success' => true,

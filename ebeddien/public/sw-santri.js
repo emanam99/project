@@ -121,3 +121,61 @@ self.addEventListener('message', (event) => {
     clientsClaim()
   }
 })
+
+// Push notification event (berjalan walau app tidak terbuka).
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+  let payload = {}
+  try {
+    payload = event.data.json()
+  } catch (e) {
+    payload = { title: 'Notifikasi', body: event.data.text() }
+  }
+
+  const title = payload.title || 'Notifikasi Baru'
+  const senderName = payload.sender_name ? `${payload.sender_name}` : ''
+  const body = senderName ? `${senderName}: ${payload.body || ''}` : (payload.body || '')
+  const options = {
+    body,
+    icon: payload.icon || '/gambar/icon/icon192.png',
+    badge: payload.badge || '/gambar/icon/icon128.png',
+    tag: payload.tag || 'ebeddien-notification',
+    data: {
+      url: payload.url || '/chat',
+      ...(payload.data || {}),
+    },
+    vibrate: payload.vibrate || [200, 100, 200],
+    requireInteraction: Boolean(payload.requireInteraction),
+    renotify: true,
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+// Klik notifikasi: fokus tab existing atau buka tab baru.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const targetUrl = event.notification?.data?.url || '/chat'
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          try {
+            const clientUrl = new URL(client.url)
+            const desired = new URL(targetUrl, self.location.origin)
+            if (clientUrl.origin === desired.origin) {
+              client.navigate(desired.href)
+              return client.focus()
+            }
+          } catch (e) {
+            // ignore malformed url
+          }
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl)
+      }
+      return null
+    })
+  )
+})

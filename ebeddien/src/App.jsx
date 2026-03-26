@@ -26,6 +26,7 @@ import { NotificationProvider } from './contexts/NotificationContext'
 import InstallPrompt from './components/InstallPrompt'
 import LiveSocketSync from './components/LiveSocket/LiveSocketSync'
 import { LiveSocketProvider } from './contexts/LiveSocketContext'
+import GlobalChatNotifier from './components/Chat/GlobalChatNotifier'
 import pwaSubscriptionService from './services/pwaSubscriptionService'
 import { authPageFlipVariants, authPageFlipStyle } from './utils/authPageTransition'
 
@@ -468,6 +469,7 @@ function App() {
       <LiveSocketProvider>
         <InstallPrompt />
         <LiveSocketSync />
+        <GlobalChatNotifier />
         <Routes>
       {/* Public Routes */}
       <Route 
