@@ -21,9 +21,18 @@ return function (\Slim\App $app): void {
         /** Toggle per-user: akses AI via WhatsApp. */
         $group->get('/whatsapp-access', [DeepseekController::class, 'getWhatsappAccess']);
         $group->put('/whatsapp-access', [DeepseekController::class, 'putWhatsappAccess']);
+        $group->post('/whatsapp-activation-token', [DeepseekController::class, 'postWhatsappActivationToken']);
+        /** Sama seperti GET /pendaftaran/wa-wake — nyalakan koneksi WA Node sebelum user buka wa.me aktivasi. */
+        $group->get('/wa-wake', [DeepseekController::class, 'getWaWake']);
         /** Super admin: kelola limit + status AI user. */
         $group->get('/admin/ai-users', [DeepseekController::class, 'adminListAiUsers']);
         $group->put('/admin/ai-users/{id}', [DeepseekController::class, 'adminUpdateAiUser']);
+        /** Super admin: agregasi chat AI (ai___chat) untuk dashboard. */
+        $group->get('/admin/ai-dashboard', [DeepseekController::class, 'adminAiChatDashboard']);
+        /** Super admin: daftar log ai___chat + perbaiki jawaban tersimpan. */
+        $group->get('/admin/chat-log/meta', [DeepseekController::class, 'adminChatLogMeta']);
+        $group->get('/admin/chat-log', [DeepseekController::class, 'adminListChatLog']);
+        $group->patch('/admin/chat-log/{id}', [DeepseekController::class, 'adminPatchChatLog']);
     })->add(new AuthMiddleware());
 };
 

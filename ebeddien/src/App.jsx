@@ -67,6 +67,8 @@ const DeepseekChat = lazy(() => import('./pages/MyWorkspace/DeepseekChat/index.j
 const ChatAiLayout = lazy(() => import('./pages/MyWorkspace/ChatAiLayout.jsx'))
 const AiTrainingBank = lazy(() => import('./pages/MyWorkspace/AiTrainingBank.jsx'))
 const AiTrainingChat = lazy(() => import('./pages/MyWorkspace/AiTrainingChat.jsx'))
+const AiChatDashboard = lazy(() => import('./pages/MyWorkspace/AiChatDashboard.jsx'))
+const AiChatRiwayat = lazy(() => import('./pages/MyWorkspace/AiChatRiwayat.jsx'))
 const SemuaMenu = lazy(() => import('./pages/MyWorkspace/SemuaMenu/index.jsx'))
 const Print = lazy(() => import('./pages/Pembayaran/print/Print'))
 const PrintPengeluaran = lazy(() => import('./pages/Keuangan/Pengeluaran/print/PrintPengeluaran'))
@@ -617,8 +619,8 @@ function App() {
             } 
           />
           </Route>
-          {/* Dashboard Umum - Only accessible by admin_uwaba, petugas_uwaba, or super_admin role */}
-          <Route element={<RoleRoute allowedRoles={['admin_uwaba', 'petugas_uwaba', 'super_admin']} />}>
+          {/* Dashboard Umum — grup Setting, hanya super_admin */}
+          <Route element={<SuperAdminRoute />}>
             <Route 
               path="/dashboard-umum" 
               element={
@@ -857,6 +859,22 @@ function App() {
                 element={
                   <Suspense fallback={<PageLoader />}>
                     <AiTrainingChat />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="dashboard"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AiChatDashboard />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="riwayat"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AiChatRiwayat />
                   </Suspense>
                 }
               />

@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { EbeddienChatAvatarLogo, EbeddienChatWordmark } from './EbeddienChatBranding'
 
 /**
- * Header pelatihan superadmin — satu gaya dengan chat utama; navigasi antar Chat / Bank / Training Chat.
- * variant: 'bank' | 'training-chat'
+ * Header pelatihan superadmin — satu gaya dengan chat utama; navigasi antar Chat / Bank / Training Chat / Dashboard.
+ * variant: 'bank' | 'training-chat' | 'dashboard' | 'riwayat'
  */
 export default function EbeddienChatHeaderTraining({
   assistantName,
@@ -13,7 +13,14 @@ export default function EbeddienChatHeaderTraining({
   chatHeaderMenuOpen,
   setChatHeaderMenuOpen
 }) {
-  const subtitle = variant === 'bank' ? 'Pelatihan · Bank Q&A' : 'Pelatihan · Training Chat'
+  const subtitle =
+    variant === 'bank'
+      ? 'Pelatihan · Bank Q&A'
+      : variant === 'dashboard'
+        ? 'Pelatihan · Dashboard AI'
+        : variant === 'riwayat'
+          ? 'Pelatihan · Riwayat chat'
+          : 'Pelatihan · Training Chat'
 
   const navClass = ({ isActive }) =>
     `rounded-xl border px-3 py-2 text-center text-xs font-medium transition ${
@@ -75,6 +82,12 @@ export default function EbeddienChatHeaderTraining({
                 onClick={() => setChatHeaderMenuOpen(false)}
               >
                 Training Chat
+              </NavLink>
+              <NavLink to="/chat-ai/dashboard" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
+                Dashboard
+              </NavLink>
+              <NavLink to="/chat-ai/riwayat" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
+                Riwayat
               </NavLink>
             </div>
           </motion.div>

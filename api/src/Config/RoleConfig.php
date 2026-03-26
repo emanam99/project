@@ -152,7 +152,6 @@ class RoleConfig
         ],
         'admin_kalender' => [
             'view_reports',
-            'manage_settings'
         ],
         'koordinator_ugt' => [
             'view_reports'

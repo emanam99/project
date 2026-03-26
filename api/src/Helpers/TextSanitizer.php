@@ -72,6 +72,44 @@ class TextSanitizer
     }
 
     /**
+     * Seperti cleanText tetapi mempertahankan baris baru untuk pesan WA multi-paragraf.
+     * Hanya merapikan spasi/tab dalam satu baris, tidak menggabungkan paragraf jadi satu baris.
+     */
+    public static function cleanMultilineMessage(?string $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        $value = (string) $value;
+        $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        if ($value === false) {
+            return '';
+        }
+
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value);
+        $value = str_replace("\xEF\xBF\xBD", '', $value);
+        $value = preg_replace('/[\x{E000}-\x{F8FF}]/u', '', $value);
+
+        if (class_exists('Normalizer') && method_exists('Normalizer', 'normalize')) {
+            $nfc = \Normalizer::normalize($value, \Normalizer::FORM_C);
+            if ($nfc !== false) {
+                $value = $nfc;
+            }
+        }
+
+        $value = preg_replace('/\R/u', "\n", $value);
+        $lines = explode("\n", $value);
+        $lines = array_map(static function ($line) {
+            return preg_replace('/[ \t]+/u', ' ', trim($line));
+        }, $lines);
+        $value = implode("\n", $lines);
+        $value = preg_replace("/\n{4,}/u", "\n\n\n", $value) ?? $value;
+
+        return trim($value);
+    }
+
+    /**
      * Membersihkan teks; jika hasil kosong kembalikan null (untuk field opsional di DB).
      *
      * @param string|null $value

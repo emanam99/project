@@ -218,14 +218,14 @@ class WhatsAppController
                 return $this->json($response, ['success' => false, 'message' => 'from wajib'], 400);
             }
 
-            $nomorFrom = WhatsAppService::formatPhoneNumber($from);
+            $nomorFrom = WhatsAppService::normalizeWebhookFrom($from, $fromJid);
             if (strlen($nomorFrom) < 10) {
                 error_log('WhatsAppController::incoming rejected: nomor tidak valid. from=' . substr($from, 0, 20));
                 return $this->json($response, ['success' => false, 'message' => 'Nomor tidak valid'], 400);
             }
             // Untuk tampilan/riwayat: pakai nomor kanonik (62xxx asli) jika dikirim WA client (mis. dari getContactLidAndPhone), agar cocok dengan nomor pendaftar
             $nomorTujuan = $canonicalNumber !== ''
-                ? WhatsAppService::formatPhoneNumber($canonicalNumber)
+                ? WhatsAppService::normalizeWebhookDestination($canonicalNumber)
                 : $nomorFrom;
             if (strlen($nomorTujuan) < 10) {
                 $nomorTujuan = $nomorFrom;
@@ -259,6 +259,9 @@ class WhatsAppController
             error_log('WhatsAppController::incoming saved id=' . $id . ' from=' . $nomorTujuan);
 
             $jid = $fromJid !== '' ? $fromJid : null;
+            // Jika provider mengirim chat @lid, simpan LID ke kontak agar pengiriman berikutnya bisa pakai chatId @lid.
+            // Ini membantu kasus nomor sudah tersimpan tapi balasan/kirim berikutnya tidak sampai karena identitas chat berubah.
+            WhatsAppService::syncKontakLidFromIncomingMeta($nomorTujuan, $jid);
             $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $jid);
             $isDaftarNotif = $reply !== null && $reply !== '';
             $replySource = $isDaftarNotif ? 'daftar_notif' : null;

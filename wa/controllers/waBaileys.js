@@ -8,6 +8,8 @@ import qrcode from 'qrcode';
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
+  fetchLatestWaWebVersion,
+  extractMessageContent,
 } from '@whiskeysockets/baileys';
 import { setWaStatus } from '../store/waStatus.js';
 
@@ -19,6 +21,8 @@ const sockRefBySession = {};
 const baileysStatusBySession = {};
 const WA_FORWARD_TIMEOUT_MS = Number(process.env.WA_FORWARD_TIMEOUT_MS || 8000);
 const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
+/** Pesan type "append" (sering untuk offline) — batasi agar sync riwayat lama tidak membanjiri API. */
+const WA_APPEND_MAX_AGE_SEC = Number(process.env.WA_APPEND_MAX_AGE_SEC || 7200);
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,7 +32,7 @@ export function humanizeLidSendError(raw) {
   if (!/no\s+lid|lid\s+for\s+user|missing\s+lid|lid\s+missing/i.test(s)) {
     return s;
   }
-  return 'WhatsApp membutuhkan sinkron kontak (LID) untuk nomor ini. Di halaman Koneksi WA pastikan Langkah 2 (Baileys) terhubung untuk slot yang sama dengan WA_SESSION_ID di api/.env. Jika sudah, buka sekali obrolan ke nomor tersebut di aplikasi WhatsApp di HP lalu coba lagi.';
+  return 'WhatsApp membutuhkan sinkron kontak (LID) untuk nomor ini. Pastikan koneksi WhatsApp (Baileys) terhubung untuk slot yang sama dengan WA_SESSION_ID di api/.env. Jika sudah, buka sekali obrolan ke nomor tersebut di aplikasi WhatsApp di HP lalu coba lagi.';
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = WA_FORWARD_TIMEOUT_MS) {
@@ -61,12 +65,18 @@ function syncBaileysToStore(sessionId) {
       baileysStatus: st.status,
       baileysQrCode: st.qrCode,
       baileysPhoneNumber: st.phoneNumber,
+      status: st.status,
+      qrCode: st.qrCode,
+      phoneNumber: st.phoneNumber,
     });
   } catch (_) {}
 }
 
 function formatPhoneNumber(phone) {
-  let n = String(phone || '').replace(/\D/g, '');
+  let raw = String(phone || '').trim();
+  if (raw.includes('@')) raw = raw.replace(/@.*/, '');
+  if (raw.includes(':')) raw = raw.split(':')[0];
+  let n = raw.replace(/\D/g, '');
   if (n.startsWith('0')) n = '62' + n.slice(1);
   else if (!n.startsWith('62')) n = '62' + n;
   return n || null;
@@ -155,11 +165,29 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const baileysStatus = getBaileysStatusObj(id);
 
+  let version;
+  try {
+    const v = await fetchLatestWaWebVersion();
+    version = v?.version;
+  } catch (_) {
+    version = undefined;
+  }
+
+  /** Peer opsional Baileys: tanpa link-preview-js, kartu preview URL tidak pernah dibuat (import gagal). */
+  const linkPreviewTimeoutMs = Number(process.env.WA_LINK_PREVIEW_FETCH_TIMEOUT_MS || 12000);
+  const linkPreviewFetchOpts =
+    Number.isFinite(linkPreviewTimeoutMs) && linkPreviewTimeoutMs >= 3000
+      ? { timeout: Math.min(linkPreviewTimeoutMs, 60000) }
+      : { timeout: 12000 };
+
   const sock = makeWASocket({
+    ...(version ? { version } : {}),
     auth: state,
     printQRInTerminal: false,
     syncFullHistory: false,
     getMessage: async () => undefined,
+    /** Gabung ke fetchOpts getUrlInfo di Baileys (default 3000 ms sering kurang untuk HTTPS lambat). */
+    options: linkPreviewFetchOpts,
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -189,6 +217,18 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
         syncBaileysToStore(id);
         return;
       }
+      /** Setelah scan QR, WA sering kirim 515 "restart required" — harus sambung ulang dengan creds yang sama (bukan logout). */
+      if (statusCode === DisconnectReason.restartRequired) {
+        delete sockRefBySession[id];
+        baileysStatus.status = 'connecting';
+        baileysStatus.qrCode = null;
+        syncBaileysToStore(id);
+        console.log('[WA Baileys]', id, 'Restart setelah pairing (515) — menyambung ulang...');
+        setImmediate(() => {
+          initBaileys(id).catch((e) => console.error('[WA Baileys] init setelah 515:', e?.message || e));
+        });
+        return;
+      }
       delete sockRefBySession[id];
       baileysStatus.status = 'disconnected';
       baileysStatus.qrCode = null;
@@ -206,7 +246,10 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       try {
         const jid = sock.user?.id;
         if (jid) {
-          const num = String(jid).replace(/@.*/, '').replace(/\D/g, '');
+          /** JID multi-device: "6285...@s.whatsapp.net" — jangan gabungkan ":deviceId" ke digit nomor. */
+          const local = String(jid).replace(/@.*/, '');
+          const userPart = local.includes(':') ? local.split(':')[0] : local;
+          const num = userPart.replace(/\D/g, '');
           if (num.length >= 10) baileysStatus.phoneNumber = num.startsWith('62') ? num : '62' + num;
         }
       } catch (_) {
@@ -217,11 +260,31 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
     }
   });
 
+  /**
+   * Baileys: pesan baru real-time = type "notify"; pesan offline / beberapa jalur = "append"
+   * (lihat messages-recv.js: upsertMessage(..., node.attrs.offline ? 'append' : 'notify')).
+   * Hanya proses "append" yang cukup baru agar sync history tidak membanjiri webhook.
+   */
+  function shouldForwardUpsertType(upsertType, msg) {
+    if (upsertType === 'notify') return true;
+    if (upsertType === 'append') {
+      const rawTs = msg?.messageTimestamp;
+      const ts =
+        rawTs && typeof rawTs === 'object' && typeof rawTs.toNumber === 'function'
+          ? rawTs.toNumber()
+          : Number(rawTs || 0);
+      if (!ts) return true;
+      const ageSec = Math.floor(Date.now() / 1000) - ts;
+      return ageSec >= 0 && ageSec <= WA_APPEND_MAX_AGE_SEC;
+    }
+    return false;
+  }
+
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     const list = Array.isArray(messages) ? messages : [];
-    if (WA_VERBOSE_LOG) console.log('[WA Baileys] messages.upsert type="' + type + '" count=' + list.length + '"');
-    if (type !== 'notify') {
-      if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: type bukan "notify"');
+    console.log('[WA Baileys]', id, 'messages.upsert type=' + type + ' count=' + list.length);
+    if (!shouldForwardUpsertType(type, list[0])) {
+      if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip upsert type=' + type + ' (bukan notify/append baru)');
       return;
     }
     const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
@@ -230,36 +293,68 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       return;
     }
     for (const msg of list) {
+      const remoteJidRaw = (msg.key && msg.key.remoteJid) || '';
+      const fromMe = !!(msg.key && msg.key.fromMe);
+      const participant = (msg.key && msg.key.participant) || '';
+      /** Log ringkas — tanpa ini “count=1” tidak menjelaskan kenapa tidak sampai ke API / aktivasi. */
+      console.log(
+        '[WA Baileys]',
+        id,
+        'pesan key: remoteJid=' + remoteJidRaw + ' fromMe=' + fromMe + (participant ? ' participant=' + participant : '')
+      );
       if (msg.key && msg.key.fromMe) {
-        if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: fromMe');
+        console.warn(
+          '[WA Baileys]',
+          id,
+          'skip: fromMe=true (bukan pesan masuk dari orang lain — kirim ke nomor slot ini dari HP/nomor lain, bukan “chat dengan diri sendiri”)'
+        );
         continue;
       }
       try {
-        const remoteJid = (msg.key && msg.key.remoteJid) || '';
+        const remoteJid = remoteJidRaw;
         if (/@g\.us$/i.test(remoteJid)) {
-          if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: pesan grup');
+          console.log('[WA Baileys]', id, 'skip: pesan grup');
           continue;
         }
-        if (!remoteJid.endsWith('@s.whatsapp.net') && !remoteJid.endsWith('@c.us')) {
-          if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: remoteJid tidak valid');
+        let from62 = '';
+        if (remoteJid.endsWith('@s.whatsapp.net') || remoteJid.endsWith('@c.us')) {
+          const fromRaw = remoteJid.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '');
+          const digits = fromRaw.replace(/\D/g, '');
+          if (digits.length < 10) {
+            console.warn('[WA Baileys]', id, 'skip: nomor terlalu pendek dari remoteJid');
+            continue;
+          }
+          from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
+        } else if (/@lid$/i.test(remoteJid)) {
+          const lidDigits = remoteJid.replace(/@lid$/i, '').replace(/\D/g, '');
+          if (lidDigits.length < 10) {
+            console.warn('[WA Baileys]', id, 'skip: LID terlalu pendek');
+            continue;
+          }
+          from62 = lidDigits;
+        } else {
+          console.warn('[WA Baileys]', id, 'skip: remoteJid tidak didukung (bukan @s.whatsapp.net / @c.us / @lid)');
           continue;
         }
-        const fromRaw = remoteJid.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '');
-        const digits = fromRaw.replace(/\D/g, '');
-        if (digits.length < 10) {
-          if (WA_VERBOSE_LOG) console.log('[WA Baileys] skip: nomor terlalu pendek');
-          continue;
-        }
-        const from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
         const messageId = msg.key.id || null;
+        const inner = extractMessageContent(msg.message);
         let body = '';
-        if (msg.message?.conversation) body = msg.message.conversation;
-        else if (msg.message?.extendedTextMessage?.text) body = msg.message.extendedTextMessage.text;
-        else if (msg.message?.imageMessage?.caption) body = msg.message.imageMessage.caption;
+        if (inner?.conversation) body = inner.conversation;
+        else if (inner?.extendedTextMessage?.text) body = inner.extendedTextMessage.text;
+        else if (inner?.imageMessage?.caption) body = inner.imageMessage.caption;
         else body = '[media]';
+        const preview = String(body).replace(/\s+/g, ' ').slice(0, 72);
+        console.log('[WA Baileys]', id, 'isi (preview):', preview + (String(body).length > 72 ? '…' : ''));
         const waPath = apiBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming';
         const url = apiBase + waPath;
-        const payload = { from: from62, message: body, messageId: messageId || undefined, sessionId: id };
+        /** API (aktivasi AI WA, kontak LID) butuh JID penuh — bukan hanya @lid. */
+        const payload = {
+          from: from62,
+          message: body,
+          messageId: messageId || undefined,
+          sessionId: id,
+          from_jid: remoteJid,
+        };
         let lastOk = false;
         let lastErr = null;
         for (let attempt = 1; attempt <= 3; attempt++) {
@@ -276,7 +371,7 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
           if (attempt < 3) await new Promise((r) => setTimeout(r, 700 * attempt));
         }
         if (lastOk) {
-          if (WA_VERBOSE_LOG) console.log('[WA Baileys] Pesan masuk diforward ke API');
+          console.log('[WA Baileys]', id, 'forward OK →', url, 'from=', from62);
         } else {
           console.error('[WA Baileys] Gagal forward pesan masuk ke API: from=' + from62 + ' error=' + (lastErr || 'timeout'));
         }
@@ -316,13 +411,29 @@ export function getBaileysStatus(sessionId = DEFAULT_SESSION) {
   return { ...getBaileysStatusObj(sessionId) };
 }
 
+/**
+ * Tunggu sampai QR masuk store atau koneksi open (pairing selesai).
+ * Dipakai setelah initBaileys agar respons HTTP bisa menyertakan gambar QR.
+ */
+export async function waitForBaileysQrOrConnected(sessionId = DEFAULT_SESSION, maxMs = 20000) {
+  const id = sessionId || DEFAULT_SESSION;
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const st = getBaileysStatusObj(id);
+    if (st.status === 'connected') return true;
+    if (st.qrCode && String(st.qrCode).length > 80) return true;
+    await delay(200);
+  }
+  return false;
+}
+
 export function isBaileysConnected(sessionId = DEFAULT_SESSION) {
   const id = sessionId || DEFAULT_SESSION;
   return sockRefBySession[id] != null && getBaileysStatusObj(id).status === 'connected';
 }
 
 /** True jika folder auth Baileys punya file (pernah scan Langkah 2). */
-function hasBaileysAuthFiles(sessionId = DEFAULT_SESSION) {
+export function hasBaileysAuthFiles(sessionId = DEFAULT_SESSION) {
   const id = sessionId || DEFAULT_SESSION;
   const authPath = getBaileysAuthPath(id);
   if (!existsSync(authPath)) return false;
@@ -335,7 +446,7 @@ function hasBaileysAuthFiles(sessionId = DEFAULT_SESSION) {
 
 /**
  * Setelah restart Node, socket Baileys kosong walau auth ada di disk — panggil init + tunggu open.
- * Dipakai sebelum kirim agar OTP tidak jatuh ke Puppeteer (No LID).
+ * Dipakai sebelum kirim agar socket hidup lagi setelah restart Node (No LID).
  */
 export async function ensureBaileysReadyForSend(sessionId = DEFAULT_SESSION, maxWaitMs = 14000) {
   const id = sessionId || DEFAULT_SESSION;
@@ -354,12 +465,32 @@ export async function ensureBaileysReadyForSend(sessionId = DEFAULT_SESSION, max
   return isBaileysConnected(id);
 }
 
-export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase64, imageMimetype) {
+/** Payload teks untuk Baileys: link preview diambil otomatis dari URL di teks (generateWAMessageContent). Set linkPreview=false untuk menonaktifkan. */
+function buildTextContent(text, linkPreviewEnabled = true) {
+  const t = typeof text === 'string' ? text : '';
+  if (linkPreviewEnabled === false) {
+    return { text: t, linkPreview: false };
+  }
+  return { text: t };
+}
+
+export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase64, imageMimetype, chatId = null, linkPreviewEnabled = true) {
   const id = sessionId || DEFAULT_SESSION;
   const sock = sockRefBySession[id];
   const st = getBaileysStatusObj(id);
   if (!sock || st.status !== 'connected') return { ok: false, error: 'Baileys belum terhubung' };
-  const { jids, reason } = await resolveSendJidsOrdered(sock, phoneNumber);
+  const cid = typeof chatId === 'string' ? chatId.trim() : '';
+  let jids;
+  let reason;
+  if (cid.includes('@')) {
+    /** Balasan ke chat yang sama (mis. pengirim @lid) — jangan lewat onWhatsApp dengan digit LID sebagai “nomor HP”. */
+    jids = [cid];
+    reason = null;
+  } else {
+    const r = await resolveSendJidsOrdered(sock, phoneNumber);
+    jids = r.jids;
+    reason = r.reason;
+  }
   if (jids.length === 0) {
     return {
       ok: false,
@@ -382,7 +513,7 @@ export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase
         const buffer = Buffer.from(imageBase64.replace(/^data:image\/[^;]+;base64,/, '').trim(), 'base64');
         result = await sock.sendMessage(jid, { image: buffer, caption: content }, {});
       } else {
-        result = await sock.sendMessage(jid, { text: content }, {});
+        result = await sock.sendMessage(jid, buildTextContent(content, linkPreviewEnabled), {});
       }
       return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
     } catch (err) {
@@ -516,6 +647,26 @@ export async function checkNumberBaileys(sessionId, phoneNumber) {
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
   }
+}
+
+/**
+ * Daftar JID yang bisa dipakai kirim (termasuk @lid jika onWhatsApp mengembalikannya).
+ * Dipakai UI "Get LID" agar nomor_kanonik bisa diisi dari mapping server.
+ */
+export async function resolveJidsForPhone(sessionId, phoneNumber) {
+  const id = sessionId || DEFAULT_SESSION;
+  const sock = sockRefBySession[id];
+  const st = getBaileysStatusObj(id);
+  if (!sock || st.status !== 'connected') {
+    return { ok: false, error: 'Baileys belum terhubung', jids: [], reason: undefined };
+  }
+  const r = await resolveSendJidsOrdered(sock, phoneNumber);
+  return {
+    ok: r.jids.length > 0,
+    jids: r.jids || [],
+    reason: r.reason,
+    error: r.jids.length === 0 ? (r.reason === 'not_registered' ? 'Nomor tidak terdaftar di WhatsApp' : 'Nomor tidak valid') : undefined,
+  };
 }
 
 export async function disconnectBaileys(sessionId = DEFAULT_SESSION) {

@@ -40,6 +40,7 @@ return function (\Slim\App $app): void {
 
     $app->group('/api/kontak', function ($group) {
         $group->get('', [KontakController::class, 'getList']);
+        $group->post('/{id}/resolve-lid', [KontakController::class, 'resolveLid']);
         $group->patch('/{id}', [KontakController::class, 'update']);
         $group->delete('/{id}', [KontakController::class, 'delete']);
     })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());

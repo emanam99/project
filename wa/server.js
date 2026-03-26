@@ -40,7 +40,7 @@ function getSessionIdsFromDiskCached() {
   return sessionIdsCache;
 }
 
-/** Izinkan origin: localhost, 127.0.0.1, atau host berakhiran .alutsmani.id / persis alutsmani.id */
+/** Izinkan origin: localhost, LAN privat (Vite dari IP 192.168.x), atau *.alutsmani.id */
 function isAllowedOrigin(origin) {
   if (!origin || typeof origin !== 'string') return false;
   try {
@@ -48,6 +48,10 @@ function isAllowedOrigin(origin) {
     const host = u.hostname.toLowerCase();
     if (host === 'localhost' || host === '127.0.0.1') return true;
     if (host === 'alutsmani.id' || host.endsWith('.alutsmani.id')) return true;
+    // Tanpa ini: buka ebeddien lewat http://192.168.x.x:5173 → fetch ke WA diblokir CORS ("Failed to fetch")
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     return false;
   } catch {
     return false;

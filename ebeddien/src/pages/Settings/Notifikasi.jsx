@@ -55,7 +55,14 @@ export default function Notifikasi() {
   const [kontakLoading, setKontakLoading] = useState(false)
   const [kontakSearch, setKontakSearch] = useState('')
   const [deletingKontakId, setDeletingKontakId] = useState(null)
+  const [kontakSelectedIds, setKontakSelectedIds] = useState([])
+  const [kontakBulkDeleting, setKontakBulkDeleting] = useState(false)
   const kontakLimit = 20
+  const [kontakPanelOpen, setKontakPanelOpen] = useState(false)
+  const [kontakDraft, setKontakDraft] = useState(null)
+  const [kontakWaSessionId, setKontakWaSessionId] = useState('default')
+  const [kontakSaving, setKontakSaving] = useState(false)
+  const [kontakLidLoading, setKontakLidLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -110,6 +117,10 @@ export default function Notifikasi() {
         if (!cancelled) setKontakLoading(false)
       })
     return () => { cancelled = true }
+  }, [activeTab, kontakPage, kontakSearch])
+
+  useEffect(() => {
+    setKontakSelectedIds([])
   }, [activeTab, kontakPage, kontakSearch])
 
   useEffect(() => {
@@ -215,6 +226,124 @@ export default function Notifikasi() {
 
   const hasMoreMessages = messages.length < messagesTotal
 
+  const openKontakPanel = (k) => {
+    if (!k?.id) return
+    setKontakDraft({
+      id: k.id,
+      nama: k.nama ?? '',
+      nomor: k.nomor ?? '',
+      nomor_kanonik: k.nomor_kanonik ?? '',
+      siap_terima_notif: !!k.siap_terima_notif
+    })
+    setKontakWaSessionId('default')
+    setKontakPanelOpen(true)
+  }
+
+  const closeKontakPanel = () => {
+    setKontakPanelOpen(false)
+    setKontakDraft(null)
+  }
+
+  const toggleKontakSelect = (id) => {
+    setKontakSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  const handleBulkDeleteKontak = async () => {
+    const ids = [...kontakSelectedIds]
+    if (ids.length === 0) return
+    const ok = window.confirm(
+      `Hapus ${ids.length} kontak terpilih?\nTindakan ini tidak dapat dibatalkan.`
+    )
+    if (!ok) return
+    setKontakBulkDeleting(true)
+    const successfulIds = []
+    try {
+      for (const id of ids) {
+        try {
+          const res = await kontakAPI.delete(id)
+          if (res?.success) successfulIds.push(id)
+        } catch (_) {
+          /* lanjut ke id berikutnya */
+        }
+      }
+      if (successfulIds.length > 0) {
+        setKontakItems((prev) => prev.filter((x) => !successfulIds.includes(x.id)))
+        setKontakTotal((t) => Math.max(0, t - successfulIds.length))
+        setKontakSelectedIds((prev) => prev.filter((x) => !successfulIds.includes(x)))
+        if (kontakDraft && successfulIds.includes(kontakDraft.id)) closeKontakPanel()
+      }
+      if (successfulIds.length === ids.length) {
+        showNotification(`${successfulIds.length} kontak dihapus`, 'success')
+      } else if (successfulIds.length > 0) {
+        showNotification(
+          `${successfulIds.length} kontak dihapus, ${ids.length - successfulIds.length} gagal`,
+          'error'
+        )
+      } else {
+        showNotification('Gagal menghapus kontak terpilih', 'error')
+      }
+    } finally {
+      setKontakBulkDeleting(false)
+    }
+  }
+
+  const mergeKontakInList = (updated) => {
+    if (!updated?.id) return
+    setKontakItems((prev) =>
+      prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x))
+    )
+    setKontakDraft((prev) =>
+      prev && prev.id === updated.id ? { ...prev, ...updated } : prev
+    )
+  }
+
+  const handleSaveKontakDraft = async () => {
+    if (!kontakDraft?.id) return
+    setKontakSaving(true)
+    try {
+      const res = await kontakAPI.update(kontakDraft.id, {
+        nama: (kontakDraft.nama || '').trim(),
+        nomor_kanonik: (kontakDraft.nomor_kanonik || '').trim() || null,
+        siap_terima_notif: kontakDraft.siap_terima_notif
+      })
+      if (res?.success && res?.data) {
+        mergeKontakInList(res.data)
+        showNotification(res.message || 'Kontak disimpan', 'success')
+        closeKontakPanel()
+      } else {
+        showNotification(res?.message || 'Gagal menyimpan', 'error')
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || 'Gagal menyimpan', 'error')
+    } finally {
+      setKontakSaving(false)
+    }
+  }
+
+  const handleGetLidKontak = async () => {
+    if (!kontakDraft?.id) return
+    if (provider !== 'wa_sendiri') {
+      showNotification('Ambil LID hanya untuk provider WA server sendiri. Ganti di tab Pengaturan atau isi LID manual.', 'error')
+      return
+    }
+    setKontakLidLoading(true)
+    try {
+      const res = await kontakAPI.resolveLid(kontakDraft.id, kontakWaSessionId.trim() || 'default')
+      if (res?.success && res?.data?.kontak) {
+        mergeKontakInList(res.data.kontak)
+        showNotification(res.message || 'LID berhasil diambil', 'success')
+      } else {
+        showNotification(res?.message || 'Gagal mengambil LID', 'error')
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || 'Gagal mengambil LID', 'error')
+    } finally {
+      setKontakLidLoading(false)
+    }
+  }
+
   const handleDeleteKontak = async (kontak) => {
     if (!kontak?.id) return
     const nama = kontak.nama || '(tanpa nama)'
@@ -228,6 +357,8 @@ export default function Notifikasi() {
       if (res?.success) {
         setKontakItems((prev) => prev.filter((x) => x.id !== kontak.id))
         setKontakTotal((prev) => Math.max(0, prev - 1))
+        setKontakSelectedIds((prev) => prev.filter((x) => x !== kontak.id))
+        if (kontakDraft?.id === kontak.id) closeKontakPanel()
         showNotification('Kontak berhasil dihapus', 'success')
       } else {
         showNotification(res?.message || 'Gagal menghapus kontak', 'error')
@@ -369,6 +500,29 @@ export default function Notifikasi() {
                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 text-sm w-full sm:w-72"
                   />
                 </div>
+                {kontakSelectedIds.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-900/25">
+                    <span className="text-xs font-medium text-teal-900 dark:text-teal-100 pr-1">
+                      {kontakSelectedIds.length} terpilih
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setKontakSelectedIds([])}
+                      disabled={kontakBulkDeleting}
+                      className="text-xs px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      Batal pilihan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBulkDeleteKontak}
+                      disabled={kontakBulkDeleting}
+                      className="text-xs px-2 py-0.5 rounded-md bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+                    >
+                      {kontakBulkDeleting ? 'Menghapus…' : 'Hapus terpilih'}
+                    </button>
+                  </div>
+                )}
                 {kontakLoading ? (
                   <div className="flex justify-center py-12">
                     <div className="animate-spin rounded-full h-9 w-9 border-2 border-teal-500 border-t-transparent" />
@@ -387,21 +541,47 @@ export default function Notifikasi() {
                           return (
                             <li key={k.id} className="px-4 py-3 sm:px-5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
                               <div className="flex items-start gap-3">
-                                <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 flex items-center justify-center font-semibold text-sm shrink-0">
-                                  {initial}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{displayName}</p>
-                                  <p className="mt-0.5 text-sm font-mono text-gray-700 dark:text-gray-200 truncate">{k.nomor}</p>
-                                  <div className="mt-1 flex flex-wrap gap-1.5">
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                      LID: {k.nomor_kanonik || '–'}
-                                    </span>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${k.siap_terima_notif ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'}`}>
-                                      {k.siap_terima_notif ? 'Siap notif' : 'Notif off'}
-                                    </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    toggleKontakSelect(k.id)
+                                  }}
+                                  title={kontakSelectedIds.includes(k.id) ? 'Batal pilih' : 'Pilih untuk hapus massal'}
+                                  aria-pressed={kontakSelectedIds.includes(k.id)}
+                                  className={`w-10 h-10 rounded-full shrink-0 flex items-center justify-center font-semibold text-sm border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500/50 ${
+                                    kontakSelectedIds.includes(k.id)
+                                      ? 'bg-teal-600 border-teal-600 text-white'
+                                      : 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 border-transparent'
+                                  }`}
+                                >
+                                  {kontakSelectedIds.includes(k.id) ? (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  ) : (
+                                    initial
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="flex items-start gap-0 min-w-0 flex-1 text-left rounded-lg -m-1 p-1 focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+                                  onClick={() => openKontakPanel(k)}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{displayName}</p>
+                                    <p className="mt-0.5 text-sm font-mono text-gray-700 dark:text-gray-200 truncate">{k.nomor}</p>
+                                    <div className="mt-1 flex flex-wrap gap-1.5">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                        LID: {k.nomor_kanonik || '–'}
+                                      </span>
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${k.siap_terima_notif ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                                        {k.siap_terima_notif ? 'Siap notif' : 'Notif off'}
+                                      </span>
+                                    </div>
                                   </div>
-                                </div>
+                                </button>
                                 <div className="flex items-center gap-2 shrink-0 pt-0.5">
                                   <button
                                     type="button"
@@ -412,7 +592,11 @@ export default function Notifikasi() {
                                       kontakAPI.updateSiapTerimaNotif(k.id, !k.siap_terima_notif)
                                         .then((res) => {
                                           if (res?.success) {
-                                            setKontakItems((prev) => prev.map((x) => x.id === k.id ? { ...x, siap_terima_notif: !k.siap_terima_notif } : x))
+                                            if (res.data && typeof res.data === 'object') {
+                                              setKontakItems((prev) => prev.map((x) => (x.id === k.id ? { ...x, ...res.data } : x)))
+                                            } else {
+                                              setKontakItems((prev) => prev.map((x) => x.id === k.id ? { ...x, siap_terima_notif: !k.siap_terima_notif } : x))
+                                            }
                                             showNotification('Pengaturan kontak diperbarui', 'success')
                                           } else showNotification(res?.message || 'Gagal', 'error')
                                         })
@@ -531,6 +715,127 @@ export default function Notifikasi() {
           )}
         </div>
       </div>
+
+      {createPortal(
+        <AnimatePresence>
+          {kontakPanelOpen && kontakDraft ? [
+            <motion.div
+              key="kontak-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[55] bg-black/50 backdrop-blur-sm"
+              onClick={closeKontakPanel}
+              aria-hidden
+            />,
+            <motion.div
+              key="kontak-panel"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'tween', duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+              className="fixed right-0 top-0 bottom-0 z-[65] w-full max-w-md bg-white dark:bg-gray-800 shadow-2xl flex flex-col"
+            >
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between shrink-0">
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 truncate pr-2">
+                  Edit kontak
+                </h3>
+                <button
+                  type="button"
+                  onClick={closeKontakPanel}
+                  className="flex-shrink-0 p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nama</label>
+                  <input
+                    type="text"
+                    value={kontakDraft.nama}
+                    onChange={(e) => setKontakDraft((d) => (d ? { ...d, nama: e.target.value } : d))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+                    placeholder="Nama kontak"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nomor WhatsApp</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={kontakDraft.nomor}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50 text-gray-700 dark:text-gray-300 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">LID (nomor kanonik / ID chat)</label>
+                  <input
+                    type="text"
+                    value={kontakDraft.nomor_kanonik || ''}
+                    onChange={(e) => setKontakDraft((d) => (d ? { ...d, nomor_kanonik: e.target.value } : d))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm font-mono"
+                    placeholder="Isi manual atau klik Ambil LID"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Kirim tes bisa hanya dengan Langkah 1 (WhatsApp Web). Digit LID (@lid) biasanya baru muncul setelah Langkah 2 (Baileys) juga terhubung — sama seperti mapping onWhatsApp di server Node.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Session WA (slot)</label>
+                  <input
+                    type="text"
+                    value={kontakWaSessionId}
+                    onChange={(e) => setKontakWaSessionId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm font-mono"
+                    placeholder="default"
+                  />
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={kontakDraft.siap_terima_notif}
+                    onChange={(e) => setKontakDraft((d) => (d ? { ...d, siap_terima_notif: e.target.checked } : d))}
+                    className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                  />
+                  <span className="text-sm text-gray-800 dark:text-gray-200">Siap terima notifikasi</span>
+                </label>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleGetLidKontak}
+                    disabled={kontakLidLoading || provider !== 'wa_sendiri'}
+                    className="px-4 py-2 rounded-lg border border-teal-600 text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 hover:bg-teal-100 dark:hover:bg-teal-900/50 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {kontakLidLoading ? 'Mengambil…' : 'Ambil LID'}
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleSaveKontakDraft}
+                  disabled={kontakSaving}
+                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  {kontakSaving ? 'Menyimpan…' : 'Simpan'}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeKontakPanel}
+                  className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm"
+                >
+                  Batal
+                </button>
+              </div>
+            </motion.div>
+          ] : null}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {createPortal(
         <AnimatePresence>

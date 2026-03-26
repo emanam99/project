@@ -1,5 +1,7 @@
 // Konfigurasi base URL gambar — dari .env (local / staging / production)
-// Set VITE_GAMBAR_BASE di .env; kalau tidak set: pakai same-origin /gambar (hindari CORS)
+// Set VITE_GAMBAR_BASE di .env; kalau tidak set: fallback ke domain utama alutsmani.id.
+
+const DEFAULT_GAMBAR_BASE = 'https://alutsmani.id/gambar'
 
 function getGambarBase() {
   const envBase = import.meta.env.VITE_GAMBAR_BASE
@@ -7,12 +9,7 @@ function getGambarBase() {
     const url = envBase.trim()
     return url.endsWith('/') ? url.slice(0, -1) : url
   }
-  // Same-origin: pakai /gambar dari domain yang sama (uwaba2, daftar, localhost, dll.)
-  // Tidak ada request ke alutsmani.id → tidak perlu CORS di server gambar.
-  if (typeof window !== 'undefined') {
-    return '/gambar'
-  }
-  return '/gambar'
+  return DEFAULT_GAMBAR_BASE
 }
 
 /** Base URL gambar (dari env atau fallback) */

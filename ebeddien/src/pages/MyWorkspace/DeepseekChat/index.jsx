@@ -20,6 +20,7 @@ import {
 } from '../../../services/deepseekClient'
 import { logNewlineDebug } from '../../../utils/newlineDebug'
 import { useChatAiHeaderSlot } from '../../../contexts/ChatAiHeaderContext'
+import { useNotification } from '../../../contexts/NotificationContext'
 import EbeddienChatHeaderMain from './EbeddienChatHeaderMain'
 
 function msgId() {
@@ -294,6 +295,7 @@ function TypingIndicator({ nameClass = 'text-xs', statusClass = 'text-xs' }) {
 
 export default function DeepseekChat() {
   const { user } = useAuthStore()
+  const { showNotification } = useNotification()
   const isSuperAdminTraining = userHasSuperAdminAccess(user)
   const canUseAlternativeMode = isSuperAdminTraining
 
@@ -321,6 +323,8 @@ export default function DeepseekChat() {
   /** Nomor WA profil (ternormalisasi) yang dipakai backend untuk cocokkan pesan masuk WA → AI */
   const [waProfileNumber, setWaProfileNumber] = useState('')
   const [waProfileNumberOk, setWaProfileNumberOk] = useState(false)
+  const [waAiJidBound, setWaAiJidBound] = useState(false)
+  const [waActivationBusy, setWaActivationBusy] = useState(false)
   const [aiFeatureEnabled, setAiFeatureEnabled] = useState(true)
   const [aiDailyLimit, setAiDailyLimit] = useState(5)
   const [aiTodayCount, setAiTodayCount] = useState(0)
@@ -571,6 +575,7 @@ export default function DeepseekChat() {
           setWaAiEnabled(!!res.data.enabled)
           setWaProfileNumber(typeof res.data.no_wa_normalized === 'string' ? res.data.no_wa_normalized : '')
           setWaProfileNumberOk(!!res.data.wa_number_ok)
+          setWaAiJidBound(!!res.data.ai_wa_jid_bound)
         }
       } catch {
         /* noop */
@@ -581,10 +586,67 @@ export default function DeepseekChat() {
     }
   }, [accountEmail])
 
+  /**
+   * Buka wa.me — PWA standalone/mobile: about:blank + navigasi tertunda sering macet; pakai fallback di bawah.
+   */
+  const openWaAiActivation = useCallback((url) => {
+    if (!url || typeof url !== 'string') return
+    deepseekAPI.getWaWake().catch(() => {})
+    try {
+      const w = window.open(url, '_blank', 'noopener,noreferrer')
+      if (w) return
+    } catch {
+      /* noop */
+    }
+    try {
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      return
+    } catch {
+      /* noop */
+    }
+    window.location.assign(url)
+  }, [])
+
+  /** Buka wa.me dengan pesan aktivasi (token dari server). */
+  const requestWaActivationAndOpen = useCallback(
+    async (opts = {}) => {
+      const silent = opts.silent !== false
+      setWaActivationBusy(true)
+      try {
+        const tok = await deepseekAPI.postWhatsappActivationToken()
+        if (tok?.success && tok.data?.wa_me_url) {
+          openWaAiActivation(tok.data.wa_me_url)
+          if (!silent && !tok.data.slot1_ready) {
+            showNotification(
+              'Pastikan slot WhatsApp (Baileys) terhubung agar pesan aktivasi sampai.',
+              'warning'
+            )
+          }
+        } else {
+          showNotification(tok?.message || 'Gagal memulai aktivasi WhatsApp. Periksa profil & nomor WA.', 'error')
+        }
+      } catch (err) {
+        showNotification(err?.response?.data?.message || 'Gagal memulai aktivasi WhatsApp.', 'error')
+      } finally {
+        setWaActivationBusy(false)
+      }
+    },
+    [openWaAiActivation, showNotification]
+  )
+
   const handleToggleWaAi = async (next) => {
     if (waAiBusy) return
+    if (next && !waProfileNumberOk) {
+      showNotification('Lengkapi nomor WhatsApp di profil terlebih dahulu.', 'warning')
+      return
+    }
     const prev = waAiEnabled
-    setWaAiEnabled(next)
     setWaAiBusy(true)
     try {
       const res = await deepseekAPI.putWhatsappAccess(next)
@@ -594,6 +656,13 @@ export default function DeepseekChat() {
         setWaAiEnabled(!!res.data.enabled)
         setWaProfileNumber(typeof res.data.no_wa_normalized === 'string' ? res.data.no_wa_normalized : '')
         setWaProfileNumberOk(!!res.data.wa_number_ok)
+        setWaAiJidBound(!!res.data.ai_wa_jid_bound)
+        if (next && res.data.enabled && res.data.wa_number_ok && !res.data.ai_wa_jid_bound) {
+          await requestWaActivationAndOpen({ silent: true })
+        }
+        if (res.data.wa_backend_hint) {
+          showNotification(res.data.wa_backend_hint, 'warning')
+        }
       }
     } catch {
       setWaAiEnabled(prev)
@@ -601,6 +670,9 @@ export default function DeepseekChat() {
       setWaAiBusy(false)
     }
   }
+
+  /** Aktif di UI hanya jika server sudah mengikat JID (pesan aktivasi berhasil). */
+  const waAccessFullyActive = waAiEnabled && waAiJidBound
 
   /** Muat 10 pasangan terakhir dari server (satu utas per pengguna / per sesi proxy). */
   useEffect(() => {
@@ -1168,38 +1240,25 @@ export default function DeepseekChat() {
                       busy={apiOfficialBusy}
                     />
                   </form>
-                  <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-dashed border-gray-200/90 pt-3 dark:border-gray-600/80">
-                    <SwitchToggle
-                      compact
-                      toggleFirst
-                      label="Berpikir"
-                      checked={apiOfficialModel === 'deepseek-reasoner'}
-                      disabled={apiOfficialBusy}
-                      onChange={(on) => setApiOfficialModel(on ? 'deepseek-reasoner' : 'deepseek-chat')}
-                    />
-                    <SwitchToggle
-                      compact
-                      toggleFirst
-                      label={
-                        <>
-                          <span>Akses AI dari WA</span>
-                          {waProfileNumberOk ? (
-                            <span className="font-mono font-semibold text-gray-700 dark:text-gray-200">({waProfileNumber})</span>
-                          ) : (
-                            <Link
-                              to="/profil"
-                              className="font-medium text-primary-600 underline dark:text-primary-400"
-                              onClick={(ev) => ev.stopPropagation()}
-                            >
-                              (isi nomor)
-                            </Link>
-                          )}
-                        </>
-                      }
-                      checked={waAiEnabled}
-                      disabled={apiOfficialBusy || waAiBusy}
-                      onChange={handleToggleWaAi}
-                    />
+                  <div className="mt-3 space-y-2 border-t border-dashed border-gray-200/90 pt-3 dark:border-gray-600/80">
+                    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+                      <SwitchToggle
+                        compact
+                        toggleFirst
+                        label="Berpikir"
+                        checked={apiOfficialModel === 'deepseek-reasoner'}
+                        disabled={apiOfficialBusy}
+                        onChange={(on) => setApiOfficialModel(on ? 'deepseek-reasoner' : 'deepseek-chat')}
+                      />
+                      <SwitchToggle
+                        compact
+                        toggleFirst
+                        label="Akses AI dari WA"
+                        checked={waAccessFullyActive}
+                        disabled={apiOfficialBusy || waAiBusy || waActivationBusy}
+                        onChange={handleToggleWaAi}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

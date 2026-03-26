@@ -148,6 +148,20 @@ export default function EbeddienChatHeaderMain({
                     >
                       Training Chat
                     </Link>
+                    <Link
+                      to="/chat-ai/dashboard"
+                      onClick={() => setChatHeaderMenuOpen(false)}
+                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                    >
+                      Dashboard
+                    </Link>
+                    <Link
+                      to="/chat-ai/riwayat"
+                      onClick={() => setChatHeaderMenuOpen(false)}
+                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                    >
+                      Riwayat
+                    </Link>
                     <button
                       type="button"
                       onClick={() => {

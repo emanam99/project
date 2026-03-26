@@ -65,6 +65,56 @@ class WhatsAppService
     }
 
     /**
+     * Session default untuk kirim / aktivasi (config WA_SESSION_ID atau "default").
+     */
+    public static function getPrimaryWaSessionId(): string
+    {
+        $cfg = self::getConfig();
+        $sid = trim((string) ($cfg['session_id'] ?? ''));
+
+        return $sid !== '' ? $sid : 'default';
+    }
+
+    /**
+     * URL GET /status pada server Node (tanpa auth) dari WA_API_URL …/send.
+     */
+    private static function getWaStatusApiUrl(): string
+    {
+        $cfg = self::getConfig();
+        $apiUrl = $cfg['api_url'];
+        $statusUrl = preg_replace('#/send$#', '/status', rtrim((string) $apiUrl, '/'));
+        if ($statusUrl === $apiUrl) {
+            $statusUrl = rtrim((string) $apiUrl, '/') . '/status';
+        }
+
+        return $statusUrl;
+    }
+
+    /**
+     * Ambil status satu session dari server Node WA (Baileys / slot).
+     *
+     * @return array<string, mixed>|null data: baileysStatus, baileysPhoneNumber, phoneNumber, …
+     */
+    public static function fetchNodeSessionStatus(string $sessionId = 'default'): ?array
+    {
+        $url = self::getWaStatusApiUrl() . '?sessionId=' . rawurlencode($sessionId);
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 8]);
+            $response = $client->get($url);
+            $body = json_decode((string) $response->getBody(), true);
+            if (!is_array($body) || empty($body['data']) || !is_array($body['data'])) {
+                return null;
+            }
+
+            return $body['data'];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::fetchNodeSessionStatus ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
      * Samakan session kirim dengan slot WA yang terhubung (Node: req.body.sessionId).
      *
      * @param array<string, mixed> $payload
@@ -78,6 +128,39 @@ class WhatsAppService
         }
 
         return $payload;
+    }
+
+    /**
+     * Respons Node /send success:false — layak dicoba lagi setelah wake (socket mati / baru bangun).
+     */
+    private static function nodeSendIndicatesReconnect(string $msg): bool
+    {
+        $m = mb_strtolower($msg, 'UTF-8');
+
+        return str_contains($m, 'belum login')
+            || str_contains($m, 'belum terhubung')
+            || str_contains($m, 'scan qr')
+            || str_contains($m, 'terputus')
+            || str_contains($m, 'menyambung')
+            || str_contains($m, 'hubungkan nomor')
+            || str_contains($m, 'koneksi wa')
+            || str_contains($m, 'baileys');
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function mapNodeWaErrorMessage(array $data, string $fallback): string
+    {
+        $code = isset($data['code']) ? (string) $data['code'] : '';
+        if ($code === 'wa_not_paired') {
+            return 'WhatsApp belum terhubung. Hubungkan nomor lembaga di halaman Koneksi WA lalu scan QR.';
+        }
+        if ($code === 'wa_disconnected') {
+            return 'WhatsApp terputus atau masih menyambung. Coba lagi sebentar atau buka halaman Koneksi WA.';
+        }
+
+        return $fallback;
     }
 
     /**
@@ -149,6 +232,16 @@ class WhatsAppService
      */
     public static function formatPhoneNumber(string $phone): string
     {
+        $phone = trim($phone);
+        if ($phone === '') {
+            return '';
+        }
+        if (str_contains($phone, '@')) {
+            $phone = strstr($phone, '@', true) ?: '';
+        }
+        if ($phone !== '' && str_contains($phone, ':')) {
+            $phone = explode(':', $phone, 2)[0];
+        }
         $phone = preg_replace('/\D/', '', $phone);
         if ($phone === '') {
             return '';
@@ -159,6 +252,35 @@ class WhatsAppService
             $phone = '62' . $phone;
         }
         return $phone;
+    }
+
+    /**
+     * Normalisasi field "from" webhook (Baileys): chat @lid mengirim digit LID, bukan MSISDN — jangan pakai formatPhoneNumber.
+     */
+    public static function normalizeWebhookFrom(string $from, ?string $fromJid): string
+    {
+        $fromJid = $fromJid !== null ? trim((string) $fromJid) : '';
+        if ($fromJid !== '' && preg_match('/@lid$/i', $fromJid)) {
+            return preg_replace('/\D/', '', $from) ?? '';
+        }
+
+        return self::formatPhoneNumber($from);
+    }
+
+    /**
+     * Normalisasi canonicalNumber dari webhook (MSISDN atau digit LID mentah).
+     */
+    public static function normalizeWebhookDestination(string $value): string
+    {
+        $v = trim($value);
+        if ($v === '') {
+            return '';
+        }
+        if (self::looksLikeLidIdentifier($v)) {
+            return preg_replace('/\D/', '', $v) ?? '';
+        }
+
+        return self::formatPhoneNumber($v);
     }
 
     /**
@@ -290,6 +412,108 @@ class WhatsAppService
                 'message' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Panggil server WA Node: POST /api/whatsapp/resolve-jids (onWhatsApp → daftar JID termasuk @lid).
+     *
+     * @return array{success:bool, jids:array, message:string, reason?:string}
+     */
+    public static function resolveJidsFromWaNode(string $noWa, ?string $sessionId = null): array
+    {
+        $phone = self::formatPhoneNumber($noWa);
+        if (strlen($phone) < 10) {
+            return ['success' => false, 'jids' => [], 'message' => 'Nomor tidak valid'];
+        }
+        if (self::getNotificationProvider() === 'watzap') {
+            return ['success' => false, 'jids' => [], 'message' => 'Ambil LID hanya untuk provider WA server sendiri (bukan WatZap).'];
+        }
+
+        $cfg = self::getConfig();
+        $apiUrl = $cfg['api_url'];
+        $apiKey = $cfg['api_key'];
+        $resolveUrl = preg_replace('#/api/whatsapp/send$#', '/api/whatsapp/resolve-jids', $apiUrl);
+
+        if (empty($resolveUrl) || empty($apiKey)) {
+            return ['success' => false, 'jids' => [], 'message' => 'Backend WA belum dikonfigurasi'];
+        }
+
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 25]);
+            $payload = ['phoneNumber' => $phone];
+            if ($sessionId !== null && trim($sessionId) !== '') {
+                $payload['sessionId'] = trim($sessionId);
+            }
+            $response = $client->post($resolveUrl, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-API-Key' => $apiKey,
+                ],
+                'json' => $payload,
+            ]);
+            $code = $response->getStatusCode();
+            $body = (string) $response->getBody();
+            $data = json_decode($body, true);
+            $jids = [];
+            if (is_array($data) && isset($data['data']['jids']) && is_array($data['data']['jids'])) {
+                $jids = $data['data']['jids'];
+            }
+            $reason = is_array($data['data'] ?? null) ? ($data['data']['reason'] ?? null) : null;
+            $source = is_array($data['data'] ?? null) ? ($data['data']['source'] ?? null) : null;
+            if ($code >= 200 && $code < 300 && !empty($data['success'])) {
+                return [
+                    'success' => true,
+                    'jids' => $jids,
+                    'message' => (string) ($data['message'] ?? 'OK'),
+                    'reason' => $reason,
+                    'source' => $source,
+                ];
+            }
+            $msg = $data['message'] ?? $data['error'] ?? "HTTP {$code}";
+            return [
+                'success' => false,
+                'jids' => $jids,
+                'message' => (string) $msg,
+                'reason' => $reason,
+                'source' => $source,
+            ];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::resolveJidsFromWaNode: ' . $e->getMessage());
+            return ['success' => false, 'jids' => [], 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Ambil digit LID pertama dari daftar JID (mis. "123...@lid" → "123...").
+     */
+    public static function extractLidDigitsFromJids(array $jids): ?string
+    {
+        foreach ($jids as $jid) {
+            if (!is_string($jid)) {
+                continue;
+            }
+            $j = trim($jid);
+            if (preg_match('/^(\d+)@lid$/i', $j, $m)) {
+                return $m[1];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * True jika ada JID pengguna PN (@s.whatsapp.net) dari hasil onWhatsApp — nomor terdaftar, tanpa @lid.
+     */
+    public static function hasPnUserJidInJids(array $jids): bool
+    {
+        foreach ($jids as $jid) {
+            if (!is_string($jid)) {
+                continue;
+            }
+            if (preg_match('/@s\.whatsapp\.net$/i', trim($jid)) === 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -653,9 +877,21 @@ class WhatsAppService
                 $stmt->execute([$phone]);
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC);
                 if ($row !== false) {
-                    $kanonik = self::formatPhoneNumber(trim((string) $row['nomor_kanonik']));
-                    if (strlen($kanonik) >= 10 && $kanonik !== $phone) {
-                        return ['nomor' => $kanonik, 'chatId' => null];
+                    $raw = trim((string) $row['nomor_kanonik']);
+                    if ($raw !== '') {
+                        // Jika nomor_kanonik berisi LID (atau JID @lid), gunakan sebagai chatId agar delivery tepat sasaran.
+                        // Ini penting untuk kasus WA menyimpan kontak sebagai @lid sehingga kirim ke MSISDN kadang tidak nyangkut.
+                        if (self::looksLikeLidIdentifier($raw)) {
+                            $lid = self::extractLidFromIdentifier($raw);
+                            if ($lid !== null) {
+                                return ['nomor' => $phone, 'chatId' => $lid . '@lid'];
+                            }
+                        }
+                        // Default: treat nomor_kanonik sebagai nomor HP kanonik (62xxx) dan kirim ke situ.
+                        $kanonik = self::formatPhoneNumber($raw);
+                        if (strlen($kanonik) >= 10 && $kanonik !== $phone) {
+                            return ['nomor' => $kanonik, 'chatId' => null];
+                        }
                     }
                 }
             }
@@ -663,6 +899,76 @@ class WhatsAppService
             // ignore
         }
         return ['nomor' => $phone, 'chatId' => null];
+    }
+
+    /**
+     * Jika provider mengirim meta JID @lid pada incoming message, simpan LID itu ke tabel kontak (kolom nomor_kanonik).
+     * Tujuan: saat kirim pesan berikutnya, kita bisa pakai chatId = "{lid}@lid" agar tepat sasaran.
+     *
+     * Catatan: dibuat konservatif — hanya mengisi nomor_kanonik jika masih kosong (agar tidak menimpa mapping lama).
+     */
+    public static function syncKontakLidFromIncomingMeta(string $canonicalPhone, ?string $fromJid): void
+    {
+        if ($fromJid === null) return;
+        $fromJid = trim((string) $fromJid);
+        if ($fromJid === '') return;
+
+        $lid = self::extractLidFromIdentifier($fromJid);
+        if ($lid === null) return;
+
+        $phone = self::looksLikeLidIdentifier($canonicalPhone)
+            ? (preg_replace('/\D/', '', $canonicalPhone) ?? '')
+            : self::formatPhoneNumber($canonicalPhone);
+        if (strlen($phone) < 10) return;
+
+        try {
+            $db = Database::getInstance()->getConnection();
+            $tableCheck = $db->query("SHOW TABLES LIKE 'whatsapp___kontak'");
+            if ($tableCheck->rowCount() === 0) return;
+            if (!self::kontakTableHasNomorKanonik($db)) return;
+
+            // Pastikan ada baris kontak untuk nomor ini (tidak mengubah siap_terima_notif).
+            self::ensureKontak($phone, 0, null);
+
+            // Isi nomor_kanonik hanya jika masih kosong.
+            $stmt = $db->prepare('UPDATE whatsapp___kontak SET nomor_kanonik = ?, updated_at = NOW() WHERE nomor = ? AND (nomor_kanonik IS NULL OR TRIM(nomor_kanonik) = "")');
+            $stmt->execute([$lid, $phone]);
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::syncKontakLidFromIncomingMeta: ' . $e->getMessage());
+        }
+    }
+
+    private static function looksLikeLidIdentifier(string $value): bool
+    {
+        $v = trim($value);
+        if ($v === '') return false;
+        if (preg_match('/@lid$/i', $v) === 1) return true;
+        // Heuristik: LID biasanya numeric panjang dan bukan MSISDN (tidak diawali 0/62).
+        $digits = preg_replace('/\D/', '', $v) ?? '';
+        if ($digits === '') return false;
+        if (strpos($digits, '62') === 0 || strpos($digits, '0') === 0) return false;
+        return strlen($digits) >= 10;
+    }
+
+    /**
+     * Terima input berupa:
+     * - "123456789@lid"
+     * - "123456789" (raw LID numeric)
+     * Return: "123456789" atau null.
+     */
+    private static function extractLidFromIdentifier(string $value): ?string
+    {
+        $v = trim($value);
+        if ($v === '') return null;
+        if (preg_match('/@lid$/i', $v) === 1) {
+            $v = preg_replace('/@lid$/i', '', $v) ?? '';
+        }
+        $digits = preg_replace('/\D/', '', $v) ?? '';
+        if ($digits === '') return null;
+        // Jangan treat MSISDN sebagai LID.
+        if (strpos($digits, '62') === 0 || strpos($digits, '0') === 0) return null;
+        if (strlen($digits) < 10) return null;
+        return $digits;
     }
 
     /**
@@ -717,8 +1023,10 @@ class WhatsAppService
         $isAiWhatsappReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'ai_whatsapp';
         /** OTP ganti nomor WA: harus ke nomor yang diketik user, bukan nomor_kanonik & bukan diblok siap_terima_notif (sama perilaku "Kirim tes" dari UI). */
         $isWaChangeOtp = $logContext !== null && ($logContext['kategori'] ?? '') === 'wa_change_otp';
-        // Balasan flow "Daftar Notifikasi", menu interaktif, AI WA, & OTP ganti nomor harus tetap dikirim; skip cek siap_terima untuk itu.
-        if (!$isDaftarNotifReply && !$isWaInteractiveMenuReply && !$isAiWhatsappReply && !$isWaChangeOtp && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
+        /** Notifikasi rencana/pengeluaran ke admin (termasuk kirim ulang): sama seperti flow operasional penting — jangan blokir lewat siap_terima_notif. */
+        $isPengeluaranKeuanganNotif = $logContext !== null && in_array(($logContext['kategori'] ?? ''), ['pengeluaran_rencana_notif', 'pengeluaran_notif'], true);
+        // Balasan flow "Daftar Notifikasi", menu interaktif, AI WA, OTP ganti nomor, & notif keuangan internal harus tetap dikirim; skip cek siap_terima untuk itu.
+        if (!$isDaftarNotifReply && !$isWaInteractiveMenuReply && !$isAiWhatsappReply && !$isWaChangeOtp && !$isPengeluaranKeuanganNotif && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
             if ($logContext !== null) {
                 self::logSentMessage(
                     $originalPhone,
@@ -857,92 +1165,122 @@ class WhatsAppService
             error_log('WhatsAppService: daftar_notif POST ke WA server url=' . $apiUrl);
         }
 
-        try {
-            $client = new \GuzzleHttp\Client(['timeout' => 15]);
-            $response = $client->post($apiUrl, [
-                'headers' => [
-                    'Content-Type' => 'application/json',
-                    'X-API-Key' => $apiKey,
-                ],
-                'json' => self::mergeWaSessionPayload(array_merge([
-                    'phoneNumber' => $phone,
-                    'message' => $message,
-                ], ($chatId !== null && $chatId !== '' ? ['chatId' => $chatId] : [])), $cfg),
-            ]);
+        $jsonPayload = self::mergeWaSessionPayload(array_merge([
+            'phoneNumber' => $phone,
+            'message' => $message,
+        ], ($chatId !== null && $chatId !== '' ? ['chatId' => $chatId] : [])), $cfg);
 
-            $code = $response->getStatusCode();
-            $body = (string) $response->getBody();
-            $data = json_decode($body, true);
+        if (self::getNotificationProvider() === 'wa_sendiri') {
+            self::wakeWaServer();
+        }
 
-            if ($code >= 200 && $code < 300 && !empty($data['success'])) {
-                $messageId = isset($data['messageId']) && trim((string) $data['messageId']) !== '' ? trim((string) $data['messageId']) : null;
-                $result = [
-                    'success' => true,
-                    'message' => $data['message'] ?? 'OK',
-                    'messageId' => $messageId,
-                    'senderPhoneNumber' => !empty($data['senderPhoneNumber']) ? trim((string) $data['senderPhoneNumber']) : null,
-                ];
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            if ($attempt > 0) {
+                usleep(2500000);
+                self::wakeWaServer();
+            }
+            try {
+                $client = new \GuzzleHttp\Client(['timeout' => 20]);
+                $response = $client->post($apiUrl, [
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'X-API-Key' => $apiKey,
+                    ],
+                    'json' => $jsonPayload,
+                ]);
+
+                $code = $response->getStatusCode();
+                $body = (string) $response->getBody();
+                $data = is_string($body) ? json_decode($body, true) : [];
+                if (!is_array($data)) {
+                    $data = [];
+                }
+
+                if ($code >= 200 && $code < 300 && !empty($data['success'])) {
+                    $messageId = isset($data['messageId']) && trim((string) $data['messageId']) !== '' ? trim((string) $data['messageId']) : null;
+                    $result = [
+                        'success' => true,
+                        'message' => $data['message'] ?? 'OK',
+                        'messageId' => $messageId,
+                        'senderPhoneNumber' => !empty($data['senderPhoneNumber']) ? trim((string) $data['senderPhoneNumber']) : null,
+                    ];
+                    if ($logContext !== null) {
+                        self::logSentMessage(
+                            $phone,
+                            $message,
+                            0,
+                            'sent',
+                            $data['message'] ?? null,
+                            $logContext['id_santri'] ?? null,
+                            $logContext['id_pengurus'] ?? null,
+                            $logContext['tujuan'] ?? 'wali_santri',
+                            $logContext['id_pengurus_pengirim'] ?? null,
+                            $logContext['kategori'] ?? 'custom',
+                            $logContext['sumber'] ?? 'system',
+                            $messageId
+                        );
+                    }
+                    if (!$kontakStatus['exists']) {
+                        self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
+                    }
+
+                    return $result;
+                }
+
+                $rawErr = (string) ($data['message'] ?? $data['error'] ?? "HTTP {$code}");
+                $errMsg = self::mapNodeWaErrorMessage($data, $rawErr);
+                if ($attempt === 0 && self::nodeSendIndicatesReconnect($errMsg)) {
+                    error_log('WhatsAppService: Node WA belum siap, retry setelah wake: ' . $errMsg);
+
+                    continue;
+                }
+                error_log('WhatsAppService: ' . $errMsg . ' body=' . substr($body, 0, 200));
+                $result = ['success' => false, 'message' => $errMsg];
                 if ($logContext !== null) {
                     self::logSentMessage(
                         $phone,
                         $message,
                         0,
-                        'sent',
-                        $data['message'] ?? null,
+                        'gagal',
+                        $errMsg,
                         $logContext['id_santri'] ?? null,
                         $logContext['id_pengurus'] ?? null,
                         $logContext['tujuan'] ?? 'wali_santri',
                         $logContext['id_pengurus_pengirim'] ?? null,
                         $logContext['kategori'] ?? 'custom',
-                        $logContext['sumber'] ?? 'system',
-                        $messageId
+                        $logContext['sumber'] ?? 'system'
                     );
                 }
-                if (!$kontakStatus['exists']) {
-                    self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
+
+                return $result;
+            } catch (\Throwable $e) {
+                error_log('WhatsAppService: attempt ' . ($attempt + 1) . ' ' . $e->getMessage());
+                if ($attempt === 0 && self::getNotificationProvider() === 'wa_sendiri') {
+                    continue;
                 }
+                $errText = $e->getMessage();
+                $result = ['success' => false, 'message' => $errText];
+                if ($logContext !== null) {
+                    self::logSentMessage(
+                        $phone,
+                        $message,
+                        0,
+                        'gagal',
+                        $errText,
+                        $logContext['id_santri'] ?? null,
+                        $logContext['id_pengurus'] ?? null,
+                        $logContext['tujuan'] ?? 'wali_santri',
+                        $logContext['id_pengurus_pengirim'] ?? null,
+                        $logContext['kategori'] ?? 'custom',
+                        $logContext['sumber'] ?? 'system'
+                    );
+                }
+
                 return $result;
             }
-
-            $errMsg = $data['message'] ?? $data['error'] ?? "HTTP {$code}";
-            error_log('WhatsAppService: ' . $errMsg . ' body=' . substr($body, 0, 200));
-            $result = ['success' => false, 'message' => $errMsg];
-            if ($logContext !== null) {
-                self::logSentMessage(
-                    $phone,
-                    $message,
-                    0,
-                    'gagal',
-                    $errMsg,
-                    $logContext['id_santri'] ?? null,
-                    $logContext['id_pengurus'] ?? null,
-                    $logContext['tujuan'] ?? 'wali_santri',
-                    $logContext['id_pengurus_pengirim'] ?? null,
-                    $logContext['kategori'] ?? 'custom',
-                    $logContext['sumber'] ?? 'system'
-                );
-            }
-            return $result;
-        } catch (\Throwable $e) {
-            error_log('WhatsAppService: ' . $e->getMessage());
-            $result = ['success' => false, 'message' => $e->getMessage()];
-            if ($logContext !== null) {
-                self::logSentMessage(
-                    $phone,
-                    $message,
-                    0,
-                    'gagal',
-                    $e->getMessage(),
-                    $logContext['id_santri'] ?? null,
-                    $logContext['id_pengurus'] ?? null,
-                    $logContext['tujuan'] ?? 'wali_santri',
-                    $logContext['id_pengurus_pengirim'] ?? null,
-                    $logContext['kategori'] ?? 'custom',
-                    $logContext['sumber'] ?? 'system'
-                );
-            }
-            return $result;
         }
+
+        return ['success' => false, 'message' => 'Gagal menghubungi server WhatsApp.'];
     }
 
     /**

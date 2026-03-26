@@ -1833,8 +1833,18 @@ export const deepseekAPI = {
   getTrainingSuggestions: () => api.get('/deepseek/training-suggestions').then((r) => r.data),
   getWhatsappAccess: () => api.get('/deepseek/whatsapp-access').then((r) => r.data),
   putWhatsappAccess: (enabled) => api.put('/deepseek/whatsapp-access', { enabled: !!enabled }).then((r) => r.data),
+  /** Token sekali pakai + pesan wa.me (wajib login). */
+  postWhatsappActivationToken: () => api.post('/deepseek/whatsapp-activation-token', {}).then((r) => r.data),
+  /** Bangunkan koneksi WA Node (sama konsep dengan /pendaftaran/wa-wake) sebelum buka wa.me aktivasi AI. */
+  getWaWake: () => api.get('/deepseek/wa-wake').then((r) => r.data),
   adminListAiUsers: (params = {}) => api.get('/deepseek/admin/ai-users', { params }).then((r) => r.data),
   adminUpdateAiUser: (id, body = {}) => api.put(`/deepseek/admin/ai-users/${id}`, body).then((r) => r.data),
+  /** Agregasi ai___chat — hanya super_admin. */
+  adminAiChatDashboard: (params = {}) => api.get('/deepseek/admin/ai-dashboard', { params }).then((r) => r.data),
+  /** Riwayat log ai___chat + perbaiki jawaban — hanya super_admin. */
+  adminChatLogMeta: () => api.get('/deepseek/admin/chat-log/meta').then((r) => r.data),
+  adminListChatLog: (params = {}) => api.get('/deepseek/admin/chat-log', { params }).then((r) => r.data),
+  adminPatchChatLog: (id, body = {}) => api.patch(`/deepseek/admin/chat-log/${id}`, body).then((r) => r.data),
 }
 
 /** Bank Q&A + sesi training chat (ai___training, ai___training_sessions/messages) — hanya super_admin. */
@@ -2295,8 +2305,19 @@ export const kontakAPI = {
     const response = await api.get('/kontak', { params: { page: params.page, limit: params.limit, search: params.search } })
     return response.data
   },
+  /** PATCH: minimal satu field — siap_terima_notif, nama, nomor_kanonik */
+  update: async (id, data) => {
+    const response = await api.patch(`/kontak/${id}`, data)
+    return response.data
+  },
   updateSiapTerimaNotif: async (id, siapTerimaNotif) => {
-    const response = await api.patch(`/kontak/${id}`, { siap_terima_notif: siapTerimaNotif })
+    return kontakAPI.update(id, { siap_terima_notif: siapTerimaNotif })
+  },
+  /** Ambil LID dari server WA (Baileys onWhatsApp) dan simpan ke nomor_kanonik */
+  resolveLid: async (id, sessionId = 'default') => {
+    const response = await api.post(`/kontak/${id}/resolve-lid`, {
+      session_id: sessionId || 'default'
+    })
     return response.data
   },
   delete: async (id) => {

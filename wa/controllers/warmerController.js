@@ -1,10 +1,9 @@
 /**
  * Warmer job: fetch active pairs dari API PHP, kirim pesan bolak-balik dengan jeda & typing.
- * Pakai Baileys jika connected; fallback Puppeteer (whatsapp-web.js) agar warmer jalan setelah Langkah 1 saja.
+ * Hanya Baileys (kedua session harus terhubung).
  */
 import { getWaStatus } from '../store/waStatus.js';
 import { sendMessageWithTypingBaileys, sendMessageBaileys, isBaileysConnected } from './waBaileys.js';
-import { isPuppeteerReady, sendMessagePuppeteer } from './whatsappController.js';
 
 const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
 const apiKey = (process.env.WA_API_KEY || '').trim();
@@ -128,10 +127,8 @@ async function runPairLoop(pair) {
     console.warn('[Warmer] Pair', pairKey, 'skip: nomor tidak tersedia');
     return;
   }
-  const useBaileys = isBaileysConnected(session1) && isBaileysConnected(session2);
-  const usePuppeteer = isPuppeteerReady(session1) && isPuppeteerReady(session2);
-  if (!useBaileys && !usePuppeteer) {
-    console.warn('[Warmer] Pair', pairKey, 'skip: Baileys/Puppeteer belum connected');
+  if (!isBaileysConnected(session1) || !isBaileysConnected(session2)) {
+    console.warn('[Warmer] Pair', pairKey, 'skip: Baileys belum connected untuk kedua session');
     return;
   }
 
@@ -161,16 +158,10 @@ async function runPairLoop(pair) {
       const senderSession = isFrom1 ? session1 : session2;
       const targetPhone = isFrom1 ? phone2 : phone1;
       try {
-        if (useBaileys) {
-          if (useTyping) {
-            await sendMessageWithTypingBaileys(senderSession, targetPhone, text, typingSec);
-          } else {
-            await sendMessageBaileys(senderSession, targetPhone, text, null, null);
-          }
+        if (useTyping) {
+          await sendMessageWithTypingBaileys(senderSession, targetPhone, text, typingSec);
         } else {
-          if (useTyping) await delay(typingSec * 1000);
-          const res = await sendMessagePuppeteer(senderSession, targetPhone, text);
-          if (!res?.ok) throw new Error(res?.error || 'Kirim gagal');
+          await sendMessageBaileys(senderSession, targetPhone, text, null, null);
         }
       } catch (e) {
         console.warn('[Warmer] Pair', pairKey, 'send', from, 'error:', e?.message);
@@ -193,16 +184,10 @@ async function runPairLoop(pair) {
   const text = (msg && msg.trim()) || 'Ok.';
   const typingSec = useTyping ? typingSecondsFromText(text) : 0;
   try {
-    if (useBaileys) {
-      if (useTyping) {
-        await sendMessageWithTypingBaileys(session1, phone2, text, typingSec);
-      } else {
-        await sendMessageBaileys(session1, phone2, text, null, null);
-      }
+    if (useTyping) {
+      await sendMessageWithTypingBaileys(session1, phone2, text, typingSec);
     } else {
-      if (useTyping) await delay(typingSec * 1000);
-      const res = await sendMessagePuppeteer(session1, phone2, text);
-      if (!res?.ok) throw new Error(res?.error || 'Kirim gagal');
+      await sendMessageBaileys(session1, phone2, text, null, null);
     }
     count++;
     pairCounts[pairKey] = count;
@@ -221,16 +206,10 @@ async function runPairLoop(pair) {
   if (text2 === text) text2 = 'Waalaikumsalam.';
   const typingSec2 = useTyping ? typingSecondsFromText(text2) : 0;
   try {
-    if (useBaileys) {
-      if (useTyping) {
-        await sendMessageWithTypingBaileys(session2, phone1, text2, typingSec2);
-      } else {
-        await sendMessageBaileys(session2, phone1, text2, null, null);
-      }
+    if (useTyping) {
+      await sendMessageWithTypingBaileys(session2, phone1, text2, typingSec2);
     } else {
-      if (useTyping) await delay(typingSec2 * 1000);
-      const res = await sendMessagePuppeteer(session2, phone1, text2);
-      if (!res?.ok) throw new Error(res?.error || 'Kirim gagal');
+      await sendMessageBaileys(session2, phone1, text2, null, null);
     }
     count++;
     pairCounts[pairKey] = count;

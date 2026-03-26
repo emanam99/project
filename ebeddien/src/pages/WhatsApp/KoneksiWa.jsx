@@ -36,12 +36,10 @@ function sessionSlotLabel(sessionId) {
   return `WhatsApp ${String(sessionId).replace(/^wa/, '')}`
 }
 
-/** Selesai alur di lembar koneksi: WA Web sudah connected; Baileys selesai atau tidak perlu scan lanjut. */
+/** Alur koneksi selesai jika Baileys (satu QR) sudah terhubung. */
 function isSlotConnectFlowDone(s) {
-  if (!s || s.status !== 'connected') return false
-  if (s.baileysStatus === 'connected') return true
-  if (s.baileysStatus === 'connecting' || s.baileysQrCode) return false
-  return true
+  if (!s) return false
+  return s.status === 'connected' || s.baileysStatus === 'connected'
 }
 
 const TABS = [
@@ -198,7 +196,12 @@ export default function KoneksiWa() {
                 continue
               }
               const nextObj = { ...(back || {}) }
-              // Status endpoint sekarang ringan (tanpa QR). Jangan timpa QR existing dengan null saat masih connecting.
+              // Sudah terhubung: selalu hilangkan QR dari state (jangan biarkan preserve di bawah menahan gambar lama).
+              if (nextObj.status === 'connected' || nextObj.baileysStatus === 'connected') {
+                nextObj.qrCode = null
+                nextObj.baileysQrCode = null
+              }
+              // Status endpoint ringan (tanpa QR). Saat masih connecting, pertahankan QR di UI sampai server kirim connected.
               const isConnecting = (nextObj.status === 'connecting' || nextObj.baileysStatus === 'connecting')
               if (isConnecting && prevS) {
                 if (nextObj.qrCode == null && prevS.qrCode) nextObj.qrCode = prevS.qrCode
@@ -656,7 +659,18 @@ export default function KoneksiWa() {
     fetchStatus()
   }, [fetchStatus])
 
-  /** Satu klik = satu pasangan request connect (opsional refresh) + getQr — tidak ada polling QR otomatis. */
+  /** Ambil QR dari endpoint /qr dengan beberapa percobaan (QR bisa muncul sedikit setelah connect). */
+  const fetchQrWithRetry = async (sessionId, attempts = 18, intervalMs = 400) => {
+    for (let i = 0; i < attempts; i++) {
+      const qrRes = await waBackendAPI.getQr(sessionId)
+      const row = qrRes?.data
+      if (row && (row.qrCode || row.baileysQrCode)) return row
+      await new Promise((r) => setTimeout(r, intervalMs))
+    }
+    return null
+  }
+
+  /** Satu klik = connect + getQr (retry jika perlu). */
   const handleDrawerLoadQr = async (refreshQr = false) => {
     const sid = connectDrawerSessionId
     if (!sid) return
@@ -708,9 +722,8 @@ export default function KoneksiWa() {
           }
         }
       }))
-      const qrRes = await waBackendAPI.getQr(sid)
-      const qr = qrRes?.data
-      if (qr && qr.sessionId === sid) {
+      const qr = (await fetchQrWithRetry(sid)) || (await waBackendAPI.getQr(sid))?.data
+      if (qr && (qr.sessionId === sid || qr.sessionId == null)) {
         setData(prev => {
           const cur = prev.sessions?.[sid] || {}
           return {
@@ -1198,7 +1211,7 @@ export default function KoneksiWa() {
                         type="button"
                         onClick={() => handleLogout(sessionId)}
                         disabled={!!actionLoading}
-                        title="Hapus data sesi & auth di server WA (Baileys/Puppeteer). Pakai jika QR tidak keluar atau slot macet setelah update."
+                        title="Hapus data sesi & auth Baileys di server. Pakai jika QR tidak keluar atau slot macet setelah update."
                         className="px-3 py-1.5 rounded-lg border border-amber-400/80 dark:border-amber-600 text-amber-900 dark:text-amber-100 text-sm bg-amber-50/90 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {actionLoading === `logout-${sessionId}` ? 'Membersihkan...' : 'Bersihkan sesi server'}
@@ -1244,10 +1257,10 @@ export default function KoneksiWa() {
               </div>
               <div className="p-4 space-y-4">
                 {!isConnected && (
-                  <p className="text-sm text-amber-600 dark:text-amber-400">Hubungkan WhatsApp di tab Koneksi terlebih dahulu (scan QR Langkah 1).</p>
+                  <p className="text-sm text-amber-600 dark:text-amber-400">Hubungkan WhatsApp di tab Koneksi terlebih dahulu (scan QR).</p>
                 )}
                 {isConnected && !isBaileysReady && (
-                  <p className="text-sm text-green-600 dark:text-green-400 mb-2">Login Langkah 1 berhasil. Kirim pesan & cek nomor sudah bisa dipakai (via Puppeteer). Scan Langkah 2 nanti untuk fitur tambahan.</p>
+                  <p className="text-sm text-green-600 dark:text-green-400 mb-2">Sesi terhubung sebagian. Pastikan Baileys &quot;Terhubung&quot; di tab Koneksi untuk kirim/cek nomor penuh.</p>
                 )}
                 {isConnected && connectedSessionsForTest.length > 0 && (
                   <div>
@@ -1585,62 +1598,36 @@ export default function KoneksiWa() {
                         )}
                         {(() => {
                           const ds = data.sessions?.[connectDrawerSessionId]
-                          const wwebConnecting = ds?.status === 'connecting'
-                          const wwebOk = ds?.status === 'connected'
-                          const primarySrc = ds?.qrCode || (!wwebOk ? ds?.baileysQrCode : null)
-                          const showPrimaryQr = !wwebOk && primarySrc
-                          const baileysNeed =
-                            wwebOk &&
-                            (ds?.baileysStatus === 'connecting' || !!ds?.baileysQrCode) &&
-                            ds?.baileysStatus !== 'connected'
+                          const connected = ds?.status === 'connected' || ds?.baileysStatus === 'connected'
+                          const connecting = ds?.status === 'connecting' || ds?.baileysStatus === 'connecting'
+                          const primarySrc = ds?.qrCode || ds?.baileysQrCode || null
 
                           return (
-                            <>
-                              {!wwebOk && (
-                                <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40 p-3">
-                                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Langkah 1 — Login WhatsApp Web</p>
-                                  {showPrimaryQr ? (
-                                    <WaQrCountdownBlock
-                                      title="Scan QR ini di WhatsApp di HP Anda"
-                                      qrSrc={primarySrc}
-                                      alt="QR WhatsApp"
-                                      sessionId={connectDrawerSessionId}
-                                      fetchStatus={fetchStatus}
-                                      onReloadQr={() => handleDrawerReloadQr()}
-                                      reloadDisabled={connectDrawerBusy}
-                                      autoPollStatus={false}
-                                    />
-                                  ) : (
-                                    <div className="flex flex-col items-center justify-center min-h-[200px] rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800/50 px-4 text-center">
-                                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                                        {wwebConnecting && !primarySrc
-                                          ? 'Sesi sedang dimulai di server. Tekan Muat QR untuk mengambil gambar QR.'
-                                          : 'Tekan Muat QR untuk meminta kode dari server.'}
-                                      </p>
-                                    </div>
-                                  )}
+                            <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40 p-3">
+                              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Scan QR — WhatsApp (Baileys)</p>
+                              {connected ? (
+                                <p className="text-sm text-green-700 dark:text-green-300 py-4 text-center">Sudah terhubung.</p>
+                              ) : primarySrc ? (
+                                <WaQrCountdownBlock
+                                  title="Scan QR ini di WhatsApp di HP Anda (Perangkat tertaut)"
+                                  qrSrc={primarySrc}
+                                  alt="QR WhatsApp"
+                                  sessionId={connectDrawerSessionId}
+                                  fetchStatus={fetchStatus}
+                                  onReloadQr={() => handleDrawerReloadQr()}
+                                  reloadDisabled={connectDrawerBusy}
+                                  autoPollStatus={false}
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center justify-center min-h-[200px] rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800/50 px-4 text-center">
+                                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                                    {connecting
+                                      ? 'Menunggu QR dari server… Klik Muat QR lagi jika belum muncul dalam beberapa detik.'
+                                      : 'Tekan Muat QR untuk meminta kode dari server.'}
+                                  </p>
                                 </div>
                               )}
-                              {baileysNeed && (
-                                <div className="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40 p-3">
-                                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Langkah 2 — Aktivasi pesan cepat (Baileys)</p>
-                                  {ds?.baileysQrCode ? (
-                                    <WaQrCountdownBlock
-                                      title="Scan QR kedua jika diminta (kirim & cek nomor)"
-                                      qrSrc={ds.baileysQrCode}
-                                      alt="QR Baileys"
-                                      sessionId={connectDrawerSessionId}
-                                      fetchStatus={fetchStatus}
-                                      onReloadQr={() => handleDrawerReloadQr()}
-                                      reloadDisabled={connectDrawerBusy}
-                                      autoPollStatus={false}
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-amber-700 dark:text-amber-300 py-4 text-center">Menunggu QR langkah 2… Klik Muat QR.</p>
-                                  )}
-                                </div>
-                              )}
-                            </>
+                            </div>
                           )
                         })()}
                         <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-1">

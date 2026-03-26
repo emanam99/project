@@ -95,9 +95,9 @@ export const MENU_ITEMS = [
   { path: '/manage-jabatan', label: 'Jabatan', iconKey: 'briefcase', group: 'Lembaga', requiresRole: ['tarbiyah'] },
   { path: '/kitab', label: 'Kitab', iconKey: 'documentText', group: 'Lembaga', requiresRole: ['tarbiyah'] },
   { path: '/mapel', label: 'Mapel', iconKey: 'mapel', group: 'Lembaga', requiresRole: ['tarbiyah'] },
-  // ========== Setting ==========
-  { path: '/dashboard-umum', label: 'Dashboard Umum', iconKey: 'dashboard', group: 'Setting', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin'] },
-  { path: '/manage-users', label: 'Kelola User', iconKey: 'users', group: 'Setting', requiresRole: ['super_admin', 'admin_cashless'] },
+  // ========== Setting (hanya super_admin) ==========
+  { path: '/dashboard-umum', label: 'Dashboard Umum', iconKey: 'dashboard', group: 'Setting', requiresSuperAdmin: true },
+  { path: '/manage-users', label: 'Kelola User', iconKey: 'users', group: 'Setting', requiresSuperAdmin: true },
   { path: '/manage-users/import', label: 'Import Users', iconKey: 'upload', group: 'Setting', requiresSuperAdmin: true },
   { path: '/settings/tahun-ajaran', label: 'Tahun Ajaran', iconKey: 'calendar', group: 'Setting', requiresSuperAdmin: true },
   { path: '/settings/role-akses', label: 'Role & Akses', iconKey: 'shield', group: 'Setting', requiresSuperAdmin: true },

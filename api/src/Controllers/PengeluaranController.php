@@ -495,9 +495,11 @@ class PengeluaranController
             if (!is_array($input)) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Body harus JSON'], 400);
             }
-            $input = TextSanitizer::sanitizeStringValues($input, []);
+            $rawMessage = isset($input['message']) && is_string($input['message']) ? $input['message'] : '';
+            // Hanya cleanText untuk field selain message — cleanText meruntuhkan \n jadi satu paragraf.
+            $input = TextSanitizer::sanitizeStringValues($input, ['rencana_id']);
+            $message = TextSanitizer::cleanMultilineMessage($rawMessage);
             $rencanaId = isset($input['rencana_id']) ? (int) $input['rencana_id'] : 0;
-            $message = trim($input['message'] ?? '');
             $recipients = $input['recipients'] ?? [];
 
             if ($rencanaId < 1) {
@@ -594,9 +596,10 @@ class PengeluaranController
             if (!is_array($input)) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Body harus JSON'], 400);
             }
-            $input = TextSanitizer::sanitizeStringValues($input, []);
+            $rawMessage = isset($input['message']) && is_string($input['message']) ? $input['message'] : '';
+            $input = TextSanitizer::sanitizeStringValues($input, ['pengeluaran_id']);
+            $message = TextSanitizer::cleanMultilineMessage($rawMessage);
             $pengeluaranId = isset($input['pengeluaran_id']) ? (int) $input['pengeluaran_id'] : 0;
-            $message = trim($input['message'] ?? '');
             $recipients = $input['recipients'] ?? [];
 
             if ($pengeluaranId < 1) {

@@ -1,77 +1,91 @@
 /**
- * Login WA via Puppeteer (whatsapp-web.js); chat via Baileys. Multi-session (max 10).
+ * Koneksi & operasi WhatsApp via Baileys saja (multi-session, max 10).
  */
-import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, rmSync, mkdirSync, readdirSync } from 'fs';
-import qrcode from 'qrcode';
-import { setWaStatus, getWaStatus, deleteWaSession } from '../store/waStatus.js';
+import { existsSync, rmSync, readdirSync } from 'fs';
+import { setWaStatus, getWaStatus, deleteWaSession, getSessionIds } from '../store/waStatus.js';
 import {
   initBaileys,
   disconnectBaileys,
   isBaileysConnected,
+  waitForBaileysQrOrConnected,
   ensureBaileysReadyForSend,
+  hasBaileysAuthFiles,
   humanizeLidSendError,
   sendMessageBaileys,
   getChatMessagesBaileys,
   editMessageBaileys,
   checkNumberBaileys,
+  resolveJidsForPhone,
   getBaileysAuthPathForDelete,
   getBaileysAuthPath,
 } from './waBaileys.js';
-const require = createRequire(import.meta.url);
-const { Client, LocalAuth } = require('whatsapp-web.js');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_BASE = path.resolve(__dirname, '../whatsapp-sessions');
 const DEFAULT_SESSION = 'default';
 const MAX_SESSIONS = 10;
 
-/** Chromium bawaan Puppeteer sering rusak setelah PUPPETEER_SKIP_DOWNLOAD — pakai Chrome/Edge sistem jika ada. */
-function getPuppeteerExecutablePath() {
-  const fromEnv = (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '')
-    .trim()
-    .replace(/^["']|["']$/g, '');
-  if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  if (process.platform === 'win32') {
-    const candidates = [
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    ];
-    for (const p of candidates) {
-      if (p && existsSync(p)) return p;
-    }
-  }
-  if (process.platform === 'darwin') {
-    const mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-    if (existsSync(mac)) return mac;
-  }
-  return null;
-}
-
-let loggedPuppeteerBrowserPath = false;
-
-const clientsBySession = {};
 let waEngineEnabled = true;
-const WA_FORWARD_TIMEOUT_MS = Number(process.env.WA_FORWARD_TIMEOUT_MS || 8000);
 const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = WA_FORWARD_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 function getSafeSessionId(rawSessionId) {
   const sessionId = (rawSessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
   return sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+}
+
+/** Folder auth lama whatsapp-web.js â€” dibersihkan saat logout/hapus slot. */
+function getLegacyWwebjsPath(sessionId) {
+  const id = sessionId || DEFAULT_SESSION;
+  const safe = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (safe === 'default') return path.resolve(SESSIONS_BASE, 'wwebjs');
+  return path.resolve(SESSIONS_BASE, `wwebjs-${safe}`);
+}
+
+function hasBaileysAuthFolder(sessionId) {
+  const p = getBaileysAuthPath(sessionId);
+  if (!existsSync(p)) return false;
+  try {
+    return readdirSync(p).length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Daftar session ID yang punya folder baileys-* di disk (untuk UI multi-slot).
+ */
+export function getSessionIdsFromDisk() {
+  const ids = new Set();
+  try {
+    if (existsSync(SESSIONS_BASE)) {
+      const dirs = readdirSync(SESSIONS_BASE);
+      if (dirs.includes('baileys-default')) ids.add(DEFAULT_SESSION);
+      for (const d of dirs) {
+        if (d.startsWith('baileys-') && d !== 'baileys-default') {
+          ids.add(d.replace(/^baileys-/, ''));
+        }
+      }
+    }
+  } catch (_) {}
+  const arr = [...ids];
+  return arr.length ? arr : [DEFAULT_SESSION];
+}
+
+function countSessions() {
+  const ids = new Set();
+  for (const id of getSessionIds()) ids.add(id);
+  try {
+    if (existsSync(SESSIONS_BASE)) {
+      const dirs = readdirSync(SESSIONS_BASE);
+      if (dirs.includes('baileys-default')) ids.add(DEFAULT_SESSION);
+      for (const d of dirs) {
+        if (d.startsWith('baileys-') && d !== 'baileys-default') ids.add(d.replace(/^baileys-/, ''));
+      }
+    }
+  } catch (_) {}
+  return ids.size;
 }
 
 export function isWaEngineEnabled() {
@@ -84,16 +98,8 @@ export async function setWaEngineEnabled(enabled) {
   if (next) {
     return;
   }
-
-  const activeSessionIds = Object.keys(clientsBySession);
-  for (const id of activeSessionIds) {
-    const current = clientsBySession[id];
-    if (current) {
-      try {
-        await current.destroy();
-      } catch (_) {}
-      delete clientsBySession[id];
-    }
+  const idSet = new Set([...getSessionIds(), ...getSessionIdsFromDisk()]);
+  for (const id of idSet) {
     await disconnectBaileys(id);
     setWaStatus(id, {
       status: 'disconnected',
@@ -113,351 +119,10 @@ function respondWaEngineStopped(res) {
   });
 }
 
-export function isPuppeteerReady(sessionId) {
-  const id = sessionId || DEFAULT_SESSION;
-  const c = clientsBySession[id];
-  return c && typeof c.info !== 'undefined' && c.info != null;
-}
-
-function formatPhoneForWwebjs(phone) {
-  let n = String(phone || '').replace(/\D/g, '');
-  if (n.startsWith('0')) n = '62' + n.slice(1);
-  else if (!n.startsWith('62')) n = '62' + n;
-  return n || null;
-}
-
-/** Bersihkan pesan error WA Web (sering menyertai URL stack trace). */
-function sanitizePuppeteerError(err) {
-  let s = String(err?.message || err || 'Gagal mengirim pesan');
-  s = s.replace(/\(\s*https?:\/\/[^)]+\)/g, '');
-  s = s.replace(/\s*https?:\/\/\S+/g, '');
-  s = s.replace(/\s*\([^)]*\.js:[^)]*\)/g, '');
-  s = s.replace(/\s+/g, ' ').trim();
-  s = s.replace(/\s*\(\s*$/g, '').trim();
-  return s || 'Gagal mengirim pesan';
-}
-
-export async function sendMessagePuppeteer(sessionId, phoneNumber, text, chatIdOverride = null) {
-  const id = sessionId || DEFAULT_SESSION;
-  const c = clientsBySession[id];
-  if (!c || !c.info) return { ok: false, error: 'Puppeteer belum siap' };
-
-  const sendOnce = async (jid) => {
-    if (typeof c.getChatById === 'function') {
-      try {
-        const chat = await c.getChatById(jid);
-        if (chat && typeof chat.sendMessage === 'function') {
-          return await chat.sendMessage(text || '(pesan kosong)');
-        }
-      } catch (_) {
-        /* WWebJS.getChat bisa gagal No LID — coba sendMessage langsung */
-      }
-    }
-    return await c.sendMessage(jid, text || '(pesan kosong)');
-  };
-
-  const jids = [];
-  if (chatIdOverride && typeof chatIdOverride === 'string' && chatIdOverride.includes('@')) {
-    jids.push(chatIdOverride.trim());
-  } else {
-    const num = formatPhoneForWwebjs(phoneNumber);
-    if (!num || num.length < 10) return { ok: false, error: 'Nomor tidak valid' };
-    if (typeof c.getNumberId === 'function') {
-      for (const arg of [num, num + '@c.us']) {
-        try {
-          const wid = await c.getNumberId(arg);
-          if (wid && wid._serialized) jids.push(wid._serialized);
-        } catch (_) {
-          /* coba varian berikutnya */
-        }
-      }
-    }
-    jids.push(num + '@c.us', num + '@s.whatsapp.net');
-  }
-
-  const seen = new Set();
-  const unique = [];
-  for (const jid of jids) {
-    if (jid && !seen.has(jid)) {
-      seen.add(jid);
-      unique.push(jid);
-    }
-  }
-
-  let lastErr = null;
-  for (const jid of unique) {
-    try {
-      const msg = await sendOnce(jid);
-      const senderNumber = c.info?.wid?.user || c.info?.wid?.id?.split(':')[0] || null;
-      return { ok: true, messageId: msg?.id?._serialized || msg?.id || null, senderPhoneNumber: senderNumber };
-    } catch (err) {
-      lastErr = err;
-      if (process.env.WA_VERBOSE_LOG === 'true') {
-        console.warn('[WA Puppeteer] send gagal jid=' + jid + ': ' + (err?.message || err));
-      }
-    }
-  }
-  console.error('[WA Puppeteer] sendMessage habis retry, last=' + (lastErr?.message || lastErr));
-  return { ok: false, error: sanitizePuppeteerError(lastErr) };
-}
-
-async function checkNumberPuppeteer(sessionId, phoneNumber) {
-  const id = sessionId || DEFAULT_SESSION;
-  const c = clientsBySession[id];
-  if (!c || !c.info) return { ok: false, error: 'Puppeteer belum siap', isRegistered: false };
-  const num = formatPhoneForWwebjs(phoneNumber);
-  if (!num || num.length < 10) return { ok: false, error: 'Nomor tidak valid', isRegistered: false };
-  try {
-    const numberId = await c.getNumberId(num.replace('@c.us', ''));
-    const isRegistered = numberId != null;
-    const formatted = numberId?._serialized?.replace('@c.us', '') || (isRegistered ? num : null);
-    return { ok: true, phoneNumber: formatted || num, isRegistered };
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err), isRegistered: false };
-  }
-}
-
-function getSessionPath(sessionId) {
-  const id = sessionId || DEFAULT_SESSION;
-  const safe = id.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (safe === 'default') return path.resolve(SESSIONS_BASE, 'wwebjs');
-  return path.resolve(SESSIONS_BASE, `wwebjs-${safe}`);
-}
-
-/** User-Agent berbeda per slot agar tiap session terlihat sebagai device berbeda (tidak terdeteksi 1 device). */
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-];
-function getUserAgentForSession(sessionId) {
-  const id = sessionId || DEFAULT_SESSION;
-  const index = id === 'default' ? 0 : (parseInt(id.replace(/\D/g, ''), 10) || 1);
-  return USER_AGENTS[index % USER_AGENTS.length];
-}
-
-function createClient(sessionId) {
-  const id = sessionId || DEFAULT_SESSION;
-  const SESSION_PATH = getSessionPath(id);
-  if (!existsSync(SESSION_PATH)) {
-    mkdirSync(SESSION_PATH, { recursive: true });
-  }
-  // Setiap slot punya profil Chromium sendiri agar tidak bentrok saat banyak instance (hingga 10 WA)
-  const browserProfilePath = path.join(SESSION_PATH, 'browser-profile');
-
-  const puppeteerArgs = [
-    `--user-data-dir=${browserProfilePath}`,
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--no-first-run',
-    '--no-zygote',
-    '--disable-gpu',
-    '--headless=new',
-    '--disable-extensions',
-    '--disable-plugins',
-    '--disable-plugins-discovery',
-    '--disable-accelerated-2d-canvas',
-    '--disable-infobars',
-    '--disable-default-apps',
-    '--disable-popup-blocking',
-    '--disable-translate',
-    '--disable-component-update',
-    '--disable-domain-reliability',
-    '--disable-sync',
-    '--disable-client-side-phishing-detection',
-    '--disable-hang-monitor',
-    '--disable-ipc-flooding-protection',
-    '--no-default-browser-check',
-    '--mute-audio',
-    '--window-size=1024,768',
-  ];
-
-  const puppeteerLaunch = {
-    headless: true,
-    defaultViewport: { width: 1024, height: 768 },
-    args: puppeteerArgs,
-  };
-  const chromeExe = getPuppeteerExecutablePath();
-  if (chromeExe) {
-    puppeteerLaunch.executablePath = chromeExe;
-    if (!loggedPuppeteerBrowserPath) {
-      loggedPuppeteerBrowserPath = true;
-      console.log('[WA] Puppeteer memakai browser sistem (hindari ICU error Chromium unduhan):', chromeExe);
-    }
-  }
-
-  const clientConfig = {
-    authStrategy: new LocalAuth({
-      clientId: 'wa-uwaba-' + id,
-      dataPath: SESSION_PATH,
-    }),
-    puppeteer: puppeteerLaunch,
-    userAgent: getUserAgentForSession(id),
-  };
-
-  const c = new Client(clientConfig);
-
-  c.on('qr', async (qr) => {
-    try {
-      const qrData = await qrcode.toDataURL(qr);
-      setWaStatus(id, { status: 'connecting', qrCode: qrData });
-      console.log('[WA]', id, 'QR code diterima');
-    } catch (e) {
-      console.error('[WA] QR toDataURL error:', e.message);
-    }
-  });
-
-  c.on('ready', () => {
-    let phoneNumber = null;
-    try {
-      const info = c.info;
-      const wid = info?.wid;
-      if (wid) {
-        if (typeof wid.user === 'string') phoneNumber = wid.user;
-        else if (typeof wid.id === 'string') phoneNumber = wid.id.split(':')[0].split('@')[0] || null;
-        else if (typeof wid._id === 'string') phoneNumber = wid._id.split('@')[0] || null;
-      }
-    } catch (_) {}
-    setWaStatus(id, { status: 'connected', qrCode: null, phoneNumber });
-    console.log('[WA] Puppeteer', id, 'terhubung. Nomor:', phoneNumber || '(unknown)');
-    initBaileys(id).catch((err) => console.warn('[WA] Init Baileys', id, err?.message));
-  });
-
-  c.on('authenticated', () => {
-    console.log('[WA]', id, 'Authenticated');
-  });
-
-  c.on('auth_failure', (msg) => {
-    console.error('[WA]', id, 'Auth failure:', msg);
-    setWaStatus(id, { status: 'disconnected', qrCode: null, phoneNumber: null });
-  });
-
-  c.on('disconnected', (reason) => {
-    console.log('[WA]', id, 'Disconnected:', reason);
-    setWaStatus(id, { status: 'disconnected', qrCode: null, phoneNumber: null });
-    delete clientsBySession[id];
-  });
-
-  // Pesan masuk: Puppeteer (whatsapp-web.js) yang terhubung via QR menerima pesan di sini.
-  // Baileys messages.upsert hanya dapat pesan jika Baileys yang "aktif"; kebanyakan pesan masuk lewat event ini.
-  c.on('message', async (msg) => {
-    try {
-      if (msg.fromMe) {
-        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] skip: pesan fromMe');
-        return;
-      }
-      if (typeof msg.from === 'string' && /@g\.us$/i.test(msg.from)) {
-        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] skip: pesan grup');
-        return;
-      }
-      const fromRaw = (msg.from || '').replace(/@c\.us$/i, '').replace(/@s\.whatsapp\.net$/i, '').trim();
-      const digits = fromRaw.replace(/\D/g, '');
-      if (digits.length < 10) {
-        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] skip: nomor terlalu pendek', fromRaw);
-        return;
-      }
-      const from62 = digits.startsWith('0') ? '62' + digits.slice(1) : (digits.startsWith('62') ? digits : '62' + digits);
-      const body = typeof msg.body === 'string' ? msg.body : (msg.body || '');
-      const messageId = (msg.id && (msg.id._serialized || msg.id)) || null;
-      const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
-      if (!apiBase) {
-        console.warn('[WA Puppeteer] UWABA_API_BASE_URL belum di-set, pesan masuk tidak diforward');
-        return;
-      }
-      const waPath = apiBase.endsWith('/api') ? '/wa/incoming' : '/api/wa/incoming';
-      const url = apiBase + waPath;
-      const fromJid = (typeof msg.from === 'string' && msg.from.includes('@')) ? msg.from : null;
-      /** Chat @lid: "from" bukan MSISDN — coba dapatkan nomor asli agar cocok dengan users.no_wa & AI bridge. */
-      let canonicalNumber = null;
-      if (fromJid && /@lid$/i.test(fromJid) && typeof msg.getContact === 'function') {
-        try {
-          const contact = await msg.getContact();
-          const ser = contact?.id?._serialized || '';
-          const mCu = typeof ser === 'string' ? ser.match(/^(\d+)@c\.us$/i) : null;
-          if (mCu) {
-            const d = mCu[1];
-            canonicalNumber =
-              d.startsWith('62') ? d : d.startsWith('0') ? '62' + d.slice(1) : '62' + d;
-          } else if (typeof contact?.number === 'string') {
-            const d = contact.number.replace(/\D/g, '');
-            if (d.length >= 10 && d.length <= 13) {
-              canonicalNumber =
-                d.startsWith('62') ? d : d.startsWith('0') ? '62' + d.slice(1) : '62' + d;
-            }
-          }
-        } catch (_) {
-          /* tetap pakai from62 + fallback di API (whatsapp___kontak.nomor_kanonik) */
-        }
-      }
-      const payload = {
-        from: from62,
-        message: body,
-        messageId: messageId || undefined,
-        sessionId: id,
-        from_jid: fromJid || undefined,
-        ...(canonicalNumber ? { canonicalNumber } : {}),
-      };
-      if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] Pesan masuk dari ' + from62 + (fromJid ? ' jid=' + fromJid : '') + ' len=' + body.length + ', forward ke API ' + url);
-      const res = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (res.ok) {
-        const waPort = process.env.PORT || '3001';
-        if (WA_VERBOSE_LOG) console.log('[WA Puppeteer] Forward OK. Jika tidak dapat balasan: cek error_log PHP; pastikan api/.env punya WA_API_URL=http://127.0.0.1:' + waPort + '/api/whatsapp/send dan WA_API_KEY.');
-      } else {
-        console.error('[WA Puppeteer] Forward gagal: HTTP ' + res.status);
-      }
-    } catch (err) {
-      console.error('[WA Puppeteer] message handler error:', err?.message);
-    }
-  });
-
-  return c;
-}
-
-/** Daftar session ID yang punya folder di disk (wwebjs / wwebjs-wa2, ...). Agar frontend tampil semua slot saat load pertama. */
-export function getSessionIdsFromDisk() {
-  const ids = [];
-  try {
-    if (existsSync(SESSIONS_BASE)) {
-      const dirs = readdirSync(SESSIONS_BASE);
-      if (dirs.includes('wwebjs')) ids.push(DEFAULT_SESSION);
-      for (const d of dirs) {
-        if (d.startsWith('wwebjs-')) ids.push(d.replace(/^wwebjs-/, ''));
-      }
-    }
-  } catch (_) {}
-  return ids.length ? ids : [DEFAULT_SESSION];
-}
-
-/** Jumlah session (Puppeteer + Baileys folder) — maks 10 */
-function countSessions() {
-  const ids = new Set();
-  for (const id of Object.keys(clientsBySession)) ids.add(id);
-  try {
-    if (existsSync(SESSIONS_BASE)) {
-      const dirs = readdirSync(SESSIONS_BASE);
-      for (const d of dirs) {
-        if (d === 'wwebjs') ids.add(DEFAULT_SESSION);
-        else if (d.startsWith('wwebjs-')) ids.add(d.replace(/^wwebjs-/, ''));
-        else if (d === 'baileys-default') ids.add(DEFAULT_SESSION);
-        else if (d.startsWith('baileys-')) ids.add(d.replace(/^baileys-/, ''));
-      }
-    }
-  } catch (_) {}
-  return ids.size;
-}
-
-/** Restore sesi default dari disk (Puppeteer). QR login selalu dari Puppeteer dulu. */
+/** Restore sesi default dari disk (auth Baileys). */
 export function initWaOnStart() {
   if (!waEngineEnabled) return;
-  const defaultPath = getSessionPath(DEFAULT_SESSION);
+  const defaultPath = getBaileysAuthPath(DEFAULT_SESSION);
   if (!existsSync(defaultPath)) return;
   try {
     const files = readdirSync(defaultPath);
@@ -465,19 +130,20 @@ export function initWaOnStart() {
   } catch (_) {
     return;
   }
-  if (clientsBySession[DEFAULT_SESSION]) return;
-  setWaStatus(DEFAULT_SESSION, { status: 'connecting' });
-  const c = createClient(DEFAULT_SESSION);
-  clientsBySession[DEFAULT_SESSION] = c;
-  c.initialize().catch((err) => {
-    console.error('[WA] Init on start error:', err?.message || err);
-    setWaStatus(DEFAULT_SESSION, { status: 'disconnected', qrCode: null });
-    delete clientsBySession[DEFAULT_SESSION];
+  if (isBaileysConnected(DEFAULT_SESSION)) return;
+  setWaStatus(DEFAULT_SESSION, { status: 'connecting', baileysStatus: 'connecting' });
+  initBaileys(DEFAULT_SESSION).catch((err) => {
+    console.error('[WA] initBaileys on start error:', err?.message || err);
+    setWaStatus(DEFAULT_SESSION, {
+      status: 'disconnected',
+      qrCode: null,
+      baileysStatus: 'disconnected',
+      baileysQrCode: null,
+    });
   });
-  console.log('[WA] Restore sesi default (Puppeteer)...');
+  console.log('[WA] Restore sesi default (Baileys)...');
 }
 
-/** Trigger koneksi WA jika sedang off. Dipanggil dari API PHP saat pendaftar menekan "Aktifkan notifikasi". */
 export const wakeWhatsApp = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
@@ -489,21 +155,25 @@ export const wakeWhatsApp = async (req, res) => {
     if (st.status === 'connecting' || st.baileysStatus === 'connecting') {
       return res.json({ success: true, message: 'WA sedang menghubungkan...', data: { status: 'connecting' } });
     }
-    if (clientsBySession[safeId]) {
-      return res.json({ success: true, message: 'Koneksi WA sedang dipersiapkan...', data: { status: 'connecting' } });
-    }
-    if (countSessions() >= MAX_SESSIONS) {
+    if (countSessions() >= MAX_SESSIONS && !hasBaileysAuthFolder(safeId)) {
       return res.status(200).json({ success: true, message: 'Slot WA penuh. Coba lagi nanti.', data: { status: 'busy' } });
     }
-    setWaStatus(safeId, { status: 'connecting', qrCode: null, baileysStatus: 'disconnected', baileysQrCode: null });
-    const c = createClient(safeId);
-    clientsBySession[safeId] = c;
-    c.initialize().catch((err) => {
-      console.error('[WA] Puppeteer initialize error:', err?.message || err);
-      setWaStatus(safeId, { status: 'disconnected', qrCode: null });
-      delete clientsBySession[safeId];
+    setWaStatus(safeId, {
+      status: 'connecting',
+      qrCode: null,
+      baileysStatus: 'disconnected',
+      baileysQrCode: null,
     });
-    console.log('[WA] Wake: memulai koneksi untuk session', safeId);
+    initBaileys(safeId).catch((err) => {
+      console.error('[WA] wake initBaileys error:', err?.message || err);
+      setWaStatus(safeId, {
+        status: 'disconnected',
+        qrCode: null,
+        baileysStatus: 'disconnected',
+        baileysQrCode: null,
+      });
+    });
+    console.log('[WA] Wake: memulai Baileys untuk session', safeId);
     return res.json({ success: true, message: 'Memulai koneksi WA...', data: { status: 'connecting' } });
   } catch (err) {
     return res.status(500).json({ success: false, message: 'Gagal memicu koneksi: ' + (err?.message || String(err)) });
@@ -514,17 +184,13 @@ export const connectWhatsApp = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
-    /** true = paksa QR baru (hindari response cache dari connect sebelumnya) */
     const refreshQr = req.body?.refreshQr === true;
-    if (countSessions() >= MAX_SESSIONS && !clientsBySession[safeId]) {
-      const st = getWaStatus(safeId);
-      const hasBaileys = st.status === 'connected' || st.status === 'connecting';
-      if (!hasBaileys) {
-        return res.status(400).json({
-          success: false,
-          message: `Maksimal ${MAX_SESSIONS} koneksi WA. Putus atau logout salah satu terlebih dahulu.`,
-        });
-      }
+
+    if (countSessions() >= MAX_SESSIONS && !hasBaileysAuthFolder(safeId)) {
+      return res.status(400).json({
+        success: false,
+        message: `Maksimal ${MAX_SESSIONS} koneksi WA. Putus atau logout salah satu terlebih dahulu.`,
+      });
     }
 
     const dataStatus = getWaStatus(safeId);
@@ -544,99 +210,74 @@ export const connectWhatsApp = async (req, res) => {
       });
     }
 
-    // Puppeteer sudah login: jangan destroy client. Tanpa refreshQr kembalikan status; dengan refreshQr hanya putus & init ulang Baileys (QR langkah 2).
-    if (dataStatus.status === 'connected' && clientsBySession[safeId]) {
-      if (refreshQr) {
-        await disconnectBaileys(safeId);
-        initBaileys(safeId).catch((err) => {
-          console.error('[WA] initBaileys setelah refresh QR:', err?.message || err);
-        });
-        const st = getWaStatus(safeId);
-        return res.json({
-          success: true,
-          message: st.baileysStatus === 'connected'
-            ? 'Baileys terhubung.'
-            : 'Memulai ulang Baileys. Gunakan tombol "Muat QR" untuk mengambil QR terbaru.',
-          data: {
-            sessionId: safeId,
-            status: st.status,
-            qrCode: null,
-            phoneNumber: st.phoneNumber || null,
-            baileysStatus: st.baileysStatus || 'disconnected',
-            baileysQrCode: st.baileysQrCode || null,
-            baileysPhoneNumber: st.baileysPhoneNumber || null,
-          },
-        });
-      }
-      return res.json({
-        success: true,
-        message: 'WhatsApp sudah login. Scan QR Baileys jika belum.',
-        data: {
-          sessionId: safeId,
-          status: dataStatus.status,
-          qrCode: null,
-          phoneNumber: dataStatus.phoneNumber || null,
-          baileysStatus: dataStatus.baileysStatus,
-          baileysQrCode: dataStatus.baileysQrCode || null,
-          baileysPhoneNumber: dataStatus.baileysPhoneNumber || null,
-        },
+    if (refreshQr) {
+      await disconnectBaileys(safeId);
+      setWaStatus(safeId, {
+        status: 'connecting',
+        qrCode: null,
+        baileysStatus: 'connecting',
+        baileysQrCode: null,
       });
-    }
-
-    // Hanya kembalikan QR cache jika client masih hidup & peminta tidak minta QR baru (hindari respons yang sama terus saat klik "Muat ulang").
-    if (
+    } else if (
       !refreshQr &&
-      dataStatus.status === 'connecting' &&
-      (dataStatus.qrCode || dataStatus.baileysQrCode) &&
-      clientsBySession[safeId]
+      (dataStatus.status === 'connecting' || dataStatus.baileysStatus === 'connecting') &&
+      (dataStatus.qrCode || dataStatus.baileysQrCode)
     ) {
+      const st = getWaStatus(safeId);
+      const qr = st.qrCode || st.baileysQrCode || null;
       return res.json({
         success: true,
-        message: 'Scan QR code di bawah (Langkah 1: login WA).',
+        message: 'Scan QR code di bawah.',
         data: {
           sessionId: safeId,
-          status: dataStatus.status,
-          qrCode: dataStatus.qrCode || dataStatus.baileysQrCode || null,
-          phoneNumber: dataStatus.phoneNumber || null,
-          baileysStatus: dataStatus.baileysStatus,
-          baileysQrCode: dataStatus.baileysQrCode || null,
-          baileysPhoneNumber: dataStatus.baileysPhoneNumber || null,
+          status: st.status || 'connecting',
+          qrCode: qr,
+          phoneNumber: st.phoneNumber || null,
+          baileysStatus: st.baileysStatus,
+          baileysQrCode: st.baileysQrCode || null,
+          baileysPhoneNumber: st.baileysPhoneNumber || null,
         },
+      });
+    } else {
+      await disconnectBaileys(safeId);
+      setWaStatus(safeId, {
+        status: 'connecting',
+        qrCode: null,
+        baileysStatus: 'connecting',
+        baileysQrCode: null,
       });
     }
 
-    const current = clientsBySession[safeId];
-    if (current) {
-      try {
-        await current.destroy();
-      } catch (_) {}
-      delete clientsBySession[safeId];
+    try {
+      await initBaileys(safeId);
+      await waitForBaileysQrOrConnected(safeId, 20000);
+    } catch (err) {
+      console.error('[WA] initBaileys connect:', err?.message || err);
+      setWaStatus(safeId, {
+        status: 'disconnected',
+        qrCode: null,
+        baileysStatus: 'disconnected',
+        baileysQrCode: null,
+      });
+      return res.status(500).json({
+        success: false,
+        message: 'Gagal memulai Baileys: ' + (err?.message || String(err)),
+      });
     }
-    await disconnectBaileys(safeId);
 
-    setWaStatus(safeId, { status: 'connecting', qrCode: null, baileysStatus: 'disconnected', baileysQrCode: null });
-    const c = createClient(safeId);
-    clientsBySession[safeId] = c;
-
-    c.initialize().catch((err) => {
-      console.error('[WA] Puppeteer initialize error:', err?.message || err);
-      setWaStatus(safeId, { status: 'disconnected', qrCode: null });
-      delete clientsBySession[safeId];
-    });
     const st = getWaStatus(safeId);
-    const qr = st.qrCode || null;
-    const status = st.status || 'connecting';
+    const qr = st.qrCode || st.baileysQrCode || null;
     return res.json({
       success: true,
       message: qr
-        ? 'Scan QR di bawah (Langkah 1: login WA).'
+        ? 'Scan QR di bawah dengan WhatsApp di HP Anda (Perangkat tertaut).'
         : 'Memulai koneksi. Gunakan tombol "Muat QR" untuk mengambil QR terbaru.',
       data: {
         sessionId: safeId,
-        status,
+        status: st.status || 'connecting',
         qrCode: qr,
         phoneNumber: st.phoneNumber || null,
-        baileysStatus: st.baileysStatus || 'disconnected',
+        baileysStatus: st.baileysStatus || 'connecting',
         baileysQrCode: st.baileysQrCode || null,
         baileysPhoneNumber: st.baileysPhoneNumber || null,
       },
@@ -652,15 +293,15 @@ export const connectWhatsApp = async (req, res) => {
 export const disconnectWhatsApp = async (req, res) => {
   try {
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
-    const current = clientsBySession[safeId];
-    if (current) {
-      try {
-        await current.destroy();
-      } catch (_) {}
-      delete clientsBySession[safeId];
-    }
     await disconnectBaileys(safeId);
-    setWaStatus(safeId, { status: 'disconnected', qrCode: null, phoneNumber: null, baileysStatus: 'disconnected', baileysQrCode: null, baileysPhoneNumber: null });
+    setWaStatus(safeId, {
+      status: 'disconnected',
+      qrCode: null,
+      phoneNumber: null,
+      baileysStatus: 'disconnected',
+      baileysQrCode: null,
+      baileysPhoneNumber: null,
+    });
     return res.json({
       success: true,
       message: 'WhatsApp berhasil diputus.',
@@ -677,19 +318,19 @@ export const disconnectWhatsApp = async (req, res) => {
 export const logoutWhatsApp = async (req, res) => {
   try {
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
-    const current = clientsBySession[safeId];
-    if (current) {
-      try {
-        await current.destroy();
-      } catch (_) {}
-      delete clientsBySession[safeId];
-    }
     await disconnectBaileys(safeId);
-    const sessionPath = getSessionPath(safeId);
-    if (existsSync(sessionPath)) rmSync(sessionPath, { recursive: true, force: true });
+    const legacy = getLegacyWwebjsPath(safeId);
+    if (existsSync(legacy)) rmSync(legacy, { recursive: true, force: true });
     const baileysPath = getBaileysAuthPathForDelete(safeId);
     if (existsSync(baileysPath)) rmSync(baileysPath, { recursive: true, force: true });
-    setWaStatus(safeId, { status: 'disconnected', qrCode: null, phoneNumber: null, baileysStatus: 'disconnected', baileysQrCode: null, baileysPhoneNumber: null });
+    setWaStatus(safeId, {
+      status: 'disconnected',
+      qrCode: null,
+      phoneNumber: null,
+      baileysStatus: 'disconnected',
+      baileysQrCode: null,
+      baileysPhoneNumber: null,
+    });
     return res.json({
       success: true,
       message: 'WhatsApp berhasil logout. Nyalakan lagi untuk scan QR Code.',
@@ -706,25 +347,12 @@ export const logoutWhatsApp = async (req, res) => {
 export const deleteSlotWhatsApp = async (req, res) => {
   try {
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
-
-    const current = clientsBySession[safeId];
-    if (current) {
-      try {
-        await current.destroy();
-      } catch (_) {}
-      delete clientsBySession[safeId];
-    }
-
     await disconnectBaileys(safeId);
-
-    const sessionPath = getSessionPath(safeId);
-    if (existsSync(sessionPath)) rmSync(sessionPath, { recursive: true, force: true });
+    const legacy = getLegacyWwebjsPath(safeId);
+    if (existsSync(legacy)) rmSync(legacy, { recursive: true, force: true });
     const baileysPath = getBaileysAuthPathForDelete(safeId);
     if (existsSync(baileysPath)) rmSync(baileysPath, { recursive: true, force: true });
-
-    // Hapus baris slot dari status store agar tidak tampil lagi di UI.
     deleteWaSession(safeId);
-
     return res.json({
       success: true,
       message: 'Slot WA berhasil dihapus.',
@@ -742,46 +370,32 @@ export const sendMessage = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
-    const { phoneNumber, message, imageBase64, imageMimetype, chatId: bodyChatId } = req.body || {};
+    const { phoneNumber, message, imageBase64, imageMimetype, chatId: bodyChatId, linkPreview: bodyLinkPreview } = req.body || {};
     const text = typeof message === 'string' ? message : '';
+    /** Default true: Baileys mengambil preview URL dari teks (lihat generateWAMessageContent / link preview). */
+    const linkPreviewEnabled = bodyLinkPreview !== false;
     const chatIdOverride = typeof bodyChatId === 'string' && bodyChatId.trim() ? bodyChatId.trim() : null;
-    if (WA_VERBOSE_LOG) console.log('[WA] POST /send to ' + (phoneNumber || '') + (chatIdOverride ? ' chatId=' + chatIdOverride : '') + ' len=' + text.length);
-    const puppeteerOk = isPuppeteerReady(safeId);
-    if (!isBaileysConnected(safeId) && !puppeteerOk) {
-      await ensureBaileysReadyForSend(safeId).catch(() => {});
+    if (WA_VERBOSE_LOG) {
+      console.log('[WA] POST /send to ' + (phoneNumber || '') + (chatIdOverride ? ' chatId=' + chatIdOverride : '') + ' len=' + text.length);
     }
-    const baileysOk = isBaileysConnected(safeId);
-    if (!baileysOk && !puppeteerOk) {
-      if (WA_VERBOSE_LOG) console.log('[WA] send: belum login (Baileys/Puppeteer tidak siap)');
+    if (!isBaileysConnected(safeId)) {
+      await ensureBaileysReadyForSend(safeId, 20000).catch(() => {});
+    }
+    if (!isBaileysConnected(safeId)) {
+      if (WA_VERBOSE_LOG) console.log('[WA] send: belum login (Baileys tidak siap)');
+      const paired = hasBaileysAuthFiles(safeId);
       return res.status(200).json({
         success: false,
-        message: 'Belum login untuk session ini. Scan QR Langkah 1 di tab Koneksi WA.',
-      });
-    }
-    if (imageBase64 && !baileysOk) {
-      return res.status(200).json({
-        success: false,
-        message: 'Kirim gambar hanya didukung setelah scan Langkah 2 (Baileys). Kirim teks saja untuk tes.',
+        code: paired ? 'wa_disconnected' : 'wa_not_paired',
+        message: paired
+          ? 'WhatsApp terputus atau masih menyambung. Coba lagi sebentar atau buka tab Koneksi WA.'
+          : 'WhatsApp belum terhubung. Hubungkan nomor lembaga di tab Koneksi WA lalu scan QR.',
       });
     }
 
-    let result = { ok: false, error: 'Gagal mengirim' };
-    if (imageBase64 && baileysOk) {
-      result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype);
-      if (WA_VERBOSE_LOG) console.log('[WA] send via Baileys (gambar): ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
-    } else if (!imageBase64) {
-      if (!baileysOk && puppeteerOk) {
-        await ensureBaileysReadyForSend(safeId).catch(() => {});
-      }
-      const baileysTry = isBaileysConnected(safeId);
-      if (baileysTry) {
-        result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype);
-        if (WA_VERBOSE_LOG) console.log('[WA] send via Baileys (teks): ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
-      }
-      if (!result.ok && puppeteerOk) {
-        result = await sendMessagePuppeteer(safeId, phoneNumber, text, chatIdOverride);
-        if (WA_VERBOSE_LOG) console.log('[WA] send via Puppeteer (fallback teks): ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
-      }
+    const result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype, chatIdOverride, linkPreviewEnabled);
+    if (WA_VERBOSE_LOG) {
+      console.log('[WA] send via Baileys: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
     }
     if (!result.ok) {
       if (result.error === 'Nomor tidak valid') return res.status(400).json({ success: false, message: result.error });
@@ -850,17 +464,16 @@ export const checkNumber = async (req, res) => {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     const { phoneNumber } = req.body || {};
-    let result;
-    if (isBaileysConnected(safeId)) {
-      result = await checkNumberBaileys(safeId, phoneNumber);
-    } else if (isPuppeteerReady(safeId)) {
-      result = await checkNumberPuppeteer(safeId, phoneNumber);
-    } else {
+    if (!isBaileysConnected(safeId)) {
+      await ensureBaileysReadyForSend(safeId).catch(() => {});
+    }
+    if (!isBaileysConnected(safeId)) {
       return res.status(200).json({
         success: false,
-        message: 'Belum login. Scan QR Langkah 1 di tab Koneksi WA.',
+        message: 'Belum login. Scan QR di tab Koneksi WA.',
       });
     }
+    const result = await checkNumberBaileys(safeId, phoneNumber);
     if (!result.ok) {
       if (result.error === 'Nomor tidak valid') return res.status(400).json({ success: false, message: result.error });
       return res.status(200).json({ success: false, message: result.error || 'Gagal mengecek nomor' });
@@ -873,5 +486,44 @@ export const checkNumber = async (req, res) => {
   } catch (err) {
     console.error('[WA] checkNumber error:', err?.message || err);
     return res.status(500).json({ success: false, message: err?.message || 'Gagal mengecek nomor' });
+  }
+};
+
+export const resolveJids = async (req, res) => {
+  try {
+    if (!waEngineEnabled) return respondWaEngineStopped(res);
+    const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    const phoneNumber = req.body?.phoneNumber || req.body?.phone_number || '';
+    if (!phoneNumber || String(phoneNumber).trim() === '') {
+      return res.status(400).json({ success: false, message: 'phoneNumber wajib' });
+    }
+    if (!isBaileysConnected(safeId)) {
+      await ensureBaileysReadyForSend(safeId).catch(() => {});
+    }
+    if (!isBaileysConnected(safeId)) {
+      return res.status(200).json({
+        success: false,
+        message: 'Belum login. Scan QR di halaman Koneksi WA (Baileys).',
+        data: { jids: [] },
+      });
+    }
+    const result = await resolveJidsForPhone(safeId, phoneNumber);
+    if (!result.ok) {
+      const msg = result.error || 'Gagal mengambil JID';
+      if (result.error === 'Nomor tidak valid') return res.status(400).json({ success: false, message: msg, data: { jids: [] } });
+      return res.status(200).json({
+        success: false,
+        message: msg,
+        data: { jids: result.jids || [], reason: result.reason, source: 'baileys' },
+      });
+    }
+    return res.json({
+      success: true,
+      message: 'OK',
+      data: { jids: result.jids || [], reason: result.reason, source: 'baileys' },
+    });
+  } catch (err) {
+    console.error('[WA] resolveJids error:', err?.message || err);
+    return res.status(500).json({ success: false, message: err?.message || 'Gagal resolve JID' });
   }
 };

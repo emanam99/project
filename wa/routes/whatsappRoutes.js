@@ -10,6 +10,7 @@ import {
   sendMessage,
   editMessage,
   checkNumber,
+  resolveJids,
   getChatMessages,
   wakeWhatsApp,
   isWaEngineEnabled,
@@ -41,6 +42,7 @@ router.get('/status', (req, res) => {
 router.post('/send', authSendOrUwaba, wrap(sendMessage));
 router.post('/edit-message', authSendOrUwaba, wrap(editMessage));
 router.post('/check', authSendOrUwaba, wrap(checkNumber));
+router.post('/resolve-jids', authSendOrUwaba, wrap(resolveJids));
 router.get('/chat-messages', authSendOrUwaba, wrap(getChatMessages));
 router.post('/chat-messages', authSendOrUwaba, wrap(getChatMessages));
 router.post('/wake', authSendOrUwaba, wrap(wakeWhatsApp));
