@@ -47,6 +47,18 @@ class WhatsAppService
     private const THROTTLE_DAYS = 5;
 
     /**
+     * Pesan akun (reset/setup/username): kirim ke nomor WA dari profil/konfirmasi user,
+     * tanpa dialihkan lewat resolveDeliveryTarget / nomor_kanonik (bisa salah sasaran).
+     * Sama cakupan dengan pengecualian siap_terima_notif.
+     */
+    private const KATEGORI_AUTH_KIRIM_KE_NOMOR_PROFIL = [
+        'password_reset',
+        'setup_akun',
+        'setup_akun_santri',
+        'username_change',
+    ];
+
+    /**
      * Sementara: nonaktifkan semua notif WA template PSB (sendPsb*): daftar, berkas, pembayaran (termasuk iPayMu),
      * status transaksi, dan diverifikasi. Set false untuk mengaktifkan kembali.
      */
@@ -650,6 +662,54 @@ class WhatsAppService
     }
 
     /**
+     * True = jangan kirim (kontak ada & tidak siap terima notifikasi massal), kecuali kategori yang dikecualikan.
+     */
+    private static function shouldBlockSendBySiapTerimaNotif(?array $logContext, array $kontakStatus): bool
+    {
+        if (!$kontakStatus['exists'] || $kontakStatus['siap_terima_notif']) {
+            return false;
+        }
+        if ($logContext === null) {
+            return true;
+        }
+        $k = $logContext['kategori'] ?? '';
+        if (in_array($k, ['daftar_notif', 'wa_interactive_menu', 'ai_whatsapp'], true)) {
+            return false;
+        }
+        if ($k === 'wa_change_otp') {
+            return false;
+        }
+        if (in_array($k, ['pengeluaran_rencana_notif', 'pengeluaran_notif'], true)) {
+            return false;
+        }
+        if (in_array($k, self::KATEGORI_AUTH_KIRIM_KE_NOMOR_PROFIL, true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * success=true dari Node/skip internal tetapi pesan tidak benar-benar terkirim ke penerima.
+     * Dipakai controller agar tidak menampilkan "sudah dikirim" padahal tidak ada delivery.
+     */
+    public static function deliveryWasNotActuallySent(array $sendResult): bool
+    {
+        if (empty($sendResult['success'])) {
+            return false;
+        }
+        $m = strtolower((string) ($sendResult['message'] ?? ''));
+        if ($m === '') {
+            return false;
+        }
+        return str_contains($m, 'duplicate')
+            || str_contains($m, 'skip')
+            || str_contains($m, 'kontak tidak')
+            || str_contains($m, 'tidak menerima notifikasi')
+            || str_contains($m, 'tidak siap');
+    }
+
+    /**
      * Status kontak untuk dipanggil dari luar (mis. endpoint pendaftaran).
      * @return array ['exists' => bool, 'siap_terima_notif' => bool]
      */
@@ -1018,15 +1078,10 @@ class WhatsAppService
         }
         // Cek siap_terima_notif untuk nomor kontak (biodata), bukan nomor tujuan kirim
         $kontakStatus = self::getKontakStatus($originalPhone);
-        $isDaftarNotifReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'daftar_notif';
-        $isWaInteractiveMenuReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'wa_interactive_menu';
-        $isAiWhatsappReply = $logContext !== null && ($logContext['kategori'] ?? '') === 'ai_whatsapp';
         /** OTP ganti nomor WA: harus ke nomor yang diketik user, bukan nomor_kanonik & bukan diblok siap_terima_notif (sama perilaku "Kirim tes" dari UI). */
         $isWaChangeOtp = $logContext !== null && ($logContext['kategori'] ?? '') === 'wa_change_otp';
-        /** Notifikasi rencana/pengeluaran ke admin (termasuk kirim ulang): sama seperti flow operasional penting — jangan blokir lewat siap_terima_notif. */
-        $isPengeluaranKeuanganNotif = $logContext !== null && in_array(($logContext['kategori'] ?? ''), ['pengeluaran_rencana_notif', 'pengeluaran_notif'], true);
-        // Balasan flow "Daftar Notifikasi", menu interaktif, AI WA, OTP ganti nomor, & notif keuangan internal harus tetap dikirim; skip cek siap_terima untuk itu.
-        if (!$isDaftarNotifReply && !$isWaInteractiveMenuReply && !$isAiWhatsappReply && !$isWaChangeOtp && !$isPengeluaranKeuanganNotif && $kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
+        $isAuthKirimKeNomorProfil = $logContext !== null && in_array(($logContext['kategori'] ?? ''), self::KATEGORI_AUTH_KIRIM_KE_NOMOR_PROFIL, true);
+        if (self::shouldBlockSendBySiapTerimaNotif($logContext, $kontakStatus)) {
             if ($logContext !== null) {
                 self::logSentMessage(
                     $originalPhone,
@@ -1051,6 +1106,9 @@ class WhatsAppService
             $phone = $rawDigitsInput;
         } elseif ($isWaChangeOtp) {
             // Jangan aliaskan ke nomor_kanonik — user sedang verifikasi nomor baru; UI tes juga kirim ke input mentah.
+            $phone = $originalPhone;
+        } elseif ($isAuthKirimKeNomorProfil) {
+            // Link reset/setup/username harus ke nomor yang sama dengan profil/konfirmasi, bukan ke nomor_kanonik lain.
             $phone = $originalPhone;
         } else {
             $delivery = self::resolveDeliveryTarget($originalPhone);
@@ -1375,7 +1433,7 @@ class WhatsAppService
         }
 
         $kontakStatus = self::getKontakStatus($originalPhone);
-        if ($kontakStatus['exists'] && !$kontakStatus['siap_terima_notif']) {
+        if (self::shouldBlockSendBySiapTerimaNotif($logContext, $kontakStatus)) {
             if ($logContext !== null) {
                 self::logSentMessage(
                     $originalPhone,
@@ -1394,8 +1452,13 @@ class WhatsAppService
             return ['success' => true, 'message' => 'Kontak tidak menerima notifikasi (diatur di Daftar Kontak)'];
         }
 
-        $delivery = self::resolveDeliveryTarget($originalPhone);
-        $phone = $delivery['nomor'];
+        $isAuthKirimKeNomorProfil = $logContext !== null && in_array(($logContext['kategori'] ?? ''), self::KATEGORI_AUTH_KIRIM_KE_NOMOR_PROFIL, true);
+        if ($isAuthKirimKeNomorProfil) {
+            $phone = $originalPhone;
+        } else {
+            $delivery = self::resolveDeliveryTarget($originalPhone);
+            $phone = $delivery['nomor'];
+        }
 
         $kategori = $logContext !== null ? ($logContext['kategori'] ?? null) : null;
         $idSantri = $logContext['id_santri'] ?? null;

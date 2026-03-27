@@ -1,12 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authAPI } from '../services/api'
 
+function normalizeTokenFromUrl(raw) {
+  if (raw == null || typeof raw !== 'string') return ''
+  return raw.replace(/\s+/g, '').trim()
+}
+
 export default function UbahPassword() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const token = searchParams.get('token') || ''
+  const token = useMemo(() => normalizeTokenFromUrl(searchParams.get('token')), [searchParams])
 
   const [valid, setValid] = useState(null)
   const [nama, setNama] = useState('')
@@ -14,19 +19,31 @@ export default function UbahPassword() {
   const [konfirmasi, setKonfirmasi] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [tokenCheckHint, setTokenCheckHint] = useState('')
 
   useEffect(() => {
     if (!token) {
       setValid(false)
+      setTokenCheckHint('tidak_ada')
       return
     }
     let cancelled = false
+    setTokenCheckHint('')
     authAPI.getUbahPasswordToken(token).then((res) => {
       if (cancelled) return
+      if (res.success === false) {
+        setValid(false)
+        setTokenCheckHint(res.message || 'server')
+        return
+      }
       setValid(!!res.valid)
       if (res.valid && res.nama) setNama(res.nama)
-    }).catch(() => {
-      if (!cancelled) setValid(false)
+      if (!res.valid) setTokenCheckHint('tidak_berlaku')
+    }).catch((err) => {
+      if (!cancelled) {
+        setValid(false)
+        setTokenCheckHint(err.response?.data?.message || 'jaringan')
+      }
     })
     return () => { cancelled = true }
   }, [token])
@@ -66,6 +83,16 @@ export default function UbahPassword() {
   }
 
   if (!valid) {
+    const hint =
+      tokenCheckHint === 'tidak_ada'
+        ? 'Tidak ada token di alamat. Pastikan Anda membuka link lengkap dari WhatsApp (salin seluruh jika perlu).'
+        : tokenCheckHint === 'jaringan'
+          ? 'Tidak dapat menghubungi server. Periksa koneksi internet atau coba lagi.'
+          : tokenCheckHint === 'tidak_berlaku'
+            ? 'Link sudah kadaluarsa (aktif 15 menit) atau sudah dipakai. Silakan minta link baru dari halaman Profil (Ubah Password).'
+            : tokenCheckHint && tokenCheckHint !== 'server'
+              ? tokenCheckHint
+              : 'Link sudah kadaluarsa (aktif 15 menit) atau sudah dipakai. Silakan minta link baru dari halaman Profil (Ubah Password).'
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
         <motion.div
@@ -75,7 +102,7 @@ export default function UbahPassword() {
         >
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Link tidak valid</h1>
           <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
-            Link sudah kadaluarsa (aktif 15 menit) atau sudah dipakai. Silakan minta link baru dari halaman Profil (Ubah Password).
+            {hint}
           </p>
           <a href="/login" className="inline-block py-2 px-4 rounded-xl bg-teal-600 text-white font-medium hover:bg-teal-700">
             Ke halaman Login
@@ -102,7 +129,7 @@ export default function UbahPassword() {
               value={passwordBaru}
               onChange={(e) => setPasswordBaru(e.target.value)}
               placeholder="Minimal 6 karakter"
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               autoComplete="new-password"
             />
           </div>
@@ -113,7 +140,7 @@ export default function UbahPassword() {
               value={konfirmasi}
               onChange={(e) => setKonfirmasi(e.target.value)}
               placeholder="Ulangi password baru"
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               autoComplete="new-password"
             />
           </div>

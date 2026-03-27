@@ -1885,9 +1885,8 @@ class ManageUsersController
             }
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $expiresAt = date('Y-m-d H:i:s', time() + 900); // 15 menit
-            $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)");
-            $ins->execute([$userId, $tokenHash, $expiresAt]);
+            $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+            $ins->execute([$userId, $tokenHash]);
             $config = require __DIR__ . '/../../config.php';
             // Gunakan domain yang dipakai user (X-Frontend-Base-URL) agar link production, bukan localhost
             $baseUrl = $this->getFrontendBaseUrl($request, $config);

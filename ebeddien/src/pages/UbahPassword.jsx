@@ -1,12 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authAPI } from '../services/api'
 
+/** Samakan backend: hapus whitespace dari salinan URL WhatsApp */
+function normalizeTokenFromUrl(raw) {
+  if (raw == null || typeof raw !== 'string') return ''
+  return raw.replace(/\s+/g, '').trim()
+}
+
 function UbahPassword() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const token = searchParams.get('token') || ''
+  const token = useMemo(() => normalizeTokenFromUrl(searchParams.get('token')), [searchParams])
 
   const [valid, setValid] = useState(null) // null = loading, true/false
   const [nama, setNama] = useState('')
@@ -14,19 +20,32 @@ function UbahPassword() {
   const [konfirmasi, setKonfirmasi] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  /** Pesan khusus saat validasi token gagal (bukan hanya "kadaluarsa") */
+  const [tokenCheckHint, setTokenCheckHint] = useState('')
 
   useEffect(() => {
     if (!token) {
       setValid(false)
+      setTokenCheckHint('tidak_ada')
       return
     }
     let cancelled = false
+    setTokenCheckHint('')
     authAPI.getUbahPasswordToken(token).then((res) => {
       if (cancelled) return
+      if (res.success === false) {
+        setValid(false)
+        setTokenCheckHint(res.message || 'server')
+        return
+      }
       setValid(!!res.valid)
       if (res.valid && res.nama) setNama(res.nama)
-    }).catch(() => {
-      if (!cancelled) setValid(false)
+      if (!res.valid) setTokenCheckHint('tidak_berlaku')
+    }).catch((err) => {
+      if (!cancelled) {
+        setValid(false)
+        setTokenCheckHint(err.response?.data?.message || 'jaringan')
+      }
     })
     return () => { cancelled = true }
   }, [token])
@@ -66,6 +85,16 @@ function UbahPassword() {
   }
 
   if (!valid) {
+    const hint =
+      tokenCheckHint === 'tidak_ada'
+        ? 'Tidak ada token di alamat. Pastikan Anda membuka link lengkap dari WhatsApp (salin seluruh jika perlu).'
+        : tokenCheckHint === 'jaringan'
+          ? 'Tidak dapat menghubungi server. Periksa koneksi internet atau coba lagi.'
+          : tokenCheckHint === 'tidak_berlaku'
+            ? 'Link sudah kadaluarsa (aktif 15 menit) atau sudah dipakai. Silakan minta link baru dari halaman Profil (Ubah Password).'
+            : tokenCheckHint && tokenCheckHint !== 'server'
+              ? tokenCheckHint
+              : 'Link sudah kadaluarsa (aktif 15 menit) atau sudah dipakai. Silakan minta link baru dari halaman Profil (Ubah Password).'
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
         <motion.div
@@ -75,7 +104,7 @@ function UbahPassword() {
         >
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">Link tidak valid</h1>
           <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
-            Link sudah kadaluarsa (aktif 15 menit) atau sudah dipakai. Silakan minta link baru dari halaman Profil (Ubah Password).
+            {hint}
           </p>
           <a
             href="/login"

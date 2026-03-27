@@ -9,7 +9,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 /**
- * Changelog versi aplikasi (api, daftar, uwaba).
+ * Changelog versi aplikasi (api, daftar, ebeddien).
  * Data dari tabel app_version_changelog (Phinx migrations + ChangelogVersionSeed).
  * Filter by role: jika request punya Bearer token valid, tampilkan entri yang role_id IS NULL atau role_id = role user.
  * Tanpa token: hanya entri yang role_id IS NULL (public).
@@ -26,21 +26,22 @@ class VersionChangelogController
     }
 
     /**
-     * GET /api/version/changelog?app=uwaba
-     * Query: app (optional) = api | daftar | uwaba. Kosong = semua.
+     * GET /api/version/changelog?app=ebeddien
+     * Query: app (optional) = api | daftar | ebeddien (alias legacy: uwaba). Kosong = semua.
      * Opsional: header Authorization Bearer <token> → filter by role user.
      */
     public function getChangelog(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
         $app = isset($params['app']) ? trim($params['app']) : null;
+        $isEbeddienRequest = $app === 'ebeddien' || $app === 'uwaba';
 
-        $allowedApps = ['api', 'daftar', 'uwaba'];
+        $allowedApps = ['api', 'daftar', 'uwaba', 'ebeddien'];
         if ($app !== null && $app !== '') {
             if (!in_array($app, $allowedApps, true)) {
                 $response->getBody()->write(json_encode([
                     'success' => false,
-                    'message' => 'Parameter app harus salah satu: api, daftar, uwaba'
+                    'message' => 'Parameter app harus salah satu: api, daftar, ebeddien'
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withStatus(400)
                     ->withHeader('Content-Type', 'application/json; charset=utf-8');
@@ -79,8 +80,14 @@ class VersionChangelogController
             $where = [];
             $bind = [];
             if ($app !== null && $app !== '') {
-                $where[] = ' app = ?';
-                $bind[] = $app;
+                if ($isEbeddienRequest) {
+                    $where[] = ' app IN (?, ?)';
+                    $bind[] = 'ebeddien';
+                    $bind[] = 'uwaba';
+                } else {
+                    $where[] = ' app = ?';
+                    $bind[] = $app;
+                }
             }
             if ($isSuperAdmin) {
                 // Super admin melihat semua entri (tanpa filter role_id)
@@ -109,8 +116,14 @@ class VersionChangelogController
                     $where = [];
                     $bind = [];
                     if ($app !== null && $app !== '') {
-                        $where[] = ' app = ?';
-                        $bind[] = $app;
+                        if ($isEbeddienRequest) {
+                            $where[] = ' app IN (?, ?)';
+                            $bind[] = 'ebeddien';
+                            $bind[] = 'uwaba';
+                        } else {
+                            $where[] = ' app = ?';
+                            $bind[] = $app;
+                        }
                     }
                     if (!empty($where)) {
                         $sql .= ' WHERE' . implode(' AND', $where);

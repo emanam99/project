@@ -18,7 +18,7 @@ export default function Version() {
 
   useEffect(() => {
     api
-      .get('/version/changelog', { params: { app: 'uwaba' } })
+      .get('/version/changelog', { params: { app: 'ebeddien' } })
       .then((res) => {
         if (res.data?.success && Array.isArray(res.data.data)) {
           setChangelog(res.data.data)
