@@ -54,6 +54,15 @@ class AuthControllerV2
         }
     }
 
+    /**
+     * Token hex dari query/body: jangan lewat TextSanitizer::cleanText (bisa mengubah byte/NFC).
+     * Hapus whitespace/pemisah baris yang sering ikut salinan dari WhatsApp.
+     */
+    private function normalizeSecurityToken(string $raw): string
+    {
+        return preg_replace('/\s+/u', '', trim($raw));
+    }
+
     private function getUsersDuplicateFieldMessage(\PDOException $e): ?string
     {
         $info = $e->errorInfo ?? [];
@@ -165,7 +174,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $idPengurus = trim($data['id_pengurus'] ?? '');
             $nik = trim($data['nik'] ?? '');
             $noWa = trim($data['no_wa'] ?? '');
@@ -235,7 +244,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $idPengurus = trim($data['id_pengurus'] ?? '');
             $nik = trim($data['nik'] ?? '');
             $noWa = trim($data['no_wa'] ?? '');
@@ -297,6 +306,12 @@ class AuthControllerV2
                     'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Coba lagi nanti.'),
                 ], 502);
             }
+            if (WhatsAppService::deliveryWasNotActuallySent($sendResult)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Pesan tidak terkirim.'),
+                ], 502);
+            }
             if (!empty($sendResult['messageId'])) {
                 try {
                     $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = ? WHERE token_hash = ?")->execute([trim($sendResult['messageId']), $tokenHash]);
@@ -327,7 +342,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $idPengurus = trim($data['id_pengurus'] ?? '');
             $nik = trim($data['nik'] ?? '');
             $noWa = trim($data['no_wa'] ?? '');
@@ -389,9 +404,8 @@ class AuthControllerV2
 
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $expiresAt = date('Y-m-d H:i:s', time() + 900);
-            $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)");
-            $ins->execute([$userId, $tokenHash, $expiresAt]);
+            $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+            $ins->execute([$userId, $tokenHash]);
             $tokenId = (int) $this->db->lastInsertId();
 
             $config = require __DIR__ . '/../../config.php';
@@ -402,6 +416,12 @@ class AuthControllerV2
             $sendResult = WhatsAppService::sendMessage($noWaDisplay, $message, null, $logContext);
             if (!$sendResult['success']) {
                 return $this->json($response, ['success' => false, 'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Coba lagi nanti.')], 502);
+            }
+            if (WhatsAppService::deliveryWasNotActuallySent($sendResult)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Pesan tidak terkirim.'),
+                ], 502);
             }
             if ($tokenId > 0 && !empty($sendResult['messageId'])) {
                 $nomor62 = WhatsAppService::formatPhoneNumber($noWaDisplay);
@@ -421,7 +441,7 @@ class AuthControllerV2
     public function getSetupToken(Request $request, Response $response): Response
     {
         try {
-            $token = $request->getQueryParams()['token'] ?? '';
+            $token = $this->normalizeSecurityToken((string) ($request->getQueryParams()['token'] ?? ''));
             if ($token === '') {
                 return $this->json($response, ['success' => true, 'valid' => false], 200);
             }
@@ -487,8 +507,8 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
-            $token = trim($data['token'] ?? '');
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $token = $this->normalizeSecurityToken((string) ($data['token'] ?? ''));
             $username = trim($data['username'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -590,7 +610,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $nis = trim((string)($data['nis'] ?? ''));
             $nik = trim((string)($data['nik'] ?? ''));
             $noWa = trim((string)($data['no_wa'] ?? ''));
@@ -654,7 +674,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $nis = trim((string)($data['nis'] ?? ''));
             $nik = trim((string)($data['nik'] ?? ''));
             $noWa = trim((string)($data['no_wa'] ?? ''));
@@ -712,6 +732,12 @@ class AuthControllerV2
                     'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Coba lagi nanti.'),
                 ], 502);
             }
+            if (WhatsAppService::deliveryWasNotActuallySent($sendResult)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Pesan tidak terkirim.'),
+                ], 502);
+            }
             if (!empty($sendResult['messageId'])) {
                 try {
                     $mid = trim($sendResult['messageId']);
@@ -746,7 +772,7 @@ class AuthControllerV2
     public function getSetupTokenSantri(Request $request, Response $response): Response
     {
         try {
-            $token = $request->getQueryParams()['token'] ?? '';
+            $token = $this->normalizeSecurityToken((string) ($request->getQueryParams()['token'] ?? ''));
             if ($token === '') {
                 return $this->json($response, ['success' => true, 'valid' => false], 200);
             }
@@ -835,8 +861,8 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
-            $token = trim($data['token'] ?? '');
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $token = $this->normalizeSecurityToken((string) ($data['token'] ?? ''));
             $username = trim($data['username'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -954,7 +980,7 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $username = trim($data['username'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -990,166 +1016,238 @@ class AuthControllerV2
 
             $usersId = (int) $user['id'];
 
-            // Satu user (users.id) bisa punya identitas pengurus DAN santri: cek keduanya
-            $pengurusId = null;
-            $santriId = null;
-            $pengurus = null;
-            $santri = null;
-
-            $stmt = $this->db->prepare("SELECT id, nama, nip FROM pengurus WHERE id_user = ? LIMIT 1");
-            $stmt->execute([$usersId]);
-            $pengurus = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if ($pengurus) {
-                $pengurusId = (int) $pengurus['id'];
+            // Hitung login password (untuk pengingat daftar passkey: ke-1, ke-8, ke-15, … jika belum ada passkey)
+            $showPasskeyPrompt = false;
+            try {
+                $this->db->prepare('UPDATE users SET password_login_count = COALESCE(password_login_count, 0) + 1 WHERE id = ?')->execute([$usersId]);
+                $st = $this->db->prepare('SELECT webauthn_credential_id, password_login_count FROM users WHERE id = ? LIMIT 1');
+                $st->execute([$usersId]);
+                $urow = $st->fetch(\PDO::FETCH_ASSOC);
+                $hasPasskey = $urow && !empty($urow['webauthn_credential_id']);
+                $count = (int) ($urow['password_login_count'] ?? 0);
+                $showPasskeyPrompt = !$hasPasskey && $count >= 1 && ($count - 1) % 7 === 0;
+            } catch (\Throwable $e) {
+                error_log('AuthControllerV2::login password_login_count: ' . $e->getMessage());
             }
 
-            $stmt = $this->db->prepare("SELECT id, nama FROM santri WHERE id_user = ? LIMIT 1");
-            $stmt->execute([$usersId]);
-            $santri = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if ($santri) {
-                $santriId = (int) $santri['id'];
+            return $this->completeLoginSession(
+                $response,
+                $usersId,
+                $user['username'],
+                $request,
+                $data,
+                $ip,
+                $userAgent,
+                $uaShort,
+                ['show_passkey_prompt' => $showPasskeyPrompt]
+            );
+        } catch (\Throwable $e) {
+            error_log('AuthControllerV2::login ' . $e->getMessage());
+            error_log('AuthControllerV2::login trace: ' . $e->getTraceAsString());
+            $isProduction = (getenv('APP_ENV') ?: '') === 'production';
+            $message = $isProduction ? 'Terjadi kesalahan' : ('Terjadi kesalahan: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'message' => $message], 500);
+        }
+    }
+
+    /**
+     * Selesaikan login (JWT, session, audit) untuk users.id yang sudah terverifikasi — dipakai password login & WebAuthn.
+     *
+     * @param array<string, mixed> $data
+     */
+    /**
+     * @param array<string, mixed>|null $loginDataExtras mis. show_passkey_prompt (hanya login password)
+     */
+    private function completeLoginSession(
+        Response $response,
+        int $usersId,
+        string $username,
+        Request $request,
+        array $data,
+        string $ip,
+        string $userAgent,
+        ?string $uaShort,
+        ?array $loginDataExtras = null
+    ): Response {
+        // Satu user (users.id) bisa punya identitas pengurus DAN santri: cek keduanya
+        $pengurusId = null;
+        $santriId = null;
+        $pengurus = null;
+        $santri = null;
+
+        $stmt = $this->db->prepare("SELECT id, nama, nip FROM pengurus WHERE id_user = ? LIMIT 1");
+        $stmt->execute([$usersId]);
+        $pengurus = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($pengurus) {
+            $pengurusId = (int) $pengurus['id'];
+        }
+
+        $stmt = $this->db->prepare("SELECT id, nama FROM santri WHERE id_user = ? LIMIT 1");
+        $stmt->execute([$usersId]);
+        $santri = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($santri) {
+            $santriId = (int) $santri['id'];
+        }
+
+        $tokoId = null;
+        $tokoNama = null;
+        $stmt = $this->db->prepare("SELECT id, nama_toko FROM cashless___pedagang WHERE id_users = ? LIMIT 1");
+        $stmt->execute([$usersId]);
+        $toko = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($toko) {
+            $tokoId = (int) $toko['id'];
+            $tokoNama = $toko['nama_toko'] ?? '';
+        }
+
+        if ($pengurusId === null && $santriId === null && $tokoId === null) {
+            return $this->json($response, ['success' => false, 'message' => 'Data pengurus, santri, atau toko tidak ditemukan untuk akun ini'], 403);
+        }
+
+        $allRoleKeys = [];
+        $allowedApps = [];
+        $permissions = [];
+        $lembagaId = null;
+        $lembagaScopeAll = false;
+        $lembagaIds = [];
+        $primaryRoleKey = 'user';
+        $primaryRoleLabel = 'User';
+
+        if ($pengurusId !== null) {
+            $roleInfoPengurus = RoleHelper::getRoleInfoForToken($pengurusId);
+            $allRoleKeys = RoleHelper::getAllRoleKeysNormalizedForPengurus($pengurusId);
+            $allowedApps = array_merge($allowedApps, $roleInfoPengurus['allowed_apps'] ?? []);
+            $permissions = array_merge($permissions, $roleInfoPengurus['permissions'] ?? []);
+            $lembagaId = $roleInfoPengurus['lembaga_id'] ?? null;
+            $lembagaScopeAll = (bool)($roleInfoPengurus['lembaga_scope_all'] ?? false);
+            $lembagaIds = $roleInfoPengurus['lembaga_ids'] ?? [];
+            $primaryRoleKey = $roleInfoPengurus['role_key'] ?? 'pengurus';
+            $primaryRoleLabel = $roleInfoPengurus['role_label'] ?? 'Pengurus';
+        }
+
+        if ($santriId !== null) {
+            if (!in_array('santri', $allRoleKeys, true)) {
+                $allRoleKeys[] = 'santri';
             }
-
-            // Cek akses toko (cashless___pedagang.id_users) – satu user bisa punya toko
-            $tokoId = null;
-            $tokoNama = null;
-            $stmt = $this->db->prepare("SELECT id, nama_toko FROM cashless___pedagang WHERE id_users = ? LIMIT 1");
-            $stmt->execute([$usersId]);
-            $toko = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if ($toko) {
-                $tokoId = (int) $toko['id'];
-                $tokoNama = $toko['nama_toko'] ?? '';
+            if (!in_array('mybeddian', $allowedApps, true)) {
+                $allowedApps[] = 'mybeddian';
             }
-
-            // Minimal harus punya salah satu: pengurus, santri, atau toko (Mybeddian)
-            if ($pengurusId === null && $santriId === null && $tokoId === null) {
-                return $this->json($response, ['success' => false, 'message' => 'Data pengurus, santri, atau toko tidak ditemukan untuk akun ini'], 403);
+            if ($pengurusId === null && $tokoId === null) {
+                $primaryRoleKey = 'santri';
+                $primaryRoleLabel = 'Santri';
             }
+        }
 
-            $allRoleKeys = [];
-            $allowedApps = [];
-            $permissions = [];
-            $lembagaId = null;
-            $lembagaScopeAll = false;
-            $lembagaIds = [];
-            $primaryRoleKey = 'user';
-            $primaryRoleLabel = 'User';
-
-            if ($pengurusId !== null) {
-                $roleInfoPengurus = RoleHelper::getRoleInfoForToken($pengurusId);
-                $allRoleKeys = RoleHelper::getAllRoleKeysNormalizedForPengurus($pengurusId);
-                $allowedApps = array_merge($allowedApps, $roleInfoPengurus['allowed_apps'] ?? []);
-                $permissions = array_merge($permissions, $roleInfoPengurus['permissions'] ?? []);
-                $lembagaId = $roleInfoPengurus['lembaga_id'] ?? null;
-                $lembagaScopeAll = (bool)($roleInfoPengurus['lembaga_scope_all'] ?? false);
-                $lembagaIds = $roleInfoPengurus['lembaga_ids'] ?? [];
-                $primaryRoleKey = $roleInfoPengurus['role_key'] ?? 'pengurus';
-                $primaryRoleLabel = $roleInfoPengurus['role_label'] ?? 'Pengurus';
+        if ($tokoId !== null) {
+            if (!in_array('toko', $allRoleKeys, true)) {
+                $allRoleKeys[] = 'toko';
             }
-
-            if ($santriId !== null) {
-                if (!in_array('santri', $allRoleKeys, true)) {
-                    $allRoleKeys[] = 'santri';
-                }
-                if (!in_array('mybeddian', $allowedApps, true)) {
-                    $allowedApps[] = 'mybeddian';
-                }
-                if ($pengurusId === null && $tokoId === null) {
-                    $primaryRoleKey = 'santri';
-                    $primaryRoleLabel = 'Santri';
-                }
+            if (!in_array('mybeddian', $allowedApps, true)) {
+                $allowedApps[] = 'mybeddian';
             }
-
-            if ($tokoId !== null) {
-                if (!in_array('toko', $allRoleKeys, true)) {
-                    $allRoleKeys[] = 'toko';
-                }
-                if (!in_array('mybeddian', $allowedApps, true)) {
-                    $allowedApps[] = 'mybeddian';
-                }
-                if ($pengurusId === null && $santriId === null) {
-                    $primaryRoleKey = 'toko';
-                    $primaryRoleLabel = 'Toko';
-                }
+            if ($pengurusId === null && $santriId === null) {
+                $primaryRoleKey = 'toko';
+                $primaryRoleLabel = 'Toko';
             }
+        }
 
-            $allRoleKeys = array_values(array_unique($allRoleKeys));
-            sort($allRoleKeys);
+        $allRoleKeys = array_values(array_unique($allRoleKeys));
+        sort($allRoleKeys);
 
-            $allowedApps = array_values(array_unique($allowedApps));
-            $permissions = array_values(array_unique($permissions));
+        $allowedApps = array_values(array_unique($allowedApps));
+        $permissions = array_values(array_unique($permissions));
 
-            $nama = $pengurus['nama'] ?? $santri['nama'] ?? $username;
-            $roleInfo = [
-                'role_key' => $primaryRoleKey,
-                'role_label' => $primaryRoleLabel,
-                'allowed_apps' => $allowedApps,
-                'permissions' => $permissions,
-                'lembaga_id' => $lembagaId,
-                'lembaga_scope_all' => $lembagaScopeAll,
-                'lembaga_ids' => $lembagaIds,
-            ];
+        $nama = $pengurus['nama'] ?? $santri['nama'] ?? $username;
+        $roleInfo = [
+            'role_key' => $primaryRoleKey,
+            'role_label' => $primaryRoleLabel,
+            'allowed_apps' => $allowedApps,
+            'permissions' => $permissions,
+            'lembaga_id' => $lembagaId,
+            'lembaga_scope_all' => $lembagaScopeAll,
+            'lembaga_ids' => $lembagaIds,
+        ];
 
-            $this->db->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?")->execute([$usersId]);
+        $this->db->prepare("UPDATE users SET last_login_at = NOW() WHERE id = ?")->execute([$usersId]);
 
-            $jti = bin2hex(random_bytes(16));
-            // user_id: untuk uwaba = pengurus.id (backward compat); untuk santri-only = users.id. users_id: selalu users.id (untuk session & multi-role).
-            $isRealSuperAdmin = $pengurusId !== null && in_array('super_admin', $allRoleKeys, true);
-            $tokenPayload = [
-                'user_id' => $pengurusId ?? $usersId,
-                'users_id' => $usersId,
-                'user_name' => $nama,
-                'username' => $username,
-                'jti' => $jti,
-                'user_role' => $roleInfo['role_key'],
-                'role_key' => $roleInfo['role_key'],
-                'role_label' => $roleInfo['role_label'],
-                'all_roles' => $allRoleKeys,
-                'allowed_apps' => $roleInfo['allowed_apps'],
-                'permissions' => $roleInfo['permissions'],
-                'lembaga_id' => $roleInfo['lembaga_id'],
-                'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
-                'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
-                'is_real_super_admin' => $isRealSuperAdmin,
-            ];
-            if ($pengurusId !== null) {
-                $tokenPayload['id_pengurus'] = $pengurusId;
-            }
-            if ($santriId !== null) {
-                $tokenPayload['santri_id'] = $santriId;
-            }
-            if ($tokoId !== null) {
-                $tokenPayload['has_toko'] = true;
-                $tokenPayload['toko_id'] = $tokoId;
-                $tokenPayload['toko_nama'] = $tokoNama;
-            }
-            $token = $this->jwt->generateToken($tokenPayload);
+        $jti = bin2hex(random_bytes(16));
+        $isRealSuperAdmin = $pengurusId !== null && in_array('super_admin', $allRoleKeys, true);
+        $tokenPayload = [
+            'user_id' => $pengurusId ?? $usersId,
+            'users_id' => $usersId,
+            'user_name' => $nama,
+            'username' => $username,
+            'jti' => $jti,
+            'user_role' => $roleInfo['role_key'],
+            'role_key' => $roleInfo['role_key'],
+            'role_label' => $roleInfo['role_label'],
+            'all_roles' => $allRoleKeys,
+            'allowed_apps' => $roleInfo['allowed_apps'],
+            'permissions' => $roleInfo['permissions'],
+            'lembaga_id' => $roleInfo['lembaga_id'],
+            'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
+            'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
+            'is_real_super_admin' => $isRealSuperAdmin,
+        ];
+        if ($pengurusId !== null) {
+            $tokenPayload['id_pengurus'] = $pengurusId;
+        }
+        if ($santriId !== null) {
+            $tokenPayload['santri_id'] = $santriId;
+        }
+        if ($tokoId !== null) {
+            $tokenPayload['has_toko'] = true;
+            $tokenPayload['toko_id'] = $tokoId;
+            $tokenPayload['toko_nama'] = $tokoNama;
+        }
+        $token = $this->jwt->generateToken($tokenPayload);
 
-            // Use $userAgent and $uaShort set above
-            $parsed = UserAgentHelper::parse($userAgent);
-            // pastikan $data sudah ada di awal, tidak perlu ambil lagi
-            $deviceFingerprint = isset($data['device_fingerprint']) ? trim((string) $data['device_fingerprint']) : null;
-            if ($deviceFingerprint !== null && $deviceFingerprint === '') {
-                $deviceFingerprint = null;
-            }
-            $deviceId = $this->resolveDeviceId($data);
-            $platform = isset($data['platform']) ? trim(substr((string) $data['platform'], 0, 50)) : null;
-            $timezone = isset($data['timezone']) ? trim(substr((string) $data['timezone'], 0, 100)) : null;
-            $language = isset($data['language']) ? trim(substr((string) $data['language'], 0, 20)) : null;
-            $screen = isset($data['screen']) ? trim(substr((string) $data['screen'], 0, 50)) : null;
-            if ($platform === '') { $platform = null; }
-            if ($timezone === '') { $timezone = null; }
-            if ($language === '') { $language = null; }
-            if ($screen === '') { $screen = null; }
-            $sessionHash = hash('sha256', $jti);
+        $parsed = UserAgentHelper::parse($userAgent);
+        $deviceFingerprint = isset($data['device_fingerprint']) ? trim((string) $data['device_fingerprint']) : null;
+        if ($deviceFingerprint !== null && $deviceFingerprint === '') {
+            $deviceFingerprint = null;
+        }
+        $deviceId = $this->resolveDeviceId($data);
+        $platform = isset($data['platform']) ? trim(substr((string) $data['platform'], 0, 50)) : null;
+        $timezone = isset($data['timezone']) ? trim(substr((string) $data['timezone'], 0, 100)) : null;
+        $language = isset($data['language']) ? trim(substr((string) $data['language'], 0, 20)) : null;
+        $screen = isset($data['screen']) ? trim(substr((string) $data['screen'], 0, 50)) : null;
+        if ($platform === '') { $platform = null; }
+        if ($timezone === '') { $timezone = null; }
+        if ($language === '') { $language = null; }
+        if ($screen === '') { $screen = null; }
+        $sessionHash = hash('sha256', $jti);
 
+        try {
+            $ins = $this->db->prepare("
+                INSERT INTO user___sessions (
+                    user_id, session_token_hash, ip_address, user_agent, device_type,
+                    browser_name, browser_version, os_name, os_version, device_fingerprint,
+                    device_id, platform, timezone, language, screen
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $ins->execute([
+                $usersId,
+                $sessionHash,
+                $ip,
+                $uaShort,
+                $parsed['device_type'],
+                $parsed['browser_name'],
+                $parsed['browser_version'],
+                $parsed['os_name'],
+                $parsed['os_version'],
+                $deviceFingerprint,
+                $deviceId,
+                $platform,
+                $timezone,
+                $language,
+                $screen,
+            ]);
+        } catch (\Throwable $e) {
             try {
                 $ins = $this->db->prepare("
-                    INSERT INTO user___sessions (
-                        user_id, session_token_hash, ip_address, user_agent, device_type,
-                        browser_name, browser_version, os_name, os_version, device_fingerprint,
-                        device_id, platform, timezone, language, screen
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO user___sessions (user_id, session_token_hash, ip_address, user_agent, device_type,
+                    browser_name, browser_version, os_name, os_version, device_fingerprint)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $ins->execute([
                     $usersId,
@@ -1162,102 +1260,113 @@ class AuthControllerV2
                     $parsed['os_name'],
                     $parsed['os_version'],
                     $deviceFingerprint,
-                    $deviceId,
-                    $platform,
-                    $timezone,
-                    $language,
-                    $screen,
                 ]);
-            } catch (\Throwable $e) {
-                try {
-                    $ins = $this->db->prepare("
-                        INSERT INTO user___sessions (user_id, session_token_hash, ip_address, user_agent, device_type,
-                        browser_name, browser_version, os_name, os_version, device_fingerprint)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    $ins->execute([
-                        $usersId,
-                        $sessionHash,
-                        $ip,
-                        $uaShort,
-                        $parsed['device_type'],
-                        $parsed['browser_name'],
-                        $parsed['browser_version'],
-                        $parsed['os_name'],
-                        $parsed['os_version'],
-                        $deviceFingerprint,
-                    ]);
-                } catch (\Throwable $e2) {
-                    $ins = $this->db->prepare(
-                        "INSERT INTO user___sessions (user_id, session_token_hash, ip_address, user_agent) VALUES (?, ?, ?, ?)"
-                    );
-                    $ins->execute([$usersId, $sessionHash, $ip, $uaShort]);
-                }
+            } catch (\Throwable $e2) {
+                $ins = $this->db->prepare(
+                    "INSERT INTO user___sessions (user_id, session_token_hash, ip_address, user_agent) VALUES (?, ?, ?, ?)"
+                );
+                $ins->execute([$usersId, $sessionHash, $ip, $uaShort]);
             }
-
-            try {
-                $this->pruneSessionsToLimit($usersId, 3);
-            } catch (\Throwable $e) {
-                error_log('AuthControllerV2::login pruneSessions failed: ' . $e->getMessage());
-            }
-
-            try {
-                AuditLogger::log((string)$usersId, 'login', ['user_agent' => $uaShort, 'device_type' => $parsed['device_type']], $ip, true);
-            } catch (\Throwable $e) {
-                error_log('AuthControllerV2::login audit log failed: ' . $e->getMessage());
-            }
-
-            $allowedApps = $roleInfo['allowed_apps'];
-            $loginUser = [
-                'id' => $pengurusId ?? $santriId ?? $usersId,
-                'users_id' => $usersId,
-                'nama' => $nama,
-                'username' => $username,
-                'role_key' => $roleInfo['role_key'],
-                'role_label' => $roleInfo['role_label'],
-                'all_roles' => $allRoleKeys,
-                'allowed_apps' => $allowedApps,
-                'permissions' => $roleInfo['permissions'],
-                'lembaga_id' => $roleInfo['lembaga_id'],
-                'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
-                'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
-                'level' => $roleInfo['role_key'],
-            ];
-            if ($pengurusId !== null) {
-                $loginUser['id_pengurus'] = $pengurusId;
-            }
-            if ($pengurusId !== null && isset($pengurus['nip'])) {
-                $loginUser['pengurus'] = ['nip' => $pengurus['nip'] !== null && $pengurus['nip'] !== '' ? (string) $pengurus['nip'] : null];
-            }
-            if ($santriId !== null) {
-                $loginUser['santri_id'] = $santriId;
-            }
-            if ($tokoId !== null) {
-                $loginUser['has_toko'] = true;
-                $loginUser['toko_id'] = $tokoId;
-                $loginUser['toko_nama'] = $tokoNama;
-            }
-            $loginUser['is_real_super_admin'] = $isRealSuperAdmin;
-            $loginData = [
-                'token' => $token,
-                'user' => $loginUser,
-                'redirect_url' => '/',
-            ];
-            if (isset($deviceId)) {
-                $loginData['device_id'] = $deviceId;
-            }
-            return $this->json($response, [
-                'success' => true,
-                'message' => 'Login berhasil',
-                'data' => $loginData,
-            ], 200);
-        } catch (\Throwable $e) {
-            error_log('AuthControllerV2::login ' . $e->getMessage());
-            error_log('AuthControllerV2::login trace: ' . $e->getTraceAsString());
-            $isProduction = (getenv('APP_ENV') ?: '') === 'production';
-            $message = $isProduction ? 'Terjadi kesalahan' : ('Terjadi kesalahan: ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => $message], 500);
         }
+
+        try {
+            $this->pruneSessionsToLimit($usersId, 3);
+        } catch (\Throwable $e) {
+            error_log('AuthControllerV2::completeLoginSession pruneSessions failed: ' . $e->getMessage());
+        }
+
+        try {
+            AuditLogger::log((string)$usersId, 'login', ['user_agent' => $uaShort, 'device_type' => $parsed['device_type']], $ip, true);
+        } catch (\Throwable $e) {
+            error_log('AuthControllerV2::completeLoginSession audit log failed: ' . $e->getMessage());
+        }
+
+        $allowedApps = $roleInfo['allowed_apps'];
+        $loginUser = [
+            'id' => $pengurusId ?? $santriId ?? $usersId,
+            'users_id' => $usersId,
+            'nama' => $nama,
+            'username' => $username,
+            'role_key' => $roleInfo['role_key'],
+            'role_label' => $roleInfo['role_label'],
+            'all_roles' => $allRoleKeys,
+            'allowed_apps' => $allowedApps,
+            'permissions' => $roleInfo['permissions'],
+            'lembaga_id' => $roleInfo['lembaga_id'],
+            'lembaga_scope_all' => (bool)($roleInfo['lembaga_scope_all'] ?? false),
+            'lembaga_ids' => $roleInfo['lembaga_ids'] ?? [],
+            'level' => $roleInfo['role_key'],
+        ];
+        if ($pengurusId !== null) {
+            $loginUser['id_pengurus'] = $pengurusId;
+        }
+        if ($pengurusId !== null && isset($pengurus['nip'])) {
+            $loginUser['pengurus'] = ['nip' => $pengurus['nip'] !== null && $pengurus['nip'] !== '' ? (string) $pengurus['nip'] : null];
+        }
+        if ($santriId !== null) {
+            $loginUser['santri_id'] = $santriId;
+        }
+        if ($tokoId !== null) {
+            $loginUser['has_toko'] = true;
+            $loginUser['toko_id'] = $tokoId;
+            $loginUser['toko_nama'] = $tokoNama;
+        }
+        $loginUser['is_real_super_admin'] = $isRealSuperAdmin;
+        $loginData = [
+            'token' => $token,
+            'user' => $loginUser,
+            'redirect_url' => '/',
+        ];
+        if (isset($deviceId)) {
+            $loginData['device_id'] = $deviceId;
+        }
+        if (is_array($loginDataExtras)) {
+            foreach ($loginDataExtras as $k => $v) {
+                $loginData[$k] = $v;
+            }
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'message' => 'Login berhasil',
+            'data' => $loginData,
+        ], 200);
+    }
+
+    /**
+     * Login sukses setelah verifikasi non-password (mis. WebAuthn).
+     *
+     * @param array<string, mixed>|null $overrideBody parsed body opsional (device fingerprint, dll.)
+     */
+    public function finalizeLoginForUserId(Request $request, Response $response, int $usersId, ?array $overrideBody = null): Response
+    {
+        $data = $overrideBody ?? $request->getParsedBody();
+        $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+        $ip = $this->getClientIp($request);
+        $userAgent = $request->getHeaderLine('User-Agent');
+        $uaShort = $userAgent !== null && $userAgent !== '' ? substr($userAgent, 0, 500) : null;
+
+        $stmt = $this->db->prepare("SELECT id, username, role, is_active FROM users WHERE id = ? LIMIT 1");
+        $stmt->execute([$usersId]);
+        $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$user) {
+            return $this->json($response, ['success' => false, 'message' => 'Pengguna tidak ditemukan'], 401);
+        }
+        if ((int)($user['is_active'] ?? 1) !== 1) {
+            return $this->json($response, ['success' => false, 'message' => 'Akun tidak aktif'], 403);
+        }
+
+        return $this->completeLoginSession(
+            $response,
+            $usersId,
+            $user['username'],
+            $request,
+            $data,
+            $ip,
+            $userAgent,
+            $uaShort,
+            null
+        );
     }
 
     /**
@@ -1518,7 +1627,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaBaru = trim($data['no_wa_baru'] ?? '');
             $noWaBaruNorm = preg_replace('/\D/', '', $noWaBaru);
             if (strlen($noWaBaruNorm) < 10) {
@@ -1570,7 +1679,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaBaru = trim($data['no_wa_baru'] ?? '');
             $otp = trim($data['otp'] ?? '');
             $noWaBaruNorm = preg_replace('/\D/', '', $noWaBaru);
@@ -1624,11 +1733,12 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaKonfirmasi = preg_replace('/\D/', '', trim($data['no_wa_konfirmasi'] ?? ''));
             if ($noWaKonfirmasi === '') {
                 return $this->json($response, ['success' => false, 'message' => 'Masukkan nomor WA untuk konfirmasi'], 400);
             }
+            $noWaKonfirmasiNorm = WhatsAppService::formatPhoneNumber($noWaKonfirmasi);
             $userId = null;
             $noWaDisplay = null;
             $idPengurusRecipient = null;
@@ -1643,7 +1753,8 @@ class AuthControllerV2
                     return $this->json($response, ['success' => false, 'message' => 'Data user tidak ditemukan.'], 400);
                 }
                 $noWaDb = preg_replace('/\D/', '', trim($row['no_wa'] ?? ''));
-                if ($noWaDb === '' || $noWaDb !== $noWaKonfirmasi) {
+                $noWaDbNorm = WhatsAppService::formatPhoneNumber($noWaDb);
+                if ($noWaDbNorm === '' || $noWaDbNorm !== $noWaKonfirmasiNorm) {
                     return $this->json($response, ['success' => false, 'message' => 'Nomor WA tidak sesuai'], 400);
                 }
                 $noWaDisplay = $row['no_wa'] ?? $noWaKonfirmasi;
@@ -1656,7 +1767,8 @@ class AuthControllerV2
                 }
                 $userId = (int)$row['id_user'];
                 $noWaDb = preg_replace('/\D/', '', $row['no_wa'] ?? '');
-                if ($noWaDb === '' || $noWaDb !== $noWaKonfirmasi) {
+                $noWaDbNorm = WhatsAppService::formatPhoneNumber($noWaDb);
+                if ($noWaDbNorm === '' || $noWaDbNorm !== $noWaKonfirmasiNorm) {
                     return $this->json($response, ['success' => false, 'message' => 'Nomor WA tidak sesuai'], 400);
                 }
                 $noWaDisplay = $row['no_wa'] ?? $noWaKonfirmasi;
@@ -1670,9 +1782,8 @@ class AuthControllerV2
 
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $expiresAt = date('Y-m-d H:i:s', time() + 900); // 15 menit
-            $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)");
-            $ins->execute([$userId, $tokenHash, $expiresAt]);
+            $ins = $this->db->prepare("INSERT INTO user___password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+            $ins->execute([$userId, $tokenHash]);
             $tokenId = (int) $this->db->lastInsertId();
             $config = require __DIR__ . '/../../config.php';
             $baseUrl = $this->getFrontendBaseUrl($request, $config);
@@ -1683,6 +1794,12 @@ class AuthControllerV2
             $sendResult = WhatsAppService::sendMessage($noWaDisplay, $message, null, $logContext);
             if (!$sendResult['success']) {
                 return $this->json($response, ['success' => false, 'message' => 'Gagal mengirim link: ' . ($sendResult['message'] ?? '')], 502);
+            }
+            if (WhatsAppService::deliveryWasNotActuallySent($sendResult)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Gagal mengirim link: ' . ($sendResult['message'] ?? 'Pesan tidak terkirim.'),
+                ], 502);
             }
             if ($tokenId > 0 && !empty($sendResult['messageId'])) {
                 $nomor62 = WhatsAppService::formatPhoneNumber($noWaDisplay);
@@ -1702,9 +1819,9 @@ class AuthControllerV2
     public function getUbahPasswordToken(Request $request, Response $response): Response
     {
         try {
-            $token = $request->getQueryParams()['token'] ?? '';
+            $token = $this->normalizeSecurityToken((string) ($request->getQueryParams()['token'] ?? ''));
             if ($token === '') {
-                return $this->json($response, ['success' => true, 'valid' => false], 200);
+                return $this->jsonWithNoStoreCache($response, ['success' => true, 'valid' => false], 200);
             }
             $tokenHash = hash('sha256', $token);
             $stmt = $this->db->prepare("
@@ -1725,12 +1842,12 @@ class AuthControllerV2
                     $this->editWaMessageTokenInvalidated($inv['nomor_tujuan'], $inv['wa_message_id'], $reason, 'Link ubah password');
                     $this->db->prepare("UPDATE user___password_reset_tokens SET wa_message_id = NULL, nomor_tujuan = NULL WHERE id = ?")->execute([$inv['id']]);
                 }
-                return $this->json($response, ['success' => true, 'valid' => false], 200);
+                return $this->jsonWithNoStoreCache($response, ['success' => true, 'valid' => false], 200);
             }
-            return $this->json($response, ['success' => true, 'valid' => true, 'nama' => $row['nama'] ?: $row['username']], 200);
+            return $this->jsonWithNoStoreCache($response, ['success' => true, 'valid' => true, 'nama' => $row['nama'] ?: $row['username']], 200);
         } catch (\Exception $e) {
             error_log('AuthControllerV2::getUbahPasswordToken ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
+            return $this->jsonWithNoStoreCache($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -1741,8 +1858,8 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
-            $token = trim($data['token'] ?? '');
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $token = $this->normalizeSecurityToken((string) ($data['token'] ?? ''));
             $passwordBaru = $data['password_baru'] ?? '';
             if ($token === '') {
                 return $this->json($response, ['success' => false, 'message' => 'Token tidak valid'], 400);
@@ -1818,7 +1935,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $usernameBaru = trim($data['username_baru'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -1878,7 +1995,7 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'User tidak valid'], 403);
             }
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $usernameBaru = trim($data['username_baru'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -1910,9 +2027,8 @@ class AuthControllerV2
 
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $expiresAt = date('Y-m-d H:i:s', time() + 900); // 15 menit
-            $ins = $this->db->prepare("INSERT INTO user___username_change_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)");
-            $ins->execute([$usersId, $tokenHash, $expiresAt]);
+            $ins = $this->db->prepare("INSERT INTO user___username_change_tokens (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))");
+            $ins->execute([$usersId, $tokenHash]);
 
             $config = require __DIR__ . '/../../config.php';
             $baseUrl = $this->getFrontendBaseUrl($request, $config);
@@ -1935,6 +2051,12 @@ class AuthControllerV2
             if (!$sendResult['success']) {
                 return $this->json($response, ['success' => false, 'message' => 'Gagal mengirim link: ' . ($sendResult['message'] ?? '')], 502);
             }
+            if (WhatsAppService::deliveryWasNotActuallySent($sendResult)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Gagal mengirim link: ' . ($sendResult['message'] ?? 'Pesan tidak terkirim.'),
+                ], 502);
+            }
             AuditLogger::log((string)$usersId, 'request_ubah_username', ['username_baru' => $usernameBaru], $this->getClientIp($request), true);
             return $this->json($response, ['success' => true, 'message' => 'Link ubah username telah dikirim ke WhatsApp Anda.'], 200);
         } catch (\Exception $e) {
@@ -1949,9 +2071,9 @@ class AuthControllerV2
     public function getUbahUsernameToken(Request $request, Response $response): Response
     {
         try {
-            $token = $request->getQueryParams()['token'] ?? '';
+            $token = $this->normalizeSecurityToken((string) ($request->getQueryParams()['token'] ?? ''));
             if ($token === '') {
-                return $this->json($response, ['success' => true, 'valid' => false], 200);
+                return $this->jsonWithNoStoreCache($response, ['success' => true, 'valid' => false], 200);
             }
             $tokenHash = hash('sha256', $token);
             $stmt = $this->db->prepare("
@@ -1964,12 +2086,12 @@ class AuthControllerV2
             $stmt->execute([$tokenHash]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
-                return $this->json($response, ['success' => true, 'valid' => false], 200);
+                return $this->jsonWithNoStoreCache($response, ['success' => true, 'valid' => false], 200);
             }
-            return $this->json($response, ['success' => true, 'valid' => true, 'nama' => $row['nama'] ?: $row['username'], 'username' => $row['username']], 200);
+            return $this->jsonWithNoStoreCache($response, ['success' => true, 'valid' => true, 'nama' => $row['nama'] ?: $row['username'], 'username' => $row['username']], 200);
         } catch (\Exception $e) {
             error_log('AuthControllerV2::getUbahUsernameToken ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
+            return $this->jsonWithNoStoreCache($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -1980,8 +2102,8 @@ class AuthControllerV2
     {
         try {
             $data = $request->getParsedBody();
-            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'token', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
-            $token = trim($data['token'] ?? '');
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
+            $token = $this->normalizeSecurityToken((string) ($data['token'] ?? ''));
             $usernameBaru = trim($data['username_baru'] ?? '');
             $password = $data['password'] ?? '';
 
@@ -2219,5 +2341,11 @@ class AuthControllerV2
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
         return $response->withStatus($status)->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /** Response JSON + Cache-Control untuk token sekali pakai (jangan di-cache CDN/proxy). */
+    private function jsonWithNoStoreCache(Response $response, array $data, int $status): Response
+    {
+        return $this->json($response, $data, $status)->withHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     }
 }

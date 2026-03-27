@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Middleware\AuthMiddleware;
 use App\Middleware\RoleMiddleware;
 use App\Controllers\AuthControllerV2;
+use App\Controllers\WebAuthnController;
 use App\Controllers\SantriBerkasControllerV2;
 use App\Controllers\ProfilFotoController;
 use App\Controllers\UserAktivitasController;
@@ -12,6 +13,11 @@ use App\Controllers\PrintController;
 
 return function (\Slim\App $app): void {
     $app->post('/api/v2/auth/login', [AuthControllerV2::class, 'login']);
+    $app->post('/api/v2/auth/webauthn/login/options', [WebAuthnController::class, 'loginOptions']);
+    $app->post('/api/v2/auth/webauthn/login/verify', [WebAuthnController::class, 'loginVerify']);
+    $app->get('/api/v2/auth/webauthn/status', [WebAuthnController::class, 'status']);
+    $app->post('/api/v2/auth/webauthn/register/options', [WebAuthnController::class, 'registerOptions'])->add(new AuthMiddleware());
+    $app->post('/api/v2/auth/webauthn/register/verify', [WebAuthnController::class, 'registerVerify'])->add(new AuthMiddleware());
     $app->post('/api/v2/auth/daftar-check', [AuthControllerV2::class, 'daftarCheck']);
     $app->post('/api/v2/auth/daftar-konfirmasi', [AuthControllerV2::class, 'daftarKonfirmasi']);
     $app->post('/api/v2/auth/lupa-password-request', [AuthControllerV2::class, 'lupaPasswordRequest']);

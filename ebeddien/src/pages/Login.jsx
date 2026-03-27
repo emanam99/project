@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { authAPI } from '../services/api'
 import { APP_VERSION } from '../config/version'
 import { getGambarUrl } from '../config/images'
+import { getStoredLoginUsername, setStoredLoginUsername } from '../utils/passkeyLoginPrefs'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -25,14 +27,17 @@ const itemVariants = {
 }
 
 export function LoginFormCard() {
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(() => getStoredLoginUsername())
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [webauthnSupported] = useState(() => typeof window !== 'undefined' && browserSupportsWebAuthn())
+  const [passkeyRegistered, setPasskeyRegistered] = useState(null) // null = belum cek, true/false dari API
+  const [passkeyStatusLoading, setPasskeyStatusLoading] = useState(false)
   const [flipPhase, setFlipPhase] = useState('idle') // idle | close | open (untuk input flip saat ganti tema)
   const prevThemeRef = useRef(null)
-  const { setAuth } = useAuthStore()
+  const { setAuth, setPasskeyPromptOpen } = useAuthStore()
   const { theme } = useThemeStore()
   const navigate = useNavigate()
 
@@ -56,6 +61,85 @@ export function LoginFormCard() {
     if (flipPhase === 'open') setFlipPhase('idle')
   }
 
+  // Cek apakah user punya passkey (untuk menampilkan tombol login WebAuthn)
+  useEffect(() => {
+    if (!webauthnSupported) {
+      setPasskeyRegistered(null)
+      setPasskeyStatusLoading(false)
+      return
+    }
+    const u = username.trim()
+    if (u.length < 2) {
+      setPasskeyRegistered(null)
+      setPasskeyStatusLoading(false)
+      return
+    }
+    let cancelled = false
+    setPasskeyStatusLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const res = await authAPI.webauthnStatus(u)
+        if (!cancelled && res.success && res.data) {
+          setPasskeyRegistered(!!res.data.webauthn_registered)
+        } else if (!cancelled) {
+          setPasskeyRegistered(null)
+        }
+      } catch {
+        if (!cancelled) setPasskeyRegistered(null)
+      } finally {
+        if (!cancelled) setPasskeyStatusLoading(false)
+      }
+    }, 200)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [username, webauthnSupported])
+
+  const handleWebAuthnLogin = async () => {
+    setError('')
+    const u = username.trim()
+    if (!u) {
+      setError('Isi username terlebih dahulu.')
+      return
+    }
+    setLoading(true)
+    try {
+      const deviceInfo = authAPI.getDeviceInfo()
+      const optRes = await authAPI.webauthnLoginOptions(u)
+      if (!optRes.success || !optRes.data?.options || !optRes.data?.challengeId) {
+        setError(optRes.message || 'Passkey tidak tersedia untuk akun ini.')
+        return
+      }
+      const credential = await startAuthentication({ optionsJSON: optRes.data.options })
+      const response = await authAPI.webauthnLoginVerify(u, optRes.data.challengeId, credential, deviceInfo)
+      if (response.success) {
+        if (response.data?.device_id) {
+          try { localStorage.setItem('uwaba_device_id', response.data.device_id) } catch (_) {}
+        }
+        const user = response.data.user
+        const allowedApps = user?.allowed_apps || []
+        if (!allowedApps.includes('uwaba')) {
+          setError('Akses ditolak. Role Anda tidak memiliki izin untuk mengakses aplikasi eBeddien.')
+          return
+        }
+        setAuth(response.data.token, user, response.data.refresh_token ?? null)
+        setStoredLoginUsername(u)
+        navigate(response.data.redirect_url || '/beranda')
+      } else {
+        setError(response.message || 'Login passkey gagal')
+      }
+    } catch (err) {
+      console.error('WebAuthn login error:', err)
+      const msg = err?.name === 'NotAllowedError'
+        ? 'Login dibatalkan atau tidak diizinkan.'
+        : (err?.message || 'Login passkey gagal. Pastikan perangkat mendukung dan passkey sudah didaftarkan.')
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
@@ -74,6 +158,10 @@ export function LoginFormCard() {
           return
         }
         setAuth(response.data.token, user, response.data.refresh_token ?? null)
+        setStoredLoginUsername(username.trim())
+        if (response.data?.show_passkey_prompt) {
+          setPasskeyPromptOpen(true)
+        }
         navigate(response.data.redirect_url || '/beranda')
       } else {
         setError(response.message || 'Login gagal')
@@ -168,9 +256,36 @@ export function LoginFormCard() {
               <span>{error}</span>
             </motion.div>
           )}
-          <motion.button variants={itemVariants} type="submit" disabled={loading} className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-            {loading ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Memproses...</span> : 'Masuk'}
-          </motion.button>
+          {webauthnSupported && username.trim().length >= 2 && passkeyStatusLoading && (
+            <p className="text-center text-xs text-gray-500 dark:text-gray-400">Memeriksa passkey untuk username ini…</p>
+          )}
+          <motion.div variants={itemVariants} className="flex gap-2 items-stretch w-full">
+            <motion.button
+              type="submit"
+              disabled={loading}
+              className="flex-1 min-w-0 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow"
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+            >
+              {loading ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Memproses...</span> : 'Masuk'}
+            </motion.button>
+            {webauthnSupported && passkeyRegistered === true && (
+              <motion.button
+                type="button"
+                disabled={loading}
+                onClick={handleWebAuthnLogin}
+                title="Login dengan passkey / sidik jari"
+                aria-label="Login dengan passkey atau sidik jari"
+                className="shrink-0 flex items-center justify-center w-[3.25rem] rounded-xl text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-700 hover:bg-primary-100 dark:hover:bg-primary-900/50 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.726 18M12 11h.01M12 18h.01" />
+                </svg>
+              </motion.button>
+            )}
+          </motion.div>
           <div className="text-center space-y-1 pt-2">
             <p className="text-sm text-gray-600 dark:text-gray-400">Belum punya akun? <Link to="/daftar" className="font-medium text-primary-600 dark:text-primary-400 hover:underline">Daftar</Link></p>
             <p className="text-sm"><Link to="/lupa-password" className="text-primary-600 dark:text-primary-400 font-medium hover:underline">Lupa password?</Link></p>

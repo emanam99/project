@@ -150,7 +150,11 @@ function isPublicV2AuthPath(config) {
     u.includes('/v2/auth/ubah-password-token') ||
     u.includes('/v2/auth/ubah-password') ||
     u.includes('/v2/auth/ubah-username-token') ||
-    u.includes('/v2/auth/ubah-username')
+    u.includes('/v2/auth/ubah-username') ||
+    // WebAuthn pra-login: jangan pakai Bearer + cek umur token — halaman login perlu cek passkey tanpa JWT valid
+    u.includes('/v2/auth/webauthn/status') ||
+    u.includes('/v2/auth/webauthn/login/options') ||
+    u.includes('/v2/auth/webauthn/login/verify')
   )
 }
 
@@ -295,6 +299,62 @@ export const authAPI = {
     if (info.screen) body.screen = info.screen
     const response = await api.post('/v2/auth/login', body)
     return response.data
+  },
+
+  /** Cek apakah username punya passkey WebAuthn terdaftar */
+  webauthnStatus: async (username) => {
+    const response = await api.get('/v2/auth/webauthn/status', { params: { username } })
+    return response.data
+  },
+
+  /** Opsi login WebAuthn (passkey / sidik jari) — 503 (mis. PHP di bawah 8.1) tetap kembalikan body JSON agar message terbaca */
+  webauthnLoginOptions: async (username) => {
+    try {
+      const response = await api.post('/v2/auth/webauthn/login/options', { username })
+      return response.data
+    } catch (e) {
+      if (e.response?.data) return e.response.data
+      throw e
+    }
+  },
+
+  /** Selesaikan login WebAuthn — credential dari @simplewebauthn/browser startAuthentication */
+  webauthnLoginVerify: async (username, challengeId, credential, deviceInfo = null) => {
+    const body = { username, challengeId, credential }
+    const info = deviceInfo ?? authAPI.getDeviceInfo()
+    if (info.device_id) body.device_id = info.device_id
+    if (info.platform) body.platform = info.platform
+    if (info.timezone) body.timezone = info.timezone
+    if (info.language) body.language = info.language
+    if (info.screen) body.screen = info.screen
+    try {
+      const response = await api.post('/v2/auth/webauthn/login/verify', body)
+      return response.data
+    } catch (e) {
+      if (e.response?.data) return e.response.data
+      throw e
+    }
+  },
+
+  /** Daftar passkey — butuh JWT. credential dari @simplewebauthn/browser startRegistration */
+  webauthnRegisterOptions: async () => {
+    try {
+      const response = await api.post('/v2/auth/webauthn/register/options', {})
+      return response.data
+    } catch (e) {
+      if (e.response?.data) return e.response.data
+      throw e
+    }
+  },
+
+  webauthnRegisterVerify: async (challengeId, credential) => {
+    try {
+      const response = await api.post('/v2/auth/webauthn/register/verify', { challengeId, credential })
+      return response.data
+    } catch (e) {
+      if (e.response?.data) return e.response.data
+      throw e
+    }
   },
 
   /** Cek daftar: id_pengurus, nik, no_wa. Return already_registered atau nama + no_wa */

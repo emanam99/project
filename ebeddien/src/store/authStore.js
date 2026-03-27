@@ -63,6 +63,9 @@ export const useAuthStore = create((set, get) => ({
   token: null,
   user: null,
   isAuthenticated: false,
+  /** Modal pengingat daftar passkey setelah login password (interval dari server). */
+  passkeyPromptOpen: false,
+  setPasskeyPromptOpen: (open) => set({ passkeyPromptOpen: !!open }),
 
   setAuth: (token, user, refreshToken = null) => {
     localStorage.setItem('auth_token', token)
@@ -111,7 +114,7 @@ export const useAuthStore = create((set, get) => ({
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user_data')
     localStorage.removeItem('auth_last_used_at')
-    set({ token: null, user: null, isAuthenticated: false })
+    set({ token: null, user: null, isAuthenticated: false, passkeyPromptOpen: false })
   },
 
   /** Role utama dari token (bisa "multi_role" jika banyak role — jangan dipakai tunggal untuk izin menu). */

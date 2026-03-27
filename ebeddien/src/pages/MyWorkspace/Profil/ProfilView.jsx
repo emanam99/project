@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
+import { useNotification } from '../../../contexts/NotificationContext'
 import { profilAPI, authAPI } from '../../../services/api'
+import { browserSupportsWebAuthn, registerPasskey } from '../../../utils/webauthnRegister'
+import { setStoredLoginUsername } from '../../../utils/passkeyLoginPrefs'
 import ProfilFotoCropModal from './ProfilFotoCropModal'
 
 const Card = ({ title, children, icon }) => (
@@ -32,18 +35,26 @@ const Row = ({ label, value }) => {
   )
 }
 
+/** Pesan error dari response API (axios); jaringan putus pun dapat pesan yang jelas. */
+function extractApiErrorMessage(err) {
+  const d = err?.response?.data
+  if (d && typeof d.message === 'string' && d.message.trim() !== '') return d.message
+  if (d?.data && typeof d.data.message === 'string' && d.data.message.trim() !== '') return d.data.message
+  if (!err?.response && typeof err?.message === 'string' && err.message.trim() !== '') return err.message
+  return 'Terjadi kesalahan'
+}
+
 export default function ProfilView() {
   const { user } = useAuthStore()
+  const { showNotification } = useNotification()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [data, setData] = useState(null)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [noWaMask, setNoWaMask] = useState('')
   const [noWaKonfirmasi, setNoWaKonfirmasi] = useState('')
   const [loadingNoWa, setLoadingNoWa] = useState(false)
   const [sendingLink, setSendingLink] = useState(false)
-  const [success, setSuccess] = useState('')
   const [showUsernameForm, setShowUsernameForm] = useState(false)
   const [usernameBaru, setUsernameBaru] = useState('')
   const [passwordUsername, setPasswordUsername] = useState('')
@@ -54,30 +65,50 @@ export default function ProfilView() {
   const [showCropModal, setShowCropModal] = useState(false)
   const [cropFile, setCropFile] = useState(null)
   const [uploadingFoto, setUploadingFoto] = useState(false)
+  const [passkeyRegistered, setPasskeyRegistered] = useState(null)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
   const fileInputRef = useRef(null)
   useEffect(() => {
     if (!user?.id) {
       setLoading(false)
-      setError('')
       return
     }
     let cancelled = false
     setLoading(true)
-    setError('')
     profilAPI
       .getUser(user.id)
       .then((res) => {
         if (!cancelled && res.success && res.user) setData(res.user)
-        else if (!cancelled) setError('Gagal memuat data profil')
+        else if (!cancelled) showNotification('Gagal memuat data profil', 'error')
       })
       .catch(() => {
-        if (!cancelled) setError('Terjadi kesalahan saat memuat profil')
+        if (!cancelled) showNotification('Terjadi kesalahan saat memuat profil', 'error')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [user?.id])
+  }, [user?.id, showNotification])
+
+  useEffect(() => {
+    const u = user?.username
+    if (!u) {
+      setPasskeyRegistered(null)
+      return
+    }
+    let cancelled = false
+    authAPI
+      .webauthnStatus(u)
+      .then((res) => {
+        if (!cancelled && res.success && res.data) setPasskeyRegistered(!!res.data.webauthn_registered)
+      })
+      .catch(() => {
+        if (!cancelled) setPasskeyRegistered(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.username])
 
   const photoUrlRef = useRef(null)
   useEffect(() => {
@@ -125,21 +156,25 @@ export default function ProfilView() {
   const handleRequestUbahPassword = async () => {
     const trimmed = (noWaKonfirmasi || '').trim().replace(/\D/g, '')
     if (!trimmed) {
-      setError('Masukkan nomor WA untuk konfirmasi')
+      showNotification('Masukkan nomor WA untuk konfirmasi', 'error')
       return
     }
     setSendingLink(true)
-    setError('')
     try {
       const res = await authAPI.requestUbahPassword(noWaKonfirmasi.trim())
       if (res.success) {
-        setSuccess(res.message || 'Link ubah password telah dikirim ke WhatsApp Anda.')
+        showNotification(
+          res.message || 'Link ubah password telah dikirim ke WhatsApp Anda.',
+          'success',
+          6000
+        )
         setShowPasswordForm(false)
         setNoWaKonfirmasi('')
-        setTimeout(() => setSuccess(''), 5000)
-      } else setError(res.message || 'Gagal mengirim link')
+      } else {
+        showNotification(res.message || 'Gagal mengirim link', 'error', 8000)
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Terjadi kesalahan')
+      showNotification(extractApiErrorMessage(err), 'error', 8000)
     } finally {
       setSendingLink(false)
     }
@@ -148,31 +183,29 @@ export default function ProfilView() {
   const handleUbahUsername = async () => {
     const u = (usernameBaru || '').trim()
     if (u.length < 5) {
-      setError('Username baru minimal 5 karakter')
+      showNotification('Username baru minimal 5 karakter', 'error')
       return
     }
     if (/\s/.test(u)) {
-      setError('Username tidak boleh mengandung spasi')
+      showNotification('Username tidak boleh mengandung spasi', 'error')
       return
     }
     if (!passwordUsername) {
-      setError('Masukkan password saat ini untuk verifikasi')
+      showNotification('Masukkan password saat ini untuk verifikasi', 'error')
       return
     }
     setSendingUsernameLink(true)
-    setError('')
     try {
       const res = await authAPI.ubahUsernameLangsung(u, passwordUsername)
       if (res.success) {
-        setSuccess(res.message || 'Username berhasil diubah.')
+        showNotification(res.message || 'Username berhasil diubah.', 'success')
         setShowUsernameForm(false)
         setUsernameBaru('')
         setPasswordUsername('')
-        setTimeout(() => setSuccess(''), 5000)
         useAuthStore.getState().checkAuth()
-      } else setError(res.message || 'Gagal mengubah username')
+      } else showNotification(res.message || 'Gagal mengubah username', 'error')
     } catch (err) {
-      setError(err.response?.data?.message || 'Terjadi kesalahan')
+      showNotification(extractApiErrorMessage(err), 'error', 8000)
     } finally {
       setSendingUsernameLink(false)
     }
@@ -180,37 +213,52 @@ export default function ProfilView() {
 
   const handleUploadFoto = async (blob) => {
     if (!blob || blob.size > 500 * 1024) {
-      setError('Ukuran foto maksimal 500 KB')
+      showNotification('Ukuran foto maksimal 500 KB', 'error')
       return
     }
     setUploadingFoto(true)
-    setError('')
     try {
       const file = new File([blob], 'foto.jpg', { type: blob.type || 'image/jpeg' })
       const res = await profilAPI.uploadProfilFoto(file)
       if (res.success) {
-        setSuccess(res.message || 'Foto profil berhasil diperbarui.')
-        setTimeout(() => setSuccess(''), 4000)
+        showNotification(res.message || 'Foto profil berhasil diperbarui.', 'success')
         window.dispatchEvent(new Event('profil-foto-updated'))
         profilAPI.getUser(user.id).then((r) => {
           if (r.success && r.user) setData(r.user)
         }).catch(() => {})
-      } else setError(res.message || 'Gagal mengunggah foto')
+      } else showNotification(res.message || 'Gagal mengunggah foto', 'error')
     } catch (err) {
-      setError(err.response?.data?.message || 'Gagal mengunggah foto')
+      showNotification(extractApiErrorMessage(err) || 'Gagal mengunggah foto', 'error', 8000)
     } finally {
       setUploadingFoto(false)
     }
   }
 
+  const handleRegisterPasskey = async () => {
+    if (!browserSupportsWebAuthn()) {
+      showNotification('Browser tidak mendukung passkey / WebAuthn.', 'error')
+      return
+    }
+    setPasskeyLoading(true)
+    try {
+      await registerPasskey()
+      setStoredLoginUsername(user?.username)
+      showNotification('Passkey berhasil didaftarkan. Anda bisa login tanpa password di perangkat ini.', 'success', 6000)
+      setPasskeyRegistered(true)
+    } catch (err) {
+      const msg = err?.message && typeof err.message === 'string' ? err.message : extractApiErrorMessage(err)
+      showNotification(msg || 'Gagal mendaftarkan passkey', 'error', 8000)
+    } finally {
+      setPasskeyLoading(false)
+    }
+  }
+
   const handleDeleteFoto = async () => {
     setUploadingFoto(true)
-    setError('')
     try {
       const res = await profilAPI.deleteProfilFoto()
       if (res.success) {
-        setSuccess(res.message || 'Foto profil telah dihapus.')
-        setTimeout(() => setSuccess(''), 4000)
+        showNotification(res.message || 'Foto profil telah dihapus.', 'success')
         window.dispatchEvent(new Event('profil-foto-updated'))
         if (photoUrlRef.current) {
           URL.revokeObjectURL(photoUrlRef.current)
@@ -220,9 +268,9 @@ export default function ProfilView() {
         profilAPI.getUser(user.id).then((r) => {
           if (r.success && r.user) setData(r.user)
         }).catch(() => {})
-      } else setError(res.message || 'Gagal menghapus foto')
+      } else showNotification(res.message || 'Gagal menghapus foto', 'error')
     } catch (err) {
-      setError(err.response?.data?.message || 'Gagal menghapus foto')
+      showNotification(extractApiErrorMessage(err) || 'Gagal menghapus foto', 'error', 8000)
     } finally {
       setUploadingFoto(false)
     }
@@ -249,17 +297,6 @@ export default function ProfilView() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 pb-8">
-      {error && (
-        <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-sm">
-          {success}
-        </div>
-      )}
-
       {/* Header: foto profil (PC vs HP) + nama + CTA */}
       <motion.div
         initial={{ opacity: 0, y: 6 }}
@@ -486,6 +523,37 @@ export default function ProfilView() {
           }
         >
           <div className="space-y-5">
+            {/* Passkey / WebAuthn */}
+            <div className="pb-1 border-b border-gray-100 dark:border-gray-700/50">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Login cepat tanpa mengetik password</p>
+              {passkeyRegistered === null ? (
+                <p className="text-sm text-gray-500">Memuat status passkey…</p>
+              ) : passkeyRegistered ? (
+                <p className="text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
+                  <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                  Passkey sudah aktif untuk akun ini.
+                </p>
+              ) : browserSupportsWebAuthn() ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Daftarkan passkey (sidik jari, wajah, atau PIN perangkat) agar login lebih aman dan praktis.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRegisterPasskey}
+                    disabled={passkeyLoading}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                  >
+                    {passkeyLoading ? 'Memproses…' : 'Daftarkan passkey'}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  Browser ini tidak mendukung passkey. Gunakan Chrome, Edge, atau Safari terbaru.
+                </p>
+              )}
+            </div>
+
             {/* Ubah password */}
             <div>
               {!showPasswordForm ? (

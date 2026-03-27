@@ -9,6 +9,7 @@ import { tahunAjaranAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { WhatsAppTemplateContext } from '../../contexts/WhatsAppTemplateContext'
 import WhatsAppTemplateOffcanvas from '../WhatsAppTemplateOffcanvas'
+import PasskeyPromptModal from '../Auth/PasskeyPromptModal'
 
 const headerTransition = { type: 'tween', duration: 0.35, ease: [0.4, 0, 0.2, 1] }
 
@@ -170,6 +171,7 @@ function Layout() {
       />,
       document.body
     )}
+    <PasskeyPromptModal />
     </WhatsAppTemplateContext.Provider>
   )
 }
