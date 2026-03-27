@@ -385,45 +385,76 @@ class WhatsAppService
             ];
         }
 
-        try {
-            $client = new \GuzzleHttp\Client(['timeout' => 10]);
-            $response = $client->post($checkUrl, [
-                'headers' => [
-                    'Content-Type' => 'application/json',
-                    'X-API-Key' => $apiKey,
-                ],
-                'json' => ['phoneNumber' => $phone],
-            ]);
+        $jsonPayload = self::mergeWaSessionPayload(['phoneNumber' => $phone], $cfg);
 
-            $code = $response->getStatusCode();
-            $body = (string) $response->getBody();
-            $data = json_decode($body, true);
+        if (self::getNotificationProvider() === 'wa_sendiri') {
+            self::wakeWaServer();
+        }
 
-            if ($code >= 200 && $code < 300 && isset($data['success']) && isset($data['data'])) {
-                return [
-                    'success' => (bool) $data['success'],
-                    'data' => [
-                        'phoneNumber' => $data['data']['phoneNumber'] ?? $phone,
-                        'isRegistered' => (bool) ($data['data']['isRegistered'] ?? false),
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            if ($attempt > 0) {
+                usleep(2500000);
+                self::wakeWaServer();
+            }
+            try {
+                $client = new \GuzzleHttp\Client(['timeout' => 30]);
+                $response = $client->post($checkUrl, [
+                    'headers' => [
+                        'Content-Type' => 'application/json',
+                        'X-API-Key' => $apiKey,
                     ],
-                    'message' => $data['message'] ?? ($data['data']['isRegistered'] ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar di WhatsApp'),
+                    'json' => $jsonPayload,
+                ]);
+
+                $code = $response->getStatusCode();
+                $body = (string) $response->getBody();
+                $data = is_string($body) ? json_decode($body, true) : [];
+                if (!is_array($data)) {
+                    $data = [];
+                }
+
+                if ($code >= 200 && $code < 300 && !empty($data['success']) && isset($data['data']) && is_array($data['data'])) {
+                    return [
+                        'success' => (bool) $data['success'],
+                        'data' => [
+                            'phoneNumber' => $data['data']['phoneNumber'] ?? $phone,
+                            'isRegistered' => (bool) ($data['data']['isRegistered'] ?? false),
+                        ],
+                        'message' => $data['message'] ?? (($data['data']['isRegistered'] ?? false) ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar di WhatsApp'),
+                    ];
+                }
+
+                $errMsg = (string) ($data['message'] ?? $data['error'] ?? "HTTP {$code}");
+                if ($attempt === 0 && self::getNotificationProvider() === 'wa_sendiri' && self::nodeSendIndicatesReconnect($errMsg)) {
+                    error_log('WhatsAppService::checkNumber: Node belum siap, retry setelah wake: ' . $errMsg);
+
+                    continue;
+                }
+
+                return [
+                    'success' => false,
+                    'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
+                    'message' => $errMsg !== '' ? $errMsg : 'Gagal mengecek nomor',
+                ];
+            } catch (\Throwable $e) {
+                error_log('WhatsAppService::checkNumber attempt ' . ($attempt + 1) . ': ' . $e->getMessage());
+                if ($attempt === 0 && self::getNotificationProvider() === 'wa_sendiri') {
+                    continue;
+                }
+
+                return [
+                    'success' => false,
+                    'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
+                    'message' => $e->getMessage(),
                 ];
             }
-
-            $errMsg = $data['message'] ?? $data['error'] ?? "HTTP {$code}";
-            return [
-                'success' => false,
-                'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
-                'message' => $errMsg,
-            ];
-        } catch (\Throwable $e) {
-            error_log('WhatsAppService::checkNumber: ' . $e->getMessage());
-            return [
-                'success' => false,
-                'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
-                'message' => $e->getMessage(),
-            ];
         }
+
+        return [
+            'success' => false,
+            'data' => ['phoneNumber' => $phone, 'isRegistered' => false],
+            'message' => 'Gagal menghubungi server WhatsApp untuk cek nomor.',
+        ];
     }
 
     /**

@@ -6,6 +6,7 @@ import { useAuthStore } from '../../../store/authStore'
 import { getIcon } from '../../../config/menuIcons'
 import { chatUserAPI } from '../../../services/api'
 import { NamaUsernameDisplay } from '../../../components/NamaUsernameDisplay'
+import { useNotification } from '../../../contexts/NotificationContext'
 
 function convKey(a, b) {
   const x = Number(a)
@@ -70,6 +71,7 @@ function formatLastSeen(lastSeenAt) {
 
 export default function Chat() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { showNotification } = useNotification()
   const { socket, onlineUsers, isConnected } = useLiveSocket()
   const user = useAuthStore((s) => s.user)
   const [selectedConversationId, setSelectedConversationId] = useState(null)
@@ -828,6 +830,26 @@ export default function Chat() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
+              </button>
+            </div>
+            <div className="shrink-0 px-2.5 pt-1 pb-2 border-b border-gray-100 dark:border-gray-700/80">
+              <button
+                type="button"
+                onClick={() =>
+                  showNotification('Fitur grup chat sedang disiapkan.', 'info', 3500)
+                }
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 px-3 text-sm font-semibold text-white bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-500 hover:to-teal-600 shadow-sm dark:shadow-black/20 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors"
+                aria-label="Buat grup"
+              >
+                <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                  />
+                </svg>
+                Buat Grup
               </button>
             </div>
             <div className="shrink-0 px-2.5 py-2 border-b border-gray-100 dark:border-gray-700/80">

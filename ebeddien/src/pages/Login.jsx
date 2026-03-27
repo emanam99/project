@@ -7,7 +7,13 @@ import { useThemeStore } from '../store/themeStore'
 import { authAPI } from '../services/api'
 import { APP_VERSION } from '../config/version'
 import { getGambarUrl } from '../config/images'
-import { getStoredLoginUsername, setStoredLoginUsername } from '../utils/passkeyLoginPrefs'
+import {
+  getStoredLoginUsername,
+  setStoredLoginUsername,
+  addLocalPasskeyRowId,
+  clearLocalPasskeyRowIdsForUsername,
+  shouldShowPasskeyLoginButton,
+} from '../utils/passkeyLoginPrefs'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -80,7 +86,9 @@ export function LoginFormCard() {
       try {
         const res = await authAPI.webauthnStatus(u)
         if (!cancelled && res.success && res.data) {
-          setPasskeyRegistered(!!res.data.webauthn_registered)
+          const reg = !!res.data.webauthn_registered
+          setPasskeyRegistered(reg)
+          if (!reg) clearLocalPasskeyRowIdsForUsername(u)
         } else if (!cancelled) {
           setPasskeyRegistered(null)
         }
@@ -117,6 +125,8 @@ export function LoginFormCard() {
         if (response.data?.device_id) {
           try { localStorage.setItem('uwaba_device_id', response.data.device_id) } catch (_) {}
         }
+        const cid = response.data?.credential_db_id
+        if (cid != null) addLocalPasskeyRowId(u, cid)
         const user = response.data.user
         const allowedApps = user?.allowed_apps || []
         if (!allowedApps.includes('uwaba')) {
@@ -269,7 +279,7 @@ export function LoginFormCard() {
             >
               {loading ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Memproses...</span> : 'Masuk'}
             </motion.button>
-            {webauthnSupported && passkeyRegistered === true && (
+            {webauthnSupported && shouldShowPasskeyLoginButton(passkeyRegistered === true, username) && (
               <motion.button
                 type="button"
                 disabled={loading}

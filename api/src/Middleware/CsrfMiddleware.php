@@ -25,6 +25,7 @@ class CsrfMiddleware implements MiddlewareInterface
         'api/v2/auth/webauthn/login/verify',
         'api/v2/auth/webauthn/register/options',
         'api/v2/auth/webauthn/register/verify',
+        'api/v2/auth/webauthn/credentials',
         'api/v2/auth/daftar-check',
         'api/v2/auth/daftar-konfirmasi',
         'api/v2/auth/lupa-password-request',

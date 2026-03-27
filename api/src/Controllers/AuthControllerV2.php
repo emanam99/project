@@ -1020,10 +1020,12 @@ class AuthControllerV2
             $showPasskeyPrompt = false;
             try {
                 $this->db->prepare('UPDATE users SET password_login_count = COALESCE(password_login_count, 0) + 1 WHERE id = ?')->execute([$usersId]);
-                $st = $this->db->prepare('SELECT webauthn_credential_id, password_login_count FROM users WHERE id = ? LIMIT 1');
+                $st = $this->db->prepare('SELECT password_login_count FROM users WHERE id = ? LIMIT 1');
                 $st->execute([$usersId]);
                 $urow = $st->fetch(\PDO::FETCH_ASSOC);
-                $hasPasskey = $urow && !empty($urow['webauthn_credential_id']);
+                $stPk = $this->db->prepare('SELECT 1 FROM user___webauthn WHERE users_id = ? LIMIT 1');
+                $stPk->execute([$usersId]);
+                $hasPasskey = (bool) $stPk->fetch(\PDO::FETCH_ASSOC);
                 $count = (int) ($urow['password_login_count'] ?? 0);
                 $showPasskeyPrompt = !$hasPasskey && $count >= 1 && ($count - 1) % 7 === 0;
             } catch (\Throwable $e) {
@@ -1337,8 +1339,9 @@ class AuthControllerV2
      * Login sukses setelah verifikasi non-password (mis. WebAuthn).
      *
      * @param array<string, mixed>|null $overrideBody parsed body opsional (device fingerprint, dll.)
+     * @param array<string, mixed>|null $loginDataExtras ditambahkan ke objek `data` respons (mis. credential_db_id setelah WebAuthn)
      */
-    public function finalizeLoginForUserId(Request $request, Response $response, int $usersId, ?array $overrideBody = null): Response
+    public function finalizeLoginForUserId(Request $request, Response $response, int $usersId, ?array $overrideBody = null, ?array $loginDataExtras = null): Response
     {
         $data = $overrideBody ?? $request->getParsedBody();
         $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
@@ -1365,7 +1368,7 @@ class AuthControllerV2
             $ip,
             $userAgent,
             $uaShort,
-            null
+            $loginDataExtras
         );
     }
 

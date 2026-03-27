@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { browserSupportsWebAuthn, registerPasskey } from '../../utils/webauthnRegister'
-import { setStoredLoginUsername } from '../../utils/passkeyLoginPrefs'
+import { setStoredLoginUsername, addLocalPasskeyRowId } from '../../utils/passkeyLoginPrefs'
 import { useAuthStore } from '../../store/authStore'
 
 /**
@@ -27,8 +27,11 @@ export default function PasskeyPromptModal() {
     if (!supported) return
     setLoading(true)
     try {
-      await registerPasskey()
+      const out = await registerPasskey()
       setStoredLoginUsername(user?.username)
+      if (out?.credential_db_id != null && user?.username) {
+        addLocalPasskeyRowId(user.username, out.credential_db_id)
+      }
       setPasskeyPromptOpen(false)
     } catch (e) {
       setError(e?.message || 'Gagal mendaftarkan passkey.')

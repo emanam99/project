@@ -10,7 +10,7 @@ use Webauthn\PublicKeyCredentialSourceRepository;
 use Webauthn\PublicKeyCredentialUserEntity;
 
 /**
- * Satu kredensial WebAuthn per baris users (kolom webauthn_*).
+ * Banyak kredensial WebAuthn per user (tabel user___webauthn).
  */
 final class UsersWebAuthnCredentialRepository implements PublicKeyCredentialSourceRepository
 {
@@ -37,15 +37,15 @@ final class UsersWebAuthnCredentialRepository implements PublicKeyCredentialSour
     public function findOneByCredentialId(string $publicKeyCredentialId): ?PublicKeyCredentialSource
     {
         $stmt = $this->db->prepare(
-            'SELECT webauthn_credential_json FROM users WHERE webauthn_credential_id = ? LIMIT 1'
+            'SELECT credential_json FROM user___webauthn WHERE credential_id = ? LIMIT 1'
         );
         $stmt->execute([$publicKeyCredentialId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row || $row['webauthn_credential_json'] === null || $row['webauthn_credential_json'] === '') {
+        if (!$row || $row['credential_json'] === null || $row['credential_json'] === '') {
             return null;
         }
 
-        $data = json_decode((string) $row['webauthn_credential_json'], true, 512, JSON_THROW_ON_ERROR);
+        $data = json_decode((string) $row['credential_json'], true, 512, JSON_THROW_ON_ERROR);
 
         return PublicKeyCredentialSource::createFromArray($data);
     }
@@ -60,16 +60,19 @@ final class UsersWebAuthnCredentialRepository implements PublicKeyCredentialSour
             return [];
         }
         $stmt = $this->db->prepare(
-            'SELECT webauthn_credential_json FROM users WHERE id = ? AND webauthn_credential_json IS NOT NULL AND webauthn_credential_json != \'\' LIMIT 1'
+            'SELECT credential_json FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
         );
         $stmt->execute([$usersId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) {
-            return [];
+        $out = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            if ($row['credential_json'] === null || $row['credential_json'] === '') {
+                continue;
+            }
+            $data = json_decode((string) $row['credential_json'], true, 512, JSON_THROW_ON_ERROR);
+            $out[] = PublicKeyCredentialSource::createFromArray($data);
         }
-        $data = json_decode((string) $row['webauthn_credential_json'], true, 512, JSON_THROW_ON_ERROR);
 
-        return [PublicKeyCredentialSource::createFromArray($data)];
+        return $out;
     }
 
     public function saveCredentialSource(PublicKeyCredentialSource $publicKeyCredentialSource): void
@@ -80,7 +83,7 @@ final class UsersWebAuthnCredentialRepository implements PublicKeyCredentialSour
         $counter = $publicKeyCredentialSource->getCounter();
 
         $stmt = $this->db->prepare(
-            'UPDATE users SET webauthn_public_key = ?, webauthn_counter = ?, webauthn_credential_json = ? WHERE webauthn_credential_id = ?'
+            'UPDATE user___webauthn SET public_key = ?, counter = ?, credential_json = ?, updated_at = NOW() WHERE credential_id = ?'
         );
         $stmt->execute([$pk, $counter, $json, $credId]);
     }
@@ -92,9 +95,9 @@ final class UsersWebAuthnCredentialRepository implements PublicKeyCredentialSour
         $pk = $publicKeyCredentialSource->getCredentialPublicKey();
         $counter = $publicKeyCredentialSource->getCounter();
 
-        $upd = $this->db->prepare(
-            'UPDATE users SET webauthn_credential_id = ?, webauthn_public_key = ?, webauthn_counter = ?, webauthn_credential_json = ? WHERE id = ?'
+        $ins = $this->db->prepare(
+            'INSERT INTO user___webauthn (users_id, credential_id, public_key, counter, credential_json) VALUES (?, ?, ?, ?, ?)'
         );
-        $upd->execute([$id, $pk, $counter, $json, $usersId]);
+        $ins->execute([$usersId, $id, $pk, $counter, $json]);
     }
 }

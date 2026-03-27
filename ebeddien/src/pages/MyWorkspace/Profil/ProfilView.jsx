@@ -5,7 +5,14 @@ import { useAuthStore } from '../../../store/authStore'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { profilAPI, authAPI } from '../../../services/api'
 import { browserSupportsWebAuthn, registerPasskey } from '../../../utils/webauthnRegister'
-import { setStoredLoginUsername } from '../../../utils/passkeyLoginPrefs'
+import {
+  setStoredLoginUsername,
+  addLocalPasskeyRowId,
+  removeLocalPasskeyRowId,
+  syncLocalPasskeyRowIdsWithServer,
+  clearLocalPasskeyRowIdsForUsername,
+  getLocalPasskeyRowIds,
+} from '../../../utils/passkeyLoginPrefs'
 import ProfilFotoCropModal from './ProfilFotoCropModal'
 
 const Card = ({ title, children, icon }) => (
@@ -44,6 +51,16 @@ function extractApiErrorMessage(err) {
   return 'Terjadi kesalahan'
 }
 
+function formatTransportLabel(t) {
+  const k = String(t || '').toLowerCase()
+  if (k === 'internal') return 'Perangkat (platform)'
+  if (k === 'hybrid') return 'Hybrid'
+  if (k === 'usb') return 'USB'
+  if (k === 'nfc') return 'NFC'
+  if (k === 'ble') return 'Bluetooth'
+  return t ? String(t) : ''
+}
+
 export default function ProfilView() {
   const { user } = useAuthStore()
   const { showNotification } = useNotification()
@@ -67,6 +84,8 @@ export default function ProfilView() {
   const [uploadingFoto, setUploadingFoto] = useState(false)
   const [passkeyRegistered, setPasskeyRegistered] = useState(null)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
+  const [passkeyCredentials, setPasskeyCredentials] = useState([])
+  const [passkeyListLoading, setPasskeyListLoading] = useState(false)
   const fileInputRef = useRef(null)
   useEffect(() => {
     if (!user?.id) {
@@ -100,10 +119,45 @@ export default function ProfilView() {
     authAPI
       .webauthnStatus(u)
       .then((res) => {
-        if (!cancelled && res.success && res.data) setPasskeyRegistered(!!res.data.webauthn_registered)
+        if (!cancelled && res.success && res.data) {
+          const reg = !!res.data.webauthn_registered
+          setPasskeyRegistered(reg)
+          if (!reg) clearLocalPasskeyRowIdsForUsername(u)
+        }
       })
       .catch(() => {
         if (!cancelled) setPasskeyRegistered(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.username])
+
+  useEffect(() => {
+    const u = user?.username
+    if (!u) {
+      setPasskeyCredentials([])
+      return
+    }
+    let cancelled = false
+    setPasskeyListLoading(true)
+    authAPI
+      .webauthnListCredentials()
+      .then((res) => {
+        if (cancelled) return
+        if (res.success && Array.isArray(res.data?.credentials)) {
+          const list = res.data.credentials
+          setPasskeyCredentials(list)
+          syncLocalPasskeyRowIdsWithServer(u, list.map((c) => c.id))
+        } else {
+          setPasskeyCredentials([])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPasskeyCredentials([])
+      })
+      .finally(() => {
+        if (!cancelled) setPasskeyListLoading(false)
       })
     return () => {
       cancelled = true
@@ -241,15 +295,50 @@ export default function ProfilView() {
     }
     setPasskeyLoading(true)
     try {
-      await registerPasskey()
+      const out = await registerPasskey()
       setStoredLoginUsername(user?.username)
+      if (out?.credential_db_id != null && user?.username) {
+        addLocalPasskeyRowId(user.username, out.credential_db_id)
+      }
       showNotification('Passkey berhasil didaftarkan. Anda bisa login tanpa password di perangkat ini.', 'success', 6000)
       setPasskeyRegistered(true)
+      const listRes = await authAPI.webauthnListCredentials()
+      if (listRes.success && Array.isArray(listRes.data?.credentials)) {
+        setPasskeyCredentials(listRes.data.credentials)
+        syncLocalPasskeyRowIdsWithServer(user.username, listRes.data.credentials.map((c) => c.id))
+      }
     } catch (err) {
       const msg = err?.message && typeof err.message === 'string' ? err.message : extractApiErrorMessage(err)
       showNotification(msg || 'Gagal mendaftarkan passkey', 'error', 8000)
     } finally {
       setPasskeyLoading(false)
+    }
+  }
+
+  const handleDeletePasskeyCredential = async (rowId) => {
+    if (!window.confirm('Hapus passkey ini? Perangkat yang memakainya tidak bisa login dengan passkey sampai didaftarkan ulang.')) return
+    try {
+      const res = await authAPI.webauthnDeleteCredential(rowId)
+      if (res.success) {
+        removeLocalPasskeyRowId(user?.username, rowId)
+        showNotification(res.message || 'Passkey dihapus.', 'success')
+        const statusRes = await authAPI.webauthnStatus(user?.username)
+        if (statusRes.success && statusRes.data) {
+          setPasskeyRegistered(!!statusRes.data.webauthn_registered)
+          if (!statusRes.data.webauthn_registered) clearLocalPasskeyRowIdsForUsername(user.username)
+        }
+        const listRes = await authAPI.webauthnListCredentials()
+        if (listRes.success && Array.isArray(listRes.data?.credentials)) {
+          setPasskeyCredentials(listRes.data.credentials)
+          syncLocalPasskeyRowIdsWithServer(user.username, listRes.data.credentials.map((c) => c.id))
+        } else {
+          setPasskeyCredentials([])
+        }
+      } else {
+        showNotification(res.message || 'Gagal menghapus passkey', 'error')
+      }
+    } catch (err) {
+      showNotification(extractApiErrorMessage(err), 'error', 8000)
     }
   }
 
@@ -283,6 +372,8 @@ export default function ProfilView() {
   const initial = displayName
     ? displayName.trim().charAt(0).toUpperCase()
     : (user?.username?.charAt(0) || '?').toUpperCase()
+
+  const localPasskeyRowIds = getLocalPasskeyRowIds(user?.username)
 
   if (loading) {
     return (
@@ -529,10 +620,64 @@ export default function ProfilView() {
               {passkeyRegistered === null ? (
                 <p className="text-sm text-gray-500">Memuat status passkey…</p>
               ) : passkeyRegistered ? (
-                <p className="text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
-                  <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                  Passkey sudah aktif untuk akun ini.
-                </p>
+                <div className="space-y-3">
+                  <p className="text-sm text-green-700 dark:text-green-400 flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                    Passkey aktif — Anda bisa menambah passkey di perangkat lain (mis. HP dan laptop).
+                  </p>
+                  {passkeyListLoading ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Memuat daftar passkey…</p>
+                  ) : passkeyCredentials.length > 0 ? (
+                    <ul className="space-y-2 rounded-xl border border-gray-200 dark:border-gray-600 divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden">
+                      {passkeyCredentials.map((c) => {
+                        const ts = (c.transports || []).map(formatTransportLabel).filter(Boolean)
+                        const created = c.created_at
+                          ? new Date(c.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
+                          : '—'
+                        const onThisDevice = localPasskeyRowIds.includes(c.id)
+                        return (
+                          <li key={c.id} className="px-3 py-2.5 bg-gray-50/80 dark:bg-gray-900/20 flex flex-wrap items-center gap-2 justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Passkey</span>
+                                {onThisDevice && (
+                                  <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200">
+                                    Perangkat ini
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Terdaftar: {created}</p>
+                              {ts.length > 0 && (
+                                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                  Saluran: {ts.join(', ')}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePasskeyCredential(c.id)}
+                              className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400 hover:underline px-2 py-1"
+                            >
+                              Hapus
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Belum ada entri passkey di server (muat ulang jika baru saja mendaftar).</p>
+                  )}
+                  {browserSupportsWebAuthn() && (
+                    <button
+                      type="button"
+                      onClick={handleRegisterPasskey}
+                      disabled={passkeyLoading}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700 hover:bg-teal-100 dark:hover:bg-teal-900/50 disabled:opacity-60"
+                    >
+                      {passkeyLoading ? 'Memproses…' : 'Tambah passkey di perangkat ini'}
+                    </button>
+                  )}
+                </div>
               ) : browserSupportsWebAuthn() ? (
                 <div className="space-y-2">
                   <p className="text-sm text-gray-600 dark:text-gray-400">

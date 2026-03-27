@@ -465,7 +465,7 @@ export const checkNumber = async (req, res) => {
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     const { phoneNumber } = req.body || {};
     if (!isBaileysConnected(safeId)) {
-      await ensureBaileysReadyForSend(safeId).catch(() => {});
+      await ensureBaileysReadyForSend(safeId, 20000).catch(() => {});
     }
     if (!isBaileysConnected(safeId)) {
       return res.status(200).json({

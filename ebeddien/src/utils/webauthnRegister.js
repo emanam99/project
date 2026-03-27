@@ -5,7 +5,7 @@ export { browserSupportsWebAuthn }
 
 /**
  * Daftarkan passkey untuk akun yang sedang login (Bearer JWT).
- * @returns {Promise<void>}
+ * @returns {Promise<{ credential_db_id?: number }>}
  */
 export async function registerPasskey() {
   if (!browserSupportsWebAuthn()) {
@@ -20,4 +20,6 @@ export async function registerPasskey() {
   if (!verifyRes.success) {
     throw new Error(verifyRes.message || 'Verifikasi passkey gagal.')
   }
+  const cid = verifyRes.data?.credential_db_id
+  return cid != null ? { credential_db_id: Number(cid) } : {}
 }

@@ -151,14 +151,11 @@ final class WebAuthnController
                 return $this->json($response, ['success' => false, 'message' => 'Tidak terautentikasi'], 401);
             }
 
-            $stmt = $this->db->prepare('SELECT id, username, webauthn_credential_id FROM users WHERE id = ? LIMIT 1');
+            $stmt = $this->db->prepare('SELECT id, username FROM users WHERE id = ? LIMIT 1');
             $stmt->execute([$usersId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
                 return $this->json($response, ['success' => false, 'message' => 'Pengguna tidak ditemukan'], 404);
-            }
-            if (!empty($row['webauthn_credential_id'])) {
-                return $this->json($response, ['success' => false, 'message' => 'Passkey sudah terdaftar. Hubungi admin untuk mengganti.'], 409);
             }
 
             $username = (string) $row['username'];
@@ -192,6 +189,13 @@ final class WebAuthnController
                 ->setAuthenticatorAttachment(AuthenticatorSelectionCriteria::AUTHENTICATOR_ATTACHMENT_NO_PREFERENCE)
                 ->setUserVerification(AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED);
             $options = $options->setAuthenticatorSelection($sel);
+
+            $repo = new UsersWebAuthnCredentialRepository($this->db);
+            $existing = $repo->findAllForUserEntity($userEntity);
+            $exclude = array_map(static fn ($s) => $s->getPublicKeyCredentialDescriptor(), $existing);
+            if ($exclude !== []) {
+                $options = $options->excludeCredentials(...$exclude);
+            }
 
             return $this->json($response, [
                 'success' => true,
@@ -287,10 +291,16 @@ final class WebAuthnController
 
             $repo->saveNewCredentialForUser($usersId, $source);
 
+            $credDbId = (int) $this->db->lastInsertId();
+
             $del = $this->db->prepare('DELETE FROM webauthn_challenges WHERE id = ?');
             $del->execute([$challengeId]);
 
-            return $this->json($response, ['success' => true, 'message' => 'Passkey berhasil didaftarkan'], 200);
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Passkey berhasil didaftarkan',
+                'data' => ['credential_db_id' => $credDbId],
+            ], 200);
         } catch (\Throwable $e) {
             error_log('WebAuthnController::registerVerify ' . $e->getMessage());
             error_log($e->getTraceAsString());
@@ -318,11 +328,12 @@ final class WebAuthnController
             }
 
             $stmt = $this->db->prepare(
-                'SELECT id, username, webauthn_credential_id FROM users WHERE username = ? AND is_active = 1 LIMIT 1'
+                'SELECT u.id, u.username FROM users u WHERE u.username = ? AND u.is_active = 1 '
+                . 'AND EXISTS (SELECT 1 FROM user___webauthn w WHERE w.users_id = u.id) LIMIT 1'
             );
             $stmt->execute([$username]);
             $user = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$user || empty($user['webauthn_credential_id'])) {
+            if (!$user) {
                 return $this->json($response, ['success' => false, 'message' => 'Passkey belum didaftarkan untuk akun ini'], 404);
             }
 
@@ -338,21 +349,28 @@ final class WebAuthnController
             );
             $ins->execute([$challengeId, $usersId, 'authentication', $challenge]);
 
-            $stmt = $this->db->prepare('SELECT webauthn_credential_json FROM users WHERE id = ? LIMIT 1');
+            $stmt = $this->db->prepare(
+                'SELECT credential_json FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
+            );
             $stmt->execute([$usersId]);
-            $crow = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$crow || empty($crow['webauthn_credential_json'])) {
+            $descriptors = [];
+            while ($crow = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                if (empty($crow['credential_json'])) {
+                    continue;
+                }
+                $srcData = json_decode((string) $crow['credential_json'], true, 512, JSON_THROW_ON_ERROR);
+                $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
+                $descriptors[] = $src->getPublicKeyCredentialDescriptor();
+            }
+            if ($descriptors === []) {
                 return $this->json($response, ['success' => false, 'message' => 'Data passkey tidak lengkap'], 500);
             }
-            $srcData = json_decode((string) $crow['webauthn_credential_json'], true, 512, JSON_THROW_ON_ERROR);
-            $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
-            $descriptor = $src->getPublicKeyCredentialDescriptor();
 
             $req = PublicKeyCredentialRequestOptions::create($challenge)
                 ->setRpId($this->rpEntity($request)->getId())
                 ->setTimeout(120000)
                 ->setUserVerification(PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_PREFERRED)
-                ->allowCredentials($descriptor);
+                ->allowCredentials(...$descriptors);
 
             return $this->json($response, [
                 'success' => true,
@@ -409,21 +427,28 @@ final class WebAuthnController
                 return $this->json($response, ['success' => false, 'message' => 'Challenge rusak'], 500);
             }
 
-            $stmt = $this->db->prepare('SELECT webauthn_credential_json FROM users WHERE id = ? LIMIT 1');
+            $stmt = $this->db->prepare(
+                'SELECT credential_json FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
+            );
             $stmt->execute([$usersId]);
-            $crow = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$crow || empty($crow['webauthn_credential_json'])) {
+            $descriptors = [];
+            while ($crow = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                if (empty($crow['credential_json'])) {
+                    continue;
+                }
+                $srcData = json_decode((string) $crow['credential_json'], true, 512, JSON_THROW_ON_ERROR);
+                $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
+                $descriptors[] = $src->getPublicKeyCredentialDescriptor();
+            }
+            if ($descriptors === []) {
                 return $this->json($response, ['success' => false, 'message' => 'Passkey tidak ada'], 400);
             }
-            $srcData = json_decode((string) $crow['webauthn_credential_json'], true, 512, JSON_THROW_ON_ERROR);
-            $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
-            $descriptor = $src->getPublicKeyCredentialDescriptor();
 
             $requestOptions = PublicKeyCredentialRequestOptions::create($expectedChallenge)
                 ->setRpId($this->rpEntity($request)->getId())
                 ->setTimeout(120000)
                 ->setUserVerification(PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_PREFERRED)
-                ->allowCredentials($descriptor);
+                ->allowCredentials(...$descriptors);
 
             $loader = WebAuthnFactory::createPublicKeyCredentialLoader();
             $pkc = $loader->loadArray($credential);
@@ -453,9 +478,21 @@ final class WebAuthnController
             $del = $this->db->prepare('DELETE FROM webauthn_challenges WHERE id = ?');
             $del->execute([$challengeId]);
 
+            $rawId = $pkc->getRawId();
+            $stmtCred = $this->db->prepare('SELECT id FROM user___webauthn WHERE users_id = ? AND credential_id = ? LIMIT 1');
+            $stmtCred->execute([$usersId, $rawId]);
+            $credRow = $stmtCred->fetch(\PDO::FETCH_ASSOC);
+            $credDbId = $credRow && isset($credRow['id']) ? (int) $credRow['id'] : null;
+
             $auth = new AuthControllerV2();
 
-            return $auth->finalizeLoginForUserId($request, $response, $usersId);
+            return $auth->finalizeLoginForUserId(
+                $request,
+                $response,
+                $usersId,
+                null,
+                $credDbId !== null ? ['credential_db_id' => $credDbId] : null
+            );
         } catch (\Throwable $e) {
             error_log('WebAuthnController::loginVerify ' . $e->getMessage());
             error_log($e->getTraceAsString());
@@ -476,7 +513,8 @@ final class WebAuthnController
                 return $this->json($response, ['success' => false, 'message' => 'Parameter username wajib'], 400);
             }
             $stmt = $this->db->prepare(
-                'SELECT id FROM users WHERE username = ? AND is_active = 1 AND webauthn_credential_id IS NOT NULL LIMIT 1'
+                'SELECT u.id FROM users u WHERE u.username = ? AND u.is_active = 1 '
+                . 'AND EXISTS (SELECT 1 FROM user___webauthn w WHERE w.users_id = u.id) LIMIT 1'
             );
             $stmt->execute([$username]);
             $ok = (bool) $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -484,6 +522,99 @@ final class WebAuthnController
             return $this->json($response, ['success' => true, 'data' => ['webauthn_registered' => $ok]], 200);
         } catch (\Throwable $e) {
             return $this->json($response, ['success' => false, 'message' => 'Gagal'], 500);
+        }
+    }
+
+    /**
+     * GET /api/v2/auth/webauthn/credentials — daftar passkey (JWT).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildCredentialListForUser(int $usersId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, credential_json, created_at FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
+        );
+        $stmt->execute([$usersId]);
+        $out = [];
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $transports = [];
+            $json = $row['credential_json'] ?? '';
+            if (is_string($json) && $json !== '') {
+                try {
+                    $decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+                    if (isset($decoded['transports']) && is_array($decoded['transports'])) {
+                        foreach ($decoded['transports'] as $t) {
+                            $transports[] = (string) $t;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $transports = [];
+                }
+            }
+            $out[] = [
+                'id' => (int) $row['id'],
+                'created_at' => $row['created_at'] !== null ? (string) $row['created_at'] : null,
+                'transports' => $transports,
+            ];
+        }
+
+        return $out;
+    }
+
+    public function listCredentials(Request $request, Response $response): Response
+    {
+        try {
+            $early = $this->requirePhp81ForWebAuthn($response);
+            if ($early !== null) {
+                return $early;
+            }
+            $usersId = $this->getUsersIdFromJwt($request);
+            if ($usersId === null || $usersId <= 0) {
+                return $this->json($response, ['success' => false, 'message' => 'Tidak terautentikasi'], 401);
+            }
+
+            $items = $this->buildCredentialListForUser($usersId);
+
+            return $this->json($response, ['success' => true, 'data' => ['credentials' => $items]], 200);
+        } catch (\Throwable $e) {
+            error_log('WebAuthnController::listCredentials ' . $e->getMessage());
+
+            return $this->json($response, ['success' => false, 'message' => 'Gagal memuat daftar passkey'], 500);
+        }
+    }
+
+    /**
+     * DELETE /api/v2/auth/webauthn/credentials/{id} — hapus satu passkey (JWT).
+     */
+    public function deleteCredential(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $early = $this->requirePhp81ForWebAuthn($response);
+            if ($early !== null) {
+                return $early;
+            }
+            $usersId = $this->getUsersIdFromJwt($request);
+            if ($usersId === null || $usersId <= 0) {
+                return $this->json($response, ['success' => false, 'message' => 'Tidak terautentikasi'], 401);
+            }
+
+            $credId = (int) ($args['id'] ?? 0);
+            if ($credId <= 0) {
+                return $this->json($response, ['success' => false, 'message' => 'ID passkey tidak valid'], 400);
+            }
+
+            $stmt = $this->db->prepare('DELETE FROM user___webauthn WHERE id = ? AND users_id = ?');
+            $stmt->execute([$credId, $usersId]);
+            if ($stmt->rowCount() === 0) {
+                return $this->json($response, ['success' => false, 'message' => 'Passkey tidak ditemukan'], 404);
+            }
+
+            return $this->json($response, ['success' => true, 'message' => 'Passkey telah dihapus'], 200);
+        } catch (\Throwable $e) {
+            error_log('WebAuthnController::deleteCredential ' . $e->getMessage());
+
+            return $this->json($response, ['success' => false, 'message' => 'Gagal menghapus passkey'], 500);
         }
     }
 }

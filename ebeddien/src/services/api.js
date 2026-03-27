@@ -357,6 +357,23 @@ export const authAPI = {
     }
   },
 
+  /** Daftar passkey yang terdaftar untuk akun (JWT). */
+  webauthnListCredentials: async () => {
+    const response = await api.get('/v2/auth/webauthn/credentials')
+    return response.data
+  },
+
+  /** Hapus satu passkey by id baris DB (JWT). */
+  webauthnDeleteCredential: async (credentialRowId) => {
+    try {
+      const response = await api.delete(`/v2/auth/webauthn/credentials/${encodeURIComponent(credentialRowId)}`)
+      return response.data
+    } catch (e) {
+      if (e.response?.data) return e.response.data
+      throw e
+    }
+  },
+
   /** Cek daftar: id_pengurus, nik, no_wa. Return already_registered atau nama + no_wa */
   daftarCheck: async (idPengurus, nik, noWa) => {
     const response = await api.post('/v2/auth/daftar-check', { id_pengurus: idPengurus, nik, no_wa: noWa })

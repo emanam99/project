@@ -18,6 +18,8 @@ return function (\Slim\App $app): void {
     $app->get('/api/v2/auth/webauthn/status', [WebAuthnController::class, 'status']);
     $app->post('/api/v2/auth/webauthn/register/options', [WebAuthnController::class, 'registerOptions'])->add(new AuthMiddleware());
     $app->post('/api/v2/auth/webauthn/register/verify', [WebAuthnController::class, 'registerVerify'])->add(new AuthMiddleware());
+    $app->get('/api/v2/auth/webauthn/credentials', [WebAuthnController::class, 'listCredentials'])->add(new AuthMiddleware());
+    $app->delete('/api/v2/auth/webauthn/credentials/{id}', [WebAuthnController::class, 'deleteCredential'])->add(new AuthMiddleware());
     $app->post('/api/v2/auth/daftar-check', [AuthControllerV2::class, 'daftarCheck']);
     $app->post('/api/v2/auth/daftar-konfirmasi', [AuthControllerV2::class, 'daftarKonfirmasi']);
     $app->post('/api/v2/auth/lupa-password-request', [AuthControllerV2::class, 'lupaPasswordRequest']);
