@@ -15,7 +15,8 @@ namespace App\Config;
 class RoleConfig
 {
     /**
-     * Daftar aplikasi yang tersedia (hanya UWABA; lembaga & umroh sudah digabung ke UWABA)
+     * Daftar aplikasi untuk akses multi-app (JWT/dll.). Selaras seed `AppSeed`: id 2–4 di tabel `app`.
+     * Menu SPA eBeddien memakai `app.key` = ebeddien (id 1), terpisah dari daftar ini.
      */
     const APPS = [
         'uwaba' => 'Aplikasi UWABA',

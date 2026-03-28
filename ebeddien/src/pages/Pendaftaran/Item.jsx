@@ -1,23 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
-import { Navigate } from 'react-router-dom'
 import { pendaftaranAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
-import { useAuthStore } from '../../store/authStore'
-import { userHasSuperAdminAccess } from '../../utils/roleAccess'
-import SubNavPendaftaran from './components/SubNavPendaftaran'
 
 function Item() {
   const { showNotification } = useNotification()
-  const { user } = useAuthStore()
-  
-  const isSuperAdmin = userHasSuperAdminAccess(user)
-  
-  // Redirect if not super_admin
-  if (!isSuperAdmin) {
-    return <Navigate to="/" replace />
-  }
   const [items, setItems] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(false)
@@ -210,7 +198,6 @@ function Item() {
     <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
       <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
         <div className="p-2 sm:p-3">
-          <SubNavPendaftaran />
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

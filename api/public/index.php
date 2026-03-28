@@ -85,6 +85,7 @@ use App\Controllers\PengurusController;
 use App\Controllers\AlamatController;
 use App\Controllers\VersionChangelogController;
 use App\Controllers\UserAktivitasController;
+use App\Controllers\AppFiturController;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -559,6 +560,10 @@ $errorMiddleware->setErrorHandler(
 (require __DIR__ . '/../routes/26_ai_training_admin.php')($app);
 (require __DIR__ . '/../routes/27_kitab.php')($app);
 (require __DIR__ . '/../routes/28_mapel.php')($app);
+(require __DIR__ . '/../routes/29_ugt_laporan_koordinator.php')($app);
+(require __DIR__ . '/../routes/30_ugt_laporan_gt.php')($app);
+(require __DIR__ . '/../routes/31_ugt_laporan_pjgt.php')($app);
+(require __DIR__ . '/../routes/32_app_fitur.php')($app);
 
 // Catch-all untuk 404
 $app->map(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], '/{routes:.+}', function (Request $request, Response $response) {

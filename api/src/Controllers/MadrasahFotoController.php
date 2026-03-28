@@ -15,6 +15,10 @@ class MadrasahFotoController
     private const MAX_SIZE = 1024 * 1024; // 1 MB
     private const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
 
+    /** Logo: hanya JPEG/PNG; kompresi di frontend — server max 1 MB + validasi gambar */
+    private const LOGO_MAX_SIZE = 1024 * 1024; // 1 MB
+    private const LOGO_ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
+
     public function __construct()
     {
         $config = require __DIR__ . '/../../config.php';
@@ -98,6 +102,83 @@ class MadrasahFotoController
         } catch (\Exception $e) {
             error_log('MadrasahFotoController::upload ' . $e->getMessage());
             return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengunggah foto'], 500);
+        }
+    }
+
+    /**
+     * POST /api/madrasah/upload-logo — hanya PNG/JPEG, maks. 1 MB; kompresi dilakukan di klien.
+     */
+    public function uploadLogo(Request $request, Response $response): Response
+    {
+        try {
+            $uploadedFiles = $request->getUploadedFiles();
+            $file = $uploadedFiles['logo'] ?? $uploadedFiles['file'] ?? null;
+
+            if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+                $msg = $file ? $this->uploadErrorMessage($file->getError()) : 'Tidak ada file logo';
+                return $this->jsonResponse($response, ['success' => false, 'message' => $msg], 400);
+            }
+
+            $mediaType = strtolower((string) $file->getClientMediaType());
+            if (!in_array($mediaType, self::LOGO_ALLOWED_TYPES, true)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Logo hanya boleh format PNG atau JPEG (.png, .jpg, .jpeg)'
+                ], 400);
+            }
+
+            $origName = (string) $file->getClientFilename();
+            $extLower = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+            if (!in_array($extLower, ['jpg', 'jpeg', 'png'], true)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Ekstensi file harus .jpg, .jpeg, atau .png'
+                ], 400);
+            }
+
+            if ($file->getSize() > self::LOGO_MAX_SIZE) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Ukuran logo maksimal 1 MB. Kompres di perangkat lalu unggah lagi.'
+                ], 400);
+            }
+
+            $isPng = ($mediaType === 'image/png' || $extLower === 'png');
+            $workExt = $isPng ? 'png' : 'jpg';
+            $fileName = 'madrasah_logo_' . uniqid('', true) . '.' . $workExt;
+            $uploadDir = $this->getUgtDir();
+            $filePath = $uploadDir . DIRECTORY_SEPARATOR . $fileName;
+
+            $file->moveTo($filePath);
+
+            $imageInfo = @getimagesize($filePath);
+            if ($imageInfo === false || !isset($imageInfo[2])) {
+                @unlink($filePath);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'File bukan gambar yang valid'
+                ], 400);
+            }
+
+            $itype = (int) $imageInfo[2];
+            if (!in_array($itype, [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) {
+                @unlink($filePath);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Logo hanya boleh PNG atau JPEG'
+                ], 400);
+            }
+
+            $relativePath = 'uploads/ugt/' . basename($filePath);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Logo berhasil diunggah',
+                'logo_path' => $relativePath
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('MadrasahFotoController::uploadLogo ' . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengunggah logo'], 500);
         }
     }
 

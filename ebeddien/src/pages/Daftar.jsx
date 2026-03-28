@@ -16,6 +16,14 @@ const itemVariants = {
   visible: { y: 0, opacity: 1, transition: { type: 'spring', stiffness: 120, damping: 18 } }
 }
 
+function normalizeNoWaTo62(raw) {
+  const digits = String(raw || '').replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.startsWith('0')) return `62${digits.slice(1)}`
+  if (!digits.startsWith('62')) return `62${digits}`
+  return digits
+}
+
 export function DaftarFormCard() {
   const [idPengurus, setIdPengurus] = useState('')
   const [nik, setNik] = useState('')
@@ -43,9 +51,11 @@ export function DaftarFormCard() {
     setConfirmModal(null)
     const nikTrim = nik.trim()
     if (!isNikValid(nikTrim)) { setError('Coba kembali periksa NIK.'); return }
+    const noWaNorm = normalizeNoWaTo62(noWa)
+    if (noWaNorm.length < 10) { setError('Nomor WhatsApp tidak valid.'); return }
     setLoading(true)
     try {
-      const res = await authAPI.daftarCheck(idPengurus.trim(), nikTrim, noWa.trim())
+      const res = await authAPI.daftarCheck(idPengurus.trim(), nikTrim, noWaNorm)
       if (!res.success) { setError(res.message || 'Gagal cek data'); return }
       if (res.already_registered) { setError(res.message || 'Akun sudah terdaftar. Silakan login.'); return }
       setConfirmModal({ nama: res.nama || 'Pengurus', no_wa: res.no_wa })
@@ -60,9 +70,11 @@ export function DaftarFormCard() {
     setError('')
     const nikTrim = nik.trim()
     if (!isNikValid(nikTrim)) { setError('Coba kembali periksa NIK.'); return }
+    const noWaNorm = normalizeNoWaTo62(noWa)
+    if (noWaNorm.length < 10) { setError('Nomor WhatsApp tidak valid.'); return }
     setLoading(true)
     try {
-      const res = await authAPI.daftarKonfirmasi(idPengurus.trim(), nikTrim, noWa.trim())
+      const res = await authAPI.daftarKonfirmasi(idPengurus.trim(), nikTrim, noWaNorm)
       if (res.success) { setSuccessMessage(res.message || 'Link telah dikirim ke WhatsApp.'); setConfirmModal(null) }
       else setError(res.message || 'Gagal mengirim link')
     } catch (err) {
@@ -128,7 +140,7 @@ export function DaftarFormCard() {
               transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
               onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
             >
-              <input type="text" value={noWa} onChange={(e) => setNoWa(e.target.value)} className={inputClass} placeholder="No. WA (08xxxxxxxxxx)" required />
+              <input type="text" inputMode="numeric" value={noWa} onChange={(e) => setNoWa(e.target.value.replace(/\D/g, '').slice(0, 16))} className={inputClass} placeholder="No. WA (08xxxxxxxxxx)" required />
             </motion.div>
             {error && (
               <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 px-4 py-3 text-sm">

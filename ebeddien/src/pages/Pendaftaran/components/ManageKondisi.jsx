@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
-import SubNavPendaftaran from './SubNavPendaftaran'
 
 function ManageKondisi() {
   const { showNotification } = useNotification()
@@ -250,8 +249,7 @@ function ManageKondisi() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <SubNavPendaftaran />
+    <div className="h-full flex flex-col overflow-hidden p-2 sm:p-3">
       {/* Tab Navigation */}
       <div className="flex gap-2 mb-4 flex-shrink-0">
         <button

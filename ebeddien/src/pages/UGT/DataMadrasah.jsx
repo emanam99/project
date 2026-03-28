@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo, useRef, memo } from 'react'
+import { useState, useEffect, useMemo, useRef, memo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as XLSX from 'xlsx'
 import { madrasahAPI, pengurusAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
-import { userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../utils/roleAccess'
+import { useMadrasahDataFiturAccess } from '../../hooks/useMadrasahDataFiturAccess'
 import { EXPORT_COLUMNS } from './exportMadrasahConfig'
 import TambahMadrasahOffcanvas from './components/TambahMadrasahOffcanvas'
 import CariKoordinatorOffcanvas from './components/CariKoordinatorOffcanvas'
@@ -28,7 +29,7 @@ function getStatusBadgeClass(status) {
   return STATUS_BADGE_CLASS[status] ?? 'bg-teal-600/90 text-white'
 }
 
-/** Komponen foto madrasah: fetch blob URL (dari cache/API) dan tampilkan. size = 'small' (list) | 'large' (grid). URL di-cache di madrasahAPI, jangan revoke. */
+/** Komponen foto/logo madrasah: fetch blob URL (dari cache/API). size = small | large (grid) | logo (thumbnail logo, object-contain). */
 const MadrasahFotoImg = memo(function MadrasahFotoImg({ fotoPath, size = 'small' }) {
   const [blobUrl, setBlobUrl] = useState(null)
   useEffect(() => {
@@ -44,10 +45,16 @@ const MadrasahFotoImg = memo(function MadrasahFotoImg({ fotoPath, size = 'small'
     })
     return () => { cancelled = true }
   }, [fotoPath])
+  const boxClass =
+    size === 'logo'
+      ? 'w-8 h-8 rounded flex-shrink-0'
+      : size === 'small'
+        ? 'w-10 h-10 rounded'
+        : 'w-full h-full min-h-[120px] rounded-lg'
   if (!fotoPath) {
     return (
-      <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 ${size === 'small' ? 'w-10 h-10 rounded' : 'w-full h-full min-h-[120px] rounded-lg'}`}>
-        <svg className={size === 'small' ? 'w-5 h-5' : 'w-12 h-12'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 ${boxClass}`}>
+        <svg className={size === 'large' ? 'w-12 h-12' : 'w-5 h-5'} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" />
         </svg>
       </div>
@@ -55,14 +62,20 @@ const MadrasahFotoImg = memo(function MadrasahFotoImg({ fotoPath, size = 'small'
   }
   if (!blobUrl) {
     return (
-      <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-700 animate-pulse ${size === 'small' ? 'w-10 h-10 rounded' : 'w-full h-full min-h-[120px] rounded-lg'}`} />
+      <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-700 animate-pulse ${boxClass}`} />
     )
   }
+  const imgClass =
+    size === 'logo'
+      ? 'w-8 h-8 rounded object-contain bg-white/90 dark:bg-gray-800/90 p-0.5 flex-shrink-0 border border-gray-200/80 dark:border-gray-600'
+      : size === 'small'
+        ? 'w-10 h-10 rounded object-cover bg-gray-100 dark:bg-gray-700 flex-shrink-0'
+        : 'w-full h-full min-h-[120px] rounded-lg object-cover bg-gray-100 dark:bg-gray-700'
   return (
     <img
       src={blobUrl}
-      alt="Foto madrasah"
-      className={`object-cover bg-gray-100 dark:bg-gray-700 ${size === 'small' ? 'w-10 h-10 rounded flex-shrink-0' : 'w-full h-full min-h-[120px] rounded-lg'}`}
+      alt={size === 'logo' ? 'Logo madrasah' : 'Foto madrasah'}
+      className={imgClass}
     />
   )
 })
@@ -368,7 +381,7 @@ const SearchAndFilterSection = memo(({
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-xs text-gray-600 dark:text-gray-400 w-full sm:w-auto">Koordinator & Sektor:</span>
                 {koordinatorLocked ? (
-                  <span className="border rounded p-1.5 h-8 min-w-0 text-xs bg-gray-100 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 flex-1 max-w-[200px] inline-flex items-center" title="Filter koordinator terkunci (hanya data Anda)">
+                  <span className="border rounded p-1.5 h-8 min-w-0 text-xs bg-gray-100 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 flex-1 max-w-[200px] inline-flex items-center" title="Filter koordinator terkunci ke madrasah Anda. Untuk melihat semua madrasah, minta admin menambahkan aksi «Lihat semua madrasah» di Pengaturan → Fitur (Data Madrasah).">
                     {koordinatorFilter || '—'}
                   </span>
                 ) : (
@@ -407,14 +420,9 @@ SearchAndFilterSection.displayName = 'SearchAndFilterSection'
 function DataMadrasah() {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
-  // Selaras backend: kunci filter koordinator hanya jika koordinator_ugt tanpa super_admin / admin_ugt
-  const isKoordinatorUgt = useMemo(
-    () =>
-      userMatchesAnyAllowedRole(user, ['koordinator_ugt']) &&
-      !userHasSuperAdminAccess(user) &&
-      !userMatchesAnyAllowedRole(user, ['admin_ugt']),
-    [user]
-  )
+  const [searchParams, setSearchParams] = useSearchParams()
+  const editParam = searchParams.get('edit')
+  const { koordinatorFilterLocked } = useMadrasahDataFiturAccess()
 
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
@@ -433,12 +441,12 @@ function DataMadrasah() {
   const [koordinatorFilter, setKoordinatorFilter] = useState('')
   const [sektorFilter, setSektorFilter] = useState('')
 
-  // Koordinator UGT: filter koordinator selalu diri sendiri dan tidak bisa diubah
+  // Koordinator tanpa aksi "semua madrasah": filter koordinator terkunci ke diri sendiri
   useEffect(() => {
-    if (isKoordinatorUgt && user?.nama) {
+    if (koordinatorFilterLocked && user?.nama) {
       setKoordinatorFilter(user.nama)
     }
-  }, [isKoordinatorUgt, user?.nama])
+  }, [koordinatorFilterLocked, user?.nama])
   const [showTambahOffcanvas, setShowTambahOffcanvas] = useState(false)
   const [showCariKoordinatorOffcanvas, setShowCariKoordinatorOffcanvas] = useState(false)
   const [showExportOffcanvas, setShowExportOffcanvas] = useState(false)
@@ -478,16 +486,75 @@ function DataMadrasah() {
   const openEdit = (m) => {
     setEditingMadrasah(m)
     setShowTambahOffcanvas(true)
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev)
+        n.set('edit', String(m.id))
+        return n
+      },
+      { replace: false }
+    )
   }
 
-  const closeTambahOffcanvas = () => {
+  const closeTambahOffcanvas = useCallback(() => {
     setShowTambahOffcanvas(false)
     setEditingMadrasah(null)
-  }
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev)
+        n.delete('edit')
+        return n
+      },
+      { replace: true }
+    )
+  }, [setSearchParams])
 
   useEffect(() => {
     loadMadrasah()
   }, [])
+
+  // Buka edit dari URL (?edit=id) setelah data siaga; hapus param jika id tidak valid / tidak ada di list
+  useEffect(() => {
+    if (!editParam || loading) return
+    const id = Number(editParam)
+    if (!Number.isFinite(id)) {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev)
+          n.delete('edit')
+          return n
+        },
+        { replace: true }
+      )
+      setShowTambahOffcanvas(false)
+      setEditingMadrasah(null)
+      return
+    }
+    const m = list.find((x) => x.id === id)
+    if (m) {
+      setEditingMadrasah(m)
+      setShowTambahOffcanvas(true)
+    } else {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev)
+          n.delete('edit')
+          return n
+        },
+        { replace: true }
+      )
+      setShowTambahOffcanvas(false)
+      setEditingMadrasah(null)
+    }
+  }, [editParam, list, loading, setSearchParams])
+
+  // Tombol kembali browser: hilangnya ?edit=… menutup offcanvas edit
+  useEffect(() => {
+    if (editParam != null) return
+    if (!showTambahOffcanvas || editingMadrasah == null) return
+    setShowTambahOffcanvas(false)
+    setEditingMadrasah(null)
+  }, [editParam, showTambahOffcanvas, editingMadrasah])
 
   const filterOptions = useMemo(() => {
     const uniq = (arr) => [...new Set(arr)].filter(Boolean).map((v) => String(v).trim()).sort((a, b) => a.localeCompare(b, 'id'))
@@ -699,7 +766,18 @@ function DataMadrasah() {
             isInputFocused={isInputFocused}
             isFilterOpen={isFilterOpen}
             onFilterToggle={() => setIsFilterOpen((p) => !p)}
-            onTambahClick={() => { setEditingMadrasah(null); setShowTambahOffcanvas(true) }}
+            onTambahClick={() => {
+              setEditingMadrasah(null)
+              setShowTambahOffcanvas(true)
+              setSearchParams(
+                (prev) => {
+                  const n = new URLSearchParams(prev)
+                  n.delete('edit')
+                  return n
+                },
+                { replace: true }
+              )
+            }}
             onExportClick={() => setShowExportOffcanvas(true)}
             onImportClick={() => setShowImportOffcanvas(true)}
             onTemplateClick={handleTemplate}
@@ -732,7 +810,7 @@ function DataMadrasah() {
             sektorOptions={filterOptions.sektor}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            koordinatorLocked={isKoordinatorUgt}
+            koordinatorLocked={koordinatorFilterLocked}
             onRefresh={loadMadrasah}
           />
 
@@ -877,7 +955,10 @@ function DataMadrasah() {
                           />
                         </td>
                         <td className="px-3 py-2">
-                          <MadrasahFotoImg fotoPath={m.foto_path} size="small" />
+                          <div className="flex items-center gap-1">
+                            <MadrasahFotoImg fotoPath={m.foto_path} size="small" />
+                            {m.logo_path ? <MadrasahFotoImg fotoPath={m.logo_path} size="logo" /> : null}
+                          </div>
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">{(safePage - 1) * perPage + index + 1}</td>
                         <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{m.nama || '-'}</td>
@@ -924,8 +1005,13 @@ function DataMadrasah() {
                       </span>
                     )}
                     {/* Grid: 3/4 foto, 1/4 info (nama, pengasuh, pjgt) */}
-                    <div className="min-h-0 h-full overflow-hidden rounded-t-lg">
+                    <div className="min-h-0 h-full overflow-hidden rounded-t-lg relative">
                       <MadrasahFotoImg fotoPath={m.foto_path} size="large" />
+                      {m.logo_path && (
+                        <div className="absolute bottom-2 left-2 z-10 shadow-sm rounded" title="Logo">
+                          <MadrasahFotoImg fotoPath={m.logo_path} size="logo" />
+                        </div>
+                      )}
                     </div>
                     <div className="p-2 sm:p-3 flex flex-col justify-center min-h-0 overflow-hidden gap-0.5">
                       <h3 className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 truncate pr-6" title={m.nama || '-'}>
@@ -945,21 +1031,17 @@ function DataMadrasah() {
           )}
       </div>
 
-      {/* Offcanvas Tambah Madrasah - render ke document.body */}
-      {createPortal(
-        <TambahMadrasahOffcanvas
-          ref={tambahMadrasahRef}
-          isOpen={showTambahOffcanvas}
-          onClose={closeTambahOffcanvas}
-          onSuccess={loadMadrasah}
-          onOpenCariKoordinator={() => setShowCariKoordinatorOffcanvas(true)}
-          initialData={editingMadrasah}
-          koordinatorLocked={isKoordinatorUgt}
-          currentUserId={user?.id}
-          currentUserNip={user?.nip}
-        />,
-        document.body
-      )}
+      <TambahMadrasahOffcanvas
+        ref={tambahMadrasahRef}
+        isOpen={showTambahOffcanvas}
+        onClose={closeTambahOffcanvas}
+        onSuccess={loadMadrasah}
+        onOpenCariKoordinator={() => setShowCariKoordinatorOffcanvas(true)}
+        initialData={editingMadrasah}
+        koordinatorLocked={koordinatorFilterLocked}
+        currentUserId={user?.id}
+        currentUserNip={user?.nip}
+      />
       {/* Offcanvas Cari Pengurus - portal terpisah (sibling) agar selalu tampil di depan */}
       {createPortal(
         <CariKoordinatorOffcanvas

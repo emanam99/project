@@ -20,6 +20,21 @@ class UserController
         $this->db = Database::getInstance()->getConnection();
     }
 
+    private function getUsersDuplicateFieldMessage(\PDOException $e): ?string
+    {
+        $info = $e->errorInfo ?? [];
+        $sqlState = (string) ($e->getCode() ?? '');
+        $driverCode = isset($info[1]) ? (int) $info[1] : 0;
+        if ($sqlState !== '23000' && $driverCode !== 1062) {
+            return null;
+        }
+        $errorText = strtolower((string) ($info[2] ?? $e->getMessage() ?? ''));
+        if (strpos($errorText, 'no_wa') !== false) return 'Nomor WA sudah dipakai';
+        if (strpos($errorText, 'email') !== false) return 'Email sudah dipakai';
+        if (strpos($errorText, 'username') !== false) return 'Username sudah dipakai';
+        return 'Data akun sudah dipakai';
+    }
+
     public function checkUser(Request $request, Response $response): Response
     {
         try {
@@ -150,7 +165,18 @@ class UserController
                 if ($rowU && !empty($rowU['id_user'])) {
                     $idUser = (int) $rowU['id_user'];
                     $emailVal = TextSanitizer::cleanText($input['email'] ?? '') ?: null;
-                    $this->db->prepare("UPDATE users SET email = ? WHERE id = ?")->execute([$emailVal, $idUser]);
+                    try {
+                        $this->db->prepare("UPDATE users SET email = ? WHERE id = ?")->execute([$emailVal, $idUser]);
+                    } catch (\PDOException $pdoEx) {
+                        $dup = $this->getUsersDuplicateFieldMessage($pdoEx);
+                        if ($dup !== null) {
+                            return $this->jsonResponse($response, [
+                                'success' => false,
+                                'message' => $dup
+                            ], 400);
+                        }
+                        throw $pdoEx;
+                    }
                     $emailUpdated = true;
                 }
             }
@@ -353,9 +379,8 @@ class UserController
     }
 
     /**
-     * GET /api/user/list-super-admin-uwaba - Get list of users with admin_uwaba role only
-     * Hanya menampilkan admin yang punya role admin_uwaba (termasuk yang juga punya super_admin)
-     * Digunakan untuk notifikasi rencana pengeluaran yang hanya perlu dikirim ke admin_uwaba
+     * GET /api/user/list-super-admin-uwaba — pengurus dengan role admin_uwaba (aktif), untuk notifikasi WA rencana/pengeluaran.
+     * Akses endpoint: siapa pun yang punya hak modul pengeluaran/keuangan (bukan hanya admin_uwaba).
      */
     public function getSuperAdminAndUwabaUsers(Request $request, Response $response): Response
     {

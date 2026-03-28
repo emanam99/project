@@ -6,9 +6,11 @@ import { useNotification } from '../../../../contexts/NotificationContext'
  * Custom hook untuk mengelola filtering dan pagination draft rencana pengeluaran
  * @param {string} activeTab - Tab yang aktif (harus 'draft')
  * @param {number} itemsPerPage - Jumlah item per halaman
+ * @param {{ lockedLembagaId?: string|null }} [options]
  * @returns {Object} State dan handlers untuk filtering draft
  */
-export const useDraftFilters = (activeTab, itemsPerPage = 50) => {
+export const useDraftFilters = (activeTab, itemsPerPage = 50, options = {}) => {
+  const { lockedLembagaId = null } = options
   const { showNotification } = useNotification()
   
   // Data state
@@ -41,7 +43,8 @@ export const useDraftFilters = (activeTab, itemsPerPage = 50) => {
         null, // tanggal_dari
         null, // tanggal_sampai
         1,
-        10000 // limit besar untuk mendapatkan semua data
+        10000, // limit besar untuk mendapatkan semua data
+        'draft'
       )
       if (response.success) {
         setAllDraft(response.data.rencana || [])
@@ -55,6 +58,12 @@ export const useDraftFilters = (activeTab, itemsPerPage = 50) => {
       setLoading(false)
     }
   }, [showNotification])
+
+  useEffect(() => {
+    if (lockedLembagaId) {
+      setDraftLembagaFilter(lockedLembagaId)
+    }
+  }, [lockedLembagaId])
 
   // Load data saat tab draft aktif
   useEffect(() => {

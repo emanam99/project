@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\RoleHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -26,13 +27,62 @@ class LembagaController
     }
 
     /**
+     * @return array{all: bool, ids: list<string>}
+     */
+    private function lembagaListScopeFromUser(?array $user): array
+    {
+        if ($user === null || $user === []) {
+            return ['all' => true, 'ids' => []];
+        }
+        if (RoleHelper::tokenHasAnyRoleKey($user, ['super_admin', 'admin_uwaba'])) {
+            return ['all' => true, 'ids' => []];
+        }
+        if (RoleHelper::tokenHasAnyRoleKey($user, ['admin_lembaga'])) {
+            if (!empty($user['lembaga_scope_all'])) {
+                return ['all' => true, 'ids' => []];
+            }
+
+            return ['all' => false, 'ids' => RoleHelper::tokenPengeluaranLembagaIdsFromUser($user)];
+        }
+
+        return ['all' => true, 'ids' => []];
+    }
+
+    private function userMayAccessLembagaId(?array $user, string $lembagaId): bool
+    {
+        $scope = $this->lembagaListScopeFromUser($user);
+        if ($scope['all']) {
+            return true;
+        }
+        $id = trim($lembagaId);
+
+        return $id !== '' && in_array($id, $scope['ids'], true);
+    }
+
+    /**
      * GET /api/lembaga - Get all lembaga
      */
     public function getAllLembaga(Request $request, Response $response): Response
     {
         try {
-            $stmt = $this->db->query("SELECT * FROM lembaga ORDER BY id ASC");
-            $lembaga = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $user = $request->getAttribute('user');
+            $userArr = is_array($user) ? $user : null;
+            $scope = $this->lembagaListScopeFromUser($userArr);
+
+            if ($scope['all']) {
+                $stmt = $this->db->query('SELECT * FROM lembaga ORDER BY id ASC');
+                $lembaga = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            } else {
+                $ids = $scope['ids'];
+                if ($ids === []) {
+                    $lembaga = [];
+                } else {
+                    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                    $stmt = $this->db->prepare("SELECT * FROM lembaga WHERE id IN ($placeholders) ORDER BY id ASC");
+                    $stmt->execute($ids);
+                    $lembaga = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                }
+            }
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -61,6 +111,15 @@ class LembagaController
                     'success' => false,
                     'message' => 'ID lembaga tidak ditemukan'
                 ], 400);
+            }
+
+            $user = $request->getAttribute('user');
+            $userArr = is_array($user) ? $user : null;
+            if (!$this->userMayAccessLembagaId($userArr, (string) $id)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Akses ditolak. Role Anda tidak memiliki izin untuk mengakses endpoint ini.',
+                ], 403);
             }
 
             $stmt = $this->db->prepare("SELECT * FROM lembaga WHERE id = ?");

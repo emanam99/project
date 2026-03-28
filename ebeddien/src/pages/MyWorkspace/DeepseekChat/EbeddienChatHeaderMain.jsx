@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { EbeddienChatAvatarLogo, EbeddienChatWordmark } from './EbeddienChatBranding'
 
 /**
- * Header chat utama (mode Utama/Alternatif, font, pelatihan superadmin) — dipasang di slot layout /chat-ai.
+ * Header chat utama (mode Utama/Alternatif, font, menu pelatihan — visibilitas lewat chatAiTraining dari DB fitur).
  */
 export default function EbeddienChatHeaderMain({
   assistantName,
@@ -17,11 +17,15 @@ export default function EbeddienChatHeaderMain({
   setChatFontScale,
   chatHeaderMenuOpen,
   setChatHeaderMenuOpen,
-  isSuperAdminTraining,
+  /** @type {{ bank?: boolean, trainingChat?: boolean, dashboard?: boolean, riwayat?: boolean, userAi?: boolean } | null} */
+  chatAiTraining = null,
   dsToken,
   handleLogout,
   onOpenAiUserSettings
 }) {
+  const t = chatAiTraining
+  const showPelatihan =
+    t && (t.bank || t.trainingChat || t.dashboard || t.riwayat || t.userAi)
   return (
     <div className="shrink-0 rounded-none bg-primary-600 text-white shadow-md sm:rounded-t-lg dark:bg-primary-800">
       <button
@@ -130,48 +134,58 @@ export default function EbeddienChatHeaderMain({
                 </div>
               </div>
 
-              {isSuperAdminTraining ? (
+              {showPelatihan ? (
                 <div>
                   <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-primary-100/90">Pelatihan</p>
                   <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
-                    <Link
-                      to="/chat-ai/training"
-                      onClick={() => setChatHeaderMenuOpen(false)}
-                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
-                    >
-                      Bank Q&amp;A
-                    </Link>
-                    <Link
-                      to="/chat-ai/training-chat"
-                      onClick={() => setChatHeaderMenuOpen(false)}
-                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
-                    >
-                      Training Chat
-                    </Link>
-                    <Link
-                      to="/chat-ai/dashboard"
-                      onClick={() => setChatHeaderMenuOpen(false)}
-                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
-                    >
-                      Dashboard
-                    </Link>
-                    <Link
-                      to="/chat-ai/riwayat"
-                      onClick={() => setChatHeaderMenuOpen(false)}
-                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
-                    >
-                      Riwayat
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onOpenAiUserSettings?.()
-                        setChatHeaderMenuOpen(false)
-                      }}
-                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
-                    >
-                      User AI
-                    </button>
+                    {t.bank ? (
+                      <Link
+                        to="/chat-ai/training"
+                        onClick={() => setChatHeaderMenuOpen(false)}
+                        className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                      >
+                        Bank Q&amp;A
+                      </Link>
+                    ) : null}
+                    {t.trainingChat ? (
+                      <Link
+                        to="/chat-ai/training-chat"
+                        onClick={() => setChatHeaderMenuOpen(false)}
+                        className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                      >
+                        Training Chat
+                      </Link>
+                    ) : null}
+                    {t.dashboard ? (
+                      <Link
+                        to="/chat-ai/dashboard"
+                        onClick={() => setChatHeaderMenuOpen(false)}
+                        className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                      >
+                        Dashboard
+                      </Link>
+                    ) : null}
+                    {t.riwayat ? (
+                      <Link
+                        to="/chat-ai/riwayat"
+                        onClick={() => setChatHeaderMenuOpen(false)}
+                        className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                      >
+                        Riwayat
+                      </Link>
+                    ) : null}
+                    {t.userAi ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onOpenAiUserSettings?.()
+                          setChatHeaderMenuOpen(false)
+                        }}
+                        className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-center text-xs font-medium text-white hover:bg-white/20"
+                      >
+                        User AI
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

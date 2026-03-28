@@ -494,6 +494,15 @@ export const authAPI = {
     return response.data
   },
 
+  /**
+   * Menu/fitur eBeddien dari DB (app___fitur + role___fitur), gabungan semua role di token.
+   * @param {{ app_key?: string, types?: string }} [params] — types default 'menu', bisa 'menu,action'
+   */
+  getMyFiturMenu: async (params = {}) => {
+    const response = await api.get('/v2/me/fitur-menu', { params })
+    return response.data
+  },
+
   logout: () => {
     resetCsrfToken()
     localStorage.removeItem('auth_token')
@@ -2348,6 +2357,21 @@ export const settingsAPI = {
     const response = await api.get('/settings/roles-config')
     return response.data
   },
+  /** Matriks menu eBeddien ↔ role (tabel app___fitur + role___fitur). Super admin. */
+  getEbeddienMenuFitur: async () => {
+    const response = await api.get('/settings/ebeddien-menu-fitur')
+    return response.data
+  },
+  /** Body: { assignments: [ { fitur_id, role_ids: number[] } ] }. Super admin. */
+  putEbeddienMenuFitur: async (body) => {
+    const response = await api.put('/settings/ebeddien-menu-fitur', body)
+    return response.data
+  },
+  /** Satu menu: body { role_ids: number[] }. Super admin. */
+  patchEbeddienMenuFiturItem: async (fiturId, body) => {
+    const response = await api.patch(`/settings/ebeddien-menu-fitur/${fiturId}`, body)
+    return response.data
+  },
   getFeaturesConfig: async () => {
     const response = await api.get('/settings/features-config')
     return response.data
@@ -2615,7 +2639,7 @@ export const pengeluaranAPI = {
     return response.data
   },
 
-  getRencanaList: async (status = null, kategori = null, lembaga = null, tanggalDari = null, tanggalSampai = null, page = 1, limit = 20) => {
+  getRencanaList: async (status = null, kategori = null, lembaga = null, tanggalDari = null, tanggalSampai = null, page = 1, limit = 20, lembagaContext = null) => {
     let url = `/pengeluaran/rencana?page=${page}&limit=${limit}`
     if (status) {
       url += `&status=${status}`
@@ -2632,7 +2656,15 @@ export const pengeluaranAPI = {
     if (tanggalSampai) {
       url += `&tanggal_sampai=${encodeURIComponent(tanggalSampai)}`
     }
+    if (lembagaContext) {
+      url += `&lembaga_context=${encodeURIComponent(lembagaContext)}`
+    }
     const response = await api.get(url)
+    return response.data
+  },
+
+  deleteRencana: async (id) => {
+    const response = await api.delete(`/pengeluaran/rencana/${id}`)
     return response.data
   },
 
@@ -2891,6 +2923,16 @@ export const madrasahAPI = {
     return response.data
   },
 
+  /** Upload logo madrasah (PNG/JPEG, maks. 1 MB — kompresi di klien). Return { success, logo_path }. */
+  uploadLogo: async (file) => {
+    const formData = new FormData()
+    formData.append('logo', file)
+    const response = await api.post('/madrasah/upload-logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  },
+
   /** Cache blob URL per path agar tidak refetch (maks 50, LRU evict). */
   _fotoBlobCache: new Map(),
   _fotoBlobCacheMax: 50,
@@ -2917,6 +2959,134 @@ export const madrasahAPI = {
       return url
     }
     return null
+  }
+}
+
+/** Laporan koordinator UGT (ugt___koordonator) — admin_ugt, koordinator_ugt, super_admin */
+export const ugtLaporanKoordinatorAPI = {
+  getAll: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.id_madrasah) q.set('id_madrasah', String(params.id_madrasah))
+    if (params.id_koordinator) q.set('id_koordinator', String(params.id_koordinator))
+    if (params.id_tahun_ajaran) q.set('id_tahun_ajaran', params.id_tahun_ajaran)
+    if (params.bulan != null && params.bulan !== '') q.set('bulan', String(params.bulan))
+    const s = q.toString()
+    const response = await api.get(s ? `/ugt/laporan-koordinator?${s}` : '/ugt/laporan-koordinator')
+    return response.data
+  },
+
+  getById: async (id) => {
+    const response = await api.get(`/ugt/laporan-koordinator/${id}`)
+    return response.data
+  },
+
+  create: async (data) => {
+    const response = await api.post('/ugt/laporan-koordinator', data)
+    return response.data
+  },
+
+  update: async (id, data) => {
+    const response = await api.put(`/ugt/laporan-koordinator/${id}`, data)
+    return response.data
+  },
+
+  remove: async (id) => {
+    const response = await api.delete(`/ugt/laporan-koordinator/${id}`)
+    return response.data
+  },
+
+  getSantriOptions: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search) q.set('search', params.search)
+    if (params.limit) q.set('limit', String(params.limit))
+    const s = q.toString()
+    const response = await api.get(s ? `/ugt/laporan-koordinator/santri-options?${s}` : '/ugt/laporan-koordinator/santri-options')
+    return response.data
+  },
+
+  uploadFoto: async (file) => {
+    const formData = new FormData()
+    formData.append('foto', file)
+    const response = await api.post('/ugt/laporan-koordinator/upload-foto', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  }
+}
+
+/** Laporan GT UGT (ugt___gt) */
+export const ugtLaporanGtAPI = {
+  getAll: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.id_madrasah) q.set('id_madrasah', String(params.id_madrasah))
+    if (params.id_koordinator) q.set('id_koordinator', String(params.id_koordinator))
+    if (params.id_tahun_ajaran) q.set('id_tahun_ajaran', params.id_tahun_ajaran)
+    if (params.bulan != null && params.bulan !== '') q.set('bulan', String(params.bulan))
+    const s = q.toString()
+    const response = await api.get(s ? `/ugt/laporan-gt?${s}` : '/ugt/laporan-gt')
+    return response.data
+  },
+  getById: async (id) => {
+    const response = await api.get(`/ugt/laporan-gt/${id}`)
+    return response.data
+  },
+  create: async (data) => {
+    const response = await api.post('/ugt/laporan-gt', data)
+    return response.data
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/ugt/laporan-gt/${id}`, data)
+    return response.data
+  },
+  remove: async (id) => {
+    const response = await api.delete(`/ugt/laporan-gt/${id}`)
+    return response.data
+  },
+  getSantriOptions: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search) q.set('search', params.search)
+    if (params.limit) q.set('limit', String(params.limit))
+    const s = q.toString()
+    const response = await api.get(s ? `/ugt/laporan-gt/santri-options?${s}` : '/ugt/laporan-gt/santri-options')
+    return response.data
+  }
+}
+
+/** Laporan PJGT UGT (ugt___pjgt) */
+export const ugtLaporanPjgtAPI = {
+  getAll: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.id_madrasah) q.set('id_madrasah', String(params.id_madrasah))
+    if (params.id_koordinator) q.set('id_koordinator', String(params.id_koordinator))
+    if (params.id_tahun_ajaran) q.set('id_tahun_ajaran', params.id_tahun_ajaran)
+    if (params.bulan != null && params.bulan !== '') q.set('bulan', String(params.bulan))
+    const s = q.toString()
+    const response = await api.get(s ? `/ugt/laporan-pjgt?${s}` : '/ugt/laporan-pjgt')
+    return response.data
+  },
+  getById: async (id) => {
+    const response = await api.get(`/ugt/laporan-pjgt/${id}`)
+    return response.data
+  },
+  create: async (data) => {
+    const response = await api.post('/ugt/laporan-pjgt', data)
+    return response.data
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/ugt/laporan-pjgt/${id}`, data)
+    return response.data
+  },
+  remove: async (id) => {
+    const response = await api.delete(`/ugt/laporan-pjgt/${id}`)
+    return response.data
+  },
+  getSantriOptions: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search) q.set('search', params.search)
+    if (params.limit) q.set('limit', String(params.limit))
+    const s = q.toString()
+    const response = await api.get(s ? `/ugt/laporan-pjgt/santri-options?${s}` : '/ugt/laporan-pjgt/santri-options')
+    return response.data
   }
 }
 

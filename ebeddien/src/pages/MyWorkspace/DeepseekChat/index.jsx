@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { deepseekAPI } from '../../../services/api'
 import { useAuthStore } from '../../../store/authStore'
-import { userHasSuperAdminAccess } from '../../../utils/roleAccess'
+import { useChatAiFiturAccess } from '../../../hooks/useChatAiFiturAccess'
 import {
   getStoredDeepseekToken,
   getStoredDeepseekSessionId,
@@ -296,8 +296,16 @@ function TypingIndicator({ nameClass = 'text-xs', statusClass = 'text-xs' }) {
 export default function DeepseekChat() {
   const { user } = useAuthStore()
   const { showNotification } = useNotification()
-  const isSuperAdminTraining = userHasSuperAdminAccess(user)
-  const canUseAlternativeMode = isSuperAdminTraining
+  const chatAi = useChatAiFiturAccess()
+  const canUseAlternativeMode = chatAi.modeAlternatif
+  const canManageAiUsers = chatAi.uiUserAiSettings
+  const chatAiTraining = {
+    bank: chatAi.pageTrainingBank,
+    trainingChat: chatAi.pageTrainingChat,
+    dashboard: chatAi.pageDashboard,
+    riwayat: chatAi.pageRiwayat,
+    userAi: chatAi.uiUserAiSettings
+  }
 
   const [accountEmail, setAccountEmail] = useState(null)
   const [accountLoading, setAccountLoading] = useState(true)
@@ -499,7 +507,7 @@ export default function DeepseekChat() {
   }, [])
 
   useEffect(() => {
-    if (!isSuperAdminTraining || !adminAiUsersOpen) return
+    if (!canManageAiUsers || !adminAiUsersOpen) return
     let cancelled = false
     ;(async () => {
       setAdminAiUsersLoading(true)
@@ -528,7 +536,7 @@ export default function DeepseekChat() {
       }
     })()
     return () => { cancelled = true }
-  }, [isSuperAdminTraining, adminAiUsersOpen, adminAiUsersPage, adminAiUsersLimit, adminAiUsersSearch, adminAiUsersStatus])
+  }, [canManageAiUsers, adminAiUsersOpen, adminAiUsersPage, adminAiUsersLimit, adminAiUsersSearch, adminAiUsersStatus])
 
   const openEditAiUserLimit = (userRow) => {
     setEditAiUser(userRow)
@@ -1090,11 +1098,8 @@ export default function DeepseekChat() {
         setChatFontScale={setChatFontScale}
         chatHeaderMenuOpen={chatHeaderMenuOpen}
         setChatHeaderMenuOpen={setChatHeaderMenuOpen}
-        isSuperAdminTraining={isSuperAdminTraining}
-        apiOfficialBusy={apiOfficialBusy}
+        chatAiTraining={chatAiTraining}
         dsToken={dsToken}
-        sessionBusy={sessionBusy}
-        sending={sending}
         handleLogout={handleLogout}
         onOpenAiUserSettings={() => setAdminAiUsersOpen(true)}
       />
@@ -1108,12 +1113,9 @@ export default function DeepseekChat() {
     aiChatMode,
     chatFontScale,
     chatHeaderMenuOpen,
-    isSuperAdminTraining,
+    chatAiTraining,
     canUseAlternativeMode,
-    apiOfficialBusy,
     dsToken,
-    sessionBusy,
-    sending,
     handleLogout
   ])
 
@@ -1430,7 +1432,7 @@ export default function DeepseekChat() {
 
       {createPortal(
         <AnimatePresence>
-          {isSuperAdminTraining && adminAiUsersOpen ? (
+          {canManageAiUsers && adminAiUsersOpen ? (
             <>
               <motion.div
                 initial={{ opacity: 0 }}
@@ -1525,7 +1527,7 @@ export default function DeepseekChat() {
       )}
       {createPortal(
         <AnimatePresence>
-          {isSuperAdminTraining && editAiUser ? (
+          {canManageAiUsers && editAiUser ? (
             <>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-[120]" onClick={() => !editAiUserBusy && setEditAiUser(null)} />
               <motion.div

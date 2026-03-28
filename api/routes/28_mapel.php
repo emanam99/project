@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Config\EbeddienFiturAccess;
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\LembagaKitabController;
 
 return function (\Slim\App $app): void {
@@ -13,5 +14,5 @@ return function (\Slim\App $app): void {
         $group->post('', [LembagaKitabController::class, 'create']);
         $group->put('/{id}', [LembagaKitabController::class, 'update']);
         $group->delete('/{id}', [LembagaKitabController::class, 'delete']);
-    })->add(new RoleMiddleware(['super_admin', 'tarbiyah']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSuperSelectors(), ['super_admin', 'tarbiyah']))->add(new AuthMiddleware());
 };

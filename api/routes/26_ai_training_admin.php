@@ -2,9 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Config\EbeddienFiturAccess;
 use App\Controllers\AiTrainingAdminController;
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Middleware\EbeddienFiturMiddleware;
 
 return function (\Slim\App $app): void {
     $app->group('/api/ai-training', function ($group) {
@@ -22,5 +23,5 @@ return function (\Slim\App $app): void {
         $group->delete('/messages/{id}', [AiTrainingAdminController::class, 'deleteMessage']);
         $group->post('/messages/{id}/approve', [AiTrainingAdminController::class, 'approveMessage']);
         $group->post('/messages/{id}/feedback', [AiTrainingAdminController::class, 'feedbackMessage']);
-    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
 };

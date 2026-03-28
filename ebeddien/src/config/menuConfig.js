@@ -38,10 +38,10 @@ export const MENU_ITEMS = [
   // ========== Pendaftaran ==========
   { path: '/dashboard-pendaftaran', label: 'Dashboard', iconKey: 'dashboard', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran', label: 'Pendaftaran', iconKey: 'document', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
-  { path: '/pendaftaran/item', label: 'Item', iconKey: 'documentStack', group: 'Pendaftaran', requiresSuperAdmin: true },
   { path: '/pendaftaran/data-pendaftar', label: 'Data Pendaftar', iconKey: 'usersGroup', group: 'Pendaftaran', requiresRole: ['admin_psb', 'petugas_psb', 'super_admin'] },
   { path: '/pendaftaran/padukan-data', label: 'Padukan Data', iconKey: 'link', group: 'Pendaftaran', requiresSuperAdmin: true },
   { path: '/pendaftaran/pengaturan', label: 'Pengaturan', iconKey: 'cog', group: 'Pendaftaran', requiresRole: ['super_admin'] },
+  { path: '/pendaftaran/item', label: 'Item', iconKey: 'documentStack', group: 'Pendaftaran', requiresSuperAdmin: true },
   // ========== UWABA ==========
   { path: '/dashboard-pembayaran', label: 'Dashboard Pembayaran', iconKey: 'dashboard', group: 'UWABA', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin'] },
   { path: '/uwaba', label: 'UWABA', iconKey: 'calendar', group: 'UWABA', requiresRole: ['petugas_uwaba', 'admin_uwaba', 'super_admin'] },
@@ -51,6 +51,7 @@ export const MENU_ITEMS = [
   { path: '/laporan', label: 'Laporan', iconKey: 'chartBar', group: 'UWABA', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin'] },
   // ========== UGT ==========
   { path: '/ugt/data-madrasah', label: 'Data Madrasah', iconKey: 'building', group: 'UGT', requiresRole: ['admin_ugt', 'koordinator_ugt', 'super_admin'] },
+  { path: '/ugt/laporan', label: 'Laporan', iconKey: 'chartBar', group: 'UGT', requiresRole: ['admin_ugt', 'koordinator_ugt', 'super_admin'] },
   { path: '/koordinator', label: 'Koordinator', iconKey: 'usersGroup', group: 'UGT', requiresRole: ['admin_ugt', 'super_admin'] },
   // ========== Cashless ==========
   { path: '/cashless/cetak-kartu', label: 'Cetak Kartu', iconKey: 'cardPrint', group: 'Cashless', requiresRole: ['admin_cashless', 'super_admin'] },
@@ -65,10 +66,10 @@ export const MENU_ITEMS = [
   { path: '/aktivitas', label: 'Aktivitas', iconKey: 'clock', group: 'Keuangan', requiresRole: ['admin_uwaba', 'super_admin'] },
   { path: '/aktivitas-tahun-ajaran', label: 'Aktivitas TA', iconKey: 'chartStack', group: 'Keuangan', requiresRole: ['admin_uwaba', 'super_admin'] },
   // ========== Umroh ==========
-  { path: '/dashboard-umroh', label: 'Dashboard Umroh', iconKey: 'dashboard', group: 'Umroh', requiresRole: ['petugas_umroh', 'super_admin'] },
-  { path: '/umroh/jamaah', label: 'Jamaah Umroh', iconKey: 'usersGroup', group: 'Umroh', requiresRole: ['petugas_umroh', 'super_admin'] },
-  { path: '/umroh/tabungan', label: 'Tabungan Umroh', iconKey: 'currency', group: 'Umroh', requiresRole: ['petugas_umroh', 'super_admin'] },
-  { path: '/laporan-umroh', label: 'Laporan Umroh', iconKey: 'chartBar', group: 'Umroh', requiresRole: ['petugas_umroh', 'super_admin'] },
+  { path: '/dashboard-umroh', label: 'Dashboard Umroh', iconKey: 'dashboard', group: 'Umroh', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_umroh', 'petugas_umroh', 'super_admin'] },
+  { path: '/umroh/jamaah', label: 'Jamaah Umroh', iconKey: 'usersGroup', group: 'Umroh', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_umroh', 'petugas_umroh', 'super_admin'] },
+  { path: '/umroh/tabungan', label: 'Tabungan Umroh', iconKey: 'currency', group: 'Umroh', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_umroh', 'petugas_umroh', 'super_admin'] },
+  { path: '/laporan-umroh', label: 'Laporan Umroh', iconKey: 'chartBar', group: 'Umroh', requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_umroh', 'petugas_umroh', 'super_admin'] },
   // ========== Ijin ==========
   { path: '/dashboard-ijin', label: 'Dashboard', iconKey: 'dashboard', group: 'Ijin', requiresRole: ['admin_ijin', 'petugas_ijin', 'super_admin'] },
   { path: '/ijin/data-ijin', label: 'Data Ijin', iconKey: 'documentText', group: 'Ijin', requiresRole: ['admin_ijin', 'petugas_ijin', 'super_admin'] },
@@ -168,7 +169,9 @@ export function getHeaderGroups() {
   return HEADER_GROUP_ORDER.map((name) => {
     const routes = byGroup.get(name) || []
     const withPrefix = routes.map((r) => {
-      const prefix = routes.some((o) => o.path !== r.path && o.path.startsWith(r.path + '/'))
+      let prefix = routes.some((o) => o.path !== r.path && o.path.startsWith(r.path + '/'))
+      // Sub-rute hanya di router (mis. /ugt/laporan/koordinator), tidak ada di MENU_ITEMS
+      if (r.path === '/ugt/laporan') prefix = true
       return { ...r, prefix: prefix || undefined }
     })
     return { name, routes: withPrefix }

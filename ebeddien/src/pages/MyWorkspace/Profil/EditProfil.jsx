@@ -148,7 +148,7 @@ export default function EditProfil() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 pb-10">
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id="edit-profil-form" onSubmit={handleSubmit} className="space-y-6">
         {/* Data Diri */}
         <motion.section initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-100 dark:border-gray-700/50 p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Data Diri</h2>
@@ -464,13 +464,6 @@ export default function EditProfil() {
             className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
           >
             Batal
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium shadow-sm transition disabled:opacity-50"
-          >
-            {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
           </button>
         </div>
       </form>

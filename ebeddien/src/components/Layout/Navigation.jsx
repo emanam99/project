@@ -6,6 +6,8 @@ import { getNavFavorites, setNavFavorites, toggleNavFavorite } from '../../utils
 import { getExpandedMenuItemsMeta } from '../../config/menuConfig'
 import { getIcon } from '../../config/menuIcons'
 import { userHasSuperAdminAccess, userHasAnyAdminCap, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
+import { buildExpandedMenuFromFiturItems } from '../../utils/sidebarNavFromFiturApi'
+import api from '../../services/api'
 
 const navItems = [
   {
@@ -85,7 +87,27 @@ function Navigation() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
-  
+  const fiturMenuFromApi = useAuthStore((s) => s.fiturMenuFromApi)
+  const [aiMenuEnabledNav, setAiMenuEnabledNav] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.get('/deepseek/account')
+        if (cancelled) return
+        if (res?.data?.success) {
+          setAiMenuEnabledNav(res.data?.data?.ai_enabled !== false)
+        }
+      } catch (_) {
+        if (!cancelled) setAiMenuEnabledNav(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Ambil NIS/ID dari URL (pembayaran pakai nis, pendaftaran pakai id; bawa keduanya agar data santri tetap)
   const idFromUrl = searchParams.get('nis') || searchParams.get('id')
   const [showExpandedMenu, setShowExpandedMenu] = useState(false)
@@ -255,20 +277,21 @@ function Navigation() {
     return fromRole.length > 0 ? fromRole : []
   }, [roleBasedNavItems])
   
-  const expandedMenuItems = useMemo(
-    () =>
-      getExpandedMenuItemsMeta().map((item) => ({
-        path: item.path,
-        label: item.label,
-        icon: getIcon(item.iconKey, 'w-5 h-5'),
-        showSeparator: item.showSeparator,
-        groupLabel: item.groupLabel,
-        requiresRole: item.requiresRole,
-        requiresSuperAdmin: item.requiresSuperAdmin,
-        requiresPermission: item.requiresPermission
-      })),
-    []
-  )
+  const expandedMenuItems = useMemo(() => {
+    const fromApi = buildExpandedMenuFromFiturItems(fiturMenuFromApi)
+    if (fromApi) return fromApi
+    return getExpandedMenuItemsMeta().map((item) => ({
+      path: item.path,
+      label: item.label,
+      icon: getIcon(item.iconKey, 'w-5 h-5'),
+      showSeparator: item.showSeparator,
+      groupLabel: item.groupLabel,
+      requiresRole: item.requiresRole,
+      requiresSuperAdmin: item.requiresSuperAdmin,
+      requiresPermission: item.requiresPermission,
+      _fromApi: false
+    }))
+  }, [fiturMenuFromApi])
   const expandedGroupIndices = useMemo(() => {
     const out = []
     let g = 0
@@ -290,6 +313,8 @@ function Navigation() {
   // Filter expanded menu items dan bawa groupIndex agar pembatas antar grup selalu tampil
   const filteredExpandedItems = useMemo(() => {
     const canSee = (item) => {
+      if (item.path === '/chat-ai' && !aiMenuEnabledNav) return false
+      if (item._fromApi) return true
       if (isSuperAdmin) return true // Super Admin bisa lihat semua menu (termasuk Umroh, Ijin, dll)
       if (item.requiresRole) return hasRole(item.requiresRole)
       if (item.requiresSuperAdmin) return isSuperAdmin
@@ -300,7 +325,16 @@ function Navigation() {
     return expandedMenuItems
       .map((item, i) => ({ item, groupIndex: expandedGroupIndices[i] }))
       .filter(({ item }) => canSee(item))
-  }, [user, expandedGroupIndices, hasRole, isSuperAdmin, isAdminOrSuperAdmin, hasPermission])
+  }, [
+    user,
+    expandedMenuItems,
+    expandedGroupIndices,
+    hasRole,
+    isSuperAdmin,
+    isAdminOrSuperAdmin,
+    hasPermission,
+    aiMenuEnabledNav
+  ])
   
   // Check if user has any expanded menu items (including permission-based items)
   const hasExpandedMenuItems = filteredExpandedItems.length > 0
@@ -421,8 +455,11 @@ function Navigation() {
     if (path === '/aktivitas-tahun-ajaran' && location.pathname === '/aktivitas-tahun-ajaran') {
       return true
     }
-    // UGT - Data Madrasah, Koordinator
+    // UGT - Data Madrasah, Laporan, Koordinator
     if (path === '/ugt/data-madrasah' && location.pathname === '/ugt/data-madrasah') {
+      return true
+    }
+    if (path === '/ugt/laporan' && (location.pathname === '/ugt/laporan' || location.pathname.startsWith('/ugt/laporan/'))) {
       return true
     }
     if (path === '/koordinator' && location.pathname === '/koordinator') {

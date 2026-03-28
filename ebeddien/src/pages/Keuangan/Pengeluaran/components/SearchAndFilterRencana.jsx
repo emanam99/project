@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { buildPengeluaranLembagaFilterOptions } from '../utils/lembagaFilterOptions'
 
 // Memoized Search and Filter Section untuk Rencana
 const SearchAndFilterRencana = memo(({
@@ -21,8 +22,13 @@ const SearchAndFilterRencana = memo(({
   tanggalSampai,
   onTanggalSampaiChange,
   onCreateClick,
-  onRefresh
+  onRefresh,
+  lembagaRows = [],
+  allowedLembagaIds = null,
+  lembagaFilterDisabled = false,
+  showCreateButton = true
 }) => {
+  const lembagaOptions = buildPengeluaranLembagaFilterOptions(lembagaRows, allowedLembagaIds)
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
       {/* Search Input dengan tombol di kanan */}
@@ -115,20 +121,15 @@ const SearchAndFilterRencana = memo(({
                 <select
                   value={lembagaFilter}
                   onChange={onLembagaFilterChange}
-                  className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                  disabled={lembagaFilterDisabled}
+                  title={lembagaFilterDisabled ? 'Filter lembaga mengikuti akses peran Anda' : undefined}
+                  className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 disabled:opacity-60"
                 >
-                  <option value="">Lembaga</option>
-                  <option value="Pesantren">Pesantren</option>
-                  <option value="Isti'dadiyah">Isti'dadiyah</option>
-                  <option value="Ula">Ula</option>
-                  <option value="Wustha">Wustha</option>
-                  <option value="Ulya">Ulya</option>
-                  <option value="Guru Tugas">Guru Tugas</option>
-                  <option value="PAUD">PAUD</option>
-                  <option value="SMP">SMP</option>
-                  <option value="MTs">MTs</option>
-                  <option value="SMAI">SMAI</option>
-                  <option value="STAI">STAI</option>
+                  {lembagaOptions.map((o) => (
+                    <option key={o.value || '_all'} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
                 </select>
                 <input
                   type="date"
@@ -151,17 +152,20 @@ const SearchAndFilterRencana = memo(({
       </AnimatePresence>
 
       {/* Create Button */}
-      <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-        <button
-          onClick={onCreateClick}
-          className="px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-1.5 text-sm"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
-          Buat
-        </button>
-      </div>
+      {showCreateButton ? (
+        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+          <button
+            type="button"
+            onClick={onCreateClick}
+            className="px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-1.5 text-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Buat
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 })

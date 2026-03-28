@@ -15,13 +15,9 @@ import InfoAplikasi from './pages/Tentang/InfoAplikasi'
 import { useAuthStore } from './store/authStore'
 import { useThemeStore } from './store/themeStore'
 import ProtectedRoute from './components/Auth/ProtectedRoute'
-import SuperAdminRoute from './components/Auth/SuperAdminRoute'
-import AdminRoute from './components/Auth/AdminRoute'
-import RoleRoute from './components/Auth/RoleRoute'
-import { createFinanceRoute } from './components/Auth/PermissionRoute'
-
-// Route Keuangan: manage_finance + hanya admin_uwaba & super_admin (bukan admin_umroh)
-const FinanceRoute = createFinanceRoute()
+import DatabaseMenuOutlet from './components/Auth/DatabaseMenuOutlet'
+import ChatAiSubRouteGuard from './components/Auth/ChatAiSubRouteGuard'
+import PendaftaranAdminSubRouteGuard from './components/Auth/PendaftaranAdminSubRouteGuard'
 import { NotificationProvider } from './contexts/NotificationContext'
 import InstallPrompt from './components/InstallPrompt'
 import LiveSocketSync from './components/LiveSocket/LiveSocketSync'
@@ -29,6 +25,7 @@ import { LiveSocketProvider } from './contexts/LiveSocketContext'
 import GlobalChatNotifier from './components/Chat/GlobalChatNotifier'
 import pwaSubscriptionService from './services/pwaSubscriptionService'
 import { authPageFlipVariants, authPageFlipStyle } from './utils/authPageTransition'
+import { useUgtLaporanFiturAccess } from './hooks/useUgtLaporanFiturAccess'
 
 // Lazy load pages for code splitting
 const DashboardUmum = lazy(() => import('./pages/Settings/DashboardUmum'))
@@ -38,6 +35,7 @@ const DashboardUmroh = lazy(() => import('./pages/Umroh/DashboardUmroh'))
 const DashboardPendaftaran = lazy(() => import('./pages/Pendaftaran/DashboardPendaftaran'))
 const Pendaftaran = lazy(() => import('./pages/Pendaftaran/index.jsx'))
 const PendaftaranItem = lazy(() => import('./pages/Pendaftaran/Item'))
+const PendaftaranItemLayout = lazy(() => import('./pages/Pendaftaran/PendaftaranItemLayout'))
 const PendaftaranData = lazy(() => import('./pages/Pendaftaran/PendaftaranData'))
 const DataPendaftar = lazy(() => import('./pages/Pendaftaran/DataPendaftar'))
 const PadukanData = lazy(() => import('./pages/Pendaftaran/PadukanData'))
@@ -48,7 +46,6 @@ const ManageKondisi = lazy(() => import('./pages/Pendaftaran/ManageKondisi'))
 const KondisiRegistrasi = lazy(() => import('./pages/Pendaftaran/KondisiRegistrasi'))
 const AssignItemToSet = lazy(() => import('./pages/Pendaftaran/AssignItemToSet'))
 const Simulasi = lazy(() => import('./pages/Pendaftaran/Simulasi'))
-const Pembayaran = lazy(() => import('./pages/Pembayaran/index.jsx'))
 const PembayaranGate = lazy(() => import('./pages/Pembayaran/PembayaranGate.jsx'))
 const Laporan = lazy(() => import('./pages/Pembayaran/Laporan'))
 const LaporanUmroh = lazy(() => import('./pages/Umroh/LaporanUmroh'))
@@ -109,6 +106,10 @@ const KalenderPesantren = lazy(() => import('./pages/KalenderPesantren/index.jsx
 const KalenderPesantrenPengaturan = lazy(() => import('./pages/KalenderPesantren/Pengaturan.jsx'))
 const KalenderPesantrenKelolaEvent = lazy(() => import('./pages/KalenderPesantren/KelolaEvent.jsx'))
 const DataMadrasah = lazy(() => import('./pages/UGT/DataMadrasah'))
+const LaporanUGT = lazy(() => import('./pages/UGT/LaporanUGT'))
+const LaporanKoordinatorPage = lazy(() => import('./pages/UGT/LaporanKoordinatorPage'))
+const LaporanGTPage = lazy(() => import('./pages/UGT/LaporanGTPage'))
+const LaporanPJGTPage = lazy(() => import('./pages/UGT/LaporanPJGTPage'))
 const DataToko = lazy(() => import('./pages/Cashless/DataToko'))
 const PembuatanAkunCashless = lazy(() => import('./pages/Cashless/PembuatanAkunCashless'))
 const PengaturanCashless = lazy(() => import('./pages/Cashless/PengaturanCashless'))
@@ -133,6 +134,15 @@ const PageLoader = () => (
     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
   </div>
 )
+
+function UgtLaporanIndexRedirect() {
+  const { search } = useLocation()
+  const { firstTabPath, noTabAccess } = useUgtLaporanFiturAccess()
+  if (noTabAccess) {
+    return null
+  }
+  return <Navigate to={{ pathname: firstTabPath || '/ugt/laporan/koordinator', search }} replace />
+}
 
 // Auth: panel kiri 1 (shared), yang flip hanya bagian kanan (form)
 const AUTH_PATHS = ['/login', '/daftar', '/lupa-password']
@@ -610,226 +620,47 @@ function App() {
           {/* Halaman pertama untuk semua user: Beranda */}
           <Route path="/" element={<Navigate to="/beranda" replace />} />
           <Route path="/dashboard" element={<Navigate to="/beranda" replace />} />
-          {/* Dashboard Pembayaran - Only accessible by admin_uwaba, petugas_uwaba, and super_admin */}
-          <Route element={<RoleRoute allowedRoles={['admin_uwaba', 'petugas_uwaba', 'super_admin']} />}>
-          <Route 
-            path="/dashboard-pembayaran" 
-            element={
-              <Suspense fallback={<PageLoader />}>
-                <DashboardPembayaran />
-              </Suspense>
-            } 
-          />
-          </Route>
-          {/* Dashboard Umum — grup Setting, hanya super_admin */}
-          <Route element={<SuperAdminRoute />}>
-            <Route 
-              path="/dashboard-umum" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <DashboardUmum />
-                </Suspense>
-              } 
-            />
-          </Route>
-          {/* Dashboard Pendaftaran - Only accessible by admin_psb or petugas_psb role */}
-          <Route element={<RoleRoute allowedRoles={['admin_psb', 'petugas_psb', 'super_admin']} />}>
-            <Route 
-              path="/dashboard-pendaftaran" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <DashboardPendaftaran />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Pendaftaran />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/data" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <PendaftaranData />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/data-pendaftar" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <DataPendaftar />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/editor" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ImageEditorPage />
-                </Suspense>
-              } 
-            />
-            
-            {/* Pendaftaran Super Admin only: Item, Padukan Data, Item Set, Kondisi, Registrasi, Assign, Simulasi, Pengaturan */}
-            <Route element={<RoleRoute allowedRoles={['super_admin']} />}>
-              <Route 
-                path="/pendaftaran/item" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <PendaftaranItem />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/pendaftaran/padukan-data" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <PadukanData />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/pendaftaran/manage-item-set" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <ManageItemSet />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/pendaftaran/manage-kondisi" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <ManageKondisi />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/pendaftaran/kondisi-registrasi" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <KondisiRegistrasi />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/pendaftaran/assign-item" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <AssignItemToSet />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/pendaftaran/simulasi" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Simulasi />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/pendaftaran/pengaturan" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <Pengaturan />
-                  </Suspense>
-                } 
-              />
-            </Route>
-          </Route>
 
-          {/* UWABA / Pembayaran Routes - satu route agar uwaba/tunggakan/khusus tidak unmount (biodata tetap) */}
-          <Route element={<RoleRoute allowedRoles={['admin_uwaba', 'petugas_uwaba', 'super_admin']} />}>
-            <Route 
-              path="/pembayaran/manage-data" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ManageData />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pembayaran/import-khusus" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ImportKhusus />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pembayaran/import-tunggakan" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ImportTunggakan />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/:pembayaranMode" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <PembayaranGate />
-                </Suspense>
-              } 
-            />
-          </Route>
-          {/* Laporan - Only accessible by admin_uwaba, petugas_uwaba, admin_psb, petugas_psb, and super_admin */}
-          <Route element={<RoleRoute allowedRoles={['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']} />}>
-          <Route 
-            path="/laporan" 
-            element={
-              <Suspense fallback={<PageLoader />}>
-                <Laporan />
-              </Suspense>
-            } 
-          />
-          </Route>
-          {/* Beranda & Profil - semua user login bisa akses */}
-          <Route 
-            path="/beranda" 
+          {/* Workspace & kalender dasar: tanpa cek fitur (semua user login) */}
+          <Route
+            path="/beranda"
             element={
               <Suspense fallback={<PageLoader />}>
                 <Beranda />
               </Suspense>
-            } 
+            }
           />
-          <Route 
-            path="/semua-menu" 
+          <Route
+            path="/semua-menu"
             element={
               <Suspense fallback={<PageLoader />}>
                 <SemuaMenu />
               </Suspense>
-            } 
+            }
           />
-          <Route 
-            path="/profil/*" 
+          <Route
+            path="/profil/*"
             element={
               <Suspense fallback={<PageLoader />}>
                 <Profil />
               </Suspense>
-            } 
+            }
           />
-          <Route 
-            path="/aktivitas-saya" 
+          <Route
+            path="/aktivitas-saya"
             element={
               <Suspense fallback={<PageLoader />}>
                 <AktivitasSaya />
               </Suspense>
-            } 
+            }
           />
-          <Route 
-            path="/chat" 
+          <Route
+            path="/chat"
             element={
               <Suspense fallback={<PageLoader />}>
                 <Chat />
               </Suspense>
-            } 
+            }
           />
           <Route
             path="/chat-ai"
@@ -847,7 +678,7 @@ function App() {
                 </Suspense>
               }
             />
-            <Route element={<SuperAdminRoute />}>
+            <Route element={<ChatAiSubRouteGuard />}>
               <Route
                 path="training"
                 element={
@@ -882,25 +713,193 @@ function App() {
               />
             </Route>
           </Route>
-          {/* Kalender - semua user login bisa lihat */}
-          <Route 
-            path="/kalender" 
+          <Route
+            path="/kalender"
             element={
               <Suspense fallback={<PageLoader />}>
                 <Kalender />
               </Suspense>
-            } 
+            }
           />
-          <Route 
-            path="/kalender/hari-penting" 
+          <Route
+            path="/kalender/hari-penting"
             element={
               <Suspense fallback={<PageLoader />}>
                 <KalenderHariPenting />
               </Suspense>
-            } 
+            }
           />
-          {/* Converter - hanya super_admin dan admin_kalender */}
-          <Route element={<RoleRoute allowedRoles={['super_admin', 'admin_kalender']} />}>
+
+          {/* Modul: hak akses dari fiturMenuCodes (DB / JWT) */}
+          <Route element={<DatabaseMenuOutlet />}>
+            <Route
+              path="/dashboard-pembayaran"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DashboardPembayaran />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/dashboard-umum"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DashboardUmum />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/dashboard-pendaftaran"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DashboardPendaftaran />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pendaftaran"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Pendaftaran />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pendaftaran/data"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <PendaftaranData />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pendaftaran/data-pendaftar"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DataPendaftar />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pendaftaran/editor"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ImageEditorPage />
+                </Suspense>
+              }
+            />
+            <Route path="/pendaftaran/manage-item-set" element={<Navigate to="/pendaftaran/item/set" replace />} />
+            <Route path="/pendaftaran/manage-kondisi" element={<Navigate to="/pendaftaran/item/kondisi" replace />} />
+            <Route path="/pendaftaran/kondisi-registrasi" element={<Navigate to="/pendaftaran/item/registrasi" replace />} />
+            <Route path="/pendaftaran/assign-item" element={<Navigate to="/pendaftaran/item/assign" replace />} />
+            <Route path="/pendaftaran/simulasi" element={<Navigate to="/pendaftaran/item/simulasi" replace />} />
+            <Route element={<PendaftaranAdminSubRouteGuard />}>
+              <Route
+                path="/pendaftaran/item"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PendaftaranItemLayout />
+                  </Suspense>
+                }
+              >
+                <Route
+                  index
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <PendaftaranItem />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="set"
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <ManageItemSet />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="kondisi"
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <ManageKondisi />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="registrasi"
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <KondisiRegistrasi />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="assign"
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <AssignItemToSet />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="simulasi"
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <Simulasi />
+                    </Suspense>
+                  }
+                />
+              </Route>
+              <Route
+                path="/pendaftaran/padukan-data"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PadukanData />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="/pendaftaran/pengaturan"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Pengaturan />
+                  </Suspense>
+                }
+              />
+            </Route>
+            <Route
+              path="/pembayaran/manage-data"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ManageData />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pembayaran/import-khusus"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ImportKhusus />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/pembayaran/import-tunggakan"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ImportTunggakan />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/laporan"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Laporan />
+                </Suspense>
+              }
+            />
             <Route
               path="/converter"
               element={
@@ -909,117 +908,102 @@ function App() {
                 </Suspense>
               }
             />
-          </Route>
-          {/* Pengaturan Kalender - admin_kalender atau super_admin saja */}
-          <Route element={<RoleRoute allowedRoles={['admin_kalender', 'super_admin']} />}>
-            <Route 
-              path="/kalender/pengaturan" 
+            <Route
+              path="/kalender/pengaturan"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KalenderPengaturan />
                 </Suspense>
               }
             />
-          </Route>
-          {/* Kalender Pesantren (Google Calendar) — hanya super_admin */}
-          <Route element={<SuperAdminRoute />}>
-            <Route 
-              path="/kalender-pesantren" 
+            <Route
+              path="/kalender-pesantren"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KalenderPesantren />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/kalender-pesantren/pengaturan" 
+            <Route
+              path="/kalender-pesantren/pengaturan"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KalenderPesantrenPengaturan />
                 </Suspense>
               }
             />
-            <Route 
-              path="/kalender-pesantren/kelola-event" 
+            <Route
+              path="/kalender-pesantren/kelola-event"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KalenderPesantrenKelolaEvent />
                 </Suspense>
               }
             />
-          </Route>
-          {/* Super Admin — Dashboard (user aktif / live) */}
-          <Route element={<SuperAdminRoute />}>
-            <Route 
-              path="/super-admin/dashboard" 
+            <Route
+              path="/super-admin/dashboard"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <DashboardSuperAdmin />
                 </Suspense>
               }
             />
-          </Route>
-          {/* Routes Keuangan: manage_finance + hanya admin_uwaba & super_admin */}
-          <Route element={<FinanceRoute />}>
-            <Route 
-              path="/dashboard-keuangan" 
+            <Route
+              path="/dashboard-keuangan"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KeuanganDashboard />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/pengeluaran" 
+            <Route
+              path="/pengeluaran"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Pengeluaran />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/pengeluaran/create" 
+            <Route
+              path="/pengeluaran/create"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <EditRencana />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/pengeluaran/edit/:id" 
+            <Route
+              path="/pengeluaran/edit/:id"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <EditRencana />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/pemasukan" 
+            <Route
+              path="/pemasukan"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Pemasukan />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/aktivitas" 
+            <Route
+              path="/aktivitas"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Aktivitas />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/aktivitas-tahun-ajaran" 
+            <Route
+              path="/aktivitas-tahun-ajaran"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <AktivitasTahunAjaran />
                 </Suspense>
-              } 
+              }
             />
-          </Route>
-          {/* Lembaga & Domisili — super_admin, tarbiyah; super admin asli tetap akses saat "coba sebagai" */}
-          <Route element={<RoleRoute allowedRoles={['super_admin', 'tarbiyah']} allowIfRealSuperAdmin />}>
             <Route
               path="/pengurus"
               element={
@@ -1116,57 +1100,6 @@ function App() {
                 </Suspense>
               }
             />
-          </Route>
-          {/* Super Admin Only Routes */}
-          <Route element={<SuperAdminRoute />}>
-            <Route 
-              path="/pendaftaran/item" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <PendaftaranItem />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/manage-item-set" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ManageItemSet />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/manage-kondisi" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <ManageKondisi />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/kondisi-registrasi" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <KondisiRegistrasi />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/assign-item" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <AssignItemToSet />
-                </Suspense>
-              } 
-            />
-            <Route 
-              path="/pendaftaran/simulasi" 
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Simulasi />
-                </Suspense>
-              } 
-            />
             <Route
               path="/manage-users"
               element={
@@ -1175,246 +1108,267 @@ function App() {
                 </Suspense>
               }
             />
-            <Route 
-              path="/manage-users/edit/:id" 
+            <Route
+              path="/manage-users/edit/:id"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <EditUser />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/manage-users/import" 
+            <Route
+              path="/manage-users/import"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <ImportUsers />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/settings/tahun-ajaran" 
+            <Route
+              path="/settings/tahun-ajaran"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <TahunAjaranPage />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/settings/role-akses" 
+            <Route
+              path="/settings/role-akses"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <RoleAkses />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/settings/fitur" 
+            <Route
+              path="/settings/fitur"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Fitur />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/settings/notifikasi" 
+            <Route
+              path="/settings/notifikasi"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Notifikasi />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/settings/watzap" 
+            <Route
+              path="/settings/watzap"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Watzap />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/settings/wa-interactive-menu" 
+            <Route
+              path="/settings/wa-interactive-menu"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <WaInteractiveMenu />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/manage-uploads" 
+            <Route
+              path="/manage-uploads"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <ManageUploads />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/whatsapp-koneksi" 
+            <Route
+              path="/whatsapp-koneksi"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KoneksiWa />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/juara/data-juara" 
+            <Route
+              path="/juara/data-juara"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <DataJuara />
                 </Suspense>
-              } 
+              }
             />
-          </Route>
-          
-          {/* Umroh — akses hanya super_admin dan petugas_umroh */}
-          <Route element={<RoleRoute allowedRoles={['petugas_umroh', 'super_admin']} />}>
-            <Route 
-              path="/dashboard-umroh" 
+            <Route
+              path="/dashboard-umroh"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <DashboardUmroh />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/laporan-umroh" 
+            <Route
+              path="/laporan-umroh"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <LaporanUmroh />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/umroh/jamaah" 
+            <Route
+              path="/umroh/jamaah"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <UmrohJamaah />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/umroh/jamaah/create" 
+            <Route
+              path="/umroh/jamaah/create"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <UmrohJamaahForm />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/umroh/jamaah/:id/edit" 
+            <Route
+              path="/umroh/jamaah/:id/edit"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <UmrohJamaahForm />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/umroh/tabungan" 
+            <Route
+              path="/umroh/tabungan"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <UmrohTabungan />
                 </Suspense>
-              } 
+              }
             />
-          </Route>
-          
-          {/* Dashboard Ijin - Only accessible by admin_ijin, petugas_ijin, and super_admin */}
-          <Route element={<RoleRoute allowedRoles={['admin_ijin', 'petugas_ijin', 'super_admin']} />}>
-            <Route 
-              path="/dashboard-ijin" 
+            <Route
+              path="/dashboard-ijin"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <DashboardIjin />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/ijin/data-ijin" 
+            <Route
+              path="/ijin/data-ijin"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <DataIjin />
                 </Suspense>
-              } 
+              }
             />
-            {/* Data Boyong - Only admin_ijin and super_admin (petugas_ijin tidak bisa akses) */}
-            <Route element={<RoleRoute allowedRoles={['admin_ijin', 'super_admin']} />}>
-              <Route 
-                path="/ijin/data-boyong" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <DataBoyong />
-                  </Suspense>
-                } 
-              />
-            </Route>
-          </Route>
-          {/* UGT - Data Madrasah: admin_ugt, koordinator_ugt, super_admin */}
-          <Route element={<RoleRoute allowedRoles={['admin_ugt', 'koordinator_ugt', 'super_admin']} />}>
-            <Route 
-              path="/ugt/data-madrasah" 
+            <Route
+              path="/ijin/data-boyong"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <DataBoyong />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/ugt/data-madrasah"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <DataMadrasah />
                 </Suspense>
-              } 
+              }
             />
-          </Route>
-          {/* UGT - Koordinator: admin_ugt, super_admin (Admin GT) */}
-          <Route element={<RoleRoute allowedRoles={['admin_ugt', 'super_admin']} />}>
-            <Route 
-              path="/koordinator" 
+            <Route
+              path="/ugt/laporan"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <LaporanUGT />
+                </Suspense>
+              }
+            >
+              <Route index element={<UgtLaporanIndexRedirect />} />
+              <Route
+                path="koordinator"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <LaporanKoordinatorPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="gt"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <LaporanGTPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="pjgt"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <LaporanPJGTPage />
+                  </Suspense>
+                }
+              />
+            </Route>
+            <Route
+              path="/koordinator"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Koordinator />
                 </Suspense>
-              } 
+              }
             />
-          </Route>
-          {/* Cashless: admin_cashless, petugas_cashless, super_admin (petugas hanya lihat menu Top Up) */}
-          <Route element={<RoleRoute allowedRoles={['admin_cashless', 'petugas_cashless', 'super_admin']} />}>
-            <Route 
-              path="/cashless/data-toko" 
+            <Route
+              path="/cashless/data-toko"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <DataToko />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/cashless/pembuatan-akun" 
+            <Route
+              path="/cashless/pembuatan-akun"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <PembuatanAkunCashless />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/cashless/pengaturan" 
+            <Route
+              path="/cashless/pengaturan"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <PengaturanCashless />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/cashless/topup" 
+            <Route
+              path="/cashless/topup"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <TopUpCashless />
                 </Suspense>
-              } 
+              }
             />
-            <Route 
-              path="/cashless/cetak-kartu/:id" 
+            <Route
+              path="/cashless/cetak-kartu/:id"
               element={
                 <Suspense fallback={<PageLoader />}>
                   <CetakKartuCashless />
                 </Suspense>
-              } 
+              }
+            />
+            <Route
+              path="/:pembayaranMode"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <PembayaranGate />
+                </Suspense>
+              }
             />
           </Route>
         </Route>
       </Route>
-      
       {/* 404 - Jangan arahkan /setup-akun ke login (link WA ke buat username/password) */}
       <Route path="*" element={<CatchAllRedirect />} />
     </Routes>

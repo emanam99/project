@@ -6,12 +6,21 @@ import { pendaftaranAPI, lembagaAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useAuthStore } from '../../store/authStore'
 import { userHasSuperAdminAccess, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
+import { usePendaftaranFiturAccess } from '../../hooks/usePendaftaranFiturAccess'
 import { useNotification } from '../../contexts/NotificationContext'
 import ExportPendaftarOffcanvas from './components/ExportPendaftarOffcanvas'
 import BulkEditPendaftarOffcanvas from './components/BulkEditPendaftarOffcanvas'
 import DetailBerkasOffcanvas from './components/DetailBerkasOffcanvas'
 import RiwayatChatOffcanvas from './components/RiwayatChatOffcanvas'
 import { useWhatsAppCheck } from './components/hooks/useWhatsAppCheck'
+
+/** Selaras backend (r.daftar_formal / r.daftar_diniyah). Kolom `formal`/`diniyah` di API bisa isi rombel santri, bukan pilihan registrasi. */
+function registrasiFormalLembagaId(p) {
+  return String(p?.daftar_formal ?? p?.formal ?? '')
+}
+function registrasiDiniyahLembagaId(p) {
+  return String(p?.daftar_diniyah ?? p?.diniyah ?? '')
+}
 
 function DataPendaftar() {
   const navigate = useNavigate()
@@ -129,24 +138,35 @@ function DataPendaftar() {
   // Kategori Pesantren pada salah satu lembaga ter-scope → perilaku seperti akses penuh di UI filter
   const isPesantrenUser = userLembagas.some((l) => l?.kategori === 'Pesantren')
 
-  /** Gabungan role: scope semua lembaga dari token, atau super_admin, atau lembaga Pesantren */
-  const hasFullAccess = isSuperAdmin || lembagaScopeAll || isPesantrenUser
+  /** Akses penuh fitur filter di UI: super_admin, admin/petugas PSB, scope_all, atau lembaga Pesantren. */
+  const hasFullAccess = isSuperAdmin || isPsbUser || lembagaScopeAll || isPesantrenUser
+
+  const { dataPendaftarFilterFormalDiniyahSemuaLembaga } = usePendaftaranFiturAccess()
 
   const applyScopedLembagaToRows = useCallback((rows) => {
     if (hasFullAccess || scopedLembagaIds.length === 0) return rows
-    if (scopedLembagaIds.length === 1 && userLembaga?.id && (userLembaga.kategori === 'Formal' || userLembaga.kategori === 'Diniyah')) {
-      if (userLembaga.kategori === 'Formal') {
-        return rows.filter((p) => String(p.formal ?? p.daftar_formal ?? '') === String(userLembaga.id))
-      }
-      return rows.filter((p) => String(p.diniyah ?? p.daftar_diniyah ?? '') === String(userLembaga.id))
-    }
     const idSet = new Set(scopedLembagaIds.map(String))
     return rows.filter((p) => {
-      const f = String(p.formal ?? p.daftar_formal ?? '')
-      const d = String(p.diniyah ?? p.daftar_diniyah ?? '')
+      const f = registrasiFormalLembagaId(p)
+      const d = registrasiDiniyahLembagaId(p)
       return idSet.has(f) || idSet.has(d)
     })
-  }, [hasFullAccess, scopedLembagaIds, userLembaga])
+  }, [hasFullAccess, scopedLembagaIds])
+
+  /**
+   * Opsi dropdown formal/diniyah: super_admin atau aksi fitur "semua lembaga" → dari seluruh data;
+   * selain itu → hanya lembaga yang termasuk scope role (jika ada id lembaga di akun).
+   */
+  const scopeRowsForFormalDiniyahOptions = useCallback((rows) => {
+    if (isSuperAdmin || dataPendaftarFilterFormalDiniyahSemuaLembaga) return rows
+    if (scopedLembagaIds.length === 0) return rows
+    const idSet = new Set(scopedLembagaIds.map(String))
+    return rows.filter((p) => {
+      const f = registrasiFormalLembagaId(p)
+      const d = registrasiDiniyahLembagaId(p)
+      return idSet.has(f) || idSet.has(d)
+    })
+  }, [isSuperAdmin, dataPendaftarFilterFormalDiniyahSemuaLembaga, scopedLembagaIds])
 
   // Load data lembaga untuk filter (satu atau beberapa id dari gabungan role)
   useEffect(() => {
@@ -198,7 +218,7 @@ function DataPendaftar() {
 
   const dynamicUniqueFormal = useMemo(() => {
     let filtered = pendaftarList
-    filtered = applyScopedLembagaToRows(filtered)
+    filtered = scopeRowsForFormalDiniyahOptions(filtered)
     if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (diniyahFilter) filtered = filtered.filter(p => sameLembagaForMemo((p.daftar_diniyah ?? p.diniyah), diniyahFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
@@ -212,11 +232,11 @@ function DataPendaftar() {
       count: filtered.filter(p => sameLembagaForMemo(p.daftar_formal ?? p.formal, val)).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
-  }, [pendaftarList, statusPendaftarFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, applyScopedLembagaToRows])
+  }, [pendaftarList, statusPendaftarFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, scopeRowsForFormalDiniyahOptions])
 
   const dynamicUniqueDiniyah = useMemo(() => {
     let filtered = pendaftarList
-    filtered = applyScopedLembagaToRows(filtered)
+    filtered = scopeRowsForFormalDiniyahOptions(filtered)
     if (statusPendaftarFilter) filtered = filtered.filter(p => p.status_pendaftar === statusPendaftarFilter)
     if (formalFilter) filtered = filtered.filter(p => sameLembagaForMemo((p.daftar_formal ?? p.formal), formalFilter))
     if (keteranganStatusFilter) filtered = filtered.filter(p => p.keterangan_status === keteranganStatusFilter)
@@ -230,7 +250,7 @@ function DataPendaftar() {
       count: filtered.filter(p => sameLembagaForMemo(p.daftar_diniyah ?? p.diniyah, val)).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
-  }, [pendaftarList, statusPendaftarFilter, formalFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, hasFullAccess, applyScopedLembagaToRows])
+  }, [pendaftarList, statusPendaftarFilter, formalFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, scopeRowsForFormalDiniyahOptions])
 
   const dynamicUniqueKeteranganStatus = useMemo(() => {
     let filtered = pendaftarList
@@ -795,11 +815,9 @@ function DataPendaftar() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex-1 flex flex-col min-h-0">
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
               <div className="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <span className="text-base font-normal text-gray-500 dark:text-gray-400">{filteredList.length}</span>
-                  
-                  {/* Export (selalu tampil) + Ubah Massal + Items per page */}
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="toolbar-scrollbar flex items-center justify-between gap-3 flex-nowrap overflow-x-auto">
+                  {/* Eksport / ubah massal — semua yang boleh akses menu Data Pendaftar */}
+                  <div className="flex items-center gap-2 flex-nowrap">
                     <button
                       type="button"
                       onClick={() => setIsExportOffcanvasOpen(true)}
@@ -811,32 +829,32 @@ function DataPendaftar() {
                       </svg>
                       Eksport
                     </button>
-                    {selectedItems.size > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setShowBulkEditOffcanvas(true)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded transition-colors"
-                          title="Ubah massal data terpilih"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Ubah Massal ({selectedItems.size})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedItems(new Set())}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
-                          title="Hapus semua pilihan"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          Hapus
-                        </button>
-                      </>
-                    )}
+                    {selectedItems.size > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowBulkEditOffcanvas(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-teal-600 hover:bg-teal-700 text-white rounded transition-colors"
+                        title="Ubah massal data terpilih"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Ubah Massal ({selectedItems.size})
+                      </button>
+                    ) : null}
+                    {selectedItems.size > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedItems(new Set())}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors"
+                        title="Hapus semua pilihan"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Hapus
+                      </button>
+                    ) : null}
                     <select
                       value={itemsPerPage >= filteredList.length ? 'all' : itemsPerPage}
                       onChange={(e) => handleItemsPerPageChange(e.target.value)}
@@ -850,6 +868,10 @@ function DataPendaftar() {
                       <option value="all">Semua</option>
                     </select>
                   </div>
+                  {/* Count santri (kanan) */}
+                  <span className="text-base font-normal text-gray-500 dark:text-gray-400 whitespace-nowrap shrink-0">
+                    {filteredList.length}
+                  </span>
                 </div>
               </div>
 

@@ -3,7 +3,8 @@
 declare(strict_types=1);
 
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Config\EbeddienFiturAccess;
+use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\AuthControllerV2;
 use App\Controllers\WebAuthnController;
 use App\Controllers\SantriBerkasControllerV2;
@@ -36,7 +37,7 @@ return function (\Slim\App $app): void {
         $group->post('/link', [SantriBerkasControllerV2::class, 'linkBerkas']);
         $group->post('/mark-tidak-ada', [SantriBerkasControllerV2::class, 'markTidakAda']);
         $group->post('/unmark-tidak-ada', [SantriBerkasControllerV2::class, 'unmarkTidakAda']);
-    })->add(new RoleMiddleware(['admin_psb', 'petugas_psb', 'super_admin', 'santri']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbStaffSuperSelectors(), ['admin_psb', 'petugas_psb', 'super_admin', 'santri']))->add(new AuthMiddleware());
 
     $app->get('/api/v2/auth/sessions', [AuthControllerV2::class, 'getSessions'])->add(new AuthMiddleware());
     $app->delete('/api/v2/auth/sessions/{id}', [AuthControllerV2::class, 'revokeSession'])->add(new AuthMiddleware());

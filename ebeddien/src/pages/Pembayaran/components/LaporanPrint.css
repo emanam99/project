@@ -1,0 +1,70 @@
+/* Area preview di offcanvas: selalu tampil seperti kertas putih */
+.print-laporan-pembayaran-page {
+  background: #fff;
+  color: #111827;
+}
+
+.print-laporan-pembayaran-page .laporan-print-summary-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+
+.print-laporan-pembayaran-page .laporan-print-total-box {
+  background: #fff;
+  border: 2px solid #f59e0b;
+}
+
+/* Ukuran font tabel dari offcanvas (variabel di-set inline) */
+.print-laporan-pembayaran-page .laporan-print-table-wrap {
+  --laporan-table-font-size: 9px;
+}
+
+.print-laporan-pembayaran-page .laporan-print-table-wrap .laporan-print,
+.print-laporan-pembayaran-page .laporan-print-table-wrap .laporan-print th,
+.print-laporan-pembayaran-page .laporan-print-table-wrap .laporan-print td {
+  font-size: var(--laporan-table-font-size, 9px);
+}
+
+.print-laporan-pembayaran-page .laporan-print-table-wrap .laporan-print-sub {
+  font-size: 0.9em;
+}
+
+@media print {
+  .print-laporan-pembayaran-page {
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .print-laporan-pembayaran-page .laporan-print-table-wrap {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  .laporan-print th {
+    background: #0d9488 !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .laporan-print tbody tr:nth-child(even) td {
+    background: #f0fdfa !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .laporan-print tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .laporan-print thead {
+    display: table-header-group !important;
+  }
+
+  .laporan-print {
+    page-break-inside: auto !important;
+  }
+}

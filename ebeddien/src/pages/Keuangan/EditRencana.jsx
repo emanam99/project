@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { pengeluaranAPI, userAPI, lembagaAPI } from '../../services/api'
 import { useAuthStore } from '../../store/authStore'
+import { usePengeluaranFiturAccess } from '../../hooks/usePengeluaranFiturAccess'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useNotification } from '../../contexts/NotificationContext'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
@@ -18,6 +19,7 @@ function EditRencana() {
   const { user } = useAuthStore()
   const { tahunAjaran } = useTahunAjaranStore()
   const { showNotification } = useNotification()
+  const pengeluaranFitur = usePengeluaranFiturAccess()
   const isCreateMode = !id || id === 'create'
   const [loading, setLoading] = useState(!isCreateMode)
   const [saving, setSaving] = useState(false)
@@ -50,6 +52,84 @@ function EditRencana() {
     details: isCreateMode ? [{ item: '', harga: '', jumlah: 1, isNew: true, rejected: false, alasan_penolakan: '' }] : []
   })
   const fileInputRef = useRef(null)
+
+  const lembagaOptions = useMemo(() => {
+    const ids = pengeluaranFitur.allowedLembagaIdsRencana
+    if (!ids || ids.length === 0) return listLembaga
+    return listLembaga.filter((l) => ids.includes(String(l.id)))
+  }, [listLembaga, pengeluaranFitur.allowedLembagaIdsRencana])
+
+  const lembagaSelectLocked =
+    pengeluaranFitur.rencanaLembagaFilterLocked && lembagaOptions.length === 1
+
+  const allowSaveAsDraft = useMemo(() => {
+    if (!pengeluaranFitur.apiHasPengeluaran) return true
+    if (isCreateMode) return pengeluaranFitur.rencanaBuat && pengeluaranFitur.rencanaSimpanDraft
+    if (rencana?.ket === 'draft') {
+      return pengeluaranFitur.draftEdit && pengeluaranFitur.rencanaSimpanDraft
+    }
+    return pengeluaranFitur.rencanaEdit && pengeluaranFitur.rencanaSimpanDraft
+  }, [
+    pengeluaranFitur.apiHasPengeluaran,
+    pengeluaranFitur.rencanaBuat,
+    pengeluaranFitur.rencanaSimpanDraft,
+    pengeluaranFitur.draftEdit,
+    pengeluaranFitur.rencanaEdit,
+    isCreateMode,
+    rencana?.ket
+  ])
+
+  const allowSaveSubmit = useMemo(() => {
+    if (!pengeluaranFitur.apiHasPengeluaran) return true
+    if (isCreateMode) return pengeluaranFitur.rencanaBuat && pengeluaranFitur.rencanaSimpan
+    if (rencana?.ket === 'draft') {
+      return pengeluaranFitur.draftEdit && pengeluaranFitur.rencanaSimpan
+    }
+    return pengeluaranFitur.rencanaEdit
+  }, [
+    pengeluaranFitur.apiHasPengeluaran,
+    pengeluaranFitur.rencanaBuat,
+    pengeluaranFitur.rencanaSimpan,
+    pengeluaranFitur.draftEdit,
+    pengeluaranFitur.rencanaEdit,
+    isCreateMode,
+    rencana?.ket
+  ])
+
+  useEffect(() => {
+    if (!isCreateMode || !lembagaOptions.length) return
+    if (lembagaSelectLocked) {
+      const only = String(lembagaOptions[0].id)
+      setFormData((prev) => (prev.lembaga === only ? prev : { ...prev, lembaga: only }))
+    }
+  }, [isCreateMode, lembagaOptions, lembagaSelectLocked])
+
+  useEffect(() => {
+    if (!pengeluaranFitur.apiHasPengeluaran) return
+    if (isCreateMode) {
+      if (!pengeluaranFitur.rencanaBuat) {
+        showNotification('Anda tidak memiliki akses membuat rencana pengeluaran', 'error')
+        navigate('/pengeluaran')
+      }
+      return
+    }
+    if (loading || !rencana) return
+    const ok = rencana.ket === 'draft' ? pengeluaranFitur.draftEdit : pengeluaranFitur.rencanaEdit
+    if (!ok) {
+      showNotification('Anda tidak memiliki akses mengedit rencana ini', 'error')
+      navigate('/pengeluaran')
+    }
+  }, [
+    pengeluaranFitur.apiHasPengeluaran,
+    pengeluaranFitur.rencanaBuat,
+    pengeluaranFitur.draftEdit,
+    pengeluaranFitur.rencanaEdit,
+    isCreateMode,
+    loading,
+    rencana,
+    navigate,
+    showNotification
+  ])
 
   useEffect(() => {
     if (!isCreateMode) {
@@ -687,6 +767,15 @@ function EditRencana() {
       }
     }
 
+    if (isDraft && !allowSaveAsDraft) {
+      showNotification('Anda tidak memiliki akses menyimpan sebagai draft', 'error')
+      return
+    }
+    if (!isDraft && !allowSaveSubmit) {
+      showNotification('Anda tidak memiliki akses untuk aksi simpan/kirim ini', 'error')
+      return
+    }
+
     try {
       setSaving(true)
       const currentUserId = user?.id || user?.user_id
@@ -1018,12 +1107,16 @@ function EditRencana() {
                     <select
                       value={formData.lembaga}
                       onChange={(e) => setFormData(prev => ({ ...prev, lembaga: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
+                      disabled={lembagaSelectLocked}
+                      title={lembagaSelectLocked ? 'Lembaga mengikuti akses filter rencana' : undefined}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200 disabled:opacity-60"
                     >
                       <option value="">Pilih Lembaga</option>
-                      {listLembaga.map((lembaga) => (
+                      {lembagaOptions.map((lembaga) => (
                         <option key={lembaga.id} value={lembaga.id}>
-                          {lembaga.id}
+                          {lembaga.nama != null && String(lembaga.nama).trim() !== ''
+                            ? lembaga.nama
+                            : lembaga.id}
                         </option>
                       ))}
                     </select>
@@ -1406,8 +1499,8 @@ function EditRencana() {
               )}
             </div>
 
-              {/* Actions */}
-              <div className="flex gap-2 justify-end mt-6">
+              {/* Actions — tombol hanya ditampilkan jika ada hak (bukan hanya disabled) */}
+              <div className="flex gap-2 justify-end mt-6 flex-wrap">
                 <button
                   type="button"
                   onClick={() => navigate('/pengeluaran')}
@@ -1415,36 +1508,40 @@ function EditRencana() {
                 >
                   Batal
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleSubmit(e, true)}
-                  disabled={saving}
-                  className="px-3 py-1.5 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                >
-                  {saving ? (
-                    <>
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                      Menyimpan...
-                    </>
-                  ) : (
-                    'Draft'
-                  )}
-                </button>
-                <button
-                  type="submit"
-                  form="rencana-form"
-                  disabled={saving}
-                  className="px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                >
-                  {saving ? (
-                    <>
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                      {isCreateMode ? 'Menyimpan...' : 'Mengupdate...'}
-                    </>
-                  ) : (
-                    isCreateMode ? 'Simpan' : 'Update'
-                  )}
-                </button>
+                {allowSaveAsDraft ? (
+                  <button
+                    type="button"
+                    onClick={(e) => handleSubmit(e, true)}
+                    disabled={saving}
+                    className="px-3 py-1.5 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                        Menyimpan...
+                      </>
+                    ) : (
+                      'Draft'
+                    )}
+                  </button>
+                ) : null}
+                {allowSaveSubmit ? (
+                  <button
+                    type="submit"
+                    form="rencana-form"
+                    disabled={saving}
+                    className="px-3 py-1.5 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                        {isCreateMode ? 'Menyimpan...' : 'Mengupdate...'}
+                      </>
+                    ) : (
+                      isCreateMode ? 'Simpan' : 'Update'
+                    )}
+                  </button>
+                ) : null}
               </div>
 
             {/* List Admin untuk Notifikasi */}

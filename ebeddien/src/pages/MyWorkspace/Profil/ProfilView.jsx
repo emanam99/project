@@ -374,6 +374,7 @@ export default function ProfilView() {
     : (user?.username?.charAt(0) || '?').toUpperCase()
 
   const localPasskeyRowIds = getLocalPasskeyRowIds(user?.username)
+  const hasPasskeyOnThisDevice = passkeyCredentials.some((c) => localPasskeyRowIds.includes(c.id))
 
   if (loading) {
     return (
@@ -667,7 +668,7 @@ export default function ProfilView() {
                   ) : (
                     <p className="text-sm text-gray-500 dark:text-gray-400">Belum ada entri passkey di server (muat ulang jika baru saja mendaftar).</p>
                   )}
-                  {browserSupportsWebAuthn() && (
+                  {browserSupportsWebAuthn() && !hasPasskeyOnThisDevice && (
                     <button
                       type="button"
                       onClick={handleRegisterPasskey}

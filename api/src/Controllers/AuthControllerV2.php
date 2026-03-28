@@ -165,10 +165,59 @@ class AuthControllerV2
         throw new \RuntimeException('Skema user___setup_tokens perlu migrasi. Jalankan: php vendor/bin/phinx migrate (dari folder api).');
     }
 
+    private function normalizeNoWaTo62(string $noWa): ?string
+    {
+        $digits = preg_replace('/\D/', '', trim($noWa));
+        if ($digits === '') {
+            return null;
+        }
+        if (strpos($digits, '0') === 0) {
+            $digits = '62' . substr($digits, 1);
+        } elseif (strpos($digits, '62') !== 0) {
+            $digits = '62' . $digits;
+        }
+        if (strlen($digits) < 10) {
+            return null;
+        }
+        return $digits;
+    }
+
+    private function isNoWaUsedByOtherUser(string $noWa62, ?int $excludeUserId = null): bool
+    {
+        $alt0 = strpos($noWa62, '62') === 0 ? ('0' . substr($noWa62, 2)) : $noWa62;
+        if ($excludeUserId !== null && $excludeUserId > 0) {
+            $stmt = $this->db->prepare("SELECT id FROM users WHERE no_wa IN (?, ?) AND id <> ? LIMIT 1");
+            $stmt->execute([$noWa62, $alt0, $excludeUserId]);
+        } else {
+            $stmt = $this->db->prepare("SELECT id FROM users WHERE no_wa IN (?, ?) LIMIT 1");
+            $stmt->execute([$noWa62, $alt0]);
+        }
+        return (bool) $stmt->fetch(\PDO::FETCH_ASSOC);
+    }
+
+    private function isNoWaReservedInActiveSetupToken(string $noWa62): bool
+    {
+        $alt0 = strpos($noWa62, '62') === 0 ? ('0' . substr($noWa62, 2)) : $noWa62;
+        if ($this->userSetupTokensMainHasNoWaColumn()) {
+            $stmt = $this->db->prepare("SELECT id FROM user___setup_tokens WHERE expires_at > NOW() AND no_wa IN (?, ?) LIMIT 1");
+            $stmt->execute([$noWa62, $alt0]);
+            if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
+                return true;
+            }
+        }
+        if ($this->userSetupTokensSantriLegacyTableExists() && $this->userSetupTokensSantriLegacyHasNoWaColumn()) {
+            $stmt = $this->db->prepare("SELECT id FROM user___setup_tokens_santri WHERE expires_at > NOW() AND no_wa IN (?, ?) LIMIT 1");
+            $stmt->execute([$noWa62, $alt0]);
+            if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Cek daftar: id_pengurus, nik, no_wa.
-     * Hanya cek: ID pengurus ada dan belum punya user. Tidak validasi NIK/no_wa (banyak NIK tidak valid).
-     * Return: sudah terdaftar di users atau belum; jika belum, return nama & no_wa untuk konfirmasi.
+     * Validasi: NIK valid + belum dipakai pengurus lain, no_wa valid + belum dipakai akun/proses pendaftaran lain.
      */
     public function daftarCheck(Request $request, Response $response): Response
     {
@@ -188,6 +237,10 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => $nikValidation['message']], 400);
             }
             $nik = $nikValidation['normalized'];
+            $noWa62 = $this->normalizeNoWaTo62($noWa);
+            if ($noWa62 === null) {
+                return $this->json($response, ['success' => false, 'message' => 'Nomor WhatsApp tidak valid'], 400);
+            }
 
             if (!ctype_digit((string)$idPengurus)) {
                 return $this->json($response, ['success' => false, 'message' => 'NIP Pengurus tidak valid'], 400);
@@ -223,12 +276,24 @@ class AuthControllerV2
                     'message' => 'NIK ini sudah terdaftar untuk pengurus lain. Jika ini Anda, silakan login dengan NIP yang sesuai. Jika bukan, periksa NIK atau hubungi admin.',
                 ], 400);
             }
+            if ($this->isNoWaUsedByOtherUser($noWa62)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Nomor WhatsApp sudah dipakai akun lain.',
+                ], 400);
+            }
+            if ($this->isNoWaReservedInActiveSetupToken($noWa62)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Nomor WhatsApp sedang dipakai pada proses pendaftaran lain. Gunakan nomor lain atau tunggu token sebelumnya kedaluwarsa (5 menit).',
+                ], 400);
+            }
 
             return $this->json($response, [
                 'success' => true,
                 'already_registered' => false,
                 'nama' => $pengurus['nama'] ?: 'Pengurus',
-                'no_wa' => $noWa,
+                'no_wa' => $noWa62,
             ], 200);
         } catch (\Exception $e) {
             error_log('AuthControllerV2::daftarCheck ' . $e->getMessage());
@@ -237,8 +302,8 @@ class AuthControllerV2
     }
 
     /**
-     * Konfirmasi daftar: update NIK dan no_wa di pengurus, buat token, kirim link WA (aktif 5 menit).
-     * NIK/no_wa yang user masukkan disimpan ke tabel pengurus (banyak NIK di DB tidak valid).
+     * Konfirmasi daftar: update NIK di pengurus, simpan no_wa di setup token, kirim link WA (aktif 5 menit).
+     * NIK/no_wa diverifikasi ulang agar aman dari race condition antar request.
      */
     public function daftarKonfirmasi(Request $request, Response $response): Response
     {
@@ -263,6 +328,10 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => $nikValidation['message']], 400);
             }
             $nik = $nikValidation['normalized'];
+            $noWa62 = $this->normalizeNoWaTo62($noWa);
+            if ($noWa62 === null) {
+                return $this->json($response, ['success' => false, 'message' => 'Nomor WhatsApp tidak valid'], 400);
+            }
 
             $stmt = $this->db->prepare("SELECT id, nama, id_user FROM pengurus WHERE id = ? LIMIT 1");
             $stmt->execute([$idPengurusResolved]);
@@ -280,6 +349,18 @@ class AuthControllerV2
                     'message' => 'NIK ini sudah terdaftar untuk pengurus lain. Jika ini Anda, silakan login dengan NIP yang sesuai. Jika bukan, periksa NIK atau hubungi admin.',
                 ], 400);
             }
+            if ($this->isNoWaUsedByOtherUser($noWa62)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Nomor WhatsApp sudah dipakai akun lain.',
+                ], 400);
+            }
+            if ($this->isNoWaReservedInActiveSetupToken($noWa62)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Nomor WhatsApp sedang dipakai pada proses pendaftaran lain. Gunakan nomor lain atau tunggu token sebelumnya kedaluwarsa (5 menit).',
+                ], 400);
+            }
 
             // Update NIK di pengurus (no_wa hanya di users, disimpan via token untuk postSetupAkun)
             $upd = $this->db->prepare("UPDATE pengurus SET nik = ? WHERE id = ?");
@@ -287,8 +368,8 @@ class AuthControllerV2
 
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $this->withIndonesiaTimezone(function () use ($tokenHash, $idPengurusResolved, $noWa) {
-                $this->insertUserSetupToken($tokenHash, 'pengurus', $idPengurusResolved, $noWa);
+            $this->withIndonesiaTimezone(function () use ($tokenHash, $idPengurusResolved, $noWa62) {
+                $this->insertUserSetupToken($tokenHash, 'pengurus', $idPengurusResolved, $noWa62);
             });
 
             $config = require __DIR__ . '/../../config.php';
@@ -299,7 +380,7 @@ class AuthControllerV2
             $message .= "Link buat username dan password (aktif 5 menit):\n" . $link . "\n\n";
             $message .= "> Jangan teruskan pesan isi ke siapapun demi keamanan.";
             $logContext = ['id_santri' => null, 'id_pengurus' => $idPengurusResolved, 'tujuan' => 'pengurus', 'id_pengurus_pengirim' => null, 'kategori' => 'setup_akun', 'sumber' => 'auth'];
-            $sendResult = WhatsAppService::sendMessage($noWa, $message, null, $logContext);
+            $sendResult = WhatsAppService::sendMessage($noWa62, $message, null, $logContext);
             if (!$sendResult['success']) {
                 return $this->json($response, [
                     'success' => false,
@@ -561,6 +642,12 @@ class AuthControllerV2
             $idPengurus = (int) $row['entity_id'];
             $noWa = isset($row['no_wa']) && $row['no_wa'] !== null && $row['no_wa'] !== '' ? trim((string) $row['no_wa']) : null;
             $email = null;
+            if ($noWa !== null) {
+                $noWaNorm = $this->normalizeNoWaTo62($noWa);
+                if ($noWaNorm !== null && $this->isNoWaUsedByOtherUser($noWaNorm)) {
+                    return $this->json($response, ['success' => false, 'message' => 'Nomor WA sudah dipakai'], 400);
+                }
+            }
 
             $passwordHash = PasswordHelper::hashPassword($password);
             $ins = $this->db->prepare("
@@ -917,6 +1004,12 @@ class AuthControllerV2
             $idSantri = (int) $row['entity_id'];
             $noWa = isset($row['no_wa']) && $row['no_wa'] !== null && $row['no_wa'] !== '' ? trim((string) $row['no_wa']) : null;
             $email = null;
+            if ($noWa !== null) {
+                $noWaNorm = $this->normalizeNoWaTo62($noWa);
+                if ($noWaNorm !== null && $this->isNoWaUsedByOtherUser($noWaNorm)) {
+                    return $this->json($response, ['success' => false, 'message' => 'Nomor WA sudah dipakai'], 400);
+                }
+            }
 
             $passwordHash = PasswordHelper::hashPassword($password);
             $ins = $this->db->prepare("
@@ -1632,18 +1725,11 @@ class AuthControllerV2
             $data = $request->getParsedBody();
             $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaBaru = trim($data['no_wa_baru'] ?? '');
-            $noWaBaruNorm = preg_replace('/\D/', '', $noWaBaru);
-            if (strlen($noWaBaruNorm) < 10) {
+            $noWaBaruNorm = $this->normalizeNoWaTo62($noWaBaru);
+            if ($noWaBaruNorm === null) {
                 return $this->json($response, ['success' => false, 'message' => 'Nomor WA baru tidak valid'], 400);
             }
-            if (strpos($noWaBaruNorm, '0') === 0) {
-                $noWaBaruNorm = '62' . substr($noWaBaruNorm, 1);
-            } elseif (strpos($noWaBaruNorm, '62') !== 0) {
-                $noWaBaruNorm = '62' . $noWaBaruNorm;
-            }
-            $checkNoWaStmt = $this->db->prepare("SELECT id FROM users WHERE no_wa = ? AND id <> ? LIMIT 1");
-            $checkNoWaStmt->execute([$noWaBaruNorm, $usersId]);
-            if ($checkNoWaStmt->fetch(\PDO::FETCH_ASSOC)) {
+            if ($this->isNoWaUsedByOtherUser($noWaBaruNorm, $usersId)) {
                 return $this->json($response, ['success' => false, 'message' => 'Nomor WA sudah dipakai'], 400);
             }
             $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -1685,17 +1771,15 @@ class AuthControllerV2
             $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, ['id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi', 'username_baru', 'otp']) : [];
             $noWaBaru = trim($data['no_wa_baru'] ?? '');
             $otp = trim($data['otp'] ?? '');
-            $noWaBaruNorm = preg_replace('/\D/', '', $noWaBaru);
-            if (strlen($noWaBaruNorm) < 10) {
+            $noWaBaruNorm = $this->normalizeNoWaTo62($noWaBaru);
+            if ($noWaBaruNorm === null) {
                 return $this->json($response, ['success' => false, 'message' => 'Nomor WA baru tidak valid'], 400);
-            }
-            if (strpos($noWaBaruNorm, '0') === 0) {
-                $noWaBaruNorm = '62' . substr($noWaBaruNorm, 1);
-            } elseif (strpos($noWaBaruNorm, '62') !== 0) {
-                $noWaBaruNorm = '62' . $noWaBaruNorm;
             }
             if (strlen($otp) !== 6) {
                 return $this->json($response, ['success' => false, 'message' => 'Kode OTP harus 6 digit'], 400);
+            }
+            if ($this->isNoWaUsedByOtherUser($noWaBaruNorm, $usersId)) {
+                return $this->json($response, ['success' => false, 'message' => 'Nomor WA sudah dipakai'], 400);
             }
             $otpHash = hash('sha256', $otp);
             $stmt = $this->db->prepare("SELECT id FROM user___wa_change_otp WHERE user_id = ? AND no_wa_baru = ? AND otp_hash = ? AND expires_at > NOW()");

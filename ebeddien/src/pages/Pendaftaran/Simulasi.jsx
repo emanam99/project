@@ -1,20 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { pendaftaranAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
-import { useAuthStore } from '../../store/authStore'
-import { userHasSuperAdminAccess } from '../../utils/roleAccess'
-import SubNavPendaftaran from './components/SubNavPendaftaran'
 
 function Simulasi() {
   const { showNotification } = useNotification()
-  const { user } = useAuthStore()
-
-  const isSuperAdmin = userHasSuperAdminAccess(user)
-  if (!isSuperAdmin) {
-    return <Navigate to="/" replace />
-  }
 
   const [fields, setFields] = useState([])
   const [values, setValues] = useState([])
@@ -176,7 +166,6 @@ function Simulasi() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <SubNavPendaftaran />
       <div className="flex-1 flex flex-col min-h-0">
         {/* Desktop: kiri select kondisi, kanan item + total di atas */}
         <div className="hidden lg:grid lg:grid-cols-2 lg:gap-4 flex-1 min-h-0 p-2 sm:p-3">

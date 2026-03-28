@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Config\EbeddienFiturAccess;
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\SantriBerkasController;
 
 return function (\Slim\App $app): void {
@@ -14,5 +15,5 @@ return function (\Slim\App $app): void {
         $group->post('/update', [SantriBerkasController::class, 'updateBerkas']);
         $group->get('/download', [SantriBerkasController::class, 'downloadBerkas']);
         $group->post('/link', [SantriBerkasController::class, 'linkBerkas']);
-    })->add(new RoleMiddleware(['admin_psb', 'petugas_psb', 'super_admin', 'santri', 'tarbiyah']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbTarbiyahSuperSelectors(), ['admin_psb', 'petugas_psb', 'super_admin', 'santri', 'tarbiyah']))->add(new AuthMiddleware());
 };

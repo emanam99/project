@@ -4,7 +4,6 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { pendaftaranAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
-import SubNavPendaftaran from './components/SubNavPendaftaran'
 import Modal from '../../components/Modal/Modal'
 
 /** Ambil hanya value dari objek condition (tanpa label field), digabung dengan koma */
@@ -191,7 +190,6 @@ function KondisiRegistrasi() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <SubNavPendaftaran />
       <div className="flex-1 flex flex-col overflow-hidden p-2 sm:p-3">
         {/* Search and Filter - style seperti Item */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4 flex-shrink-0">
@@ -301,7 +299,7 @@ function KondisiRegistrasi() {
                           {row.item_set_nama && (
                             <button
                               type="button"
-                              onClick={() => navigate('/pendaftaran/manage-item-set')}
+                              onClick={() => navigate('/pendaftaran/item/set')}
                               className="text-sm text-teal-600 dark:text-teal-400 hover:underline"
                             >
                               {row.item_set_nama}

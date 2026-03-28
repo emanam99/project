@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
-import SubNavPendaftaran from './SubNavPendaftaran'
 
 function AssignItemToSet() {
   const { showNotification } = useNotification()
@@ -167,8 +166,7 @@ function AssignItemToSet() {
   }, 0)
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <SubNavPendaftaran />
+    <div className="h-full flex flex-col overflow-hidden p-2 sm:p-3">
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 overflow-hidden">
         {/* Item Sets List - Mobile: Always visible, Desktop: First column */}
         <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 overflow-hidden flex flex-col ${

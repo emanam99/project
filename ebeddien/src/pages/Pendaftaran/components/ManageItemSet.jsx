@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import Modal from '../../../components/Modal/Modal'
-import SubNavPendaftaran from './SubNavPendaftaran'
 
 function ManageItemSet() {
   const { showNotification } = useNotification()
@@ -165,8 +164,7 @@ function ManageItemSet() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <SubNavPendaftaran />
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0 overflow-hidden">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0 overflow-hidden p-2 sm:p-3">
         {/* List Item Sets */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 overflow-hidden flex flex-col">
           <div className="flex justify-between items-center mb-4 flex-shrink-0">

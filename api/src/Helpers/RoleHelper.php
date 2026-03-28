@@ -195,12 +195,213 @@ class RoleHelper
     }
 
     /**
-     * Koordinator UGT dibatasi ke madrasah sendiri, kecuali ada super_admin / admin_ugt di token.
+     * Salah satu role di token punya hak menu/aksi eBeddien (role___fitur + app.key = ebeddien).
      */
-    public static function tokenMadrasahApplyKoordinatorScope(array $user): bool
+    public static function tokenHasEbeddienFiturCode(\PDO $db, array $user, string $fiturCode): bool
     {
-        return self::tokenHasAnyRoleKey($user, ['koordinator_ugt'])
-            && !self::tokenHasAnyRoleKey($user, ['super_admin', 'admin_ugt']);
+        $code = trim($fiturCode);
+        if ($code === '') {
+            return false;
+        }
+        $roleKeys = self::normalizeTokenRoleKeysUnion($user);
+        if ($roleKeys === []) {
+            return false;
+        }
+        $placeholders = implode(',', array_fill(0, count($roleKeys), '?'));
+        $sql = 'SELECT 1
+            FROM `role` r
+            INNER JOIN `role___fitur` rf ON rf.`role_id` = r.`id`
+            INNER JOIN `app___fitur` f ON f.`id` = rf.`fitur_id`
+            INNER JOIN `app` a ON a.`id` = f.`id_app` AND a.`key` = \'ebeddien\'
+            WHERE f.`code` = ? AND r.`key` IN (' . $placeholders . ')
+            LIMIT 1';
+        $stmt = $db->prepare($sql);
+        $stmt->execute(array_merge([$code], $roleKeys));
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Apakah salah satu role di token punya minimal satu baris role___fitur untuk app ebeddien.
+     * Dipakai middleware: bila belum ada assignment → fallback cek role legacy.
+     */
+    public static function tokenUnionHasAnyEbeddienFiturAssignment(\PDO $db, array $user): bool
+    {
+        $roleKeys = self::normalizeTokenRoleKeysUnion($user);
+        if ($roleKeys === []) {
+            return false;
+        }
+        $placeholders = implode(',', array_fill(0, count($roleKeys), '?'));
+        $sql = 'SELECT 1
+            FROM `role` r
+            INNER JOIN `role___fitur` rf ON rf.`role_id` = r.`id`
+            INNER JOIN `app___fitur` f ON f.`id` = rf.`fitur_id`
+            INNER JOIN `app` a ON a.`id` = f.`id_app` AND a.`key` = \'ebeddien\'
+            WHERE r.`key` IN (' . $placeholders . ')
+            LIMIT 1';
+        $stmt = $db->prepare($sql);
+        $stmt->execute($roleKeys);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Cocokkan salah satu selector: kode persis, atau "PREFIX:awalan" untuk LIKE awalan% di app___fitur.
+     *
+     * @param list<string> $selectors
+     */
+    public static function tokenMatchesAnyEbeddienFiturSelector(\PDO $db, array $user, array $selectors): bool
+    {
+        foreach ($selectors as $sel) {
+            $sel = trim((string) $sel);
+            if ($sel === '') {
+                continue;
+            }
+            if (str_starts_with($sel, 'PREFIX:')) {
+                $prefix = substr($sel, 7);
+                if ($prefix !== '' && self::tokenUserHasAnyEbeddienFiturCodePrefix($db, $user, $prefix)) {
+                    return true;
+                }
+            } elseif (self::tokenHasEbeddienFiturCode($db, $user, $sel)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * True = akses data madrasah UGT dibatasi ke id_koordinator = pengurus login.
+     * Dipakai GET/POST madrasah dan laporan GT / PJGT / Koordinator.
+     * admin_ugt / super_admin: tidak dibatasi. Koordinator + aksi action.ugt.data_madrasah.scope_all: tidak dibatasi.
+     */
+    public static function tokenMadrasahDataApplyKoordinatorScope(\PDO $db, array $user): bool
+    {
+        $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : 0;
+        if ($pengurusId <= 0) {
+            return false;
+        }
+        if (self::tokenHasAnyRoleKey($user, ['super_admin', 'admin_ugt'])) {
+            return false;
+        }
+        if (!self::tokenHasAnyRoleKey($user, ['koordinator_ugt'])) {
+            return false;
+        }
+        if (self::tokenHasEbeddienFiturCode($db, $user, 'action.ugt.data_madrasah.scope_all')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Laporan UGT: boleh memakai query id_koordinator untuk koordinator selain diri (GET list).
+     * Tanpa ini, koordinator ter-scope madrasah hanya boleh id_koordinator = pengurus login atau kosong.
+     */
+    public static function tokenUgtLaporanCanFilterSemuaKoordinator(\PDO $db, array $user): bool
+    {
+        if (!self::tokenMadrasahDataApplyKoordinatorScope($db, $user)) {
+            return true;
+        }
+
+        return self::tokenHasEbeddienFiturCode($db, $user, 'action.ugt.laporan.filter_koordinator_semua');
+    }
+
+    /**
+     * Ada minimal satu fitur eBeddien dengan code diawali $prefix untuk role di token.
+     */
+    public static function tokenUserHasAnyEbeddienFiturCodePrefix(\PDO $db, array $user, string $prefix): bool
+    {
+        $prefix = trim($prefix);
+        if ($prefix === '') {
+            return false;
+        }
+        $roleKeys = self::normalizeTokenRoleKeysUnion($user);
+        if ($roleKeys === []) {
+            return false;
+        }
+        $placeholders = implode(',', array_fill(0, count($roleKeys), '?'));
+        $sql = 'SELECT 1
+            FROM `role` r
+            INNER JOIN `role___fitur` rf ON rf.`role_id` = r.`id`
+            INNER JOIN `app___fitur` f ON f.`id` = rf.`fitur_id`
+            INNER JOIN `app` a ON a.`id` = f.`id_app` AND a.`key` = \'ebeddien\'
+            WHERE f.`code` LIKE ? AND r.`key` IN (' . $placeholders . ')
+            LIMIT 1';
+        $stmt = $db->prepare($sql);
+        $stmt->execute(array_merge([$prefix . '%'], $roleKeys));
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /** @return list<string> */
+    public static function tokenPengeluaranLembagaIdsFromUser(array $user): array
+    {
+        $ids = [];
+        if (!empty($user['lembaga_id']) && $user['lembaga_id'] !== '') {
+            $ids[] = trim((string) $user['lembaga_id']);
+        }
+        if (!empty($user['lembaga_ids']) && is_array($user['lembaga_ids'])) {
+            foreach ($user['lembaga_ids'] as $x) {
+                if ($x !== null && $x !== '') {
+                    $ids[] = trim((string) $x);
+                }
+            }
+        }
+        $ids = array_values(array_unique(array_filter($ids, static function ($v) {
+            return $v !== '';
+        })));
+
+        return $ids;
+    }
+
+    /** $which: rencana | pengeluaran | draft */
+    public static function tokenPengeluaranLembagaSemua(\PDO $db, array $user, string $which): bool
+    {
+        if (self::tokenHasAnyRoleKey($user, ['super_admin'])) {
+            return true;
+        }
+        $code = match ($which) {
+            'rencana' => 'action.pengeluaran.rencana.lembaga_semua',
+            'pengeluaran' => 'action.pengeluaran.pengeluaran.lembaga_semua',
+            'draft' => 'action.pengeluaran.draft.lembaga_semua',
+            default => '',
+        };
+        if ($code === '') {
+            return false;
+        }
+
+        return self::tokenHasEbeddienFiturCode($db, $user, $code);
+    }
+
+    /** True = batasi baris ke kolom lembaga ∈ tokenPengeluaranLembagaIdsFromUser */
+    public static function tokenPengeluaranApplyLembagaScope(\PDO $db, array $user, string $which): bool
+    {
+        if (self::tokenPengeluaranLembagaSemua($db, $user, $which)) {
+            return false;
+        }
+
+        return self::tokenPengeluaranLembagaIdsFromUser($user) !== [];
+    }
+
+    /**
+     * Cek aksi granular pengeluaran. super_admin: selalu true.
+     * Jika belum ada action.pengeluaran.* di role___fitur untuk role user → true (perilaku lama).
+     */
+    public static function tokenPengeluaranActionAllowed(\PDO $db, array $user, string $code): bool
+    {
+        $code = trim($code);
+        if ($code === '') {
+            return false;
+        }
+        if (self::tokenHasAnyRoleKey($user, ['super_admin'])) {
+            return true;
+        }
+        if (!self::tokenUserHasAnyEbeddienFiturCodePrefix($db, $user, 'action.pengeluaran.')) {
+            return true;
+        }
+
+        return self::tokenHasEbeddienFiturCode($db, $user, $code);
     }
 
     /** True jika salah satu role di token boleh mengakses app (RoleConfig), aman multi_role / all_roles. */
@@ -399,6 +600,12 @@ class RoleHelper
         }
         $keyList = array_keys($uniqueKeys);
         sort($keyList);
+
+        // Shell eBeddien (frontend memeriksa allowed_apps berisi 'uwaba'): setiap pengurus aktif
+        // dengan minimal satu role di DB boleh masuk; menu/fitur tetap dari role___fitur + RoleConfig.
+        if ($keyList !== [] && !in_array('uwaba', $allAllowedApps, true)) {
+            $allAllowedApps[] = 'uwaba';
+        }
 
         if (count($keyList) <= 1) {
             $roleKey = $keyList[0] ?? '';

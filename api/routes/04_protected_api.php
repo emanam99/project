@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Config\EbeddienFiturAccess;
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\WhatsAppController;
 use App\Controllers\UserController;
 use App\Controllers\ProfilController;
@@ -19,28 +20,32 @@ return function (\Slim\App $app): void {
     // Daftar user (sensitif) — hanya super_admin
     $app->group('/api', function ($group) {
         $group->get('/user/list', [UserController::class, 'getAllUsers']);
-    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
 
-    // List super admin & admin uwaba (untuk notifikasi rencana/pengeluaran di offcanvas) — super_admin + admin_uwaba
+    // List admin_uwaba (notifikasi WA rencana/pengeluaran) — selaras finance/pengeluaran: + admin_lembaga legacy
     $app->group('/api', function ($group) {
         $group->get('/user/list-super-admin-uwaba', [UserController::class, 'getSuperAdminAndUwabaUsers']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::userListUwabaNotifySelectors(), ['admin_uwaba', 'admin_lembaga', 'super_admin']))->add(new AuthMiddleware());
 
     // Data santri — admin_psb, petugas_psb, super_admin
     $app->group('/api', function ($group) {
         $group->get('/santri', [SantriController::class, 'getAllSantri']);
         $group->post('/santri', [SantriController::class, 'updateSantri']);
-    })->add(new RoleMiddleware(['admin_psb', 'petugas_psb', 'super_admin', 'tarbiyah']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbTarbiyahSuperSelectors(), ['admin_psb', 'petugas_psb', 'super_admin', 'tarbiyah']))->add(new AuthMiddleware());
 
-    // Profil total & payment syahriah — role UWABA
+    // Profil total pembayaran & syahriah — staff UWABA
     $app->group('/api', function ($group) {
         $group->get('/profil/total-pembayaran', [ProfilController::class, 'totalPembayaranHariIni']);
-        $group->get('/profil/total-pemasukan-pengeluaran', [ProfilController::class, 'totalPemasukanPengeluaranHariIni']);
         $group->post('/payment/syahriah/last-number', [PaymentController::class, 'getSyahriahLastNumber']);
         $group->post('/payment/syahriah/save', [PaymentController::class, 'saveSyahriahPayment']);
         $group->post('/payment/syahriah/delete', [PaymentController::class, 'deleteSyahriahPayment']);
         $group->post('/payment/syahriah/history', [PaymentController::class, 'getSyahriahHistory']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::uwabaStaffSuperSelectors(), ['admin_uwaba', 'petugas_uwaba', 'super_admin']))->add(new AuthMiddleware());
+
+    // Saldo pemasukan/pengeluaran (header Keuangan) — selaras financeMenus + UWABA
+    $app->group('/api', function ($group) {
+        $group->get('/profil/total-pemasukan-pengeluaran', [ProfilController::class, 'totalPemasukanPengeluaranHariIni']);
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::profilSaldoKeuanganSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'super_admin']))->add(new AuthMiddleware());
 
     // WhatsApp — cek nomor: semua user yang login (termasuk daftar/NIK = role santri), tanpa batasan role
     $app->group('/api', function ($group) {
@@ -51,10 +56,10 @@ return function (\Slim\App $app): void {
     $app->group('/api', function ($group) {
         $group->post('/wa/send', [WhatsAppController::class, 'send']);
         $group->post('/wa/edit-message', [WhatsAppController::class, 'edit']);
-    })->add(new RoleMiddleware(['super_admin', 'admin_psb', 'petugas_psb', 'admin_uwaba', 'petugas_uwaba']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::waSendSelectors(), ['super_admin', 'admin_psb', 'petugas_psb', 'admin_uwaba', 'petugas_uwaba']))->add(new AuthMiddleware());
     $app->group('/api', function ($group) {
         $group->post('/wa/process-pending', [WhatsAppController::class, 'processPending']);
-    })->add(new RoleMiddleware(['super_admin', 'admin_psb', 'petugas_psb']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::waProcessPendingSelectors(), ['super_admin', 'admin_psb', 'petugas_psb']))->add(new AuthMiddleware());
 
     // Chat — role UWABA + PSB (untuk riwayat chat pendaftaran, dll)
     $app->group('/api', function ($group) {
@@ -69,17 +74,17 @@ return function (\Slim\App $app): void {
         $group->get('/chat/get-by-santri', [ChatController::class, 'getBySantri']);
         $group->get('/chat/get-all', [ChatController::class, 'getAll']);
         $group->get('/chat/stats', [ChatController::class, 'getStats']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::chatStaffSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
 
     // Template WA — list: role yang bisa akses chat; create/update/delete: hanya super_admin
     $app->group('/api', function ($group) {
         $group->get('/whatsapp-template/list', [WhatsAppTemplateController::class, 'list']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::chatStaffSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
     $app->group('/api', function ($group) {
         $group->post('/whatsapp-template/create', [WhatsAppTemplateController::class, 'create']);
         $group->put('/whatsapp-template/update', [WhatsAppTemplateController::class, 'update']);
         $group->post('/whatsapp-template/delete', [WhatsAppTemplateController::class, 'delete']);
-    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
 
     // Warmer — list pairs & messages: role akses chat; create/update/delete: super_admin
     $app->group('/api', function ($group) {
@@ -89,7 +94,7 @@ return function (\Slim\App $app): void {
         $group->get('/warmer/messages', [WarmerController::class, 'listMessages']);
         $group->get('/warmer/examples', [WarmerController::class, 'examples']);
         $group->get('/warmer/pick-message', [WarmerController::class, 'pickMessage']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::chatStaffSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
     $app->group('/api', function ($group) {
         $group->post('/warmer/pairs', [WarmerController::class, 'createPair']);
         $group->put('/warmer/pairs', [WarmerController::class, 'updatePair']);
@@ -97,7 +102,7 @@ return function (\Slim\App $app): void {
         $group->post('/warmer/themes/delete', [WarmerController::class, 'deleteTheme']);
         $group->post('/warmer/messages/import', [WarmerController::class, 'importMessages']);
         $group->post('/warmer/messages/delete', [WarmerController::class, 'deleteMessage']);
-    })->add(new RoleMiddleware(['super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
 
     // Chat user-to-user: percakapan, daftar user, riwayat pesan — cukup login
     $app->group('/api', function ($group) {

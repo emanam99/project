@@ -29,7 +29,7 @@ class MadrasahController
 
     /**
      * GET /api/madrasah - Get all madrasah (UGT)
-     * admin_ugt & super_admin: semua madrasah. koordinator_ugt: hanya madrasah yang id_koordinator = diri sendiri.
+     * admin_ugt & super_admin: semua. koordinator_ugt: madrasah sendiri, kecuali punya aksi scope_all.
      */
     public function getAll(Request $request, Response $response): Response
     {
@@ -37,7 +37,7 @@ class MadrasahController
             $user = $request->getAttribute('user');
             $userArr = is_array($user) ? $user : [];
             $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
-            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahDataApplyKoordinatorScope($this->db, $userArr);
 
             $sql = "
                 SELECT m.*,
@@ -112,7 +112,7 @@ class MadrasahController
 
     /**
      * GET /api/madrasah/{id} - Get madrasah by id
-     * koordinator_ugt hanya boleh akses madrasah yang id_koordinator = diri sendiri.
+     * Koordinator tanpa aksi scope_all: hanya madrasah dengan id_koordinator = diri sendiri.
      */
     public function getById(Request $request, Response $response, array $args): Response
     {
@@ -177,7 +177,7 @@ class MadrasahController
             $user = $request->getAttribute('user');
             $userArr = is_array($user) ? $user : [];
             $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
-            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahDataApplyKoordinatorScope($this->db, $userArr);
             if ($applyKoordinatorScope) {
                 $idKoord = isset($row['id_koordinator']) ? (int) $row['id_koordinator'] : null;
                 if ($idKoord !== $pengurusId) {
@@ -204,7 +204,7 @@ class MadrasahController
 
     /**
      * POST /api/madrasah - Create madrasah (admin_ugt, koordinator_ugt, super_admin)
-     * koordinator_ugt: id_koordinator dipaksa ke diri sendiri.
+     * Koordinator ter-scope: id_koordinator dipaksa ke diri sendiri; dengan scope_all boleh memilih koordinator.
      */
     public function create(Request $request, Response $response): Response
     {
@@ -212,7 +212,7 @@ class MadrasahController
             $user = $request->getAttribute('user');
             $userArr = is_array($user) ? $user : [];
             $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
-            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahDataApplyKoordinatorScope($this->db, $userArr);
 
             $data = $request->getParsedBody();
             $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
@@ -268,6 +268,7 @@ class MadrasahController
             $kurikulum = isset($data['kurikulum']) && in_array($data['kurikulum'], ['Depag', 'Diniyah (Mandiri)'], true) ? $data['kurikulum'] : null;
             $jumlah_murid = isset($data['jumlah_murid']) && $data['jumlah_murid'] !== '' ? (int) $data['jumlah_murid'] : null;
             $foto_path = isset($data['foto_path']) && trim((string) $data['foto_path']) !== '' ? trim((string) $data['foto_path']) : null;
+            $logo_path = isset($data['logo_path']) && trim((string) $data['logo_path']) !== '' ? trim((string) $data['logo_path']) : null;
 
             $opt = static function ($key, $maxLen = 255) use ($data) {
                 if (!isset($data[$key])) return null;
@@ -319,6 +320,7 @@ class MadrasahController
                 'kurikulum' => $kurikulum,
                 'jumlah_murid' => $jumlah_murid,
                 'foto_path' => $foto_path,
+                'logo_path' => $logo_path,
                 'kepala' => $kepala,
                 'sekretaris' => $sekretaris,
                 'bendahara' => $bendahara,
@@ -377,7 +379,7 @@ class MadrasahController
 
     /**
      * PUT /api/madrasah/{id} - Update madrasah (admin_ugt, koordinator_ugt, super_admin)
-     * koordinator_ugt: hanya boleh update madrasah yang id_koordinator = diri sendiri; id_koordinator tidak boleh diubah.
+     * Koordinator ter-scope: hanya madrasah sendiri; id_koordinator tidak boleh diubah. Dengan scope_all sama seperti admin.
      */
     public function update(Request $request, Response $response, array $args): Response
     {
@@ -393,7 +395,7 @@ class MadrasahController
             $user = $request->getAttribute('user');
             $userArr = is_array($user) ? $user : [];
             $pengurusId = isset($userArr['user_id']) ? (int) $userArr['user_id'] : null;
-            $applyKoordinatorScope = RoleHelper::tokenMadrasahApplyKoordinatorScope($userArr) && $pengurusId > 0;
+            $applyKoordinatorScope = RoleHelper::tokenMadrasahDataApplyKoordinatorScope($this->db, $userArr);
 
             $stmtOld = $this->db->prepare("SELECT * FROM madrasah WHERE id = ?");
             $stmtOld->execute([$id]);
@@ -445,6 +447,7 @@ class MadrasahController
                 $id_koordinator = null;
             }
             $foto_path = isset($data['foto_path']) && trim((string) $data['foto_path']) !== '' ? trim((string) $data['foto_path']) : null;
+            $logo_path = isset($data['logo_path']) && trim((string) $data['logo_path']) !== '' ? trim((string) $data['logo_path']) : null;
             $sektor = isset($data['sektor']) ? trim((string) $data['sektor']) : null;
             $id_pengasuh = isset($data['id_pengasuh']) && $data['id_pengasuh'] !== '' ? (int) $data['id_pengasuh'] : null;
             if ($id_pengasuh !== null && (int) $id_pengasuh <= 0) {
@@ -490,7 +493,7 @@ class MadrasahController
                     identitas = ?, nama = ?, kategori = ?, status = ?, id_alamat = ?, dusun = ?, rt = ?, rw = ?,
                     desa = ?, kecamatan = ?, kabupaten = ?, provinsi = ?, kode_pos = ?, id_koordinator = ?, sektor = ?,
                     nama_pengasuh = ?, id_pengasuh = ?, no_pengasuh = ?, nama_pjgt = ?, id_pjgt = ?, no_pjgt = ?,
-                    tpq = ?, ula = ?, wustha = ?, ulya = ?, ma_had_ali = ?, kelas_tertinggi = ?, kurikulum = ?, jumlah_murid = ?, foto_path = ?,
+                    tpq = ?, ula = ?, wustha = ?, ulya = ?, ma_had_ali = ?, kelas_tertinggi = ?, kurikulum = ?, jumlah_murid = ?, foto_path = ?, logo_path = ?,
                     kepala = ?, sekretaris = ?, bendahara = ?, kegiatan_pagi = ?, kegiatan_sore = ?, kegiatan_malam = ?, kegiatan_mulai = ?, kegiatan_sampai = ?, tempat = ?, berdiri_tahun = ?, keterangan = ?,
                     banin_banat = ?, seragam = ?, syahriah = ?, pengelola = ?, gedung_madrasah = ?, kantor = ?, bangku = ?, kamar_mandi_murid = ?, kamar_gt = ?, kamar_mandi_gt = ?, km_bersifat = ?, konsumsi = ?, kamar_gt_jarak = ?, masyarakat = ?, alumni = ?, jarak_md_lain = ?
                 WHERE id = ?
@@ -499,7 +502,7 @@ class MadrasahController
                 $identitas, $nama, $kategori, $status, $id_alamat, $dusun, $rt, $rw,
                 $desa, $kecamatan, $kabupaten, $provinsi, $kode_pos, $id_koordinator, $sektor,
                 $nama_pengasuh, $id_pengasuh, $no_pengasuh, $nama_pjgt, $id_pjgt, $no_pjgt,
-                $tpq, $ula, $wustha, $ulya, $ma_had_ali, $kelas_tertinggi, $kurikulum, $jumlah_murid, $foto_path,
+                $tpq, $ula, $wustha, $ulya, $ma_had_ali, $kelas_tertinggi, $kurikulum, $jumlah_murid, $foto_path, $logo_path,
                 $kepala, $sekretaris, $bendahara, $kegiatan_pagi, $kegiatan_sore, $kegiatan_malam, $kegiatan_mulai, $kegiatan_sampai, $tempat, $berdiri_tahun, $keterangan,
                 $banin_banat, $seragam, $syahriah, $pengelola, $gedung_madrasah, $kantor, $bangku, $kamar_mandi_murid, $kamar_gt, $kamar_mandi_gt, $km_bersifat, $konsumsi, $kamar_gt_jarak, $masyarakat, $alumni, $jarak_md_lain,
                 $id

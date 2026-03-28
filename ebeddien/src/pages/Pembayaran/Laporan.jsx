@@ -4,24 +4,32 @@ import { laporanAPI } from '../../services/api'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { useAuthStore } from '../../store/authStore'
 import { userMatchesAnyAllowedRole } from '../../utils/roleAccess'
-import { 
-  PrinterIcon, 
-  FunnelIcon, 
+import { useLaporanFiturAccess } from '../../hooks/useLaporanFiturAccess'
+import {
+  PrinterIcon,
+  FunnelIcon,
   XMarkIcon,
   CalendarIcon,
   UserIcon,
   MagnifyingGlassIcon,
-  DocumentTextIcon,
-  ClockIcon
+  DocumentTextIcon
 } from '@heroicons/react/24/outline'
-import { getGambarUrl } from '../../config/images'
+import LaporanPrintOffcanvas from './components/LaporanPrintOffcanvas'
 
 function Laporan() {
   const { user } = useAuthStore()
-  
+  const {
+    tabTunggakan,
+    tabKhusus,
+    tabUwaba,
+    tabPendaftaran,
+    apiHasLaporanTabs,
+    noTabAccess
+  } = useLaporanFiturAccess()
+
   const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
-  
-  // Tentukan tab yang bisa diakses berdasarkan role
+
+  // Tentukan tab yang bisa diakses berdasarkan role + aksi fitur (menu induk /laporan)
   const hasUwabaRole = hasRole(['admin_uwaba', 'petugas_uwaba', 'super_admin'])
   const hasPsbRole = hasRole(['admin_psb', 'petugas_psb', 'super_admin'])
   
@@ -30,6 +38,7 @@ function Laporan() {
   const [data, setData] = useState([])
   const [filteredData, setFilteredData] = useState([])
   const [showFilterPanel, setShowFilterPanel] = useState(false)
+  const [showPrintOffcanvas, setShowPrintOffcanvas] = useState(false)
   const [printInfo, setPrintInfo] = useState({ masehi: '', hijriyah: '', waktu: '' })
   
   // Filter states
@@ -54,40 +63,67 @@ function Laporan() {
     setFilterTanggal(`${yyyy}-${mm}-${dd}`)
   }, [])
   
-  // Set default mode berdasarkan role user saat user data tersedia
+  /** Urutan fallback tab UWABA lalu PSB */
+  const firstAllowedMode = useMemo(() => {
+    if (hasUwabaRole) {
+      if (tabUwaba) return 'uwaba'
+      if (tabTunggakan) return 'tunggakan'
+      if (tabKhusus) return 'khusus'
+    }
+    if (hasPsbRole && tabPendaftaran) return 'pendaftaran'
+    return null
+  }, [
+    hasUwabaRole,
+    hasPsbRole,
+    tabUwaba,
+    tabTunggakan,
+    tabKhusus,
+    tabPendaftaran
+  ])
+
+  // Default & koreksi mode: role + tab aktif di Pengaturan → Fitur
   useEffect(() => {
     if (!user) return
-    
-    // Tentukan default mode berdasarkan role
-    if (hasPsbRole && !hasUwabaRole) {
-      // Hanya PSB, default ke pendaftaran
-      setMode('pendaftaran')
-    } else if (hasUwabaRole && !hasPsbRole) {
-      // Hanya UWABA, default ke uwaba
-      setMode('uwaba')
-    } else if (hasUwabaRole && hasPsbRole) {
-      // Keduanya, default ke uwaba
-      setMode('uwaba')
-    }
-  }, [user]) // Hanya trigger saat user berubah
-  
-  // Validasi mode sesuai role user saat mode atau role berubah
-  useEffect(() => {
-    if (!user) return
-    
-    // Jika mode tidak sesuai dengan role, ubah ke mode yang sesuai
-    if ((mode === 'tunggakan' || mode === 'khusus' || mode === 'uwaba') && !hasUwabaRole) {
-      // User tidak punya UWABA role, ubah ke pendaftaran jika punya PSB role
-      if (hasPsbRole) {
-        setMode('pendaftaran')
+
+    const uwabaModes = ['tunggakan', 'khusus', 'uwaba']
+    const modeAllowed = () => {
+      if (mode === 'pendaftaran') return hasPsbRole && tabPendaftaran
+      if (uwabaModes.includes(mode)) {
+        if (!hasUwabaRole) return false
+        if (mode === 'tunggakan') return tabTunggakan
+        if (mode === 'khusus') return tabKhusus
+        if (mode === 'uwaba') return tabUwaba
       }
-    } else if (mode === 'pendaftaran' && !hasPsbRole) {
-      // User tidak punya PSB role, ubah ke uwaba jika punya UWABA role
-      if (hasUwabaRole) {
-        setMode('uwaba')
-      }
+      return false
     }
-  }, [mode, hasUwabaRole, hasPsbRole, user]) // Trigger saat mode atau role berubah
+
+    if (modeAllowed()) return
+
+    if (firstAllowedMode) {
+      setMode(firstAllowedMode)
+      return
+    }
+
+    if (apiHasLaporanTabs) {
+      return
+    }
+
+    // Fallback perilaku lama bila belum ada kode action.laporan.* dari API
+    if (hasPsbRole && !hasUwabaRole) setMode('pendaftaran')
+    else if (hasUwabaRole && !hasPsbRole) setMode('uwaba')
+    else if (hasUwabaRole && hasPsbRole) setMode('uwaba')
+  }, [
+    user,
+    mode,
+    hasUwabaRole,
+    hasPsbRole,
+    tabTunggakan,
+    tabKhusus,
+    tabUwaba,
+    tabPendaftaran,
+    firstAllowedMode,
+    apiHasLaporanTabs
+  ])
 
   // Load print info
   useEffect(() => {
@@ -146,11 +182,16 @@ function Laporan() {
 
   // Load data when mode or filters change
   useEffect(() => {
-    if (filterTanggal) { // Only load if tanggal is set
+    if (noTabAccess) {
+      setData([])
+      setFilteredData([])
+      return
+    }
+    if (filterTanggal) {
       loadLaporan()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, filterTanggal, filterAll, filterTahunAjaran, filterAdmin])
+  }, [mode, filterTanggal, filterAll, filterTahunAjaran, filterAdmin, noTabAccess])
 
   // Filter data based on nama and keterangan
   useEffect(() => {
@@ -222,98 +263,85 @@ function Laporan() {
     return ''
   }
 
-  const handlePrint = () => {
-    window.print()
+  const openPrintPreview = () => {
+    setShowFilterPanel(false)
+    setShowPrintOffcanvas(true)
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden laporan-container print:h-auto print:min-h-0 print:overflow-visible">
-      {/* Fixed Header Section */}
-      <div className="flex-shrink-0 p-4 sm:p-6 lg:p-8 pb-2">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900/40 text-gray-900 dark:text-gray-100">
+      {/* Tab jenis laporan (judul & logo ada di preview cetak) */}
+      <div className="flex-shrink-0 px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-2">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.35 }}
+          className="flex gap-2 flex-wrap"
         >
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
-          <div className="flex items-center gap-4">
-            <img 
-              src={getGambarUrl('/uwaba-4.png')} 
-              alt="Logo" 
-              className="h-11 w-auto max-w-[70px] object-contain" 
-            />
-            <div>
-              <h1 className="text-2xl font-bold text-teal-600">Laporan Pembayaran</h1>
-              <div className="text-sm font-semibold text-teal-700 mt-1">
-                {getKeteranganJenisData()}
-              </div>
-            </div>
-          </div>
-          
-          {/* Tabs */}
-          <div className="flex gap-2 flex-wrap">
-            {/* Tab Tunggakan - hanya untuk UWABA role */}
-            {hasUwabaRole && (
+            {hasUwabaRole && tabTunggakan && (
               <button
                 onClick={() => setMode('tunggakan')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
                   mode === 'tunggakan'
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200'
+                    ? 'bg-teal-600 text-white dark:bg-teal-500'
+                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-teal-400 dark:hover:bg-gray-700'
                 }`}
               >
                 Tunggakan
               </button>
             )}
-            {/* Tab Khusus - hanya untuk UWABA role */}
-            {hasUwabaRole && (
+            {hasUwabaRole && tabKhusus && (
               <button
                 onClick={() => setMode('khusus')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
                   mode === 'khusus'
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200'
+                    ? 'bg-teal-600 text-white dark:bg-teal-500'
+                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-teal-400 dark:hover:bg-gray-700'
                 }`}
               >
                 Khusus
               </button>
             )}
-            {/* Tab UWABA - hanya untuk UWABA role */}
-            {hasUwabaRole && (
+            {hasUwabaRole && tabUwaba && (
               <button
                 onClick={() => setMode('uwaba')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
                   mode === 'uwaba'
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200'
+                    ? 'bg-teal-600 text-white dark:bg-teal-500'
+                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-teal-400 dark:hover:bg-gray-700'
                 }`}
               >
                 UWABA
               </button>
             )}
-            {/* Tab Pendaftaran - hanya untuk PSB role */}
-            {hasPsbRole && (
+            {hasPsbRole && tabPendaftaran && (
               <button
                 onClick={() => setMode('pendaftaran')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
                   mode === 'pendaftaran'
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200'
+                    ? 'bg-teal-600 text-white dark:bg-teal-500'
+                    : 'bg-gray-100 text-teal-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-teal-400 dark:hover:bg-gray-700'
                 }`}
               >
                 Pendaftaran
               </button>
             )}
-          </div>
-        </div>
         </motion.div>
       </div>
 
       {/* Scrollable Content Section */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 pt-2 print:flex-none print:h-auto print:overflow-visible print:min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 pt-2">
+        {noTabAccess && (
+          <div
+            className="mb-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-4 py-3 text-sm text-amber-900 dark:text-amber-100"
+            role="alert"
+          >
+            Tidak ada jenis laporan yang diaktifkan untuk peran Anda. Atur centang aksi tab di menu{' '}
+            <strong>Laporan</strong> pada halaman Pengaturan → Fitur, atau hubungi administrator.
+          </div>
+        )}
         {/* Print Info */}
-        <div className="text-xs text-gray-500 text-center mb-4 print:block">
+        <div className="text-xs text-gray-500 dark:text-gray-400 text-center mb-4">
           <span>Tanggal Cetak (Masehi): <b>{printInfo.masehi}</b></span> &nbsp;|&nbsp;
           <span>Tanggal Cetak (Hijriyah): <b>{printInfo.hijriyah}</b></span> &nbsp;|&nbsp;
           <span>Waktu: <b>{printInfo.waktu}</b></span>
@@ -321,102 +349,102 @@ function Laporan() {
 
         {/* Summary Box */}
         {filteredData.length > 0 && (
-          <div className="mb-6 print:mb-4">
+          <div className="mb-6">
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via Cash</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via Cash</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalCash.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via TF</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via TF</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalTF.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via Lembaga</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via Lembaga</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalLembaga.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via Beasiswa</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via Beasiswa</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalBeasiswa.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via BagDIS</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via BagDIS</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalBagDIS.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via PIP</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via PIP</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalPIP.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via KIP</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via KIP</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalKIP.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via Adiktis</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via Adiktis</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalAdiktis.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via PemKab</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via PemKab</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalPemKab.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via Subsidi</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via Subsidi</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalSubsidi.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
-                <div className="bg-white rounded-xl shadow-md p-3">
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
                   <div className="flex justify-between items-center">
-                    <div className="text-xs text-gray-500">via Prestasi</div>
-                    <div className="text-lg font-bold text-teal-600">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via Prestasi</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalPrestasi.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
               </div>
               <div className="flex flex-row">
-                <div className="flex-1 min-w-[140px] bg-white rounded-xl shadow-md p-4 text-center border-2 border-amber-500">
-                  <div className="text-xs text-gray-500 mb-0.5">Total Keseluruhan</div>
-                  <div className="text-2xl font-bold text-amber-600">
+                <div className="flex-1 min-w-[140px] bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 p-4 text-center border-2 border-amber-500 dark:border-amber-400">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Total Keseluruhan</div>
+                  <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
                     Rp {totals.totalAll.toLocaleString('id')}
                   </div>
                 </div>
@@ -428,7 +456,7 @@ function Laporan() {
         {/* Floating Filter Button */}
         <button
           onClick={() => setShowFilterPanel(!showFilterPanel)}
-          className="fixed z-50 bottom-20 right-6 bg-teal-600 text-white rounded-full shadow-lg w-14 h-14 flex items-center justify-center text-3xl hover:bg-teal-700 transition print:hidden"
+          className="fixed z-50 bottom-20 right-6 bg-teal-600 dark:bg-teal-500 text-white rounded-full shadow-lg w-14 h-14 flex items-center justify-center hover:bg-teal-700 dark:hover:bg-teal-600 transition"
           style={{ boxShadow: '0 4px 24px 0 rgba(34,34,59,0.18)' }}
           title="Filter & Print"
         >
@@ -443,14 +471,15 @@ function Laporan() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 40 }}
               transition={{ duration: 0.3 }}
-              className="fixed z-50 bottom-20 right-6 bg-white rounded-2xl shadow-2xl p-5 w-80 max-w-[95vw] border border-teal-200 flex flex-col gap-3 print:hidden"
+              className="fixed z-50 bottom-20 right-6 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-5 w-80 max-w-[95vw] border border-teal-200 dark:border-gray-600 flex flex-col gap-3"
               style={{ boxShadow: '0 8px 32px 0 rgba(34,34,59,0.18)' }}
             >
               <div className="flex justify-between items-center mb-2">
-                <div className="font-semibold text-teal-700 text-base">Filter & Print</div>
+                <div className="font-semibold text-teal-700 dark:text-teal-400 text-base">Filter & cetak</div>
                 <button
+                  type="button"
                   onClick={() => setShowFilterPanel(false)}
-                  className="text-gray-400 hover:text-teal-600 text-2xl leading-none"
+                  className="text-gray-400 hover:text-teal-600 dark:hover:text-teal-400 text-2xl leading-none rounded-lg p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   <XMarkIcon className="w-6 h-6" />
                 </button>
@@ -458,13 +487,13 @@ function Laporan() {
 
               {/* Tahun Ajaran */}
               <div className="flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-teal-600 flex-shrink-0" />
+                <CalendarIcon className="w-5 h-5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
                 <div className="flex-1">
-                  <label className="text-sm text-gray-700 block mb-1">Tahun Ajaran</label>
+                  <label className="text-sm text-gray-700 dark:text-gray-300 block mb-1">Tahun Ajaran</label>
                   <select
                     value={filterTahunAjaran}
                     onChange={(e) => setFilterTahunAjaran(e.target.value)}
-                    className="border rounded px-2 py-1 text-sm w-full"
+                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                   >
                     <option value="">Semua Tahun Ajaran</option>
                     {tahunAjaranOptions.map(ta => (
@@ -476,10 +505,10 @@ function Laporan() {
 
               {/* Tanggal */}
               <div className="flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-teal-600 flex-shrink-0" />
+                <CalendarIcon className="w-5 h-5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <label className="text-sm text-gray-700">Tanggal</label>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <label className="text-sm text-gray-700 dark:text-gray-300">Tanggal</label>
                     <input
                       type="checkbox"
                       id="filterAll"
@@ -487,9 +516,9 @@ function Laporan() {
                       onChange={(e) => {
                         setFilterAll(e.target.checked)
                       }}
-                      className="ml-2"
+                      className="ml-2 rounded border-gray-300 dark:border-gray-600 text-teal-600"
                     />
-                    <label htmlFor="filterAll" className="text-sm text-gray-700 cursor-pointer">
+                    <label htmlFor="filterAll" className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                       Tampilkan Semua
                     </label>
                   </div>
@@ -498,8 +527,10 @@ function Laporan() {
                     value={filterTanggal}
                     onChange={(e) => setFilterTanggal(e.target.value)}
                     disabled={filterAll}
-                    className={`border rounded px-2 py-1 text-sm w-full ${
-                      filterAll ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
+                    className={`border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 ${
+                      filterAll
+                        ? 'bg-gray-100 dark:bg-gray-800/80 text-gray-400 cursor-not-allowed'
+                        : ''
                     }`}
                   />
                 </div>
@@ -507,13 +538,13 @@ function Laporan() {
 
               {/* Admin */}
               <div className="flex items-center gap-2">
-                <UserIcon className="w-5 h-5 text-teal-600 flex-shrink-0" />
+                <UserIcon className="w-5 h-5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
                 <div className="flex-1">
-                  <label className="text-sm text-gray-700 block mb-1">Admin</label>
+                  <label className="text-sm text-gray-700 dark:text-gray-300 block mb-1">Admin</label>
                   <select
                     value={filterAdmin}
                     onChange={(e) => setFilterAdmin(e.target.value)}
-                    className="border rounded px-2 py-1 text-sm w-full"
+                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                   >
                     <option value="">Semua</option>
                     {adminOptions.map(admin => (
@@ -525,28 +556,28 @@ function Laporan() {
 
               {/* Cari */}
               <div className="flex items-center gap-2">
-                <MagnifyingGlassIcon className="w-5 h-5 text-teal-600 flex-shrink-0" />
+                <MagnifyingGlassIcon className="w-5 h-5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
                 <div className="flex-1">
-                  <label className="text-sm text-gray-700 block mb-1">Cari</label>
+                  <label className="text-sm text-gray-700 dark:text-gray-300 block mb-1">Cari</label>
                   <input
                     type="text"
                     value={filterNama}
                     onChange={(e) => setFilterNama(e.target.value)}
                     placeholder="Ketik nama santri atau keterangan..."
-                    className="border rounded px-2 py-1 text-sm w-full"
+                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   />
                 </div>
               </div>
 
               {/* Keterangan */}
               <div className="flex items-center gap-2">
-                <DocumentTextIcon className="w-5 h-5 text-teal-600 flex-shrink-0" />
+                <DocumentTextIcon className="w-5 h-5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
                 <div className="flex-1">
-                  <label className="text-sm text-gray-700 block mb-1">Keterangan</label>
+                  <label className="text-sm text-gray-700 dark:text-gray-300 block mb-1">Keterangan</label>
                   <select
                     value={filterKeterangan}
                     onChange={(e) => setFilterKeterangan(e.target.value)}
-                    className="border rounded px-2 py-1 text-sm w-full"
+                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
                   >
                     <option value="">Semua Keterangan</option>
                     {keteranganOptions.map(ket => (
@@ -556,56 +587,68 @@ function Laporan() {
                 </div>
               </div>
 
-              {/* Print Button */}
               <button
-                onClick={handlePrint}
-                className="mt-2 px-4 py-2 bg-teal-600 text-white rounded-lg shadow hover:bg-teal-700 transition font-semibold flex items-center gap-2 justify-center"
+                type="button"
+                onClick={openPrintPreview}
+                disabled={noTabAccess}
+                className="mt-2 px-4 py-2 bg-teal-600 dark:bg-teal-500 text-white rounded-lg shadow hover:bg-teal-700 dark:hover:bg-teal-600 transition font-semibold flex items-center gap-2 justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <PrinterIcon className="w-5 h-5" />
-                Print
+                Buka preview cetak
               </button>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* Table Container - Horizontal Scroll Only */}
-        <div className="overflow-x-auto overflow-y-visible bg-white rounded-lg shadow-md print:max-h-none print:overflow-visible print:shadow-none print:h-auto print:min-h-0">
+        <div className="overflow-x-auto overflow-y-visible bg-white dark:bg-gray-800/90 rounded-lg shadow-md dark:shadow-gray-900/30 border border-gray-200 dark:border-gray-700">
           {loading ? (
-            <div className="p-8 text-center text-gray-500">Memuat data...</div>
+            <div className="p-8 text-center text-gray-500 dark:text-gray-400">Memuat data...</div>
           ) : filteredData.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">Tidak ada data</div>
+            <div className="p-8 text-center text-gray-500 dark:text-gray-400">Tidak ada data</div>
           ) : (
             <table className="w-full text-sm border-collapse laporan-print">
-              <thead className="sticky top-0 z-10 print:static print:z-auto">
+              <thead className="sticky top-0 z-10">
                 <tr>
-                  <th className="bg-teal-600 text-white px-3 py-2 border border-gray-300 font-bold">No</th>
-                  <th className="bg-teal-600 text-white px-3 py-2 border border-gray-300 font-bold">Nama Santri</th>
-                  <th className="bg-teal-600 text-white px-3 py-2 border border-gray-300 font-bold">Nominal</th>
-                  <th className="bg-teal-600 text-white px-3 py-2 border border-gray-300 font-bold">Via</th>
-                  <th className="bg-teal-600 text-white px-3 py-2 border border-gray-300 font-bold">Keterangan</th>
-                  <th className="bg-teal-600 text-white px-3 py-2 border border-gray-300 font-bold">Admin</th>
-                  <th className="bg-teal-600 text-white px-3 py-2 border border-gray-300 font-bold">Tanggal</th>
+                  <th className="bg-teal-600 dark:bg-teal-700 text-white px-3 py-2 border border-teal-700/80 dark:border-teal-600 font-bold">No</th>
+                  <th className="bg-teal-600 dark:bg-teal-700 text-white px-3 py-2 border border-teal-700/80 dark:border-teal-600 font-bold">Nama Santri</th>
+                  <th className="bg-teal-600 dark:bg-teal-700 text-white px-3 py-2 border border-teal-700/80 dark:border-teal-600 font-bold">Nominal</th>
+                  <th className="bg-teal-600 dark:bg-teal-700 text-white px-3 py-2 border border-teal-700/80 dark:border-teal-600 font-bold">Via</th>
+                  <th className="bg-teal-600 dark:bg-teal-700 text-white px-3 py-2 border border-teal-700/80 dark:border-teal-600 font-bold">Keterangan</th>
+                  <th className="bg-teal-600 dark:bg-teal-700 text-white px-3 py-2 border border-teal-700/80 dark:border-teal-600 font-bold">Admin</th>
+                  <th className="bg-teal-600 dark:bg-teal-700 text-white px-3 py-2 border border-teal-700/80 dark:border-teal-600 font-bold">Tanggal</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredData.map((row, index) => (
-                  <tr key={index} className="hover:bg-teal-50 even:bg-gray-50">
-                    <td className="text-center px-3 py-2 border border-gray-300">{index + 1}</td>
-                    <td className="px-3 py-2 border border-gray-300">
+                  <tr
+                    key={index}
+                    className="hover:bg-teal-50/80 dark:hover:bg-teal-900/20 even:bg-gray-50/90 dark:even:bg-gray-700/25"
+                  >
+                    <td className="text-center px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                      {index + 1}
+                    </td>
+                    <td className="px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
                       {(row.nis ?? row.id_santri) ? `${row.nis ?? row.id_santri} - ${row.nama_santri}` : row.nama_santri}
                     </td>
-                    <td className="text-right px-3 py-2 border border-gray-300">{row.nominal}</td>
-                    <td className="text-center px-3 py-2 border border-gray-300">{row.via}</td>
-                    <td 
-                      className="text-left px-3 py-2 border border-gray-300 max-w-[200px] truncate" 
+                    <td className="text-right px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                      {row.nominal}
+                    </td>
+                    <td className="text-center px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                      {row.via}
+                    </td>
+                    <td
+                      className="text-left px-3 py-2 border border-gray-200 dark:border-gray-600 max-w-[200px] truncate text-gray-800 dark:text-gray-100"
                       title={row.keterangan_1 || '-'}
                     >
                       {row.keterangan_1 || '-'}
                     </td>
-                    <td className="text-left px-3 py-2 border border-gray-300">{row.admin || '-'}</td>
-                    <td className="text-center px-3 py-2 border border-gray-300">
-                      <div className="text-xs text-gray-600 mb-1">{row.hijriyah || '-'}</div>
-                      <div className="text-xs text-gray-500">{row.tanggal_dibuat || '-'}</div>
+                    <td className="text-left px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100">
+                      {row.admin || '-'}
+                    </td>
+                    <td className="text-center px-3 py-2 border border-gray-200 dark:border-gray-600">
+                      <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">{row.hijriyah || '-'}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{row.tanggal_dibuat || '-'}</div>
                     </td>
                   </tr>
                 ))}
@@ -614,6 +657,15 @@ function Laporan() {
           )}
         </div>
       </div>
+
+      <LaporanPrintOffcanvas
+        isOpen={showPrintOffcanvas}
+        onClose={() => setShowPrintOffcanvas(false)}
+        jenisLabel={getKeteranganJenisData()}
+        printInfo={printInfo}
+        totals={totals}
+        filteredData={filteredData}
+      />
     </div>
   )
 }

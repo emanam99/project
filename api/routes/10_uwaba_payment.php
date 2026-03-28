@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Config\EbeddienFiturAccess;
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\UwabaController;
 use App\Controllers\PaymentController;
 
@@ -19,7 +20,7 @@ return function (\Slim\App $app): void {
         $group->post('/create-payment', [UwabaController::class, 'createPayment']);
         $group->post('/save-refresh', [UwabaController::class, 'saveUwabaRefresh']);
         $group->post('/lengkapi-data', [UwabaController::class, 'lengkapiData']);
-    })->add(new RoleMiddleware(['petugas_uwaba', 'admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::uwabaStaffSuperSelectors(), ['petugas_uwaba', 'admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
 
     $app->group('/api/payment', function ($group) {
         $group->get('/rincian', [PaymentController::class, 'getRincian']);
@@ -31,5 +32,5 @@ return function (\Slim\App $app): void {
         $group->post('/insert', [PaymentController::class, 'insertTunggakanKhusus']);
         $group->post('/update', [PaymentController::class, 'updateTunggakanKhusus']);
         $group->post('/delete-item', [PaymentController::class, 'deleteTunggakanKhusus']);
-    })->add(new RoleMiddleware(['petugas_uwaba', 'admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::uwabaStaffSuperSelectors(), ['petugas_uwaba', 'admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
 };

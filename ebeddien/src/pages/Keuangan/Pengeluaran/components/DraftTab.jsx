@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import { formatCurrency, getStatusBadge } from '../utils/pengeluaranUtils'
 
 function DraftTab({
@@ -9,11 +10,15 @@ function DraftTab({
   setDraftPage,
   itemsPerPage,
   setItemsPerPage,
-  onDraftClick
+  onDraftClick,
+  canEditDraft = true,
+  canDeleteDraft = false,
+  onDeleteDraft = null
 }) {
+  const navigate = useNavigate()
+
   return (
     <div className="space-y-4">
-      {/* Draft List */}
       {draftLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
@@ -25,22 +30,24 @@ function DraftTab({
       ) : (
         <div className="space-y-2">
           {draftList.map((draft, index) => {
-            // Draft selalu abu-abu
             const getBackgroundColor = () => {
               return 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600'
             }
-            
+
             return (
               <motion.div
                 key={draft.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.03 }}
-                onClick={() => onDraftClick(draft)}
-                className={`${getBackgroundColor()} rounded-lg shadow-md p-3 sm:p-4 border cursor-pointer hover:shadow-lg transition-shadow`}
+                className={`${getBackgroundColor()} rounded-lg shadow-md p-3 sm:p-4 border`}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
+                <div className="flex items-stretch justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => onDraftClick(draft)}
+                    className="flex-1 min-w-0 text-left cursor-pointer hover:opacity-90 transition-opacity"
+                  >
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="text-sm sm:text-base font-semibold text-gray-700 dark:text-gray-300 truncate">
                         {draft.keterangan || 'Tanpa Keterangan'}
@@ -73,30 +80,52 @@ function DraftTab({
                         </span>
                       </div>
                     )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                  </button>
+                  <div className="flex flex-col items-end justify-between gap-2 flex-shrink-0">
                     <div className="text-right">
                       <p className="text-base sm:text-lg font-bold text-gray-600 dark:text-gray-400 whitespace-nowrap">
                         {formatCurrency(parseFloat(draft.nominal || 0))}
                       </p>
                     </div>
-                    <div className="text-right">
-                      {getStatusBadge(draft.ket)}
-                    </div>
+                    <div className="text-right">{getStatusBadge(draft.ket)}</div>
+                    {(canEditDraft || canDeleteDraft) && (
+                      <div className="flex flex-col gap-1 pt-1">
+                        {canEditDraft && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigate(`/pengeluaran/edit/${draft.id}`)
+                            }}
+                            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {canDeleteDraft && onDeleteDraft && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onDeleteDraft(draft)
+                            }}
+                            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                          >
+                            Hapus
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </motion.div>
             )
           })}
 
-          {/* Pagination */}
           {draftTotal > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
-              {/* Items per page selector */}
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 dark:text-gray-400">
-                  Tampilkan:
-                </label>
+                <label className="text-sm text-gray-600 dark:text-gray-400">Tampilkan:</label>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => {
@@ -110,16 +139,14 @@ function DraftTab({
                   <option value="50">50</option>
                   <option value="100">100</option>
                 </select>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  dari {draftTotal} data
-                </span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">dari {draftTotal} data</span>
               </div>
 
-              {/* Pagination controls */}
               {draftTotal > itemsPerPage && (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setDraftPage(prev => Math.max(1, prev - 1))}
+                    type="button"
+                    onClick={() => setDraftPage((prev) => Math.max(1, prev - 1))}
                     disabled={draftPage === 1}
                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
@@ -129,7 +156,8 @@ function DraftTab({
                     Halaman {draftPage} dari {Math.ceil(draftTotal / itemsPerPage)}
                   </span>
                   <button
-                    onClick={() => setDraftPage(prev => prev + 1)}
+                    type="button"
+                    onClick={() => setDraftPage((prev) => prev + 1)}
                     disabled={draftPage >= Math.ceil(draftTotal / itemsPerPage)}
                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
@@ -146,4 +174,3 @@ function DraftTab({
 }
 
 export default DraftTab
-

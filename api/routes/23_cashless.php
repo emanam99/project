@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Config\EbeddienFiturAccess;
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\CashlessController;
 
 return function (\Slim\App $app): void {
@@ -19,5 +20,5 @@ return function (\Slim\App $app): void {
         $group->patch('/accounts/{id}', [CashlessController::class, 'updateAccount']);
         $group->get('/config', [CashlessController::class, 'getConfig']);
         $group->put('/config', [CashlessController::class, 'setConfig']);
-    })->add(new RoleMiddleware(['admin_cashless', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::cashlessAdminSelectors(), ['admin_cashless', 'super_admin']))->add(new AuthMiddleware());
 };

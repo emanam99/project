@@ -6,9 +6,11 @@ import { useNotification } from '../../../../contexts/NotificationContext'
  * Custom hook untuk mengelola filtering dan pagination pengeluaran
  * @param {string} activeTab - Tab yang aktif ('rencana' atau 'pengeluaran')
  * @param {number} itemsPerPage - Jumlah item per halaman
+ * @param {{ lockedLembagaId?: string|null }} [options]
  * @returns {Object} State dan handlers untuk filtering pengeluaran
  */
-export const usePengeluaranFilters = (activeTab, itemsPerPage = 50) => {
+export const usePengeluaranFilters = (activeTab, itemsPerPage = 50, options = {}) => {
+  const { lockedLembagaId = null } = options
   const { showNotification } = useNotification()
   
   // Data state
@@ -54,6 +56,12 @@ export const usePengeluaranFilters = (activeTab, itemsPerPage = 50) => {
       setLoading(false)
     }
   }, [showNotification])
+
+  useEffect(() => {
+    if (lockedLembagaId) {
+      setPengeluaranLembagaFilter(lockedLembagaId)
+    }
+  }, [lockedLembagaId])
 
   // Load data saat tab aktif
   useEffect(() => {

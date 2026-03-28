@@ -3,9 +3,33 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { madrasahAPI, pengurusAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
-import { compressImage } from '../../../utils/imageCompression'
+import { compressImage, compressLogoBeforeUpload } from '../../../utils/imageCompression'
 
 const MAX_FOTO_BYTES = 1024 * 1024 // 1 MB
+const MAX_LOGO_BYTES = 1024 * 1024 // hasil kompresi klien sebelum upload (batas server)
+/** Batas ukuran file mentah sebelum kompresi (hindari file sangat besar di memori) */
+const MAX_FOTO_RAW_BYTES = 10 * 1024 * 1024 // 10 MB
+const MAX_LOGO_RAW_BYTES = 10 * 1024 * 1024 // 10 MB
+
+function fileExtensionLower(name) {
+  if (!name || typeof name !== 'string') return ''
+  const i = name.lastIndexOf('.')
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
+}
+
+/** Validasi foto: MIME atau ekstensi (untuk browser yang mengosongkan type) */
+function isAllowedFotoFile(file) {
+  const mimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
+  if (file.type && mimes.includes(file.type)) return true
+  return ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(fileExtensionLower(file.name))
+}
+
+/** Validasi logo: hanya PNG/JPEG — MIME atau ekstensi */
+function isAllowedLogoFile(file) {
+  const mimes = ['image/jpeg', 'image/jpg', 'image/png']
+  if (file.type && mimes.includes(file.type)) return true
+  return ['jpg', 'jpeg', 'png'].includes(fileExtensionLower(file.name))
+}
 
 /** Gabung alamat dari dusun sampai provinsi */
 function formatAlamat(p) {
@@ -96,7 +120,8 @@ const initialForm = {
   masyarakat: '',
   alumni: '',
   jarak_md_lain: '',
-  foto_path: ''
+  foto_path: '',
+  logo_path: ''
 }
 
 function madrasahToForm(m) {
@@ -158,7 +183,8 @@ function madrasahToForm(m) {
     masyarakat: m.masyarakat ?? '',
     alumni: m.alumni ?? '',
     jarak_md_lain: m.jarak_md_lain ?? '',
-    foto_path: m.foto_path ?? ''
+    foto_path: m.foto_path ?? '',
+    logo_path: m.logo_path ?? ''
   }
 }
 
@@ -171,9 +197,15 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState(null)
   const [existingFotoBlobUrl, setExistingFotoBlobUrl] = useState(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState(null)
+  const [existingLogoBlobUrl, setExistingLogoBlobUrl] = useState(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const photoInputRef = useRef(null)
   const photoBlobUrlRef = useRef(null)
   const existingBlobUrlRef = useRef(null)
+  const logoInputRef = useRef(null)
+  const logoBlobUrlRef = useRef(null)
+  const existingLogoBlobUrlRef = useRef(null)
   const isEdit = !!initialData?.id
 
   useImperativeHandle(ref, () => ({
@@ -231,6 +263,9 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
         setForm(next)
         setKoordinatorDetail(null)
         setPhotoPreviewUrl(null)
+        setLogoPreviewUrl(null)
+        setExistingLogoBlobUrl(null)
+        existingLogoBlobUrlRef.current = null
       }
     }
   }, [isOpen, initialData?.id, koordinatorLocked, currentUserId, currentUserNip])
@@ -255,21 +290,47 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
   }, [isOpen, form.foto_path])
 
   useEffect(() => {
+    if (!isOpen || !form.logo_path) {
+      existingLogoBlobUrlRef.current = null
+      setExistingLogoBlobUrl(null)
+      return
+    }
+    let cancelled = false
+    madrasahAPI.fetchFotoBlobUrl(form.logo_path).then((url) => {
+      if (!cancelled) {
+        existingLogoBlobUrlRef.current = url || null
+        setExistingLogoBlobUrl(url || null)
+      }
+    }).catch(() => {
+      if (!cancelled) setExistingLogoBlobUrl(null)
+    })
+    return () => { cancelled = true }
+  }, [isOpen, form.logo_path])
+
+  useEffect(() => {
     return () => {
       if (photoBlobUrlRef.current) {
         URL.revokeObjectURL(photoBlobUrlRef.current)
         photoBlobUrlRef.current = null
       }
+      if (logoBlobUrlRef.current) {
+        URL.revokeObjectURL(logoBlobUrlRef.current)
+        logoBlobUrlRef.current = null
+      }
       existingBlobUrlRef.current = null
+      existingLogoBlobUrlRef.current = null
     }
   }, [])
 
   const handlePhotoChange = async (e) => {
     const file = e.target?.files?.[0]
     if (!file) return
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
-    if (!allowed.includes(file.type)) {
-      showNotification('Hanya file gambar (JPEG, PNG, WebP, GIF) yang diizinkan', 'error')
+    if (!isAllowedFotoFile(file)) {
+      showNotification('Hanya file gambar (JPEG, PNG, WebP, GIF) yang diizinkan. Periksa ekstensi file.', 'error')
+      return
+    }
+    if (file.size > MAX_FOTO_RAW_BYTES) {
+      showNotification(`Ukuran foto terlalu besar (maks. ${MAX_FOTO_RAW_BYTES / (1024 * 1024)} MB sebelum kompresi).`, 'error')
       return
     }
     let fileToUpload = file
@@ -324,6 +385,79 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
     if (photoInputRef.current) photoInputRef.current.value = ''
   }
 
+  const handleLogoChange = async (e) => {
+    const file = e.target?.files?.[0]
+    if (!file) return
+    if (!isAllowedLogoFile(file)) {
+      showNotification('Logo hanya boleh PNG atau JPEG (.png, .jpg, .jpeg). Periksa ekstensi file.', 'error')
+      return
+    }
+    if (file.size > MAX_LOGO_RAW_BYTES) {
+      showNotification(`Ukuran file logo terlalu besar (maks. ${MAX_LOGO_RAW_BYTES / (1024 * 1024)} MB sebelum kompresi).`, 'error')
+      return
+    }
+    let fileToUpload
+    try {
+      fileToUpload = await compressLogoBeforeUpload(file, 512, 0.45)
+    } catch (err) {
+      showNotification('Gagal mengompresi logo: ' + (err?.message || ''), 'error')
+      return
+    }
+    if (fileToUpload.size > MAX_LOGO_BYTES) {
+      try {
+        let maxMB = 0.45
+        for (let i = 0; i < 6; i++) {
+          fileToUpload = await compressImage(fileToUpload, maxMB, 512, 512)
+          if (fileToUpload.size <= MAX_LOGO_BYTES) break
+          maxMB -= 0.08
+          if (maxMB < 0.12) maxMB = 0.12
+        }
+      } catch (err2) {
+        showNotification('Gagal mengompresi logo: ' + (err2?.message || ''), 'error')
+        return
+      }
+    }
+    if (fileToUpload.size > MAX_LOGO_BYTES) {
+      showNotification('Logo masih di atas 1 MB setelah kompresi. Coba gambar lebih kecil.', 'error')
+      return
+    }
+    setUploadingLogo(true)
+    if (logoBlobUrlRef.current) {
+      URL.revokeObjectURL(logoBlobUrlRef.current)
+      logoBlobUrlRef.current = null
+    }
+    const blobUrl = URL.createObjectURL(fileToUpload)
+    logoBlobUrlRef.current = blobUrl
+    setLogoPreviewUrl(blobUrl)
+    try {
+      const res = await madrasahAPI.uploadLogo(fileToUpload)
+      if (res?.success && res?.logo_path) {
+        setForm((prev) => ({ ...prev, logo_path: res.logo_path }))
+        existingLogoBlobUrlRef.current = null
+        setExistingLogoBlobUrl(null)
+      } else {
+        showNotification(res?.message || 'Gagal mengunggah logo', 'error')
+      }
+    } catch (err) {
+      showNotification('Gagal mengunggah logo: ' + (err?.response?.data?.message || err?.message || ''), 'error')
+    } finally {
+      setUploadingLogo(false)
+      if (logoInputRef.current) logoInputRef.current.value = ''
+    }
+  }
+
+  const clearLogo = () => {
+    setForm((prev) => ({ ...prev, logo_path: '' }))
+    if (logoBlobUrlRef.current) {
+      URL.revokeObjectURL(logoBlobUrlRef.current)
+      logoBlobUrlRef.current = null
+    }
+    setLogoPreviewUrl(null)
+    existingLogoBlobUrlRef.current = null
+    setExistingLogoBlobUrl(null)
+    if (logoInputRef.current) logoInputRef.current.value = ''
+  }
+
   // Saat id_koordinator sudah 7 angka, fetch detail pengurus (hanya ketika ketik manual)
   useEffect(() => {
     const id = String(form.id_koordinator || '').trim()
@@ -348,13 +482,14 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
   }, [form.id_koordinator])
 
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
+    if (isOpen) document.body.style.overflow = 'hidden'
+  }, [isOpen])
+
+  useEffect(() => {
+    return () => {
       document.body.style.overflow = ''
     }
-    return () => { document.body.style.overflow = '' }
-  }, [isOpen])
+  }, [])
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -432,7 +567,8 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
         masyarakat: form.masyarakat || null,
         alumni: form.alumni || null,
         jarak_md_lain: form.jarak_md_lain || null,
-        foto_path: form.foto_path || null
+        foto_path: form.foto_path || null,
+        logo_path: form.logo_path || null
       }
       const res = isEdit
         ? await madrasahAPI.update(initialData.id, payload)
@@ -451,27 +587,32 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
     }
   }
 
-  if (!isOpen) return null
-
-  return (
-    <AnimatePresence>
-      <motion.div
-        key="tambah-madrasah-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 z-[9998]"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <motion.div
-        key="tambah-madrasah-panel"
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'tween', duration: 0.25 }}
-        className="fixed top-0 right-0 bottom-0 w-full max-w-lg bg-white dark:bg-gray-800 shadow-xl z-[9999] flex flex-col"
-      >
+  return createPortal(
+    <AnimatePresence
+      onExitComplete={() => {
+        document.body.style.overflow = ''
+      }}
+    >
+      {isOpen && (
+        <>
+          <motion.div
+            key="tambah-madrasah-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ type: 'tween', duration: 0.25 }}
+            className="fixed inset-0 bg-black/50 z-[9998]"
+            onClick={onClose}
+            aria-hidden="true"
+          />
+          <motion.div
+            key="tambah-madrasah-panel"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'tween', duration: 0.25 }}
+            className="fixed top-0 right-0 bottom-0 w-full max-w-lg bg-white dark:bg-gray-800 shadow-xl z-[9999] flex flex-col"
+          >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{isEdit ? 'Edit Madrasah' : 'Tambah Madrasah'}</h3>
           <button
@@ -530,7 +671,53 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
                       Hapus Foto
                     </button>
                   )}
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Hanya gambar (JPEG, PNG, WebP, GIF). Maks. 1 MB. Jika lebih besar akan dikompres otomatis.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Hanya gambar (JPEG, PNG, WebP, GIF). File mentah maks. 10 MB; setelah kompresi unggah maks. 1 MB.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Logo Madrasah</label>
+              <div className="flex flex-col sm:flex-row gap-3 items-start">
+                <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 flex items-center justify-center overflow-hidden shrink-0 p-1">
+                  {(logoPreviewUrl || existingLogoBlobUrl) ? (
+                    <img
+                      src={logoPreviewUrl || existingLogoBlobUrl}
+                      alt="Preview logo"
+                      className="max-w-full max-h-full w-full h-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 text-center px-1">Belum ada logo</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png"
+                    onChange={handleLogoChange}
+                    disabled={uploadingLogo}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={uploadingLogo}
+                    className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50"
+                  >
+                    {uploadingLogo ? 'Mengunggah...' : 'Pilih Logo'}
+                  </button>
+                  {(form.logo_path || logoPreviewUrl) && (
+                    <button
+                      type="button"
+                      onClick={clearLogo}
+                      disabled={uploadingLogo}
+                      className="px-3 py-2 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm hover:bg-red-50 dark:hover:bg-red-900/20"
+                    >
+                      Hapus Logo
+                    </button>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Hanya PNG atau JPEG. File mentah maks. 10 MB; diperkecil dan dikompres di perangkat (sisi maks. 512 px, unggah maks. 1 MB).</p>
                 </div>
               </div>
             </div>
@@ -1094,8 +1281,11 @@ const TambahMadrasahOffcanvas = forwardRef(function TambahMadrasahOffcanvas({ is
             </button>
           </div>
         </form>
-      </motion.div>
-    </AnimatePresence>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>,
+    document.body
   )
 })
 

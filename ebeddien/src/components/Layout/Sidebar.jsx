@@ -8,21 +8,34 @@ import { getGambarUrl } from '../../config/images'
 import { getMenuItemsWithSeparators, GROUP_ORDER } from '../../config/menuConfig'
 import { getIcon } from '../../config/menuIcons'
 import { userMatchesAnyAllowedRole, userHasSuperAdminAccess, userHasAnyAdminCap } from '../../utils/roleAccess'
+import { buildSidebarNavFromFiturItems } from '../../utils/sidebarNavFromFiturApi'
 
 const GROUP_LABELS = GROUP_ORDER
-const navItems = getMenuItemsWithSeparators().map((item) => ({
-  path: item.path,
-  label: item.label,
-  icon: getIcon(item.iconKey, 'w-6 h-6'),
-  showSeparatorAfter: item.showSeparatorAfter,
-  requiresRole: item.requiresRole,
-  requiresSuperAdmin: item.requiresSuperAdmin,
-  requiresPermission: item.requiresPermission
-}))
-
 
 function Sidebar() {
   const { isCollapsed, toggleCollapsed } = useSidebarStore()
+  const fiturMenuFromApi = useAuthStore((s) => s.fiturMenuFromApi)
+
+  const staticNavItems = useMemo(
+    () =>
+      getMenuItemsWithSeparators().map((item) => ({
+        path: item.path,
+        label: item.label,
+        icon: getIcon(item.iconKey, 'w-6 h-6'),
+        showSeparatorAfter: item.showSeparatorAfter,
+        requiresRole: item.requiresRole,
+        requiresSuperAdmin: item.requiresSuperAdmin,
+        requiresPermission: item.requiresPermission,
+        group: item.group,
+        _fromApi: false
+      })),
+    []
+  )
+
+  const navItems = useMemo(() => {
+    const fromApi = buildSidebarNavFromFiturItems(fiturMenuFromApi)
+    return fromApi ?? staticNavItems
+  }, [fiturMenuFromApi, staticNavItems])
   const [isScrolling, setIsScrolling] = useState(false)
   const scrollTimeoutRef = useRef(null)
   const location = useLocation()
@@ -59,7 +72,7 @@ function Sidebar() {
       if (navItems[i].showSeparatorAfter) g++
     }
     return out
-  }, [])
+  }, [navItems])
 
   // Filter menu: gabungan all_roles (role_key bisa "multi_role")
   const filteredNavItems = useMemo(() => {
@@ -74,6 +87,9 @@ function Sidebar() {
       }
       if (item.path === '/settings/role-akses') {
         return hasSuperAdminMenu
+      }
+      if (item._fromApi) {
+        return true
       }
       if (hasSuperAdminMenu) return true
       const userLevel = user?.level?.toLowerCase()
@@ -93,7 +109,10 @@ function Sidebar() {
     const byGroup = new Map()
     filteredNavItems.forEach((entry) => {
       const g = entry.groupIndex
-      if (!byGroup.has(g)) byGroup.set(g, { groupIndex: g, label: GROUP_LABELS[g] ?? 'Menu', items: [] })
+      if (!byGroup.has(g)) {
+        const label = entry.item.group ?? GROUP_LABELS[g] ?? 'Menu'
+        byGroup.set(g, { groupIndex: g, label, items: [] })
+      }
       byGroup.get(g).items.push(entry)
     })
     return Array.from(byGroup.values()).sort((a, b) => a.groupIndex - b.groupIndex)
@@ -151,10 +170,9 @@ function Sidebar() {
     if (path === '/dashboard-keuangan') {
       return location.pathname === '/dashboard-keuangan'
     }
-    // Untuk pendaftaran/item: aktif juga di sub-halaman (Manage Set, Kondisi, Registrasi, Assign, Simulasi) — akses lewat Item
+    // Untuk pendaftaran/item: aktif di /pendaftaran/item dan semua sub-rute (set, kondisi, …)
     if (path === '/pendaftaran/item') {
-      const itemSubPaths = ['/pendaftaran/item', '/pendaftaran/manage-item-set', '/pendaftaran/manage-kondisi', '/pendaftaran/kondisi-registrasi', '/pendaftaran/assign-item', '/pendaftaran/simulasi']
-      return itemSubPaths.some((p) => location.pathname === p || (p !== '/pendaftaran/item' && location.pathname.startsWith(p + '/')))
+      return location.pathname === '/pendaftaran/item' || location.pathname.startsWith('/pendaftaran/item/')
     }
     // Untuk pendaftaran/data-pendaftar, cek path yang tepat
     if (path === '/pendaftaran/data-pendaftar') {
@@ -171,8 +189,7 @@ function Sidebar() {
     // Untuk pendaftaran: hanya aktif ketika exact /pendaftaran atau subpath yang bukan menu sendiri (bukan item & sub-item, data-pendaftar, padukan-data, pengaturan)
     if (path === '/pendaftaran') {
       if (location.pathname !== '/pendaftaran' && !location.pathname.startsWith('/pendaftaran/')) return false
-      const itemAreaPaths = ['/pendaftaran/item', '/pendaftaran/manage-item-set', '/pendaftaran/manage-kondisi', '/pendaftaran/kondisi-registrasi', '/pendaftaran/assign-item', '/pendaftaran/simulasi']
-      if (itemAreaPaths.some((p) => location.pathname === p || location.pathname.startsWith(p + '/'))) return false
+      if (location.pathname === '/pendaftaran/item' || location.pathname.startsWith('/pendaftaran/item/')) return false
       if (location.pathname === '/pendaftaran/data-pendaftar' || location.pathname === '/pendaftaran/padukan-data' || location.pathname === '/pendaftaran/pengaturan') return false
       if (location.pathname === '/pendaftaran/data') return false
       return true
@@ -198,8 +215,9 @@ function Sidebar() {
     if (path === '/juara/data-juara') {
       return location.pathname.startsWith('/juara')
     }
-    // UGT - Data Madrasah, Koordinator
+    // UGT - Data Madrasah, Laporan, Koordinator
     if (path === '/ugt/data-madrasah') return location.pathname === '/ugt/data-madrasah'
+    if (path === '/ugt/laporan') return location.pathname === '/ugt/laporan' || location.pathname.startsWith('/ugt/laporan/')
     if (path === '/koordinator') return location.pathname === '/koordinator'
     // Cashless - Data Toko, Top Up, Akun Cashless, Pengaturan
     if (path === '/cashless/data-toko') return location.pathname === '/cashless/data-toko'
@@ -268,7 +286,7 @@ function Sidebar() {
             const shouldIncludeNis = pathsWithNis.includes(item.path) && idFromUrl && /^\d{7}$/.test(idFromUrl)
             const linkTo = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
             return (
-              <li key={item.path}>
+              <li key={item.fiturCode || item.path}>
                 <NavLink
                   to={linkTo}
                   className={`flex items-center h-12 justify-center px-3 rounded-lg mx-2 transition-colors duration-200 ${
@@ -330,7 +348,7 @@ function Sidebar() {
                         const linkTo = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
                         return (
                           <NavLink
-                            key={item.path}
+                            key={item.fiturCode || item.path}
                             to={linkTo}
                             className={`flex items-center h-12 space-x-3 px-3 pl-6 rounded-lg mx-2 transition-colors duration-200 ${
                               isActive

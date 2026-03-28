@@ -142,268 +142,8 @@
   }
   
   .prose hr {
-    border-top: 1px solid rgb(229 231 235);
-  }
-  
-  /* Print styles for Laporan page
-     Catatan: margin @page global memaksa jarak kosong di SEMUA cetakan (termasuk surat ijin).
-     Gunakan margin 0 di @page; jarak untuk laporan lewat padding container. */
-  @media print {
-    @page {
-      size: A4;
-      margin: 0;
-    }
-
-    .laporan-container {
-      padding: 10mm !important;
-      box-sizing: border-box !important;
-    }
-    
-    /* Reset semua container parent yang membatasi tinggi */
-    html,
-    body {
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    
-    /* Reset Layout container */
-    body > div,
-    body > div > div,
-    [class*="flex"][class*="h-screen"],
-    [class*="flex"][class*="overflow-hidden"] {
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-      min-height: auto !important;
-    }
-    
-    /* Reset main dan semua wrapper */
-    main,
-    main > div,
-    main > div > div {
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-      min-height: auto !important;
-    }
-    
-    /* Hide navigation and UI elements */
-    header,
-    aside,
-    nav,
-    .fixed,
-    button,
-    [class*="sidebar"],
-    [class*="header"],
-    [class*="navigation"] {
-      display: none !important;
-    }
-    
-    /* Show main content */
-    main,
-    main * {
-      visibility: visible !important;
-    }
-    
-    /* Ensure laporan container is visible */
-    .laporan-container,
-    .laporan-container * {
-      visibility: visible !important;
-    }
-    
-    .flex.flex-col.h-full.laporan-container {
-      visibility: visible !important;
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-      min-height: auto !important;
-    }
-    
-    .flex.flex-col.h-full.laporan-container * {
-      visibility: visible !important;
-    }
-    
-    .flex.flex-col.h-full.laporan-container > div {
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-      min-height: auto !important;
-    }
-    
-    /* Table print styles */
-    .laporan-print {
-      visibility: visible !important;
-    }
-    
-    .laporan-print table {
-      page-break-inside: auto !important;
-      visibility: visible !important;
-    }
-    
-    .laporan-print tr {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-      visibility: visible !important;
-    }
-    
-    .laporan-print thead {
-      display: table-header-group !important;
-      visibility: visible !important;
-      position: static !important;
-      top: auto !important;
-      z-index: auto !important;
-    }
-    
-    .laporan-print tbody {
-      display: table-row-group !important;
-      visibility: visible !important;
-    }
-    
-    .laporan-print th,
-    .laporan-print td {
-      visibility: visible !important;
-    }
-    
-    .laporan-print th {
-      background: #14b8a6 !important;
-      color: #fff !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    
-    .laporan-print tr:nth-child(even) td {
-      background: #f0fdfa !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-    
-    /* Ensure summary boxes are visible */
-    .flex.flex-row.gap-2,
-    .flex.flex-col.gap-2 {
-      visibility: visible !important;
-    }
-    
-    .flex.flex-row.gap-2 *,
-    .flex.flex-col.gap-2 * {
-      visibility: visible !important;
-    }
-    
-    /* Reset overflow for print - lebih agresif */
-    * {
-      overflow: visible !important;
-    }
-    
-    body,
-    html {
-      overflow: visible !important;
-      height: auto !important;
-      max-height: none !important;
-    }
-    
-    main,
-    main * {
-      overflow: visible !important;
-      height: auto !important;
-      max-height: none !important;
-    }
-    
-    .overflow-hidden,
-    .overflow-x-auto,
-    .overflow-y-auto,
-    [class*="overflow"] {
-      overflow: visible !important;
-      max-height: none !important;
-      height: auto !important;
-    }
-    
-    /* Fix untuk laporan container dan semua parent */
-    .laporan-container,
-    .laporan-container *,
-    [class*="laporan"] {
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-      min-height: auto !important;
-    }
-    
-    /* Reset semua flex container yang membatasi */
-    [class*="flex"][class*="h-"],
-    [class*="flex"][class*="min-h-"],
-    [class*="h-full"],
-    [class*="h-screen"] {
-      height: auto !important;
-      max-height: none !important;
-      min-height: auto !important;
-    }
-    
-    /* Pastikan tabel bisa di-print di beberapa halaman */
-    .laporan-print {
-      page-break-inside: auto !important;
-      break-inside: auto !important;
-    }
-    
-    .laporan-print tbody tr {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    
-    /* Pastikan container tabel tidak terpotong */
-    .overflow-x-auto,
-    [class*="overflow"] {
-      overflow: visible !important;
-      max-height: none !important;
-      height: auto !important;
-    }
-    
-    /* Force semua div dan container untuk tidak membatasi - dengan selector lebih spesifik */
-    body > div,
-    body > div > div,
-    body > div > div > div,
-    body > div > div > div > div,
-    body > div > div > div > div > div {
-      height: auto !important;
-      max-height: none !important;
-      min-height: auto !important;
-      overflow: visible !important;
-    }
-    
-    /* Reset semua flex container */
-    .flex,
-    [class*="flex"] {
-      height: auto !important;
-      max-height: none !important;
-      min-height: auto !important;
-    }
-    
-    /* Kecuali untuk elemen yang memang perlu dibatasi */
-    .laporan-print table {
-      height: auto !important;
-    }
-    
-    /* Pastikan motion.div tidak membatasi */
-    [class*="motion"],
-    [class*="AnimatePresence"] {
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-    }
-    
-    /* Pastikan semua wrapper container di-reset */
-    main > div,
-    main > div > div,
-    main > div > div > div {
-      height: auto !important;
-      max-height: none !important;
-      min-height: auto !important;
-      overflow: visible !important;
-    }
-  }
-  
-  .prose hr {
     margin: 2em 0;
+    border-top: 1px solid rgb(229 231 235);
   }
   
   .dark .prose hr {
@@ -549,6 +289,34 @@
   }
   .dark .chat-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: rgba(45, 212, 191, 0.5);
+  }
+
+  /* Toolbar horizontal (mis. Data Pendaftar) — tipis, halus, dan selaras tema */
+  .toolbar-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(20, 184, 166, 0.3) transparent;
+  }
+  .dark .toolbar-scrollbar {
+    scrollbar-color: rgba(45, 212, 191, 0.35) transparent;
+  }
+  .toolbar-scrollbar::-webkit-scrollbar {
+    height: 4px;
+  }
+  .toolbar-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .toolbar-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(20, 184, 166, 0.3);
+    border-radius: 9999px;
+  }
+  .toolbar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(20, 184, 166, 0.5);
+  }
+  .dark .toolbar-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(45, 212, 191, 0.35);
+  }
+  .dark .toolbar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(45, 212, 191, 0.55);
   }
 }
 

@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { pengeluaranAPI, userAPI } from '../../../services/api'
+import { pengeluaranAPI, userAPI, lembagaAPI } from '../../../services/api'
 import { useAuthStore } from '../../../store/authStore'
+import { usePengeluaranFiturAccess } from '../../../hooks/usePengeluaranFiturAccess'
 import { useNotification } from '../../../contexts/NotificationContext'
 import Modal from '../../../components/Modal/Modal'
 import DetailOffcanvas from '../../../components/DetailOffcanvas/DetailOffcanvas'
@@ -28,17 +29,89 @@ function Pengeluaran() {
   const { showNotification } = useNotification()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const pengeluaranFitur = usePengeluaranFiturAccess()
+  const [lembagaRows, setLembagaRows] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await lembagaAPI.getAll()
+        if (!cancelled && res.success) setLembagaRows(res.data || [])
+      } catch (_) {
+        /* fallback opsi statis di komponen filter */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const lockedRencanaLembagaId = useMemo(() => {
+    if (
+      pengeluaranFitur.rencanaLembagaFilterLocked &&
+      pengeluaranFitur.allowedLembagaIdsRencana?.length === 1
+    ) {
+      return pengeluaranFitur.allowedLembagaIdsRencana[0]
+    }
+    return null
+  }, [pengeluaranFitur.rencanaLembagaFilterLocked, pengeluaranFitur.allowedLembagaIdsRencana])
+
+  const lockedDraftLembagaId = useMemo(() => {
+    if (
+      pengeluaranFitur.draftLembagaFilterLocked &&
+      pengeluaranFitur.allowedLembagaIdsDraft?.length === 1
+    ) {
+      return pengeluaranFitur.allowedLembagaIdsDraft[0]
+    }
+    return null
+  }, [pengeluaranFitur.draftLembagaFilterLocked, pengeluaranFitur.allowedLembagaIdsDraft])
+
+  const lockedPengeluaranLembagaId = useMemo(() => {
+    if (
+      pengeluaranFitur.pengeluaranLembagaFilterLocked &&
+      pengeluaranFitur.allowedLembagaIdsPengeluaran?.length === 1
+    ) {
+      return pengeluaranFitur.allowedLembagaIdsPengeluaran[0]
+    }
+    return null
+  }, [pengeluaranFitur.pengeluaranLembagaFilterLocked, pengeluaranFitur.allowedLembagaIdsPengeluaran])
+
   // Set activeTab dari URL query param jika ada
   const tabFromUrl = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState(tabFromUrl || 'rencana') // 'rencana', 'pengeluaran', atau 'draft'
   const [itemsPerPage, setItemsPerPage] = useState(50)
   const [confirmKomentarId, setConfirmKomentarId] = useState(null)
   const [confirmKomentarData, setConfirmKomentarData] = useState(null)
+
+  useEffect(() => {
+    const order = ['rencana', 'pengeluaran', 'draft']
+    const allowed = {
+      rencana: pengeluaranFitur.tabRencana,
+      pengeluaran: pengeluaranFitur.tabPengeluaran,
+      draft: pengeluaranFitur.tabDraft
+    }
+    if (!allowed[activeTab]) {
+      const next = order.find((t) => allowed[t])
+      if (next) setActiveTab(next)
+    }
+  }, [
+    activeTab,
+    pengeluaranFitur.tabRencana,
+    pengeluaranFitur.tabPengeluaran,
+    pengeluaranFitur.tabDraft
+  ])
   
   // Use custom hooks for filtering
-  const rencanaFilters = useRencanaFilters(activeTab, itemsPerPage)
-  const pengeluaranFilters = usePengeluaranFilters(activeTab, itemsPerPage)
-  const draftFilters = useDraftFilters(activeTab, itemsPerPage)
+  const rencanaFilters = useRencanaFilters(activeTab, itemsPerPage, {
+    lockedLembagaId: lockedRencanaLembagaId
+  })
+  const pengeluaranFilters = usePengeluaranFilters(activeTab, itemsPerPage, {
+    lockedLembagaId: lockedPengeluaranLembagaId
+  })
+  const draftFilters = useDraftFilters(activeTab, itemsPerPage, {
+    lockedLembagaId: lockedDraftLembagaId
+  })
   
   // Destructure rencana filters
   const {
@@ -154,25 +227,56 @@ function Pengeluaran() {
   )
   
   // Use custom hooks for actions
-  const rencanaActions = useRencanaActions(
-    loadAllRencana,
-    rencanaDetailHook.closeRencanaOffcanvas
+  const rencanaActions = useRencanaActions(loadAllRencana, rencanaDetailHook.closeRencanaOffcanvas, {
+    rencanaEdit: pengeluaranFitur.rencanaEdit,
+    draftEdit: pengeluaranFitur.draftEdit,
+    rencanaApprove: pengeluaranFitur.rencanaApprove,
+    rencanaTolak: pengeluaranFitur.rencanaTolak
+  })
+
+  const handleDeleteDraft = useCallback(
+    async (draft) => {
+      if (!draft?.id || !pengeluaranFitur.draftHapus) return
+      if (!window.confirm(`Hapus draft "${draft.keterangan || draft.id}"?`)) return
+      try {
+        const res = await pengeluaranAPI.deleteRencana(draft.id)
+        if (res.success) {
+          showNotification(res.message || 'Draft dihapus', 'success')
+          loadAllDraft()
+        } else {
+          showNotification(res.message || 'Gagal menghapus draft', 'error')
+        }
+      } catch (err) {
+        showNotification(err.response?.data?.message || 'Gagal menghapus draft', 'error')
+      }
+    },
+    [pengeluaranFitur.draftHapus, loadAllDraft, showNotification]
   )
   
   // Combine loading states
   const isLoading = rencanaModals.loading || rencanaLoading || pengeluaranLoading || draftLoading
   
-  // Handle tab change from URL query param
+  // Handle tab change from URL query param (hanya tab yang diizinkan fitur)
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab')
-    if (tabFromUrl && ['rencana', 'pengeluaran', 'draft'].includes(tabFromUrl)) {
+    const allowedUrl = {
+      rencana: pengeluaranFitur.tabRencana,
+      pengeluaran: pengeluaranFitur.tabPengeluaran,
+      draft: pengeluaranFitur.tabDraft
+    }
+    if (tabFromUrl && allowedUrl[tabFromUrl]) {
       setActiveTab(tabFromUrl)
-      // Refresh data jika switch ke tab draft
       if (tabFromUrl === 'draft') {
         loadAllDraft()
       }
     }
-  }, [searchParams, loadAllDraft])
+  }, [
+    searchParams,
+    loadAllDraft,
+    pengeluaranFitur.tabRencana,
+    pengeluaranFitur.tabPengeluaran,
+    pengeluaranFitur.tabDraft
+  ])
   
   // Handler untuk draft click (sama seperti rencana)
   const handleDraftClick = async (draft) => {
@@ -459,6 +563,19 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
     }
   }
 
+  if (pengeluaranFitur.noTabAccess) {
+    return (
+      <div className="h-full overflow-hidden flex items-center justify-center p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 max-w-md text-center">
+          <p className="text-gray-700 dark:text-gray-200 font-medium">Akses tab Pengeluaran tidak diaktifkan</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+            Minta admin mengatur fitur aksi tab di Pengaturan → Fitur untuk peran Anda.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
       <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
@@ -471,38 +588,47 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
             {/* Tabs */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mb-6">
               <div className="border-b border-gray-200 dark:border-gray-700">
-                <nav className="flex -mb-px">
-                  <button
-                    onClick={() => setActiveTab('rencana')}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'rencana'
-                        ? 'border-teal-500 text-teal-600 dark:text-teal-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                    }`}
-                  >
-                    Rencana
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('pengeluaran')}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'pengeluaran'
-                        ? 'border-teal-500 text-teal-600 dark:text-teal-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                    }`}
-                  >
-                    Pengeluaran
-                  </button>
-                  <div className="flex-1"></div>
-                  <button
-                    onClick={() => setActiveTab('draft')}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'draft'
-                        ? 'border-teal-500 text-teal-600 dark:text-teal-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                    }`}
-                  >
-                    Draft
-                  </button>
+                <nav className="flex -mb-px flex-wrap">
+                  {pengeluaranFitur.tabRencana && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('rencana')}
+                      className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                        activeTab === 'rencana'
+                          ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      Rencana
+                    </button>
+                  )}
+                  {pengeluaranFitur.tabPengeluaran && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('pengeluaran')}
+                      className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                        activeTab === 'pengeluaran'
+                          ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      Pengeluaran
+                    </button>
+                  )}
+                  <div className="flex-1 min-w-[1rem]" />
+                  {pengeluaranFitur.tabDraft && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('draft')}
+                      className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                        activeTab === 'draft'
+                          ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      Draft
+                    </button>
+                  )}
                 </nav>
               </div>
             </div>
@@ -546,6 +672,10 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                     setRencanaPage(1)
                   }}
                   onCreateClick={() => navigate('/pengeluaran/create')}
+                  lembagaRows={lembagaRows}
+                  allowedLembagaIds={pengeluaranFitur.allowedLembagaIdsRencana}
+                  lembagaFilterDisabled={!!lockedRencanaLembagaId}
+                  showCreateButton={pengeluaranFitur.rencanaBuat}
                 />
 
                 {/* Rencana List */}
@@ -748,6 +878,10 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                     setDraftPage(1)
                   }}
                   onCreateClick={() => navigate('/pengeluaran/create')}
+                  lembagaRows={lembagaRows}
+                  allowedLembagaIds={pengeluaranFitur.allowedLembagaIdsDraft}
+                  lembagaFilterDisabled={!!lockedDraftLembagaId}
+                  showCreateButton={pengeluaranFitur.draftBuat}
                 />
 
                 {/* Draft List */}
@@ -760,6 +894,9 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                   itemsPerPage={itemsPerPage}
                   setItemsPerPage={setItemsPerPage}
                   onDraftClick={handleDraftClick}
+                  canEditDraft={pengeluaranFitur.draftEdit}
+                  canDeleteDraft={pengeluaranFitur.draftHapus}
+                  onDeleteDraft={handleDeleteDraft}
                 />
               </div>
             )}
@@ -796,6 +933,9 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                     setPengeluaranTanggalSampai(e.target.value)
                     setPengeluaranPage(1)
                   }}
+                  lembagaRows={lembagaRows}
+                  allowedLembagaIds={pengeluaranFitur.allowedLembagaIdsPengeluaran}
+                  lembagaFilterDisabled={!!lockedPengeluaranLembagaId}
                 />
 
                 {isLoading ? (
@@ -979,6 +1119,8 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         }}
         formatHijriyahDate={null}
         activeTab="masehi"
+        canEditPengeluaran={pengeluaranFitur.itemEdit}
+        canDeletePengeluaran={pengeluaranFitur.itemHapus}
       />
 
       {/* Detail Offcanvas - Rencana */}
@@ -998,6 +1140,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         getStatusBadge={getStatusBadge}
         canEdit={rencanaActions.canEdit(rencanaDetailHook.selectedRencana)}
         canApprove={rencanaActions.canApprove(rencanaDetailHook.selectedRencana)}
+        canReject={rencanaActions.canReject(rencanaDetailHook.selectedRencana)}
         onEdit={(id) => rencanaActions.handleEdit(id ?? rencanaDetailHook.selectedRencana?.id)}
         onApprove={handleRencanaApprove}
         onReject={handleRencanaReject}
@@ -1407,6 +1550,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                       </button>
                     )}
                     <button
+                      type="button"
                       onClick={handleConfirmApproveReject}
                       disabled={rencanaModals.loading || rencanaAdminList.selectedAdmins.length === 0}
                       className={`px-4 py-2 text-white rounded-lg transition-colors flex items-center gap-2 ${

@@ -42,6 +42,92 @@ class PengeluaranController
             ->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 
+    /** @return array<string, mixed> */
+    private function userFromRequest(Request $request): array
+    {
+        $u = $request->getAttribute('user');
+
+        return is_array($u) ? $u : [];
+    }
+
+    private function pengeluaranDenyUnlessAction(Request $request, Response $response, string $code): ?Response
+    {
+        $user = $this->userFromRequest($request);
+        if (RoleHelper::tokenPengeluaranActionAllowed($this->db, $user, $code)) {
+            return null;
+        }
+
+        return $this->jsonResponse($response, [
+            'success' => false,
+            'message' => 'Akses ditolak untuk aksi ini',
+        ], 403);
+    }
+
+    /**
+     * @param list<string> $conditions
+     * @param list<mixed> $params
+     */
+    private function appendRencanaLembagaScope(Request $request, array &$conditions, array &$params, string $which): void
+    {
+        $user = $this->userFromRequest($request);
+        if (!RoleHelper::tokenPengeluaranApplyLembagaScope($this->db, $user, $which)) {
+            return;
+        }
+        $ids = RoleHelper::tokenPengeluaranLembagaIdsFromUser($user);
+        if ($ids === []) {
+            return;
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $conditions[] = "lembaga IN ({$placeholders})";
+        foreach ($ids as $id) {
+            $params[] = $id;
+        }
+    }
+
+    /**
+     * @param list<string> $conditions
+     * @param list<mixed> $params
+     */
+    private function appendPengeluaranLembagaScope(Request $request, array &$conditions, array &$params): void
+    {
+        $user = $this->userFromRequest($request);
+        if (!RoleHelper::tokenPengeluaranApplyLembagaScope($this->db, $user, 'pengeluaran')) {
+            return;
+        }
+        $ids = RoleHelper::tokenPengeluaranLembagaIdsFromUser($user);
+        if ($ids === []) {
+            return;
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $conditions[] = "p.lembaga IN ({$placeholders})";
+        foreach ($ids as $id) {
+            $params[] = $id;
+        }
+    }
+
+    private function assertRencanaLembagaRow(Request $request, Response $response, ?string $lembaga, string $which): ?Response
+    {
+        $user = $this->userFromRequest($request);
+        if (!RoleHelper::tokenPengeluaranApplyLembagaScope($this->db, $user, $which)) {
+            return null;
+        }
+        $ids = RoleHelper::tokenPengeluaranLembagaIdsFromUser($user);
+        $lid = $lembaga !== null && $lembaga !== '' ? trim((string) $lembaga) : '';
+        if ($lid === '' || !in_array($lid, $ids, true)) {
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Akses ditolak untuk lembaga ini',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    private function assertPengeluaranLembagaRow(Request $request, Response $response, ?string $lembaga): ?Response
+    {
+        return $this->assertRencanaLembagaRow($request, $response, $lembaga, 'pengeluaran');
+    }
+
     /**
      * POST /api/pengeluaran/rencana - Buat rencana pengeluaran baru
      */
@@ -56,7 +142,8 @@ class PengeluaranController
                 }, $data['details']);
             }
             $user = $request->getAttribute('user');
-            
+            $userArr = is_array($user) ? $user : [];
+
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
             $keterangan = $data['keterangan'] ?? '';
             $kategori = $data['kategori'] ?? null;
@@ -110,6 +197,33 @@ class PengeluaranController
                 $itemNames[] = $itemName;
             }
 
+                // Insert rencana - support draft status
+                $status = $data['status'] ?? 'pending'; // 'pending' atau 'draft'
+                if (!in_array($status, ['pending', 'draft'])) {
+                    $status = 'pending';
+                }
+
+            $actionCode = $status === 'draft'
+                ? 'action.pengeluaran.rencana.simpan_draft'
+                : 'action.pengeluaran.rencana.simpan';
+            $denyA = $this->pengeluaranDenyUnlessAction($request, $response, $actionCode);
+            if ($denyA !== null) {
+                return $denyA;
+            }
+            $denyL = $this->assertRencanaLembagaRow($request, $response, $lembaga !== null ? (string) $lembaga : null, 'rencana');
+            if ($denyL !== null) {
+                return $denyL;
+            }
+            if (RoleHelper::tokenPengeluaranApplyLembagaScope($this->db, $userArr, 'rencana')) {
+                $lid = $lembaga !== null && $lembaga !== '' ? trim((string) $lembaga) : '';
+                if ($lid === '') {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Lembaga wajib dipilih sesuai akses Anda',
+                    ], 400);
+                }
+            }
+
             $this->db->beginTransaction();
 
             try {
@@ -123,12 +237,6 @@ class PengeluaranController
                     $harga = floatval($detail['harga'] ?? 0);
                     $jumlah = intval($detail['jumlah'] ?? 1);
                     $totalNominal += $harga * $jumlah;
-                }
-
-                // Insert rencana - support draft status
-                $status = $data['status'] ?? 'pending'; // 'pending' atau 'draft'
-                if (!in_array($status, ['pending', 'draft'])) {
-                    $status = 'pending';
                 }
                 
                 $sqlRencana = "INSERT INTO pengeluaran___rencana (keterangan, kategori, lembaga, sumber_uang, id_admin, nominal, hijriyah, tahun_ajaran, ket) 
@@ -194,6 +302,7 @@ class PengeluaranController
             $lembaga = $queryParams['lembaga'] ?? null;
             $tanggalDari = $queryParams['tanggal_dari'] ?? null;
             $tanggalSampai = $queryParams['tanggal_sampai'] ?? null;
+            $lembagaContext = isset($queryParams['lembaga_context']) ? trim((string) $queryParams['lembaga_context']) : '';
             $page = isset($queryParams['page']) ? (int)$queryParams['page'] : 1;
             $limit = isset($queryParams['limit']) ? (int)$queryParams['limit'] : 20;
             $offset = ($page - 1) * $limit;
@@ -226,6 +335,15 @@ class PengeluaranController
                 $conditions[] = "DATE(tanggal_dibuat) <= ?";
                 $params[] = $tanggalSampai;
             }
+
+            $whichScope = 'rencana';
+            if ($status === 'draft' || $lembagaContext === 'draft') {
+                $whichScope = 'draft';
+            }
+            if ($whichScope === 'rencana' && !$status) {
+                $conditions[] = "ket <> 'draft'";
+            }
+            $this->appendRencanaLembagaScope($request, $conditions, $params, $whichScope);
 
             if (!empty($conditions)) {
                 $whereClause = "WHERE " . implode(" AND ", $conditions);
@@ -332,6 +450,12 @@ class PengeluaranController
                     'success' => false,
                     'message' => 'Rencana tidak ditemukan'
                 ], 404);
+            }
+
+            $whichDet = (($rencana['ket'] ?? '') === 'draft') ? 'draft' : 'rencana';
+            $denyLb = $this->assertRencanaLembagaRow($request, $response, isset($rencana['lembaga']) ? (string) $rencana['lembaga'] : null, $whichDet);
+            if ($denyLb !== null) {
+                return $denyLb;
             }
 
             // Get detail items (hanya versi terbaru untuk setiap item)
@@ -711,7 +835,7 @@ class PengeluaranController
             }
 
             // Cek apakah rencana ada dan masih pending
-            $sqlCheck = "SELECT ket FROM pengeluaran___rencana WHERE id = ?";
+            $sqlCheck = "SELECT ket, lembaga FROM pengeluaran___rencana WHERE id = ?";
             $stmtCheck = $this->db->prepare($sqlCheck);
             $stmtCheck->execute([$idRencana]);
             $rencana = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
@@ -721,6 +845,18 @@ class PengeluaranController
                     'success' => false,
                     'message' => 'Rencana tidak ditemukan'
                 ], 404);
+            }
+
+            $isDraftRow = ($rencana['ket'] ?? '') === 'draft';
+            $editCode = $isDraftRow ? 'action.pengeluaran.draft.edit' : 'action.pengeluaran.rencana.edit';
+            $denyAc = $this->pengeluaranDenyUnlessAction($request, $response, $editCode);
+            if ($denyAc !== null) {
+                return $denyAc;
+            }
+            $whichEdit = $isDraftRow ? 'draft' : 'rencana';
+            $denyLb0 = $this->assertRencanaLembagaRow($request, $response, isset($rencana['lembaga']) ? (string) $rencana['lembaga'] : null, $whichEdit);
+            if ($denyLb0 !== null) {
+                return $denyLb0;
             }
 
             // Boleh edit jika status pending, di edit, atau draft
@@ -777,6 +913,17 @@ class PengeluaranController
                         $updateParams[] = $kategori;
                     }
                     if ($lembaga !== null) {
+                        $whichTarget = $whichEdit;
+                        if ($status === 'pending') {
+                            $whichTarget = 'rencana';
+                        } elseif ($status === 'draft') {
+                            $whichTarget = 'draft';
+                        }
+                        $denyLb1 = $this->assertRencanaLembagaRow($request, $response, (string) $lembaga, $whichTarget);
+                        if ($denyLb1 !== null) {
+                            $this->db->rollBack();
+                            return $denyLb1;
+                        }
                         $updateFields[] = "lembaga = ?";
                         $updateParams[] = $lembaga;
                     }
@@ -997,8 +1144,13 @@ class PengeluaranController
                 ], 400);
             }
 
+            $denyA = $this->pengeluaranDenyUnlessAction($request, $response, 'action.pengeluaran.rencana.approve');
+            if ($denyA !== null) {
+                return $denyA;
+            }
+
             // Cek rencana
-            $sqlRencana = "SELECT id_admin, ket FROM pengeluaran___rencana WHERE id = ?";
+            $sqlRencana = "SELECT id_admin, ket, lembaga FROM pengeluaran___rencana WHERE id = ?";
             $stmtRencana = $this->db->prepare($sqlRencana);
             $stmtRencana->execute([$idRencana]);
             $rencana = $stmtRencana->fetch(\PDO::FETCH_ASSOC);
@@ -1008,6 +1160,11 @@ class PengeluaranController
                     'success' => false,
                     'message' => 'Rencana tidak ditemukan'
                 ], 404);
+            }
+
+            $denyLb = $this->assertRencanaLembagaRow($request, $response, isset($rencana['lembaga']) ? (string) $rencana['lembaga'] : null, 'rencana');
+            if ($denyLb !== null) {
+                return $denyLb;
             }
 
             // Validasi: admin yang membuat tidak bisa approve sendiri
@@ -1123,8 +1280,13 @@ class PengeluaranController
                 ], 400);
             }
 
+            $denyA = $this->pengeluaranDenyUnlessAction($request, $response, 'action.pengeluaran.rencana.tolak');
+            if ($denyA !== null) {
+                return $denyA;
+            }
+
             // Cek rencana
-            $sqlCheck = "SELECT ket FROM pengeluaran___rencana WHERE id = ?";
+            $sqlCheck = "SELECT ket, lembaga FROM pengeluaran___rencana WHERE id = ?";
             $stmtCheck = $this->db->prepare($sqlCheck);
             $stmtCheck->execute([$idRencana]);
             $rencana = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
@@ -1134,6 +1296,11 @@ class PengeluaranController
                     'success' => false,
                     'message' => 'Rencana tidak ditemukan'
                 ], 404);
+            }
+
+            $denyLb = $this->assertRencanaLembagaRow($request, $response, isset($rencana['lembaga']) ? (string) $rencana['lembaga'] : null, 'rencana');
+            if ($denyLb !== null) {
+                return $denyLb;
             }
 
             if ($rencana['ket'] === 'di approve') {
@@ -1200,6 +1367,8 @@ class PengeluaranController
                 $conditions[] = "DATE(p.tanggal_dibuat) <= ?";
                 $params[] = $tanggalSampai;
             }
+
+            $this->appendPengeluaranLembagaScope($request, $conditions, $params);
 
             if (!empty($conditions)) {
                 $whereClause = "WHERE " . implode(" AND ", $conditions);
@@ -1297,6 +1466,11 @@ class PengeluaranController
                     'success' => false,
                     'message' => 'Pengeluaran tidak ditemukan'
                 ], 404);
+            }
+
+            $denyPl = $this->assertPengeluaranLembagaRow($request, $response, isset($pengeluaran['lembaga']) ? (string) $pengeluaran['lembaga'] : null);
+            if ($denyPl !== null) {
+                return $denyPl;
             }
 
             // Get detail items - ambil dari rencana detail untuk mendapatkan versi dan rejected
@@ -2483,8 +2657,13 @@ class PengeluaranController
                 ], 400);
             }
 
+            $denyAc = $this->pengeluaranDenyUnlessAction($request, $response, 'action.pengeluaran.item.edit');
+            if ($denyAc !== null) {
+                return $denyAc;
+            }
+
             // Cek apakah pengeluaran ada
-            $sqlCheck = "SELECT id FROM pengeluaran WHERE id = ?";
+            $sqlCheck = "SELECT id, lembaga FROM pengeluaran WHERE id = ?";
             $stmtCheck = $this->db->prepare($sqlCheck);
             $stmtCheck->execute([$idPengeluaran]);
             $pengeluaran = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
@@ -2494,6 +2673,11 @@ class PengeluaranController
                     'success' => false,
                     'message' => 'Pengeluaran tidak ditemukan'
                 ], 404);
+            }
+
+            $denyLb0 = $this->assertPengeluaranLembagaRow($request, $response, isset($pengeluaran['lembaga']) ? (string) $pengeluaran['lembaga'] : null);
+            if ($denyLb0 !== null) {
+                return $denyLb0;
             }
 
             // Prepare update fields
@@ -2517,6 +2701,12 @@ class PengeluaranController
             // Update lembaga
             if (isset($data['lembaga'])) {
                 $lembaga = $data['lembaga'] ? $data['lembaga'] : null;
+                if ($lembaga !== null && $lembaga !== '') {
+                    $denyLb1 = $this->assertPengeluaranLembagaRow($request, $response, (string) $lembaga);
+                    if ($denyLb1 !== null) {
+                        return $denyLb1;
+                    }
+                }
                 $updateFields[] = "lembaga = ?";
                 $updateParams[] = $lembaga;
             }
@@ -2620,6 +2810,11 @@ class PengeluaranController
                 ], 404);
             }
 
+            $denyPl = $this->assertPengeluaranLembagaRow($request, $response, isset($pengeluaran['lembaga']) ? (string) $pengeluaran['lembaga'] : null);
+            if ($denyPl !== null) {
+                return $denyPl;
+            }
+
             $lembaga = $pengeluaran['lembaga'];
 
             if (empty($lembaga)) {
@@ -2668,6 +2863,83 @@ class PengeluaranController
     }
 
     /**
+     * DELETE /api/pengeluaran/rencana/{id} - Hapus rencana berstatus draft saja
+     */
+    public function deleteRencana(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $idRencana = $args['id'] ?? null;
+            if (!$idRencana) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'ID rencana tidak valid',
+                ], 400);
+            }
+
+            $denyAc = $this->pengeluaranDenyUnlessAction($request, $response, 'action.pengeluaran.draft.hapus');
+            if ($denyAc !== null) {
+                return $denyAc;
+            }
+
+            $stmt = $this->db->prepare('SELECT id, ket, lembaga FROM pengeluaran___rencana WHERE id = ?');
+            $stmt->execute([$idRencana]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Rencana tidak ditemukan',
+                ], 404);
+            }
+            if (($row['ket'] ?? '') !== 'draft') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Hanya rencana berstatus draft yang dapat dihapus lewat endpoint ini',
+                ], 400);
+            }
+
+            $denyLb = $this->assertRencanaLembagaRow($request, $response, isset($row['lembaga']) ? (string) $row['lembaga'] : null, 'draft');
+            if ($denyLb !== null) {
+                return $denyLb;
+            }
+
+            $this->db->beginTransaction();
+            try {
+                $sqlFiles = 'SELECT path_file FROM pengeluaran___rencana_file WHERE id_pengeluaran_rencana = ?';
+                $stmtFiles = $this->db->prepare($sqlFiles);
+                $stmtFiles->execute([$idRencana]);
+                $files = $stmtFiles->fetchAll(\PDO::FETCH_ASSOC);
+                foreach ($files as $file) {
+                    $filePath = $this->resolveUploadPath($file['path_file']);
+                    if (file_exists($filePath)) {
+                        unlink($filePath);
+                    }
+                }
+                $this->db->prepare('DELETE FROM pengeluaran___rencana_file WHERE id_pengeluaran_rencana = ?')->execute([$idRencana]);
+                $this->db->prepare('DELETE FROM pengeluaran___rencana_detail WHERE id_pengeluaran_rencana = ?')->execute([$idRencana]);
+                $this->db->prepare('DELETE FROM pengeluaran___komentar WHERE id_rencana = ?')->execute([$idRencana]);
+                $this->db->prepare('DELETE FROM pengeluaran___viewer WHERE id_rencana = ?')->execute([$idRencana]);
+                $this->db->prepare('DELETE FROM pengeluaran___rencana WHERE id = ? AND ket = ?')->execute([$idRencana, 'draft']);
+                $this->db->commit();
+            } catch (\Exception $e) {
+                $this->db->rollBack();
+                throw $e;
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Draft rencana berhasil dihapus',
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Delete rencana draft error: ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menghapus draft: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * DELETE /api/pengeluaran/{id} - Hapus pengeluaran
      * Body: { "delete_rencana": boolean }
      */
@@ -2687,6 +2959,11 @@ class PengeluaranController
                 ], 400);
             }
 
+            $denyAc = $this->pengeluaranDenyUnlessAction($request, $response, 'action.pengeluaran.item.hapus');
+            if ($denyAc !== null) {
+                return $denyAc;
+            }
+
             // Mulai transaksi
             $this->db->beginTransaction();
 
@@ -2702,6 +2979,12 @@ class PengeluaranController
                     'success' => false,
                     'message' => 'Pengeluaran tidak ditemukan'
                 ], 404);
+            }
+
+            $denyLb = $this->assertPengeluaranLembagaRow($request, $response, isset($pengeluaran['lembaga']) ? (string) $pengeluaran['lembaga'] : null);
+            if ($denyLb !== null) {
+                $this->db->rollBack();
+                return $denyLb;
             }
 
             $idRencana = $pengeluaran['id_rencana'] ?? null;

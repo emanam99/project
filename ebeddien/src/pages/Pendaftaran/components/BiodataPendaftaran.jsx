@@ -5,6 +5,7 @@ import { santriAPI, pendaftaranAPI } from '../../../services/api'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useAuthStore } from '../../../store/authStore'
 import { userMatchesAnyAllowedRole } from '../../../utils/roleAccess'
+import { usePendaftaranFiturAccess } from '../../../hooks/usePendaftaranFiturAccess'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { extractTanggalLahirFromNIK, extractGenderFromNIK } from '../../../utils/nikUtils'
 import BerkasOffcanvas from './BerkasOffcanvas'
@@ -524,11 +525,9 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   const initialDataFromCreateRef = useRef(null)
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
   const { user } = useAuthStore()
+  const { hapusSantri } = usePendaftaranFiturAccess()
   
   // Note: showNotification sudah dideklarasikan di atas (baris 35)
-  
-  // Cek apakah user memiliki role untuk melihat tombol hapus
-  const hasDeletePermission = () => userMatchesAnyAllowedRole(user, ['super_admin', 'admin_psb'])
   
   // WhatsApp checking hook
   const waCheck = useWhatsAppCheck(showNotification)
@@ -1477,7 +1476,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
         onOpenSearch={onOpenSearch}
         onOpenNewModal={() => setShowNewModal(true)}
         onOpenDeleteModal={handleOpenDeleteModal}
-        showDeleteButton={hasDeletePermission()}
+        showDeleteButton={hapusSantri}
       />
 
       {/* Modal Konfirmasi Simpan Biodata + Opsi Kirim WA */}

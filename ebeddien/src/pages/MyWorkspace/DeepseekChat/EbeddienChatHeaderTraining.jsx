@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { EbeddienChatAvatarLogo, EbeddienChatWordmark } from './EbeddienChatBranding'
+import { useChatAiFiturAccess } from '../../../hooks/useChatAiFiturAccess'
 
 /**
  * Header pelatihan superadmin — satu gaya dengan chat utama; navigasi antar Chat / Bank / Training Chat / Dashboard.
@@ -13,6 +14,8 @@ export default function EbeddienChatHeaderTraining({
   chatHeaderMenuOpen,
   setChatHeaderMenuOpen
 }) {
+  const { pageTrainingBank, pageTrainingChat, pageDashboard, pageRiwayat } = useChatAiFiturAccess()
+
   const subtitle =
     variant === 'bank'
       ? 'Pelatihan · Bank Q&A'
@@ -73,22 +76,30 @@ export default function EbeddienChatHeaderTraining({
               <NavLink to="/chat-ai" end className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
                 Chat
               </NavLink>
-              <NavLink to="/chat-ai/training" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
-                Bank Q&amp;A
-              </NavLink>
-              <NavLink
-                to="/chat-ai/training-chat"
-                className={navClass}
-                onClick={() => setChatHeaderMenuOpen(false)}
-              >
-                Training Chat
-              </NavLink>
-              <NavLink to="/chat-ai/dashboard" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
-                Dashboard
-              </NavLink>
-              <NavLink to="/chat-ai/riwayat" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
-                Riwayat
-              </NavLink>
+              {pageTrainingBank ? (
+                <NavLink to="/chat-ai/training" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
+                  Bank Q&amp;A
+                </NavLink>
+              ) : null}
+              {pageTrainingChat ? (
+                <NavLink
+                  to="/chat-ai/training-chat"
+                  className={navClass}
+                  onClick={() => setChatHeaderMenuOpen(false)}
+                >
+                  Training Chat
+                </NavLink>
+              ) : null}
+              {pageDashboard ? (
+                <NavLink to="/chat-ai/dashboard" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
+                  Dashboard
+                </NavLink>
+              ) : null}
+              {pageRiwayat ? (
+                <NavLink to="/chat-ai/riwayat" className={navClass} onClick={() => setChatHeaderMenuOpen(false)}>
+                  Riwayat
+                </NavLink>
+              ) : null}
             </div>
           </motion.div>
         ) : null}

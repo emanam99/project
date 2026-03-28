@@ -76,6 +76,270 @@ class SettingsController
     }
 
     /**
+     * GET /api/settings/ebeddien-menu-fitur — menu app ebeddien + role_id per baris (role___fitur).
+     * Semua role dari tabel `role` (untuk editor matriks). Hanya super_admin.
+     */
+    public function getEbeddienMenuFitur(Request $request, Response $response): Response
+    {
+        try {
+            $appStmt = $this->db->prepare('SELECT `id`, `key`, `label` FROM `app` WHERE `key` = ? LIMIT 1');
+            $appStmt->execute(['ebeddien']);
+            $appRow = $appStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($appRow === false) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Aplikasi ebeddien belum ada di tabel app. Jalankan seed AppSeed.',
+                ], 404);
+            }
+
+            $appId = (int) $appRow['id'];
+
+            $rolesStmt = $this->db->query('SELECT `id`, `key`, `label` FROM `role` ORDER BY `id` ASC');
+            $allRoles = array_map(function ($r) {
+                return [
+                    'id' => (int) ($r['id'] ?? 0),
+                    'key' => (string) ($r['key'] ?? ''),
+                    'label' => (string) ($r['label'] ?? ''),
+                ];
+            }, $rolesStmt->fetchAll(\PDO::FETCH_ASSOC));
+
+            $fiturStmt = $this->db->prepare(
+                'SELECT `id`, `parent_id`, `code`, `label`, `path`, `group_label`, `sort_order`, `type` '
+                . 'FROM `app___fitur` WHERE `id_app` = ? AND `type` IN (\'menu\', \'action\') ORDER BY `parent_id` IS NOT NULL ASC, `sort_order` ASC, `id` ASC'
+            );
+            $fiturStmt->execute([$appId]);
+            $fiturRows = $fiturStmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $rfStmt = $this->db->prepare('SELECT `role_id` FROM `role___fitur` WHERE `fitur_id` = ? ORDER BY `role_id` ASC');
+            $items = [];
+            foreach ($fiturRows as $f) {
+                $fid = (int) ($f['id'] ?? 0);
+                $rfStmt->execute([$fid]);
+                $roleIds = array_map('intval', array_column($rfStmt->fetchAll(\PDO::FETCH_ASSOC), 'role_id'));
+                $pid = $f['parent_id'] ?? null;
+                $items[] = [
+                    'id' => $fid,
+                    'parent_id' => $pid !== null && $pid !== '' ? (int) $pid : null,
+                    'code' => (string) ($f['code'] ?? ''),
+                    'label' => (string) ($f['label'] ?? ''),
+                    'path' => (string) ($f['path'] ?? ''),
+                    'group_label' => (string) ($f['group_label'] ?? ''),
+                    'sort_order' => (int) ($f['sort_order'] ?? 0),
+                    'type' => (string) ($f['type'] ?? 'menu'),
+                    'role_ids' => $roleIds,
+                ];
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'app' => [
+                        'id' => $appId,
+                        'key' => (string) $appRow['key'],
+                        'label' => (string) $appRow['label'],
+                    ],
+                    'roles' => $allRoles,
+                    'items' => $items,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getEbeddienMenuFitur ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil pemetaan menu–role',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/settings/ebeddien-menu-fitur — body: { assignments: [ { fitur_id, role_ids: number[] } ] }.
+     * Mengganti seluruh baris role___fitur untuk setiap fitur_id yang dikirim. Hanya super_admin.
+     */
+    public function putEbeddienMenuFitur(Request $request, Response $response): Response
+    {
+        try {
+            $body = (array) $request->getParsedBody();
+            $assignments = $body['assignments'] ?? null;
+            if (!is_array($assignments) || $assignments === []) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Body wajib berisi assignments (array tidak kosong).',
+                ], 400);
+            }
+
+            $appStmt = $this->db->prepare('SELECT `id` FROM `app` WHERE `key` = ? LIMIT 1');
+            $appStmt->execute(['ebeddien']);
+            $appRow = $appStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($appRow === false) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Aplikasi ebeddien tidak ditemukan.',
+                ], 404);
+            }
+            $appId = (int) $appRow['id'];
+
+            $verifyFitur = $this->db->prepare(
+                'SELECT `id` FROM `app___fitur` WHERE `id` = ? AND `id_app` = ? AND `type` IN (\'menu\', \'action\') LIMIT 1'
+            );
+            $verifyRole = $this->db->prepare('SELECT `id` FROM `role` WHERE `id` = ? LIMIT 1');
+
+            $this->db->beginTransaction();
+            $del = $this->db->prepare('DELETE FROM `role___fitur` WHERE `fitur_id` = ?');
+            $ins = $this->db->prepare('INSERT INTO `role___fitur` (`role_id`, `fitur_id`) VALUES (?, ?)');
+
+            foreach ($assignments as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $fid = (int) ($row['fitur_id'] ?? 0);
+                if ($fid <= 0) {
+                    $this->db->rollBack();
+
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'fitur_id tidak valid.',
+                    ], 400);
+                }
+                $verifyFitur->execute([$fid, $appId]);
+                if ($verifyFitur->fetch(\PDO::FETCH_ASSOC) === false) {
+                    $this->db->rollBack();
+
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Fitur tidak valid untuk app ebeddien: id ' . $fid,
+                    ], 400);
+                }
+
+                $roleIds = $row['role_ids'] ?? [];
+                if (!is_array($roleIds)) {
+                    $this->db->rollBack();
+
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'role_ids harus array untuk fitur_id ' . $fid,
+                    ], 400);
+                }
+
+                $del->execute([$fid]);
+                $seen = [];
+                foreach ($roleIds as $rid) {
+                    $rid = (int) $rid;
+                    if ($rid <= 0 || isset($seen[$rid])) {
+                        continue;
+                    }
+                    $seen[$rid] = true;
+                    $verifyRole->execute([$rid]);
+                    if ($verifyRole->fetch(\PDO::FETCH_ASSOC) === false) {
+                        $this->db->rollBack();
+
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Role id tidak dikenal: ' . $rid,
+                        ], 400);
+                    }
+                    $ins->execute([$rid, $fid]);
+                }
+            }
+
+            $this->db->commit();
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Pemetaan menu–role disimpan.',
+            ], 200);
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log('SettingsController::putEbeddienMenuFitur ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan pemetaan menu–role',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * PATCH /api/settings/ebeddien-menu-fitur/{fiturId} — body: { role_ids: number[] } untuk satu menu saja.
+     */
+    public function patchEbeddienMenuFiturItem(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $fiturId = (int) ($args['fiturId'] ?? 0);
+            if ($fiturId <= 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'fiturId tidak valid'], 400);
+            }
+
+            $body = (array) $request->getParsedBody();
+            $roleIds = $body['role_ids'] ?? null;
+            if (!is_array($roleIds)) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'role_ids wajib berupa array'], 400);
+            }
+
+            $appStmt = $this->db->prepare('SELECT `id` FROM `app` WHERE `key` = ? LIMIT 1');
+            $appStmt->execute(['ebeddien']);
+            $appRow = $appStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($appRow === false) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Aplikasi ebeddien tidak ditemukan.'], 404);
+            }
+            $appId = (int) $appRow['id'];
+
+            $verifyFitur = $this->db->prepare(
+                'SELECT `id` FROM `app___fitur` WHERE `id` = ? AND `id_app` = ? AND `type` IN (\'menu\', \'action\') LIMIT 1'
+            );
+            $verifyFitur->execute([$fiturId, $appId]);
+            if ($verifyFitur->fetch(\PDO::FETCH_ASSOC) === false) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Fitur tidak ditemukan.'], 404);
+            }
+
+            $verifyRole = $this->db->prepare('SELECT `id` FROM `role` WHERE `id` = ? LIMIT 1');
+            $this->db->beginTransaction();
+            $this->db->prepare('DELETE FROM `role___fitur` WHERE `fitur_id` = ?')->execute([$fiturId]);
+            $ins = $this->db->prepare('INSERT INTO `role___fitur` (`role_id`, `fitur_id`) VALUES (?, ?)');
+            $seen = [];
+            foreach ($roleIds as $rid) {
+                $rid = (int) $rid;
+                if ($rid <= 0 || isset($seen[$rid])) {
+                    continue;
+                }
+                $seen[$rid] = true;
+                $verifyRole->execute([$rid]);
+                if ($verifyRole->fetch(\PDO::FETCH_ASSOC) === false) {
+                    $this->db->rollBack();
+
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Role id tidak dikenal: ' . $rid,
+                    ], 400);
+                }
+                $ins->execute([$rid, $fiturId]);
+            }
+            $this->db->commit();
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Akses role untuk menu ini disimpan.',
+                'data' => ['fitur_id' => $fiturId, 'role_ids' => array_keys($seen)],
+            ], 200);
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log('SettingsController::patchEbeddienMenuFiturItem ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan akses menu',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * GET /api/settings/features-config - Daftar semua fitur (aplikasi + permission) dan role yang bisa akses.
      * Hanya super_admin.
      */

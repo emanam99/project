@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use App\Config\EbeddienFiturAccess;
 use App\Middleware\AuthMiddleware;
-use App\Middleware\RoleMiddleware;
+use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\DashboardController;
 use App\Controllers\LaporanController;
 
@@ -15,9 +16,9 @@ return function (\Slim\App $app): void {
         $group->get('/data-santri', [DashboardController::class, 'getDataSantri']);
         $group->get('/data-khusus', [DashboardController::class, 'getDataKhusus']);
         $group->get('/data-tunggakan', [DashboardController::class, 'getDataTunggakan']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_ijin', 'petugas_ijin', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::dashboardLaporanIjinSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_ijin', 'petugas_ijin', 'super_admin']))->add(new AuthMiddleware());
 
     $app->group('/api/laporan', function ($group) {
         $group->get('', [LaporanController::class, 'getLaporan']);
-    })->add(new RoleMiddleware(['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::dashboardLaporanPsbSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
 };
