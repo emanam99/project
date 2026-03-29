@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { useTahunAjaranStore } from '../store/tahunAjaranStore'
 import { authAPI, pendaftaranAPI } from '../services/api'
+import { normalizeNisForStorage } from '../utils/clientStorage'
 import { APP_VERSION } from '../config/version'
 import DaftarAuthLeftPanel from '../components/Auth/DaftarAuthLeftPanel'
 import PendaftaranInfoOffcanvas from '../components/Auth/PendaftaranInfoOffcanvas'
@@ -158,7 +159,9 @@ function Login() {
       if (response.success) {
         const user = response.data.user
         try { sessionStorage.setItem('daftar_login_nik', nik) } catch (e) { /* ignore */ }
-        const userToSet = user ? { ...user, nik: user.nik || nik } : user
+        const userToSet = user
+          ? { ...user, nik: user.nik || nik, nis: normalizeNisForStorage(user.nis ?? user.NIS) }
+          : user
         setAuth(response.data.token, userToSet)
         const redirectUrl = '/dashboard'
         try { sessionStorage.setItem('redirect_after_login', redirectUrl) } catch (e) { /* ignore */ }

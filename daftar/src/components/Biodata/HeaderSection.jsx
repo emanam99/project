@@ -6,8 +6,11 @@ function HeaderSection({
   isSidebarOpen,
   setIsSidebarOpen,
   onSave,
+  onEdit,
   isSaving,
   dataReady,
+  /** Mode baca: Edit aktif hanya jika data sudah selesai diselaraskan dengan server (fetch latar belakang selesai). */
+  serverSynced = true,
   formDataId,
   hasChanges,
   formData,
@@ -132,16 +135,34 @@ function HeaderSection({
             {displayId}
           </span>
           {readOnly ? (
-            <span
-              className="px-2 py-1 rounded-lg text-xs font-semibold bg-gray-300/80 dark:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-400/50 dark:border-gray-500 whitespace-nowrap"
-              title="Mode baca — gunakan tombol Ubah di header untuk mengedit"
+            <button
+              type="button"
+              onClick={() => onEdit?.()}
+              disabled={!dataReady || !serverSynced}
+              className={`px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 border-2 flex items-center gap-2 ${
+                !dataReady || !serverSynced
+                  ? 'bg-gray-300 dark:bg-gray-600 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                  : 'bg-teal-600 hover:bg-teal-700 border-teal-600 dark:border-teal-500 text-white'
+              }`}
+              title={
+                !dataReady
+                  ? 'Memuat data...'
+                  : !serverSynced
+                    ? 'Menyelaraskan data dengan server...'
+                    : 'Ubah biodata'
+              }
             >
-              Mode baca
-            </span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              <span className="text-sm font-semibold whitespace-nowrap">Edit</span>
+            </button>
           ) : (
             <button
               type="button"
-              onClick={onSave}
+              onClick={() => {
+                Promise.resolve(onSave?.()).catch(() => {})
+              }}
               disabled={isSaving || !dataReady || !hasChanges}
               className={`px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 border-2 flex items-center gap-2 ${
                 isSaving || !dataReady || !hasChanges

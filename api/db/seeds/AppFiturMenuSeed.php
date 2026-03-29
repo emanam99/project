@@ -9,6 +9,7 @@ use Phinx\Seed\AbstractSeed;
  * Selaras ebeddien/src/config/menuConfig.js — meta_json menyimpan requiresRole / requiresSuperAdmin / requiresPermission.
  *
  * Cara pakai (setelah AppSeed): php vendor/bin/phinx seed:run -s AppFiturMenuSeed
+ * Setelah ini jalankan MenuActionsFiturSeed (aksi halaman di app___fitur), lalu RoleFiturMenuSeed.
  * Aman berulang: INSERT IGNORE pada (id_app, code).
  */
 class AppFiturMenuSeed extends AbstractSeed

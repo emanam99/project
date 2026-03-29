@@ -136,6 +136,37 @@ class SantriHelper
     }
 
     /**
+     * Untuk konteks aplikasi daftar: ambil santri.id dari payload JWT.
+     * Jika user_id di token masih kosong (santri baru, belum login ulang setelah save-biodata),
+     * fallback ke baris santri yang NIK-nya sama dengan klaim nik di token — aman karena token sudah autentik.
+     *
+     * @param array<string, mixed> $userPayload hasil decode JWT (data)
+     */
+    public static function resolveSantriIdFromDaftarToken(PDO $db, array $userPayload): ?int
+    {
+        $raw = $userPayload['user_id'] ?? $userPayload['id'] ?? $userPayload['santri_id'] ?? null;
+        $rawEmpty = $raw === null || $raw === ''
+            || (is_numeric($raw) && (int) $raw <= 0);
+        if (!$rawEmpty) {
+            $byToken = self::resolveId($db, $raw);
+            if ($byToken !== null) {
+                return $byToken;
+            }
+        }
+
+        $nik = isset($userPayload['nik']) ? trim((string) $userPayload['nik']) : '';
+        if ($nik === '' || strlen($nik) !== 16 || !ctype_digit($nik)) {
+            return null;
+        }
+
+        $stmt = $db->prepare('SELECT id FROM santri WHERE nik = ? LIMIT 1');
+        $stmt->execute([$nik]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $row && isset($row['id']) ? (int) $row['id'] : null;
+    }
+
+    /**
      * Ambil nis santri berdasarkan id (untuk ditambah ke response API).
      *
      * @param PDO $db

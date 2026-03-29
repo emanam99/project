@@ -1,10 +1,10 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '../store/authStore'
 import { getLiveServerUrl } from '../config/liveServer'
 import { chatUserAPI } from '../services/api'
-import { MENU_ITEMS } from '../config/menuConfig'
+import { labelForPathFromMenuCatalog } from '../utils/menuCatalogNav'
 
 const LiveSocketContext = createContext(null)
 
@@ -18,11 +18,12 @@ function buildNamaUsername(nama, username, fallback = 'User') {
   return fallback
 }
 
-/** Ambil label halaman untuk presence (daftar online). Path /super-admin/dashboard → "Online", dll. */
-function getHalamanLabel(pathname) {
+/** Label halaman untuk presence — dari katalog menu DB bila sudah termuat. */
+function getHalamanLabel(pathname, catalog) {
   const path = (pathname || '/').replace(/\/$/, '') || '/'
-  const item = MENU_ITEMS.find((m) => m.path === path)
-  return item ? item.label : pathname || '/'
+  const label = labelForPathFromMenuCatalog(catalog, path)
+  if (label) return label
+  return path
 }
 
 /** Socket singleton: hindari "WebSocket closed before connection established" (React Strict Mode unmount). */
@@ -94,9 +95,10 @@ export function LiveSocketProvider({ children }) {
   }, [])
 
   // Presence: pakai users_id dari login (users.id); fallback getMe() bila belum ada (session lama).
+  const fiturMenuCatalog = useAuthStore((s) => s.fiturMenuCatalog)
   useEffect(() => {
     if (!socket?.connected) return
-    const halaman = getHalamanLabel(location.pathname)
+    const halaman = getHalamanLabel(location.pathname, fiturMenuCatalog)
     if (user?.id) {
       const usersId = user?.users_id != null ? String(user.users_id) : null
       const displayName = buildNamaUsername(user?.nama, user?.username, 'User')
@@ -113,7 +115,7 @@ export function LiveSocketProvider({ children }) {
     } else {
       socket.emit('connect_visitor', { halaman })
     }
-  }, [socket, user?.id, user?.users_id, user?.nama, user?.username, location.pathname])
+  }, [socket, user?.id, user?.users_id, user?.nama, user?.username, location.pathname, fiturMenuCatalog])
 
   const value = {
     socket,

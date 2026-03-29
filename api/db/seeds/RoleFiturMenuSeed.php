@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use App\Config\RoleConfig;
+use App\Config\RolePolicyResolver;
 use Phinx\Seed\AbstractSeed;
 
 /**
@@ -10,8 +10,9 @@ use Phinx\Seed\AbstractSeed;
  * Aturan selaras Sidebar.jsx (non–super_admin): requiresRole dulu, lalu requiresSuperAdmin, lalu requiresPermission, else publik.
  * super_admin: semua menu kecuali /settings/role-akses hanya untuk super (hanya super_admin).
  *
- * Butuh: AppSeed, AppFiturMenuSeed (dan role sudah terisi).
+ * Butuh: AppSeed, AppFiturMenuSeed, MenuActionsFiturSeed (aksi halaman; setelah menu), lalu seed ini.
  * Cara: php vendor/bin/phinx seed:run -s RoleFiturMenuSeed
+ * Atau seed:run tanpa -s (urutan: AppFiturMenuSeed → MenuActionsFiturSeed → RoleFiturMenuSeed).
  * Aman berulang: INSERT IGNORE pada (role_id, fitur_id).
  *
  * Setelah mengubah AppFiturMenuSeed atau logika di bawah: jalankan ulang seed ini
@@ -88,7 +89,7 @@ class RoleFiturMenuSeed extends AbstractSeed
                 return false;
             }
             if (!empty($meta['requiresPermission'])) {
-                return RoleConfig::hasPermission($roleKey, (string) $meta['requiresPermission']);
+                return RolePolicyResolver::hasPermission($roleKey, (string) $meta['requiresPermission']);
             }
 
             return true;
@@ -97,7 +98,7 @@ class RoleFiturMenuSeed extends AbstractSeed
             return false;
         }
         if (!empty($meta['requiresPermission'])) {
-            return RoleConfig::hasPermission($roleKey, (string) $meta['requiresPermission']);
+            return RolePolicyResolver::hasPermission($roleKey, (string) $meta['requiresPermission']);
         }
 
         return true;

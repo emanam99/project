@@ -503,6 +503,23 @@ export const authAPI = {
     return response.data
   },
 
+  /** Favorit nav bawah: urutan path menu (tabel app___fitur_favorit). */
+  getMyFiturFavorit: async (params = {}) => {
+    const response = await api.get('/v2/me/fitur-favorit', { params })
+    return response.data
+  },
+
+  putMyFiturFavorit: async (body) => {
+    const response = await api.put('/v2/me/fitur-favorit', body)
+    return response.data
+  },
+
+  /** Katalog semua menu eBeddien dari app___fitur (path, label, grup, meta) — acuan tampilan UI */
+  getEbeddienMenuCatalog: async () => {
+    const response = await api.get('/v2/fitur/ebeddien/menu-catalog')
+    return response.data
+  },
+
   logout: () => {
     resetCsrfToken()
     localStorage.removeItem('auth_token')
@@ -2367,13 +2384,40 @@ export const settingsAPI = {
     const response = await api.put('/settings/ebeddien-menu-fitur', body)
     return response.data
   },
-  /** Satu menu: body { role_ids: number[] }. Super admin. */
+  /**
+   * Satu fitur: body { role_ids?: number[], label?, icon_key?, group_label?, sort_order? }.
+   * Kolom tampilan tersimpan di app___fitur; super admin.
+   */
   patchEbeddienMenuFiturItem: async (fiturId, body) => {
     const response = await api.patch(`/settings/ebeddien-menu-fitur/${fiturId}`, body)
     return response.data
   },
   getFeaturesConfig: async () => {
     const response = await api.get('/settings/features-config')
+    return response.data
+  },
+  getEbeddienFiturSelectors: async () => {
+    const response = await api.get('/settings/ebeddien-fitur-selectors')
+    return response.data
+  },
+  putEbeddienFiturSelector: async (selectorKey, body) => {
+    const response = await api.put(
+      `/settings/ebeddien-fitur-selectors/${encodeURIComponent(selectorKey)}`,
+      body
+    )
+    return response.data
+  },
+  patchRolePolicy: async (roleKey, body) => {
+    const response = await api.patch(`/settings/role-policy/${encodeURIComponent(roleKey)}`, body)
+    return response.data
+  },
+  postRolePolicySyncFromPhp: async () => {
+    const response = await api.post('/settings/role-policy/sync-from-php', {})
+    return response.data
+  },
+  /** Buang cache RolePolicyResolver di worker backend (setelah edit SQL manual). Super admin. */
+  postRolePolicyClearCache: async () => {
+    const response = await api.post('/settings/role-policy/clear-cache', {})
     return response.data
   }
 }

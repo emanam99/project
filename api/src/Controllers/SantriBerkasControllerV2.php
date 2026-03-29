@@ -250,10 +250,9 @@ class SantriBerkasControllerV2
             $idSantri = $queryParams['id_santri'] ?? null;
 
             if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
-                // Konteks santri-app: utamakan id dari token (anti-IDOR). Fallback query jika token belum berisi id (santri baru).
-                $idFromToken = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
-                if ($idFromToken !== null && $idFromToken !== '') {
-                    $idSantri = $idFromToken;
+                $ownerId = SantriHelper::resolveSantriIdFromDaftarToken($this->db, $userArr);
+                if ($ownerId !== null) {
+                    $idSantri = $ownerId;
                 }
             }
             $jenisBerkas = $queryParams['jenis_berkas'] ?? null;

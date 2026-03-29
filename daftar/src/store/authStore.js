@@ -1,55 +1,7 @@
 import { create } from 'zustand'
-import { authAPI } from '../services/api'
-
-const STORAGE_NIK_KEY = 'daftar_storage_nik'
-
-/** Hapus semua localStorage dan sessionStorage (dipakai saat logout) */
-function clearAllStorage() {
-  if (typeof localStorage !== 'undefined') {
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i)
-      if (k) localStorage.removeItem(k)
-    }
-  }
-  if (typeof sessionStorage !== 'undefined') {
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const k = sessionStorage.key(i)
-      if (k) sessionStorage.removeItem(k)
-    }
-  }
-}
-
-/** Hapus hanya data daftar/user (NIK berubah = orang berbeda), tetap pertahankan auth_token & user_data */
-function clearDaftarDataOnly() {
-  const keep = new Set(['auth_token', 'user_data', 'theme', 'sidebarCollapsed'])
-  if (typeof localStorage !== 'undefined') {
-    const keys = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i)
-      if (k && !keep.has(k)) keys.push(k)
-    }
-    keys.forEach((k) => localStorage.removeItem(k))
-  }
-  if (typeof sessionStorage !== 'undefined') {
-    for (let i = sessionStorage.length - 1; i >= 0; i--) {
-      const k = sessionStorage.key(i)
-      if (k) sessionStorage.removeItem(k)
-    }
-  }
-}
-
-/** Pastikan data localStorage dipakai hanya untuk NIK yang sama; jika NIK berubah, bersihkan data orang sebelumnya */
-function ensureStorageNik(currentNik) {
-  if (!currentNik || String(currentNik).trim() === '') return
-  const nik = String(currentNik).trim()
-  const stored = localStorage.getItem(STORAGE_NIK_KEY)
-  if (stored != null && stored !== nik) {
-    clearDaftarDataOnly()
-  }
-  try {
-    localStorage.setItem(STORAGE_NIK_KEY, nik)
-  } catch (e) { /* ignore */ }
-}
+import { authAPI, resetCsrfToken } from '../services/api'
+import { ensureStorageNik, normalizeNisForStorage } from '../utils/clientStorage'
+import { performLogoutCleanup } from '../utils/logoutSession'
 
 // Helper function to decode JWT token
 const decodeJWT = (token) => {
@@ -106,12 +58,13 @@ export const useAuthStore = create((set) => ({
     }
   },
   
-  logout: () => {
-    clearAllStorage()
-    set({ 
-      token: null, 
-      user: null, 
-      isAuthenticated: false 
+  logout: async () => {
+    resetCsrfToken()
+    await performLogoutCleanup()
+    set({
+      token: null,
+      user: null,
+      isAuthenticated: false,
     })
   },
   
@@ -129,7 +82,7 @@ export const useAuthStore = create((set) => ({
             id: payload.user_id || payload.id,
             nama: payload.user_name || payload.nama,
             nik: payload.nik || null,
-            nis: payload.nis != null && String(payload.nis).trim() !== '' ? String(payload.nis).trim() : null,
+            nis: normalizeNisForStorage(payload.nis ?? payload.NIS),
             id_registrasi: payload.id_registrasi != null && payload.id_registrasi !== '' ? Number(payload.id_registrasi) : null,
             role_key: payload.role_key || 'user',
             role_label: payload.role_label || 'user',
@@ -150,7 +103,7 @@ export const useAuthStore = create((set) => ({
             id: payload.user_id || payload.id,
             nama: payload.user_name || payload.nama,
             nik: payload.nik || null,
-            nis: payload.nis != null && String(payload.nis).trim() !== '' ? String(payload.nis).trim() : null,
+            nis: normalizeNisForStorage(payload.nis ?? payload.NIS),
             id_registrasi: payload.id_registrasi != null && payload.id_registrasi !== '' ? Number(payload.id_registrasi) : null,
             role_key: payload.role_key || 'user',
             role_label: payload.role_label || 'user',
@@ -181,8 +134,11 @@ export const useAuthStore = create((set) => ({
             if (parsed.nik != null && String(parsed.nik).trim() !== '') {
               user = { ...user, nik: parsed.nik }
             }
-            if ((user.nis == null || String(user.nis).trim() === '') && parsed.nis != null && String(parsed.nis).trim() !== '') {
-              user = { ...user, nis: String(parsed.nis).trim() }
+            {
+              const mergedNis = normalizeNisForStorage(parsed.nis)
+              if ((user.nis == null || String(user.nis).trim() === '') && mergedNis) {
+                user = { ...user, nis: mergedNis }
+              }
             }
             if ((user.id_registrasi == null || Number.isNaN(user.id_registrasi)) && parsed.id_registrasi != null && parsed.id_registrasi !== '') {
               user = { ...user, id_registrasi: Number(parsed.id_registrasi) }

@@ -3,6 +3,7 @@
 namespace App\Middleware;
 
 use App\Config\RoleConfig;
+use App\Config\RolePolicyResolver;
 use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -27,7 +28,7 @@ class AppAccessMiddleware implements MiddlewareInterface
 
     /**
      * @param string $requiredApp Key aplikasi yang diizinkan ('uwaba' atau 'lembaga')
-     * @param array $allowedRoles Optional: array role yang diizinkan (jika tidak di-set, akan menggunakan RoleConfig)
+     * @param array $allowedRoles Optional: array role yang diizinkan (jika tidak di-set, fallback ke RolePolicyResolver / token)
      */
     public function __construct(string $requiredApp, array $allowedRoles = [])
     {
@@ -68,7 +69,7 @@ class AppAccessMiddleware implements MiddlewareInterface
         }
 
         if (!$hasAccess) {
-            $hasAccess = RoleHelper::tokenCanAccessAppFromRoleConfig($user, $this->requiredApp);
+            $hasAccess = RoleHelper::tokenCanAccessAppFromRolePolicy($user, $this->requiredApp);
         }
 
         if (!$hasAccess) {
@@ -76,7 +77,7 @@ class AppAccessMiddleware implements MiddlewareInterface
             if ($pid !== null && $pid > 0) {
                 foreach (RoleHelper::getUserRoles($pid) as $row) {
                     $k = str_replace(' ', '_', strtolower(trim((string) ($row['role_key'] ?? ''))));
-                    if ($k !== '' && RoleConfig::canAccessApp($k, $this->requiredApp)) {
+                    if ($k !== '' && RolePolicyResolver::canAccessApp($k, $this->requiredApp)) {
                         $hasAccess = true;
                         break;
                     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
@@ -41,14 +41,15 @@ function PembayaranListOffcanvas({
   bisaUploadBukti,
   jumlahBukti,
   nomorBuktiBerikutnya,
-  onRefreshRegistrasi = null // Callback untuk refresh data registrasi di parent
+  /** Riwayat transaksi dari parent (satu sumber dengan refreshPembayaran — hindari getTransaksi ganda) */
+  paymentHistory = [],
+  paymentDataLoading = false,
+  onRefreshRegistrasi = null // Callback: invalidasi cache + refresh penuh di parent
 }) {
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = pathnameProp || location.pathname || '/pembayaran'
   const { showNotification } = useNotification()
-  const [paymentHistory, setPaymentHistory] = useState([])
-  const [loading, setLoading] = useState(false)
   const [processingIPaymu, setProcessingIPaymu] = useState(false)
   const [ipaymuAmount, setIpaymuAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('') // va, cstore, qris
@@ -101,8 +102,10 @@ function PembayaranListOffcanvas({
   }, [showIPaymuModal, isOpen])
 
   // Hitungan mundur kadaluwarsa saat status Menunggu Pembayaran
+  // 'cancelled' di app tidak menghentikan hitung mundur — QR unduhan mungkin masih bisa dibayar sampai expired_at iPayMu
   useEffect(() => {
-    const isPending = transactionStatus == null || !['expired', 'cancelled', 'failed', 'paid', 'success'].includes(String(transactionStatus || '').toLowerCase())
+    const terminal = ['expired', 'failed', 'paid', 'success']
+    const isPending = transactionStatus == null || !terminal.includes(String(transactionStatus || '').toLowerCase())
     if (!vaInfo?.expired_at || !isPending) {
       setCountdownRemaining(null)
       return
@@ -240,32 +243,10 @@ function PembayaranListOffcanvas({
     return combined
   }, [paymentHistory, buktiPembayaranList])
 
-  // Fetch payment history dari transaksi
-  const fetchPaymentHistory = async () => {
-    if (!idSantri && !registrasi?.id) return
-
-    setLoading(true)
-    try {
-      // Gunakan id_santri jika tersedia, atau id_registrasi
-      const result = await pendaftaranAPI.getTransaksi(idSantri, registrasi?.id)
-      if (result.success && result.data) {
-        setPaymentHistory(result.data)
-      } else {
-        setPaymentHistory([])
-      }
-    } catch (err) {
-      console.error('Error fetching payment history:', err)
-      setPaymentHistory([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (isOpen && (idSantri || registrasi?.id)) {
-      fetchPaymentHistory()
-    }
-  }, [isOpen, idSantri, registrasi?.id])
+  /** Setelah mutasi: satu refetch parent (sudah termasuk getTransaksi + cache) */
+  const syncAfterPembayaranMutation = useCallback(async () => {
+    if (onRefreshRegistrasi) await onRefreshRegistrasi()
+  }, [onRefreshRegistrasi])
 
   // Auto-check status pembayaran untuk transaksi pending (polling)
   useEffect(() => {
@@ -313,20 +294,24 @@ function PembayaranListOffcanvas({
           }))
           setStepDirection(1)
           goToIPaymuStep(4)
-          await fetchPaymentHistory()
-          if (onRefreshRegistrasi) await onRefreshRegistrasi()
+          await syncAfterPembayaranMutation()
           return
         }
 
-        if (normalizedStatus === 'expired' || normalizedStatus === 'cancelled' || normalizedStatus === 'failed') {
+        // Batal lokal: tetap polling — pembayaran dengan QR/VA yang sama bisa sukses (callback/checkStatus)
+        if (normalizedStatus === 'cancelled') {
+          setTransactionStatus(rawStatus)
+          return
+        }
+
+        if (normalizedStatus === 'expired' || normalizedStatus === 'failed') {
           paymentResolvedRef.current = true
           if (isMounted) {
             setVaInfo(null)
             setTransactionStatus(null)
             if (showIPaymuModal) goToPaymentOpen()
           }
-          await fetchPaymentHistory()
-          if (onRefreshRegistrasi) await onRefreshRegistrasi()
+          await syncAfterPembayaranMutation()
         }
       } catch (err) {
         if (isMounted && !paymentResolvedRef.current) {
@@ -343,7 +328,7 @@ function PembayaranListOffcanvas({
       clearTimeout(initialTimeout)
       clearInterval(intervalId)
     }
-  }, [vaInfo?.session_id, showIPaymuModal, idSantri, registrasi?.id])
+  }, [vaInfo?.session_id, showIPaymuModal, idSantri, registrasi?.id, syncAfterPembayaranMutation])
 
   // Isi form edit saat modal edit dibuka
   useEffect(() => {
@@ -581,7 +566,11 @@ function PembayaranListOffcanvas({
           const biodataResult = await santriAPI.getByIdPublic(idSantri)
           if (biodataResult.success && biodataResult.data) {
             if (!namaPembayar || namaPembayar === 'Pembayar Pendaftaran') {
-              namaPembayar = (biodataResult.data.wali || biodataResult.data.nama || namaPembayar).trim() || namaPembayar
+              const d = biodataResult.data
+              // iPayMu menampilkan "nama pembeli" — harus nama santri (s.nama), bukan wali/ayah.
+              const namaSantri = String(d.nama ?? '').trim()
+              const namaWali = String(d.wali ?? '').trim()
+              namaPembayar = namaSantri || namaWali || namaPembayar
             }
             if (!phone) {
               phone = biodataResult.data.no_telpon || biodataResult.data.no_wa_santri || ''
@@ -813,8 +802,6 @@ function PembayaranListOffcanvas({
           if (payment_url) {
             window.open(payment_url, '_blank')
           }
-          
-          showNotification('Pembayaran berhasil dibuat', 'success')
         } else if (finalQrCode) {
           setVaInfo({
             va_number: null,
@@ -835,8 +822,6 @@ function PembayaranListOffcanvas({
           // Pindah ke step 3 (status pending)
           setStepDirection(1) // Maju ke kanan
           goToIPaymuStep(3)
-          
-          showNotification('QR Code pembayaran berhasil dibuat', 'success')
         } else if (payment_url) {
           setVaInfo({
             va_number: null,
@@ -858,7 +843,6 @@ function PembayaranListOffcanvas({
           goToIPaymuStep(3)
           
           window.open(payment_url, '_blank')
-          showNotification('Halaman pembayaran iPayMu dibuka di tab baru', 'success')
         } else {
           setVaInfo({
             va_number: null,
@@ -878,7 +862,19 @@ function PembayaranListOffcanvas({
           // Pindah ke step 3 (status pending)
           setStepDirection(1) // Maju ke kanan
           goToIPaymuStep(3)
-          
+        }
+
+        setTransactionStatus('pending')
+        paymentResolvedRef.current = false
+        if (responseData.reused_existing) {
+          showNotification('Memakai tagihan yang sama (nominal & metode sama, belum kedaluwarsa). Tidak dibuat order baru. Hitung mundur mengikuti sisa waktu berlaku.', 'info')
+        } else if (finalVaNumberWithFallback) {
+          showNotification('Pembayaran berhasil dibuat', 'success')
+        } else if (finalQrCode) {
+          showNotification('QR Code pembayaran berhasil dibuat', 'success')
+        } else if (payment_url) {
+          showNotification('Halaman pembayaran iPayMu dibuka di tab baru', 'success')
+        } else {
           showNotification('Pembayaran berhasil dibuat', 'success')
         }
 
@@ -887,9 +883,9 @@ function PembayaranListOffcanvas({
           localStorage.setItem(`ipaymu_session_${transaction_id || Date.now()}`, session_id)
         }
 
-        // Refresh payment history setelah beberapa detik
+        // Sinkron transaksi + parent (cache dashboard/pembayaran) setelah order dibuat
         setTimeout(() => {
-          fetchPaymentHistory()
+          void syncAfterPembayaranMutation()
         }, 2000)
       } else {
         throw new Error(result.message || 'Gagal membuat transaksi iPayMu')
@@ -928,7 +924,7 @@ function PembayaranListOffcanvas({
         setVaInfo(null)
         setTransactionStatus('cancelled')
         goToPaymentOpen()
-        fetchPaymentHistory()
+        await syncAfterPembayaranMutation()
       } else {
         showNotification(result?.message || 'Gagal membatalkan transaksi', 'error')
       }
@@ -962,7 +958,7 @@ function PembayaranListOffcanvas({
         setPaymentChannel('')
         setOpenAccordion(null)
         setIpaymuAmount('')
-        fetchPaymentHistory()
+        await syncAfterPembayaranMutation()
       } else {
         showNotification(result?.message || 'Gagal membatalkan pesanan', 'error')
       }
@@ -1105,8 +1101,7 @@ function PembayaranListOffcanvas({
             goToIPaymuStep(1)
           }
           
-          // Refresh payment history
-          fetchPaymentHistory()
+          void syncAfterPembayaranMutation()
         }, 1000)
       } else {
         showNotification(result.message || 'Gagal mengupdate transaksi', 'error')
@@ -1136,9 +1131,7 @@ function PembayaranListOffcanvas({
         showNotification('Bukti pembayaran berhasil dihapus', 'success')
         setShowDeleteModal(false)
         setItemToDelete(null)
-        // Reload data
-        fetchPaymentHistory()
-        // Pemicu refresh list di parent Page Pembayaran via effect
+        await syncAfterPembayaranMutation()
         if (onClose) onClose()
       } else {
         showNotification(result.message || 'Gagal menghapus bukti pembayaran', 'error')
@@ -1309,7 +1302,7 @@ function PembayaranListOffcanvas({
                                       )}
                                     </div>
                                     {vaInfo.session_id && (
-                                      <button onClick={async () => { if (!vaInfo.session_id) return; setIsCheckingStatus(true); try { const r = await paymentTransactionAPI.checkStatus(vaInfo.session_id); if (r.success && r.data) { setTransactionStatus(r.data.status); const s = String(r.data.status||'').toLowerCase(); if (s==='paid'||s==='success') { showNotification('Pembayaran berhasil!','success'); goToIPaymuStep(4); fetchPaymentHistory(); onRefreshRegistrasi?.(); } } } catch(e) {} finally { setIsCheckingStatus(false) } }} disabled={isCheckingStatus} className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/50 text-teal-600 hover:bg-teal-200" title="Cek status">
+                                      <button onClick={async () => { if (!vaInfo.session_id) return; setIsCheckingStatus(true); try { const r = await paymentTransactionAPI.checkStatus(vaInfo.session_id); if (r.success && r.data) { setTransactionStatus(r.data.status); const s = String(r.data.status||'').toLowerCase(); if (s==='paid'||s==='success') { showNotification('Pembayaran berhasil!','success'); goToIPaymuStep(4); await syncAfterPembayaranMutation(); } } } catch(e) {} finally { setIsCheckingStatus(false) } }} disabled={isCheckingStatus} className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/50 text-teal-600 hover:bg-teal-200" title="Cek status">
                                         {isCheckingStatus ? <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                                       </button>
                                     )}
@@ -1603,7 +1596,7 @@ function PembayaranListOffcanvas({
               {/* Payment History */}
               <div className="mb-4 border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
                 <h3 className="font-semibold text-sm mb-2 text-gray-700 dark:text-gray-300">Riwayat Pembayaran</h3>
-                {loading ? (
+                {paymentDataLoading ? (
                   <div className="text-center py-4">
                     <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600 mx-auto"></div>
                   </div>

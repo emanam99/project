@@ -10,7 +10,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 use App\Database;
 use App\Helpers\RoleHelper;
-use App\Config\RoleConfig;
+use App\Config\RolePolicyResolver;
 
 // Get user ID from command line argument
 $userId = isset($argv[1]) ? (int)$argv[1] : null;
@@ -92,16 +92,17 @@ try {
     echo "      - permissions: " . json_encode($roleInfo['permissions']) . "\n";
     echo "      - lembaga_id: " . ($roleInfo['lembaga_id'] ?? 'NULL') . "\n\n";
     
-    // 5. Test RoleConfig
+    // 5. RolePolicyResolver (override DB + fallback RoleConfig)
     if (!empty($roleInfo['role_key'])) {
-        echo "5. Test RoleConfig untuk role_key: {$roleInfo['role_key']}\n";
-        $allowedApps = RoleConfig::getAllowedApps($roleInfo['role_key']);
-        $permissions = RoleConfig::getPermissions($roleInfo['role_key']);
+        $rk = $roleInfo['role_key'];
+        echo "5. RolePolicyResolver untuk role_key: {$rk}\n";
+        $allowedApps = RolePolicyResolver::getAllowedApps($rk);
+        $permissions = RolePolicyResolver::getPermissions($rk);
         echo "   - Allowed Apps: " . json_encode($allowedApps) . "\n";
         echo "   - Permissions: " . json_encode($permissions) . "\n";
         echo "   - Has 'uwaba' access: " . (in_array('uwaba', $allowedApps) ? '✅ YES' : '❌ NO') . "\n\n";
     } else {
-        echo "5. ⚠️  Role key kosong, tidak bisa test RoleConfig\n\n";
+        echo "5. ⚠️  Role key kosong, tidak bisa test resolver\n\n";
     }
     
     // 6. List semua role yang tersedia
@@ -120,10 +121,10 @@ try {
         echo "💡 SOLUSI: Tambahkan role untuk user ini di tabel pengurus___role\n";
     } elseif (empty($roleInfo['allowed_apps'])) {
         echo "❌ PROBLEM: allowed_apps kosong untuk role_key: {$roleInfo['role_key']}\n";
-        echo "💡 SOLUSI: Pastikan role_key '{$roleInfo['role_key']}' ada di RoleConfig::ROLE_ALLOWED_APPS\n";
+        echo "💡 SOLUSI: Cek kolom allowed_apps_json di tabel role atau RoleConfig::ROLE_ALLOWED_APPS\n";
     } elseif (!in_array('uwaba', $roleInfo['allowed_apps'])) {
         echo "❌ PROBLEM: Role '{$roleInfo['role_key']}' tidak memiliki akses ke aplikasi 'uwaba'\n";
-        echo "💡 SOLUSI: Pastikan role ini ditambahkan ke RoleConfig::ROLE_ALLOWED_APPS dengan 'uwaba'\n";
+        echo "💡 SOLUSI: Tambahkan 'uwaba' di RoleConfig atau di allowed_apps_json role tersebut\n";
     } else {
         echo "✅ OK: User memiliki role_key: {$roleInfo['role_key']}\n";
         echo "✅ OK: allowed_apps berisi 'uwaba'\n";

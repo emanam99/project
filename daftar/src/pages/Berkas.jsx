@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { useTahunAjaranStore } from '../store/tahunAjaranStore'
+import { invalidateDashboardCacheOnly } from '../utils/daftarPagesLocalCache'
 import { useBerkasManagement } from '../components/Berkas/hooks/useBerkasManagement'
 import BerkasOffcanvas from '../components/Berkas/BerkasOffcanvas'
 import FilePreviewOffcanvas from '../components/FilePreview/FilePreviewOffcanvas'
@@ -13,6 +15,7 @@ import { compressImage } from '../utils/imageCompression'
 
 function Berkas() {
   const { user } = useAuthStore()
+  const { tahunHijriyah, tahunMasehi } = useTahunAjaranStore()
   const location = useLocation()
   const navigate = useNavigate()
   const { showNotification } = useNotification()
@@ -27,6 +30,19 @@ function Berkas() {
   const [showDuplicateNikModal, setShowDuplicateNikModal] = useState(false)
   const [duplicateNikData, setDuplicateNikData] = useState(null)
   const [showCameraScanner, setShowCameraScanner] = useState(false)
+
+  const bumpDashboardCache = useCallback(() => {
+    if (!user?.id) return
+    const sessionNik =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+    invalidateDashboardCacheOnly(
+      user?.nik || sessionNik,
+      user.id,
+      tahunHijriyah,
+      tahunMasehi,
+      sessionNik
+    )
+  }, [user?.id, user?.nik, tahunHijriyah, tahunMasehi])
 
   const {
     berkasList,
@@ -50,7 +66,7 @@ function Berkas() {
     handleDeleteConfirmBerkas,
     handleCloseDeleteModalBerkas,
     handleUploadSuccess
-  } = useBerkasManagement(localId)
+  } = useBerkasManagement(localId, { cacheNik: user?.nik, onAfterMutation: bumpDashboardCache })
 
   // State untuk KK yang sama dengan KK Santri
   const [kkSamaDenganSantri, setKkSamaDenganSantri] = useState(() => {
@@ -120,6 +136,8 @@ function Berkas() {
         const result = await pendaftaranAPI.unmarkTidakAda(localId, jenisBerkas)
         if (result.success) {
           setBerkasList(prev => prev.filter(b => !(b.jenis_berkas === jenisBerkas && b.status_tidak_ada == 1)))
+          bumpDashboardCache()
+          await fetchBerkasList(localId)
           showNotification(`"${jenisBerkas}" ditandai sebagai tersedia`, 'info')
         } else {
           showNotification(result.message || 'Gagal menghapus tanda tidak ada', 'error')
@@ -135,6 +153,8 @@ function Berkas() {
             }
             return [...prev, { id: newId, id_santri: localId, jenis_berkas: jenisBerkas, nama_file: 'Tidak ada', path_file: '-', status_tidak_ada: 1 }]
           })
+          bumpDashboardCache()
+          await fetchBerkasList(localId)
           showNotification(`"${jenisBerkas}" ditandai sebagai tidak ada`, 'info')
         } else {
           showNotification(result.message || 'Gagal menandai berkas', 'error')
@@ -189,9 +209,9 @@ function Berkas() {
         )
         
         if (result.success) {
-          // Refresh list berkas dengan localId yang eksplisit SEBELUM update state
+          bumpDashboardCache()
           await fetchBerkasList(localId)
-          
+
           // Tandai sebagai sama dengan KK Santri
           const updatedList = [...kkSamaDenganSantri, jenisBerkas]
           setKkSamaDenganSantri(updatedList)
@@ -202,8 +222,8 @@ function Berkas() {
           showNotification(`"${jenisBerkas}" berhasil dihubungkan dengan KK Santri`, 'success')
         } else {
           showNotification(result.message || 'Gagal menghubungkan dengan KK Santri', 'error')
-          // Refresh list berkas untuk memastikan state konsisten
           if (localId) {
+            bumpDashboardCache()
             await fetchBerkasList(localId)
           }
         }
@@ -211,6 +231,7 @@ function Berkas() {
         console.error('Error linking KK Santri:', error)
         showNotification('Gagal menghubungkan dengan KK Santri', 'error')
         if (localId) {
+          bumpDashboardCache()
           await fetchBerkasList(localId)
         }
       }
@@ -222,9 +243,10 @@ function Berkas() {
           if (!response.success) {
             throw new Error(response.message || 'Gagal menghapus link berkas')
           }
-          
+
+          bumpDashboardCache()
           await fetchBerkasList(localId)
-          
+
           const updatedList = kkSamaDenganSantri.filter(item => item !== jenisBerkas)
           setKkSamaDenganSantri(updatedList)
           
@@ -235,6 +257,7 @@ function Berkas() {
           console.error('Error deleting linked berkas:', error)
           showNotification('Gagal menghapus link berkas', 'error')
           if (localId) {
+            bumpDashboardCache()
             await fetchBerkasList(localId)
           }
         }

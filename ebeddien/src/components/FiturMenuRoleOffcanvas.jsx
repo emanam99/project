@@ -4,9 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { settingsAPI } from '../services/api'
 import { useNotification } from '../contexts/NotificationContext'
 import { useAuthStore } from '../store/authStore'
+import { GROUP_ORDER } from '../config/menuConfig'
+import { getIcon } from '../config/menuIcons'
 
 /**
- * Offcanvas kanan: atur role yang boleh akses satu menu (mirip Detail Pengurus).
+ * Offcanvas kanan: atur tampilan (label, icon, grup, urutan) + role yang boleh akses.
  */
 export default function FiturMenuRoleOffcanvas({
   isOpen,
@@ -19,6 +21,10 @@ export default function FiturMenuRoleOffcanvas({
 }) {
   const { showNotification } = useNotification()
   const [localIds, setLocalIds] = useState([])
+  const [editLabel, setEditLabel] = useState('')
+  const [editIconKey, setEditIconKey] = useState('')
+  const [editGroupLabel, setEditGroupLabel] = useState('')
+  const [editSortOrder, setEditSortOrder] = useState('0')
   const [saving, setSaving] = useState(false)
   const [showPortal, setShowPortal] = useState(false)
 
@@ -35,6 +41,10 @@ export default function FiturMenuRoleOffcanvas({
     } else {
       setLocalIds(raw.sort((a, b) => a - b))
     }
+    setEditLabel(String(fiturItem.label ?? '').trim() ? fiturItem.label : '')
+    setEditIconKey(fiturItem.icon_key != null && String(fiturItem.icon_key).trim() !== '' ? String(fiturItem.icon_key) : '')
+    setEditGroupLabel(String(fiturItem.group_label ?? ''))
+    setEditSortOrder(String(fiturItem.sort_order ?? 0))
   }, [isOpen, fiturItem, roles])
 
   const toggle = (roleId) => {
@@ -53,15 +63,31 @@ export default function FiturMenuRoleOffcanvas({
 
   const handleSave = async () => {
     if (!fiturItem?.id) return
+    const labelTrim = editLabel.trim()
+    if (!labelTrim) {
+      showNotification('Label wajib diisi', 'error')
+      return
+    }
+    const sortNum = parseInt(String(editSortOrder).trim(), 10)
+    const sortOrder = Number.isFinite(sortNum) ? sortNum : 0
+
     setSaving(true)
     try {
-      const res = await settingsAPI.patchEbeddienMenuFiturItem(fiturItem.id, { role_ids: localIds })
+      const res = await settingsAPI.patchEbeddienMenuFiturItem(fiturItem.id, {
+        role_ids: localIds,
+        label: labelTrim,
+        icon_key: editIconKey.trim(),
+        group_label: editGroupLabel.trim(),
+        sort_order: sortOrder
+      })
       if (!res?.success) {
         showNotification(res?.message || 'Gagal menyimpan', 'error')
         return
       }
-      showNotification(res.message || 'Akses disimpan', 'success')
-      onAfterSave?.(fiturItem.id, localIds)
+      showNotification(res.message || 'Disimpan', 'success')
+      if (res.data && onAfterSave) {
+        onAfterSave(fiturItem.id, res.data)
+      }
       useAuthStore.getState().fetchFiturMenu().catch(() => {})
       onClose()
     } catch (err) {
@@ -73,10 +99,18 @@ export default function FiturMenuRoleOffcanvas({
 
   if (!isOpen && !showPortal) return null
 
+  const datalistId = 'fitur-offcanvas-group-suggestions'
+
   const content = (
     <AnimatePresence onExitComplete={() => setShowPortal(false)}>
       {isOpen && fiturItem && (
         <Fragment key="fitur-menu-offcanvas">
+          <datalist id={datalistId}>
+            {GROUP_ORDER.map((g) => (
+              <option key={g} value={g} />
+            ))}
+            <option value="Lainnya" />
+          </datalist>
           <motion.div
             key="fitur-menu-backdrop"
             initial={{ opacity: 0 }}
@@ -108,11 +142,8 @@ export default function FiturMenuRoleOffcanvas({
                   </button>
                   <div className="min-w-0">
                     <h2 className="text-base font-semibold text-gray-900 dark:text-white tracking-tight leading-snug">
-                      {fiturItem.type === 'action' ? 'Akses aksi / widget' : 'Akses menu'}
+                      {fiturItem.type === 'action' ? 'Aksi / widget' : 'Menu'}
                     </h2>
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mt-1 truncate" title={fiturItem.label}>
-                      {fiturItem.label}
-                    </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate mt-0.5" title={fiturItem.path || '—'}>
                       {fiturItem.path && String(fiturItem.path).trim() !== '' ? fiturItem.path : '—'}
                     </p>
@@ -133,6 +164,76 @@ export default function FiturMenuRoleOffcanvas({
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              <div className="rounded-2xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80">
+                  <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Tampilan (database)</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Label, ikon, grup sidebar, dan urutan disimpan di tabel app___fitur.
+                  </p>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div>
+                    <label htmlFor="fitur-edit-label" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Label
+                    </label>
+                    <input
+                      id="fitur-edit-label"
+                      type="text"
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white"
+                      maxLength={255}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="fitur-edit-icon" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Icon key
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="fitur-edit-icon"
+                        type="text"
+                        value={editIconKey}
+                        onChange={(e) => setEditIconKey(e.target.value)}
+                        placeholder="home, dashboard, calendar…"
+                        className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white font-mono"
+                        maxLength={64}
+                      />
+                      <span className="shrink-0 w-10 h-10 rounded-xl border border-gray-200 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300">
+                        {getIcon(editIconKey || 'home', 'w-5 h-5')}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="fitur-edit-group" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Grup sidebar
+                    </label>
+                    <input
+                      id="fitur-edit-group"
+                      type="text"
+                      value={editGroupLabel}
+                      onChange={(e) => setEditGroupLabel(e.target.value)}
+                      list={datalistId}
+                      placeholder="My Workspace, UWABA, …"
+                      className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white"
+                      maxLength={128}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="fitur-edit-sort" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Urutan (sort_order)
+                    </label>
+                    <input
+                      id="fitur-edit-sort"
+                      type="number"
+                      value={editSortOrder}
+                      onChange={(e) => setEditSortOrder(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {fiturItem.type === 'action' && parentMenuLabel ? (
                 <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed px-0.5">
                   Daftar role dibatasi ke yang sudah diaktifkan pada menu induk:{' '}

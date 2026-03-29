@@ -4,6 +4,7 @@ namespace App\Helpers;
 
 use App\Database;
 use App\Config\RoleConfig;
+use App\Config\RolePolicyResolver;
 
 /**
  * Helper class untuk mengelola role pengurus
@@ -404,15 +405,18 @@ class RoleHelper
         return self::tokenHasEbeddienFiturCode($db, $user, $code);
     }
 
-    /** True jika salah satu role di token boleh mengakses app (RoleConfig), aman multi_role / all_roles. */
-    public static function tokenCanAccessAppFromRoleConfig(array $user, string $appKey): bool
+    /**
+     * True jika salah satu role di token boleh mengakses app menurut kebijakan efektif
+     * (kolom JSON di tabel role bila di-set, selain itu RoleConfig), aman multi_role / all_roles.
+     */
+    public static function tokenCanAccessAppFromRolePolicy(array $user, string $appKey): bool
     {
         $app = strtolower(trim($appKey));
         if ($app === '') {
             return false;
         }
         foreach (self::normalizeTokenRoleKeysUnion($user) as $k) {
-            if ($k !== '' && RoleConfig::canAccessApp($k, $app)) {
+            if ($k !== '' && RolePolicyResolver::canAccessApp($k, $app)) {
                 return true;
             }
         }
@@ -420,15 +424,18 @@ class RoleHelper
         return false;
     }
 
-    /** True jika salah satu role di token punya permission menurut RoleConfig (gabungan union). */
-    public static function tokenHasPermissionFromRoleConfig(array $user, string $permission): bool
+    /**
+     * True jika salah satu role di token punya permission menurut kebijakan efektif
+     * (DB + fallback RoleConfig), gabungan union.
+     */
+    public static function tokenHasPermissionFromRolePolicy(array $user, string $permission): bool
     {
         $perm = strtolower(trim($permission));
         if ($perm === '') {
             return false;
         }
         foreach (self::normalizeTokenRoleKeysUnion($user) as $k) {
-            if ($k !== '' && RoleConfig::hasPermission($k, $perm)) {
+            if ($k !== '' && RolePolicyResolver::hasPermission($k, $perm)) {
                 return true;
             }
         }
@@ -583,8 +590,8 @@ class RoleHelper
         foreach ($userRoles as $role) {
             $currentRoleKey = strtolower(trim((string)($role['role_key'] ?? '')));
             if ($currentRoleKey !== '') {
-                $allAllowedApps = array_unique(array_merge($allAllowedApps, RoleConfig::getAllowedApps($currentRoleKey)));
-                $allPermissions = array_unique(array_merge($allPermissions, RoleConfig::getPermissions($currentRoleKey)));
+                $allAllowedApps = array_unique(array_merge($allAllowedApps, RolePolicyResolver::getAllowedApps($currentRoleKey)));
+                $allPermissions = array_unique(array_merge($allPermissions, RolePolicyResolver::getPermissions($currentRoleKey)));
             }
         }
 
@@ -654,7 +661,7 @@ class RoleHelper
         // Cek semua role - jika salah satu role bisa akses, return true
         foreach ($userRoles as $role) {
             $roleKey = strtolower(trim($role['role_key'] ?? ''));
-            if (!empty($roleKey) && RoleConfig::canAccessApp($roleKey, $appKey)) {
+            if (!empty($roleKey) && RolePolicyResolver::canAccessApp($roleKey, $appKey)) {
                 return true;
             }
         }
@@ -681,7 +688,7 @@ class RoleHelper
         // Cek semua role - jika salah satu role memiliki permission, return true
         foreach ($userRoles as $role) {
             $roleKey = strtolower(trim($role['role_key'] ?? ''));
-            if (!empty($roleKey) && RoleConfig::hasPermission($roleKey, $permission)) {
+            if (!empty($roleKey) && RolePolicyResolver::hasPermission($roleKey, $permission)) {
                 return true;
             }
         }

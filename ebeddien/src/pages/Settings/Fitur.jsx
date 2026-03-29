@@ -5,8 +5,9 @@ import { settingsAPI } from '../../services/api'
 import { GROUP_ORDER } from '../../config/menuConfig'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import FiturMenuRoleOffcanvas from '../../components/FiturMenuRoleOffcanvas'
+import EbeddienFiturSelectorsPanel from '../../components/EbeddienFiturSelectorsPanel'
 
-/** Hanya grup yang tidak ada di GROUP_ORDER (urutan akhir). Jangan duplikat nama dari menuConfig. */
+/** Hanya grup yang tidak ada di GROUP_ORDER (urutan akhir). Jangan duplikat nama grup yang sudah di GROUP_ORDER. */
 const EXTRA_GROUP_ORDER = ['Lainnya']
 
 function uniqueSortedGroups(items) {
@@ -419,14 +420,21 @@ export default function Fitur() {
     return roles.filter((r) => allowed.has(r.id))
   }, [selectedItem, items, roles])
 
-  const handleAfterSave = useCallback((fiturId, roleIds) => {
+  const handleAfterSave = useCallback((fiturId, data) => {
+    if (!data || typeof data !== 'object') return
+    const { fitur_id: _fid, ...patch } = data
     setPayload((prev) => {
       if (!prev?.items) return prev
       return {
         ...prev,
-        items: prev.items.map((it) =>
-          it.id === fiturId ? { ...it, role_ids: [...roleIds].sort((a, b) => a - b) } : it
-        )
+        items: prev.items.map((it) => {
+          if (it.id !== fiturId) return it
+          const next = { ...it, ...patch }
+          if (Array.isArray(next.role_ids)) {
+            next.role_ids = [...next.role_ids].sort((a, b) => a - b)
+          }
+          return next
+        })
       }
     })
   }, [])
@@ -472,10 +480,12 @@ export default function Fitur() {
             <div className="rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-900/20 px-4 py-3 text-sm text-teal-900 dark:text-teal-100 mb-4">
               <p className="font-medium">Menu, aksi &amp; akses role</p>
               <p className="mt-1 text-teal-800/90 dark:text-teal-200/90 text-xs leading-relaxed">
-                Ketuk baris untuk membuka panel kanan. Menu yang punya sub-fitur (aksi di halaman) bisa dibentangkan lewat
-                tombol di kiri jumlah role. Centang role yang boleh akses, lalu simpan.
+                Ketuk baris untuk membuka panel kanan: ubah label, icon key, grup sidebar, urutan (kolom di database), dan
+                centang role. Menu yang punya sub-fitur (aksi) bisa dibentangkan lewat tombol di kiri jumlah role.
               </p>
             </div>
+
+            <EbeddienFiturSelectorsPanel />
 
             {error && (
               <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-900 dark:text-amber-100">

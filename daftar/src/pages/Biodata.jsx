@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { santriAPI, pendaftaranAPI, resetCsrfToken } from '../services/api'
+import { pendaftaranAPI } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { useTahunAjaranStore } from '../store/tahunAjaranStore'
 import { useBiodataViewStore } from '../store/biodataViewStore'
@@ -23,6 +24,20 @@ import RequiredFieldsModal from '../components/Modal/RequiredFieldsModal'
 import Modal from '../components/Modal/Modal'
 import BiodataReadOnlyView from '../components/Biodata/BiodataReadOnlyView'
 import { FEATURE_DAFTAR_WA_NOTIF_UI } from '../config/featureFlags'
+import { normalizeNisForStorage } from '../utils/clientStorage'
+import {
+  biodataCacheMatchesUser,
+  getBiodataFullCacheKey,
+  parseServerTimestamp,
+  readBiodataFullCache,
+  writeBiodataFullCache,
+} from '../utils/biodataLocalCache'
+import {
+  buildBiodataFormFromApis,
+  mergeRegistrasiSlice,
+  mergeSantriSlice,
+} from '../utils/biodataFormFromApi'
+import { invalidateAfterBiodataSave } from '../utils/daftarPagesLocalCache'
 
 const NOMOR_DAFTAR_NOTIF = '6285123123399'
 
@@ -191,6 +206,8 @@ function Biodata() {
   const [missingRequiredFields, setMissingRequiredFields] = useState([])
   /** Tombol Simpan: hanya boleh dinilai setelah load biodata selesai (atau tidak perlu load). */
   const [biodataReady, setBiodataReady] = useState(false)
+  /** Mode baca: tombol Edit aktif setelah fetch ke server selesai (termasuk sinkron dari cache). */
+  const [biodataServerSynced, setBiodataServerSynced] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [focusedField, setFocusedField] = useState(null)
@@ -209,7 +226,22 @@ function Biodata() {
   const [kondisiFields, setKondisiFields] = useState([]) // [{ field_name, field_label, values: [{ value, label }] }, ...]
 
   const formRef = useRef(null)
-  const hasLoadedForUserIdRef = useRef(null)
+  /** Meta sinkron server: id_santri, id_registrasi, nis, tanggal_update_*, nik_snapshot */
+  const syncMetaRef = useRef(null)
+  const [biodataServerTimestamps, setBiodataServerTimestamps] = useState({
+    tanggal_update_santri: null,
+    tanggal_update_registrasi: null,
+  })
+  const applySyncMeta = useCallback((meta) => {
+    syncMetaRef.current = meta
+    setBiodataServerTimestamps({
+      tanggal_update_santri: meta?.tanggal_update_santri ?? null,
+      tanggal_update_registrasi: meta?.tanggal_update_registrasi ?? null,
+    })
+  }, [])
+  const hydratedFromCacheRef = useRef(false)
+  const persistDebounceRef = useRef(null)
+  const hasChangesRef = useRef(false)
   /**
    * Cegah localStorage draft ditulis saat mount pertama (form masih snapshot kosong/default).
    * Jika draft tertimpa snapshot parsial, saat fetch API selesai merge { ...server, ...draft }
@@ -232,6 +264,35 @@ function Biodata() {
       id !== undefined
   }
 
+  const userHasStoredNis = (u) => {
+    const n = u?.nis != null ? String(u.nis).trim() : ''
+    return /^\d{7}$/.test(n)
+  }
+
+  useEffect(() => {
+    hasChangesRef.current = hasChanges
+  }, [hasChanges])
+
+  // Sebelum paint: mode baca jika NIS tersimpan; muat cache penuh v2 agar tab Biodata tampil instan.
+  useLayoutEffect(() => {
+    const u = useAuthStore.getState().user
+    if (userHasStoredNis(u) && isValidId(u?.id)) {
+      useBiodataViewStore.getState().enterBiodataReadMode()
+    }
+    hydratedFromCacheRef.current = false
+    const sessionNik =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+    const key = getBiodataFullCacheKey(u?.nik || sessionNik, u?.id)
+    const pack = readBiodataFullCache(key)
+    if (pack && biodataCacheMatchesUser(pack.meta, u, sessionNik)) {
+      setFormData((prev) => ({ ...prev, ...pack.form }))
+      applySyncMeta(pack.meta)
+      biodataHydratedRef.current = true
+      hydratedFromCacheRef.current = true
+      setBiodataReady(true)
+    }
+  }, [user?.id, user?.nik, applySyncMeta])
+
   // Mode baca: data dari server + tidak ada perubahan lokal (termasuk draft beda server). Mode ubah: lainnya.
   // Jangan paksa baca jika user baru menekan Ubah (biodataEditIntent) saat biodataReady reload.
   useEffect(() => {
@@ -240,13 +301,13 @@ function Biodata() {
       enterBiodataEditMode()
       return
     }
-    if (isValidId(formData.id)) {
+    if (isValidId(formData.id) || userHasStoredNis(user)) {
       if (biodataEditIntent) return
       enterBiodataReadMode()
     } else {
       enterBiodataEditMode()
     }
-  }, [biodataReady, formData.id, hasChanges, biodataEditIntent, enterBiodataReadMode, enterBiodataEditMode])
+  }, [biodataReady, formData.id, hasChanges, biodataEditIntent, user?.id, user?.nis, enterBiodataReadMode, enterBiodataEditMode])
 
   // Helper function untuk mendapatkan className label berdasarkan focused state
   const getLabelClassName = (fieldName) => {
@@ -272,6 +333,7 @@ function Biodata() {
     if (!tahunHijriyah || !tahunMasehi) return
     if (!isValidId(user?.id)) {
       setBiodataReady(true)
+      setBiodataServerSynced(true)
     }
   }, [tahunHijriyah, tahunMasehi, user?.id])
 
@@ -359,267 +421,147 @@ function Biodata() {
     }
   }, [getLoginNik])
 
-  // Load data dari API berdasarkan ID dari user (jika ada)
+  // Muat dari API: tanpa cache = tunggu API lalu isi form; dengan cache = latar belakang + banding tanggal_update.
   useEffect(() => {
-    const loadDataFromUser = async () => {
-      // Tunggu tahun ajaran dimuat dulu
-      if (!tahunHijriyah || !tahunMasehi) return
+    if (!tahunHijriyah || !tahunMasehi) return
+    const uid = user?.id != null ? String(user.id) : null
+    if (!uid || !isValidId(user?.id)) return
 
-      // Validasi: jika user tidak punya ID, redirect ke login
-      if (!isValidId(user?.id)) {
-        console.warn('User ID tidak valid. Redirecting to login...', { user, userId: user?.id })
-        resetCsrfToken()
-        const authStore = useAuthStore.getState()
-        authStore.logout()
-        window.location.href = '/login'
-        return
+    const syncAuthFromApis = (biodata, meta) => {
+      const nisHeader =
+        meta.nis != null && String(meta.nis).trim() !== '' ? String(meta.nis).trim() : null
+      const authSync = useAuthStore.getState()
+      authSync.setAuth(authSync.token, {
+        ...authSync.user,
+        id: meta.id_santri || String(biodata.id),
+        nik: biodata.nik || authSync.user?.nik || '',
+        nama: biodata.nama || authSync.user?.nama || '',
+        nis: nisHeader ?? authSync.user?.nis ?? null,
+        id_registrasi:
+          meta.id_registrasi != null && !Number.isNaN(meta.id_registrasi)
+            ? meta.id_registrasi
+            : (authSync.user?.id_registrasi ?? null),
+      })
+    }
+
+    const run = async () => {
+      const fromCache = hydratedFromCacheRef.current
+      setBiodataServerSynced(false)
+      if (!fromCache) {
+        setBiodataReady(false)
       }
 
-      // User ID valid, lanjutkan load data
-      setBiodataReady(false)
-
       try {
-        // Draft dari autosave selalu ada setelah load — jangan skip API atau paksa hasChanges(true)
-        // hanya karena draft tersimpan. Bandingkan dulu dengan data server; beda = benar-benar ada edit lokal.
-        const draftRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('daftar_biodata_draft') : null
+        const draftRaw =
+          typeof localStorage !== 'undefined' ? localStorage.getItem('daftar_biodata_draft') : null
         let parsedDraft = null
         if (draftRaw) {
           try {
             const parsed = JSON.parse(draftRaw)
-            if (parsed && typeof parsed === 'object' && (parsed.nik || parsed.nama)) {
+            if (parsed && typeof parsed === 'object' && !parsed.v && (parsed.nik || parsed.nama)) {
               parsedDraft = parsed
             }
           } catch (_) {}
         }
 
         const biodataResponse = await pendaftaranAPI.getBiodata(user.id)
-
-        if (biodataResponse.success && biodataResponse.data) {
-          const biodata = biodataResponse.data
-
-          // Tampilan untuk pendaftar: NIS 7 digit. Backend id santri = acuan API, tidak wajib sama dengan yang tampil.
-          const nisDisplay = (biodata.nis && /^\d{7}$/.test(String(biodata.nis)))
-            ? String(biodata.nis)
-            : (biodata.id != null && biodata.id !== '' ? String(biodata.id) : '')
-          const nikFallback = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') : null
-          const newFormData = {
-            id: nisDisplay,
-            nama: biodata.nama || '',
-            nik: biodata.nik || user.nik || nikFallback || '',
-            gender: biodata.gender || '',
-            tempat_lahir: biodata.tempat_lahir || '',
-            tanggal_lahir: biodata.tanggal_lahir || '',
-            nisn: biodata.nisn || '',
-            no_kk: biodata.no_kk || '',
-            kepala_keluarga: biodata.kepala_keluarga || '',
-            anak_ke: biodata.anak_ke || '',
-            jumlah_saudara: biodata.jumlah_saudara || '',
-            saudara_di_pesantren: biodata.saudara_di_pesantren || '',
-            hobi: biodata.hobi || '',
-            cita_cita: biodata.cita_cita || '',
-            kebutuhan_khusus: biodata.kebutuhan_khusus || '',
-            ayah: biodata.ayah || '',
-            status_ayah: biodata.status_ayah || 'Masih Hidup',
-            nik_ayah: biodata.nik_ayah || '',
-            tempat_lahir_ayah: biodata.tempat_lahir_ayah || '',
-            tanggal_lahir_ayah: biodata.tanggal_lahir_ayah || '',
-            pekerjaan_ayah: biodata.pekerjaan_ayah || '',
-            pendidikan_ayah: biodata.pendidikan_ayah || '',
-            penghasilan_ayah: biodata.penghasilan_ayah || '',
-            ibu: biodata.ibu || '',
-            status_ibu: biodata.status_ibu || 'Masih Hidup',
-            nik_ibu: biodata.nik_ibu || '',
-            tempat_lahir_ibu: biodata.tempat_lahir_ibu || '',
-            tanggal_lahir_ibu: biodata.tanggal_lahir_ibu || '',
-            pekerjaan_ibu: biodata.pekerjaan_ibu || '',
-            pendidikan_ibu: biodata.pendidikan_ibu || '',
-            penghasilan_ibu: biodata.penghasilan_ibu || '',
-            hubungan_wali: biodata.hubungan_wali || '',
-            wali: biodata.wali || '',
-            nik_wali: biodata.nik_wali || '',
-            tempat_lahir_wali: biodata.tempat_lahir_wali || '',
-            tanggal_lahir_wali: biodata.tanggal_lahir_wali || '',
-            pekerjaan_wali: biodata.pekerjaan_wali || '',
-            pendidikan_wali: biodata.pendidikan_wali || '',
-            penghasilan_wali: biodata.penghasilan_wali || '',
-            dusun: biodata.dusun || '',
-            rt: biodata.rt || '',
-            rw: biodata.rw || '',
-            desa: biodata.desa || '',
-            kecamatan: biodata.kecamatan || '',
-            kabupaten: biodata.kabupaten || '',
-            provinsi: biodata.provinsi || '',
-            kode_pos: biodata.kode_pos || '',
-
-            // Riwayat sekolah dan madrasah (Akan diupdate dari psb___registrasi di bawah jika ada)
-            madrasah: '',
-            nama_madrasah: '',
-            alamat_madrasah: '',
-            lulus_madrasah: '',
-            sekolah: '',
-            nama_sekolah: '',
-            alamat_sekolah: '',
-            lulus_sekolah: '',
-            npsn: '',
-            nsm: '',
-            jurusan: '',
-            program_sekolah: '',
-
-            no_telpon: biodata.no_telpon || '',
-            // Email wajib diisi - load dari database
-            // Jika email null atau empty di database, tetap set ke empty string (akan divalidasi saat save)
-            email: biodata.email ? String(biodata.email).trim() : '',
-            riwayat_sakit: biodata.riwayat_sakit || '',
-            ukuran_baju: biodata.ukuran_baju || '',
-            kip: biodata.kip || '',
-            pkh: biodata.pkh || '',
-            kks: biodata.kks || '',
-            status_nikah: biodata.status_nikah || '',
-            pekerjaan: biodata.pekerjaan || '',
-            no_wa_santri: biodata.no_wa_santri || '',
-            status_santri: biodata.status_santri || '',
-            kategori: biodata.kategori || '',
-            daerah: biodata.daerah || '',
-            kamar: biodata.kamar || '',
-            diniyah: biodata.diniyah || '',
-            kelas_diniyah: biodata.kelas_diniyah || '',
-            kel_diniyah: biodata.kel_diniyah || '',
-            nim_diniyah: biodata.nim_diniyah || '',
-            formal: biodata.formal || '',
-            kelas_formal: biodata.kelas_formal || '',
-            kel_formal: biodata.kel_formal || '',
-            nim_formal: biodata.nim_formal || '',
-            lttq: biodata.lttq || '',
-            kelas_lttq: biodata.kelas_lttq || '',
-            kel_lttq: biodata.kel_lttq || '',
-            prodi: biodata.prodi || '',
-            gelombang: '',
-            status_pendaftar: '',
-            daftar_diniyah: '',
-            daftar_formal: '',
-            status_murid: '',
+        if (!biodataResponse.success || !biodataResponse.data) {
+          if (!fromCache) {
+            console.warn('Data santri tidak ditemukan di database.', {
+              response: biodataResponse,
+              userId: user.id,
+            })
+            biodataHydratedRef.current = true
           }
+          return
+        }
 
-          // Load data registrasi jika ada
-          const registrasiResponse = await pendaftaranAPI.getRegistrasi(
-            user.id,
-            tahunHijriyah,
-            tahunMasehi
-          )
-          if (registrasiResponse.success && registrasiResponse.data) {
-            const registrasi = registrasiResponse.data
-            newFormData.status_pendaftar = registrasi.status_pendaftar || ''
-            newFormData.daftar_diniyah = registrasi.daftar_diniyah || ''
-            newFormData.daftar_formal = registrasi.daftar_formal || ''
-            newFormData.status_murid = registrasi.status_murid || ''
-            newFormData.status_santri = registrasi.status_santri || ''
-            newFormData.prodi = registrasi.prodi || ''
-            // Gunakan gelombang dari registrasi jika ada, jika tidak gunakan gelombang aktif
-            const { getGelombangAktif } = useTahunAjaranStore.getState()
-            const gelombangAktif = getGelombangAktif()
-            newFormData.gelombang = registrasi.gelombang || gelombangAktif || ''
+        const biodata = biodataResponse.data
+        const registrasiResponse = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+        const regOk = !!(registrasiResponse.success && registrasiResponse.data)
+        const registrasi = regOk ? registrasiResponse.data : null
+        const nikFallback =
+          typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') : null
 
-            // Riwayat sekolah dan madrasah diambil dari psb___registrasi (sesuai UWABA)
-            newFormData.madrasah = registrasi.madrasah || ''
-            newFormData.nama_madrasah = registrasi.nama_madrasah || ''
-            newFormData.alamat_madrasah = registrasi.alamat_madrasah || ''
-            newFormData.lulus_madrasah = registrasi.lulus_madrasah || ''
-            newFormData.sekolah = registrasi.sekolah || ''
-            newFormData.nama_sekolah = registrasi.nama_sekolah || ''
-            newFormData.alamat_sekolah = registrasi.alamat_sekolah || ''
-            newFormData.lulus_sekolah = registrasi.lulus_sekolah || ''
-            newFormData.npsn = registrasi.npsn || ''
-            newFormData.nsm = registrasi.nsm || ''
-            newFormData.jurusan = registrasi.jurusan || ''
-            newFormData.program_sekolah = registrasi.program_sekolah || ''
-          } else {
-            // Belum ada registrasi tahun ini - gunakan pilihan dari halaman Pilihan Status, Opsi Pendidikan & Status Santri
-            try {
-              const savedPendaftar = localStorage.getItem('daftar_status_pendaftar')
-              if (savedPendaftar === 'Baru' || savedPendaftar === 'Lama') {
-                newFormData.status_pendaftar = savedPendaftar
-              }
-              const savedDiniyah = localStorage.getItem('daftar_diniyah')
-              if (savedDiniyah && savedDiniyah !== '') {
-                newFormData.daftar_diniyah = savedDiniyah
-              }
-              const savedFormal = localStorage.getItem('daftar_formal')
-              if (savedFormal && savedFormal !== '') {
-                newFormData.daftar_formal = savedFormal
-              }
-              const savedSantri = localStorage.getItem('daftar_status_santri')
-              if (savedSantri === 'Mukim' || savedSantri === 'Khoriji') {
-                newFormData.status_santri = savedSantri
-              }
-              const savedMurid = localStorage.getItem('daftar_status_murid')
-              if (savedMurid && savedMurid !== '') {
-                newFormData.status_murid = savedMurid
-              }
-              const savedProdi = localStorage.getItem('daftar_prodi')
-              if (savedProdi && savedProdi !== '') {
-                newFormData.prodi = savedProdi
-              }
-            } catch (e) { /* ignore */ }
-          }
+        const { formData: newFormDataBuilt, meta: newMeta } = buildBiodataFormFromApis(
+          biodata,
+          registrasi,
+          regOk,
+          user,
+          nikFallback,
+          () => useTahunAjaranStore.getState().getGelombangAktif()
+        )
 
-          // Sinkronkan NIS & id registrasi ke auth (header / save berikutnya)
-          let idRegHeader = biodata.id_registrasi != null && biodata.id_registrasi !== ''
-            ? Number(biodata.id_registrasi)
-            : null
-          if (idRegHeader == null || Number.isNaN(idRegHeader)) {
-            if (registrasiResponse.success && registrasiResponse.data) {
-              const r = registrasiResponse.data
-              const raw = r.id_registrasi ?? r.id
-              if (raw != null && raw !== '') {
-                idRegHeader = Number(raw)
-              }
-            }
-          }
-          const nisHeader = biodata.nis != null && String(biodata.nis).trim() !== ''
-            ? String(biodata.nis).trim()
-            : null
-          const authSync = useAuthStore.getState()
-          authSync.setAuth(authSync.token, {
-            ...authSync.user,
-            id: String(biodata.id),
-            nik: biodata.nik || authSync.user?.nik || '',
-            nama: biodata.nama || authSync.user?.nama || '',
-            nis: nisHeader ?? authSync.user?.nis ?? null,
-            id_registrasi: !Number.isNaN(idRegHeader) && idRegHeader != null
-              ? idRegHeader
-              : (authSync.user?.id_registrasi ?? null)
-          })
-
-          if (parsedDraft && biodataDraftDiffersFromServer(parsedDraft, newFormData)) {
-            setFormData({ ...newFormData, ...parsedDraft })
+        if (!fromCache) {
+          applySyncMeta(newMeta)
+          if (parsedDraft && biodataDraftDiffersFromServer(parsedDraft, newFormDataBuilt)) {
+            setFormData({ ...newFormDataBuilt, ...parsedDraft })
             setHasChanges(true)
-            // Restore draft ≠ user baru saja mengedit; jangan aktifkan modal navigasi global.
             hasUserEditedRef.current = false
           } else {
-            setFormData(newFormData)
+            setFormData(newFormDataBuilt)
             setHasChanges(false)
             hasUserEditedRef.current = false
           }
           hasLoadedFromServerRef.current = true
           biodataHydratedRef.current = true
+          syncAuthFromApis(biodata, newMeta)
         } else {
-          console.warn('Data santri tidak ditemukan di database.', { response: biodataResponse, userId: user.id })
-          biodataHydratedRef.current = true
+          const sNew = parseServerTimestamp(newMeta.tanggal_update_santri)
+          const rNew = parseServerTimestamp(newMeta.tanggal_update_registrasi)
+          const sOld = parseServerTimestamp(syncMetaRef.current?.tanggal_update_santri)
+          const rOld = parseServerTimestamp(syncMetaRef.current?.tanggal_update_registrasi)
+
+          if (hasChangesRef.current && hasUserEditedRef.current) {
+            applySyncMeta({
+              ...(syncMetaRef.current || {}),
+              id_santri: newMeta.id_santri,
+              id_registrasi: newMeta.id_registrasi ?? syncMetaRef.current?.id_registrasi,
+              nis: newMeta.nis ?? syncMetaRef.current?.nis,
+              nik_snapshot: newMeta.nik_snapshot,
+            })
+            return
+          }
+
+          let didUpdate = false
+          if (sNew > sOld && rNew > rOld) {
+            setFormData(newFormDataBuilt)
+            didUpdate = true
+          } else if (sNew > sOld) {
+            setFormData((prev) => mergeSantriSlice(prev, newFormDataBuilt))
+            didUpdate = true
+          } else if (rNew > rOld) {
+            setFormData((prev) => mergeRegistrasiSlice(prev, newFormDataBuilt))
+            didUpdate = true
+          }
+
+          if (didUpdate) {
+            applySyncMeta(newMeta)
+            syncAuthFromApis(biodata, newMeta)
+          } else {
+            applySyncMeta({
+              ...(syncMetaRef.current || {}),
+              id_santri: newMeta.id_santri,
+              id_registrasi: newMeta.id_registrasi ?? syncMetaRef.current?.id_registrasi,
+              nis: newMeta.nis ?? syncMetaRef.current?.nis,
+              nik_snapshot: newMeta.nik_snapshot,
+              tanggal_update_santri:
+                syncMetaRef.current?.tanggal_update_santri ?? newMeta.tanggal_update_santri,
+              tanggal_update_registrasi:
+                syncMetaRef.current?.tanggal_update_registrasi ?? newMeta.tanggal_update_registrasi,
+            })
+          }
         }
       } catch (error) {
         console.error('Error loading data:', error)
       } finally {
         setBiodataReady(true)
+        setBiodataServerSynced(true)
       }
     }
 
-    // Load data sekali saja per user.id agar tidak overwrite input saat user mengetik atau setelah save
-    const uid = user?.id != null ? String(user.id) : null
-    if (uid && tahunHijriyah && tahunMasehi && hasLoadedForUserIdRef.current !== uid) {
-      hasLoadedForUserIdRef.current = uid
-      loadDataFromUser()
-    }
-  }, [user?.id, tahunHijriyah, tahunMasehi])
+    void run()
+  }, [user?.id, user?.nik, tahunHijriyah, tahunMasehi, applySyncMeta])
 
   // Muat draft dari localStorage untuk santri baru (belum punya user.id) saat buka halaman
   const hasLoadedDraftRef = useRef(false)
@@ -680,18 +622,35 @@ function Biodata() {
 
   const DRAFT_STORAGE_KEY = 'daftar_biodata_draft'
 
-  // Simpan formData ke sessionStorage (validasi Berkas) dan localStorage (tetap ada saat ditinggal/masuk lagi)
+  // Autosave: debounce ke cache v2 (form + meta) + draft flat (kompatibilitas Berkas).
   useEffect(() => {
     if (!biodataHydratedRef.current) return
-    if (formData.nik || formData.nama) {
-      sessionStorage.setItem('pendaftaranData', JSON.stringify(formData))
+    if (!(formData.nik || formData.nama)) return
+    sessionStorage.setItem('pendaftaranData', JSON.stringify(formData))
+    const sessionNik =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+    const cacheKey = getBiodataFullCacheKey(user?.nik || sessionNik, user?.id)
+    if (persistDebounceRef.current) {
+      clearTimeout(persistDebounceRef.current)
+    }
+    persistDebounceRef.current = setTimeout(() => {
+      const meta = {
+        ...(syncMetaRef.current || {}),
+        nik_snapshot: String(formData.nik || user?.nik || sessionNik || '').trim(),
+      }
+      writeBiodataFullCache(cacheKey, formData, meta)
       try {
         localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(formData))
-      } catch (e) {
-        // quota / private mode
+      } catch {
+        /* quota */
+      }
+    }, 350)
+    return () => {
+      if (persistDebounceRef.current) {
+        clearTimeout(persistDebounceRef.current)
       }
     }
-  }, [formData])
+  }, [formData, user?.id, user?.nik])
 
   // Field yang diisi otomatis oleh sistem (bukan edit user) — update formData saja, jangan tandai sebagai perubahan
   const SYSTEM_AUTO_FILLED_FIELDS = ['gelombang']
@@ -961,17 +920,17 @@ function Biodata() {
     if (!validation.valid && validation.missingFields && validation.missingFields.length > 0) {
       const fieldLabels = validation.missingFields.map(f => f.label).join(', ')
       showNotification(`Data wajib belum lengkap: ${fieldLabels}`, 'warning')
-      return
+      throw new Error('VALIDATION')
     }
     // Validasi format email (email wajib diisi)
     if (!formData.email || formData.email.trim() === '') {
       showNotification('Email wajib diisi', 'warning')
-      return
+      throw new Error('VALIDATION')
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(formData.email.trim())) {
       showNotification('Format email tidak valid', 'warning')
-      return
+      throw new Error('VALIDATION')
     }
 
     // Jika ID belum ada (santri baru), biarkan kosong - backend akan generate
@@ -979,7 +938,7 @@ function Biodata() {
     // Handle case dimana id bisa string atau number
     if (formData.id && String(formData.id).trim() !== '' && !/^\d{7}$/.test(String(formData.id))) {
       showNotification('NIS harus 7 digit angka atau kosongkan untuk santri baru', 'warning')
-      return
+      throw new Error('VALIDATION')
     }
 
     setIsSaving(true)
@@ -1030,18 +989,74 @@ function Biodata() {
         throw new Error(biodataResponse.message || 'Gagal menyimpan biodata')
       }
 
+      // Hapus draft dulu (sebelum setAuth / setFormData) agar effect muat ulang saat user.id berubah
+      // tidak membaca draft lama → merge beda server → setHasChanges(true) → tetap mode ubah.
+      try {
+        localStorage.removeItem('daftar_biodata_draft')
+        localStorage.removeItem('daftar_status_pendaftar')
+        localStorage.removeItem('daftar_diniyah')
+        localStorage.removeItem('daftar_formal')
+        localStorage.removeItem('daftar_status_santri')
+        localStorage.removeItem('daftar_status_murid')
+        localStorage.removeItem('daftar_prodi')
+      } catch (e) {
+        /* ignore */
+      }
+
+      try {
+        const sessionNik =
+          typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+        const { tahunHijriyah: th, tahunMasehi: tm } = useTahunAjaranStore.getState()
+        if (th && tm) {
+          const idInv =
+            biodataResponse.data?.id != null
+              ? String(biodataResponse.data.id)
+              : user?.id != null
+                ? String(user.id)
+                : ''
+          const nikInv = String(formData.nik || user?.nik || sessionNik || '').trim()
+          if (idInv) invalidateAfterBiodataSave(nikInv, idInv, th, tm, sessionNik)
+        }
+      } catch (_) {
+        /* ignore */
+      }
+
+      hasUserEditedRef.current = false
+      // Wajib flush agar hasChanges false ter-commit sebelum zustand mode baca; kalau tidak,
+      // effect sinkron mode masih melihat hasChanges true → enterBiodataEditMode() menimpa mode baca.
+      flushSync(() => {
+        setHasChanges(false)
+      })
+      clearUnsavedChanges()
+      useBiodataViewStore.getState().enterBiodataReadMode()
+
       // Backend mengembalikan id santri (acuan API) dan nis (7 digit, yang ditampilkan ke pendaftar)
       if (biodataResponse.data && biodataResponse.data.id) {
         const idSantri = String(biodataResponse.data.id)
         const nis = biodataResponse.data.nis != null ? String(biodataResponse.data.nis) : ''
-        hasLoadedForUserIdRef.current = idSantri
+        const idRegSaved =
+          biodataResponse.data.id_registrasi != null
+            ? Number(biodataResponse.data.id_registrasi)
+            : user?.id_registrasi ?? null
+        const tsBump = new Date().toISOString().replace('T', ' ').slice(0, 19)
+        applySyncMeta({
+          ...(syncMetaRef.current || {}),
+          id_santri: idSantri,
+          nis:
+            normalizeNisForStorage(biodataResponse.data.nis ?? biodataResponse.data.NIS) ??
+            (nis || null),
+          id_registrasi: !Number.isNaN(idRegSaved) && idRegSaved != null ? idRegSaved : null,
+          nik_snapshot: String(formData.nik || user?.nik || '').trim(),
+          tanggal_update_santri: tsBump,
+          tanggal_update_registrasi: tsBump,
+        })
         const authStore = useAuthStore.getState()
         authStore.setAuth(authStore.token, {
           ...user,
           id: idSantri,
           nama: formData.nama || user?.nama || '',
           nik: formData.nik || user?.nik || '',
-          nis: biodataResponse.data.nis != null ? String(biodataResponse.data.nis) : (user?.nis ?? null),
+          nis: normalizeNisForStorage(biodataResponse.data.nis ?? biodataResponse.data.NIS) ?? (user?.nis ?? null),
           id_registrasi: biodataResponse.data.id_registrasi != null
             ? Number(biodataResponse.data.id_registrasi)
             : (user?.id_registrasi ?? null),
@@ -1051,22 +1066,40 @@ function Biodata() {
           permissions: user?.permissions || []
         })
         setFormData(prev => ({ ...prev, id: nis }))
+      } else {
+        const nisSaved = normalizeNisForStorage(
+          biodataResponse.data?.nis ?? biodataResponse.data?.NIS
+        )
+        if (nisSaved) {
+          const tsBumpElse = new Date().toISOString().replace('T', ' ').slice(0, 19)
+          applySyncMeta({
+            ...(syncMetaRef.current || {}),
+            nis: nisSaved,
+            nik_snapshot: String(formData.nik || user?.nik || '').trim(),
+            tanggal_update_santri: tsBumpElse,
+            tanggal_update_registrasi: tsBumpElse,
+          })
+          const authStore = useAuthStore.getState()
+          authStore.setAuth(authStore.token, {
+            ...user,
+            nama: formData.nama || user?.nama || '',
+            nik: formData.nik || user?.nik || '',
+            nis: nisSaved,
+            id_registrasi:
+              biodataResponse.data?.id_registrasi != null
+                ? Number(biodataResponse.data.id_registrasi)
+                : (user?.id_registrasi ?? null),
+            role_key: user?.role_key || 'santri',
+            role_label: user?.role_label || 'Santri',
+            allowed_apps: user?.allowed_apps || ['daftar'],
+            permissions: user?.permissions || []
+          })
+          setFormData((prev) => ({ ...prev, id: nisSaved }))
+        }
       }
 
-      setHasChanges(false)
-      hasUserEditedRef.current = false
-      clearUnsavedChanges()
-      enterBiodataReadMode()
+      setBiodataServerSynced(true)
       showNotification('Data pendaftaran berhasil disimpan!', 'success')
-      try {
-        localStorage.removeItem('daftar_biodata_draft')
-        localStorage.removeItem('daftar_status_pendaftar')
-        localStorage.removeItem('daftar_diniyah')
-        localStorage.removeItem('daftar_formal')
-        localStorage.removeItem('daftar_status_santri')
-        localStorage.removeItem('daftar_status_murid')
-        localStorage.removeItem('daftar_prodi')
-      } catch (e) { /* ignore */ }
 
       // Setelah simpan, cek nomor yang bisa diaktifkan notifikasi WA (belum di kontak atau notif off)
       if (FEATURE_DAFTAR_WA_NOTIF_UI) {
@@ -1118,33 +1151,26 @@ function Biodata() {
       
       // Jangan redirect ke login jika error, biarkan user tetap di halaman untuk memperbaiki data
       // Axios interceptor akan handle redirect jika memang token tidak valid
+      throw error
     } finally {
       setIsSaving(false)
     }
-  }, [formData, tahunHijriyah, tahunMasehi, user, showNotification, navigate, clearUnsavedChanges, enterBiodataReadMode])
+  }, [formData, tahunHijriyah, tahunMasehi, user, showNotification, navigate, clearUnsavedChanges, applySyncMeta])
 
-  // Wrapper handleSave untuk konfirmasi NIK & Gender (Hanya untuk ID Baru)
-  const handleSave = useCallback(() => {
-    // Validasi field wajib
-    const validation = checkRequiredFields()
-    if (!validation.valid && validation.missingFields && validation.missingFields.length > 0) {
-      const fieldLabels = validation.missingFields.map(f => f.label).join(', ')
-      showNotification(`Data wajib belum lengkap: ${fieldLabels}`, 'warning')
-      return
-    }
-
-    // Jika ID belum ada (santri baru), tampilkan modal konfirmasi
+  // Wrapper handleSave untuk konfirmasi NIK & Gender (Hanya untuk ID Baru); mengembalikan Promise agar modal "simpan lalu navigasi" bisa menunggu hasil.
+  const handleSave = useCallback(async () => {
+    // Jika ID belum ada (santri baru), tampilkan modal konfirmasi — jangan anggap sukses (modal navigasi tetap terbuka)
     if (!formData.id || String(formData.id).trim() === '') {
       setShowConfirmModal(true)
-    } else {
-      saveData()
+      throw new Error('NEED_CONFIRM')
     }
-  }, [formData.id, checkRequiredFields, showNotification, saveData])
+    await saveData()
+  }, [formData.id, saveData])
 
-  const handleConfirmSave = () => {
+  const handleConfirmSave = useCallback(() => {
     setShowConfirmModal(false)
-    saveData()
-  }
+    void saveData().catch(() => {})
+  }, [saveData])
 
   // Ref agar sinkronisasi ke context tidak ikut jalan setiap render (handleSave/checkRequiredFields berubah tiap formData).
   const handleSaveRef = useRef(handleSave)
@@ -1191,8 +1217,10 @@ function Biodata() {
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
         onSave={handleSave}
+        onEdit={enterBiodataEditMode}
         isSaving={isSaving}
         dataReady={biodataReady}
+        serverSynced={biodataServerSynced}
         formDataId={formData.id}
         hasChanges={hasChanges}
         formData={formData}
@@ -1246,6 +1274,8 @@ function Biodata() {
             sectionRefs={sectionRefs}
             formData={formData}
             kondisiFields={kondisiFields}
+            tanggalUpdateSantri={biodataServerTimestamps.tanggal_update_santri}
+            tanggalUpdateRegistrasi={biodataServerTimestamps.tanggal_update_registrasi}
           />
         ) : (
           <form

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
 const UnsavedChangesContext = createContext(null)
 
@@ -7,6 +7,17 @@ export function UnsavedChangesProvider({ children }) {
   const [onSaveCallback, setOnSaveCallback] = useState(null)
   const [onValidateCallback, setOnValidateCallback] = useState(null)
   const [pendingNavigation, setPendingNavigation] = useState(null)
+
+  useEffect(() => {
+    const onLogout = () => {
+      setHasUnsavedChanges(false)
+      setOnSaveCallback(null)
+      setOnValidateCallback(null)
+      setPendingNavigation(null)
+    }
+    window.addEventListener('daftar:logout', onLogout)
+    return () => window.removeEventListener('daftar:logout', onLogout)
+  }, [])
 
   const setUnsavedChanges = useCallback((hasChanges, saveCallback = null, validateCallback = null) => {
     setHasUnsavedChanges(hasChanges)
@@ -35,7 +46,10 @@ export function UnsavedChangesProvider({ children }) {
         clearUnsavedChanges()
         return true
       } catch (error) {
-        console.error('Error saving before navigation:', error)
+        const msg = error?.message || ''
+        if (msg !== 'NEED_CONFIRM' && msg !== 'VALIDATION') {
+          console.error('Error saving before navigation:', error)
+        }
         return false
       }
     }

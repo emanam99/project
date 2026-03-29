@@ -37,3 +37,16 @@ export const useThemeStore = create((set) => {
     }
   }
 })
+
+/** Setelah localStorage dibersihkan (logout): tema mengikuti preferensi sistem, bukan cache tema user. */
+export function resetThemeAfterStorageCleared() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  const theme = prefersDark ? 'dark' : 'light'
+  useThemeStore.setState({ theme })
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark')
+  } else {
+    document.documentElement.classList.remove('dark')
+  }
+}

@@ -39,14 +39,18 @@ export function useWhatsAppCheck(showNotification) {
       if (result.success && result.isRegistered) {
         setWaStatusTelpon('registered')
         showNotification('✓ Nomor terdaftar di WhatsApp', 'success')
-        // Auto-hide setelah 3 detik
         setTimeout(() => {
           setWaStatusTelpon('registered')
         }, 3000)
-      } else {
+      } else if (result.success && !result.isRegistered) {
         setWaStatusTelpon('not_registered')
         showNotification('✗ Nomor tidak terdaftar di WhatsApp', 'warning')
-        // Auto-hide setelah 3 detik
+        setTimeout(() => {
+          setWaStatusTelpon(null)
+        }, 3000)
+      } else {
+        setWaStatusTelpon(null)
+        showNotification(result.message || 'Tidak dapat memverifikasi nomor (layanan WhatsApp tidak merespons). Coba lagi nanti.', 'error')
         setTimeout(() => {
           setWaStatusTelpon(null)
         }, 3000)
@@ -83,14 +87,18 @@ export function useWhatsAppCheck(showNotification) {
       if (result.success && result.isRegistered) {
         setWaStatusWaSantri('registered')
         showNotification('✓ Nomor terdaftar di WhatsApp', 'success')
-        // Auto-hide setelah 3 detik
         setTimeout(() => {
           setWaStatusWaSantri('registered')
         }, 3000)
-      } else {
+      } else if (result.success && !result.isRegistered) {
         setWaStatusWaSantri('not_registered')
         showNotification('✗ Nomor tidak terdaftar di WhatsApp', 'warning')
-        // Auto-hide setelah 3 detik
+        setTimeout(() => {
+          setWaStatusWaSantri(null)
+        }, 3000)
+      } else {
+        setWaStatusWaSantri(null)
+        showNotification(result.message || 'Tidak dapat memverifikasi nomor (layanan WhatsApp tidak merespons). Coba lagi nanti.', 'error')
         setTimeout(() => {
           setWaStatusWaSantri(null)
         }, 3000)

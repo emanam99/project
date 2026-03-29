@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { pendaftaranAPI } from '../services/api'
@@ -11,6 +11,34 @@ import FilePreviewOffcanvas from '../components/FilePreview/FilePreviewOffcanvas
 import CameraScanner from '../components/CameraScanner/CameraScanner'
 import { compressImage } from '../utils/imageCompression'
 import { formatFileSize } from '../utils/fileUtils'
+import {
+  getPembayaranCacheKey,
+  readPembayaranCache,
+  writePembayaranCache,
+  pembayaranCacheMatchesUser,
+  invalidatePembayaranAndDashboard,
+} from '../utils/daftarPagesLocalCache'
+
+/** @param {object[]} allBerkasData */
+function filterSortBuktiPembayaran(allBerkasData) {
+  if (!Array.isArray(allBerkasData) || allBerkasData.length === 0) return []
+  const buktiList = allBerkasData.filter(
+    (berkas) => berkas.jenis_berkas && berkas.jenis_berkas.startsWith('Bukti Pembayaran')
+  )
+  const getBuktiNumber = (berkas) => {
+    if (berkas.jenis_berkas === 'Bukti Pembayaran') return 1
+    const match = berkas.jenis_berkas.match(/\d+/)
+    return match ? parseInt(match[0], 10) : 1
+  }
+  return [...buktiList].sort((a, b) => {
+    const numA = getBuktiNumber(a)
+    const numB = getBuktiNumber(b)
+    if (numA !== numB) return numA - numB
+    const dateA = new Date(a.tanggal_upload || a.tanggal_dibuat || 0)
+    const dateB = new Date(b.tanggal_upload || b.tanggal_dibuat || 0)
+    return dateB - dateA
+  })
+}
 
 function Pembayaran() {
   const { user } = useAuthStore()
@@ -37,20 +65,43 @@ function Pembayaran() {
   // Daftar kondisi untuk tampilan "Kondisi Pendaftaran Santri" (dari DB, agar fleksibel)
   const [kondisiDisplayFields, setKondisiDisplayFields] = useState([]) // [{ field_name, field_label }, ...]
   const hasAttemptedSyncFromFlow = useRef(false)
+  const pembayaranHydratedFromCacheRef = useRef(false)
 
   // Reset flag sync saat tahun/user berubah agar bisa sync lagi untuk tahun baru
   useEffect(() => {
     hasAttemptedSyncFromFlow.current = false
   }, [user?.id, tahunHijriyah, tahunMasehi])
 
-  // Reset data pembayaran ketika user (NIK) atau tahun ajaran berubah agar tidak menampilkan data user lama
-  useEffect(() => {
-    setRegistrasi(null)
-    setRegistrasiDetail([])
-    setBuktiPembayaranList([])
-    setPaymentHistory([])
-    setLoading(!!user?.id)
-  }, [user?.id, tahunHijriyah, tahunMasehi])
+  // Hydrasi cache sebelum paint (sama pola Biodata/Dashboard)
+  useLayoutEffect(() => {
+    pembayaranHydratedFromCacheRef.current = false
+    const sessionNik =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+    if (!user?.id || !tahunHijriyah || !tahunMasehi) {
+      setRegistrasi(null)
+      setRegistrasiDetail([])
+      setBuktiPembayaranList([])
+      setPaymentHistory([])
+      setLoading(false)
+      return
+    }
+    const key = getPembayaranCacheKey(user?.nik || sessionNik, user.id, tahunHijriyah, tahunMasehi)
+    const pack = readPembayaranCache(key)
+    if (pack && pembayaranCacheMatchesUser(pack.meta, user, sessionNik)) {
+      setRegistrasi(pack.registrasi)
+      setRegistrasiDetail(pack.registrasiDetail)
+      setBuktiPembayaranList(pack.buktiPembayaranList)
+      setPaymentHistory(pack.paymentHistory)
+      pembayaranHydratedFromCacheRef.current = true
+      setLoading(false)
+    } else {
+      setRegistrasi(null)
+      setRegistrasiDetail([])
+      setBuktiPembayaranList([])
+      setPaymentHistory([])
+      setLoading(true)
+    }
+  }, [user?.id, user?.nik, tahunHijriyah, tahunMasehi])
 
   // Load tahun ajaran saat mount
   useEffect(() => {
@@ -85,42 +136,93 @@ function Pembayaran() {
     load()
   }, [])
 
-  const fetchRegistrasiData = useCallback(async () => {
-    if (!user?.id) return
+  const refreshPembayaran = useCallback(
+    async (force = false) => {
+      if (!user?.id || !tahunHijriyah || !tahunMasehi) return
 
-    setLoading(true)
-    try {
-      const result = await pendaftaranAPI.getRegistrasi(
-        user.id,
-        tahunHijriyah,
-        tahunMasehi
-      )
+      if (force) {
+        pembayaranHydratedFromCacheRef.current = false
+      }
+      if (force || !pembayaranHydratedFromCacheRef.current) {
+        setLoading(true)
+      }
 
-      if (result.success && result.data) {
-        setRegistrasi(result.data)
-        if (result.data.id) {
-          const detailResult = await pendaftaranAPI.getRegistrasiDetail(result.data.id)
-          if (detailResult.success && detailResult.data) {
-            setRegistrasiDetail(detailResult.data)
+      const sessionNik =
+        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+      const cacheKey = getPembayaranCacheKey(user?.nik || sessionNik, user.id, tahunHijriyah, tahunMasehi)
+      const meta = {
+        id_santri: String(user.id),
+        nik_snapshot: String(user?.nik || sessionNik || '').trim(),
+        tahun_hijriyah: tahunHijriyah ?? '',
+        tahun_masehi: tahunMasehi ?? '',
+      }
+
+      try {
+        const result = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+        let reg = null
+        let detail = []
+
+        if (result.success && result.data) {
+          reg = result.data
+          if (result.data.id) {
+            const detailResult = await pendaftaranAPI.getRegistrasiDetail(result.data.id)
+            if (detailResult.success && detailResult.data) {
+              detail = detailResult.data
+            }
           }
         }
-      } else {
-        setRegistrasi(null)
-        setRegistrasiDetail([])
+
+        const berkasRes = await pendaftaranAPI.getBerkasList(user.id)
+        const allBerkas = berkasRes.success && berkasRes.data ? berkasRes.data : []
+        const bukti = filterSortBuktiPembayaran(allBerkas)
+
+        const histRes = await pendaftaranAPI.getTransaksi(user.id, reg?.id ?? null)
+        const hist = histRes.success && histRes.data ? histRes.data : []
+
+        setRegistrasi(reg)
+        setRegistrasiDetail(detail)
+        setBuktiPembayaranList(bukti)
+        setPaymentHistory(hist)
+
+        writePembayaranCache(cacheKey, {
+          registrasi: reg,
+          registrasiDetail: detail,
+          buktiPembayaranList: bukti,
+          paymentHistory: hist,
+          meta,
+        })
+        pembayaranHydratedFromCacheRef.current = true
+      } catch (error) {
+        console.error('Error fetching data pembayaran:', error)
+        showNotification('Gagal mengambil data pembayaran', 'error')
+      } finally {
+        setLoading(false)
       }
-    } catch (error) {
-      console.error('Error fetching data pembayaran:', error)
-      showNotification('Gagal mengambil data pembayaran', 'error')
-    } finally {
-      setLoading(false)
+    },
+    [user?.id, user?.nik, tahunHijriyah, tahunMasehi, showNotification]
+  )
+
+  /** Untuk offcanvas / iPayMu: hapus cache dashboard+pembayaran lalu muat ulang penuh dari server */
+  const invalidateAndRefreshPembayaran = useCallback(async () => {
+    const sessionNik =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+    if (user?.id && tahunHijriyah && tahunMasehi) {
+      invalidatePembayaranAndDashboard(
+        user?.nik || sessionNik,
+        user.id,
+        tahunHijriyah,
+        tahunMasehi,
+        sessionNik
+      )
     }
-  }, [user?.id, tahunHijriyah, tahunMasehi, showNotification])
+    await refreshPembayaran(true)
+  }, [user?.id, user?.nik, tahunHijriyah, tahunMasehi, refreshPembayaran])
 
   useEffect(() => {
-    if (tahunHijriyah && tahunMasehi) {
-      fetchRegistrasiData()
+    if (tahunHijriyah && tahunMasehi && user?.id) {
+      void refreshPembayaran(false)
     }
-  }, [fetchRegistrasiData, tahunHijriyah, tahunMasehi])
+  }, [refreshPembayaran, tahunHijriyah, tahunMasehi, user?.id, search])
 
   // Setelah mengisi semua page flow: jika belum ada registrasi tapi ada data flow di localStorage, sync sekali agar pembayaran bisa dirender dan harga ketemu
   useEffect(() => {
@@ -150,97 +252,14 @@ function Pembayaran() {
           auto_assign_items: true
         })
         if (result?.success) {
-          await fetchRegistrasiData()
+          await refreshPembayaran(true)
         }
       } catch (e) {
         console.warn('Sync registrasi dari flow:', e)
       }
     }
     syncFromFlowConditions()
-  }, [user?.id, tahunHijriyah, tahunMasehi, registrasi, loading, fetchRegistrasiData])
-
-  // Fetch semua bukti pembayaran (1-6)
-  const fetchBuktiPembayaran = useCallback(async () => {
-    if (!user?.id) return
-
-    try {
-      // Ambil semua berkas yang jenis_berkas dimulai dengan "Bukti Pembayaran"
-      const result = await pendaftaranAPI.getBerkasList(user.id)
-      if (result.success && result.data && result.data.length > 0) {
-        // Filter hanya bukti pembayaran (termasuk "Bukti Pembayaran", "Bukti Pembayaran 1", dst)
-        const buktiList = result.data.filter(berkas => 
-          berkas.jenis_berkas && berkas.jenis_berkas.startsWith('Bukti Pembayaran')
-        )
-        
-        // Sort berdasarkan nomor (jika ada) atau tanggal
-        // Handle "Bukti Pembayaran" (tanpa nomor) sebagai nomor 1 untuk sorting
-        const getBuktiNumber = (berkas) => {
-          if (berkas.jenis_berkas === 'Bukti Pembayaran') {
-            return 1
-          }
-          const match = berkas.jenis_berkas.match(/\d+/)
-          return match ? parseInt(match[0]) : 1
-        }
-        
-        const sorted = buktiList.sort((a, b) => {
-          const numA = getBuktiNumber(a)
-          const numB = getBuktiNumber(b)
-          
-          if (numA !== numB) {
-            return numA - numB // Sort by number
-          }
-          
-          // Jika nomor sama atau tidak ada, sort by date
-          const dateA = new Date(a.tanggal_upload || a.tanggal_dibuat || 0)
-          const dateB = new Date(b.tanggal_upload || b.tanggal_dibuat || 0)
-          return dateB - dateA
-        })
-        
-        setBuktiPembayaranList(sorted)
-      } else {
-        setBuktiPembayaranList([])
-      }
-    } catch (error) {
-      console.error('Error fetching bukti pembayaran:', error)
-      setBuktiPembayaranList([])
-    }
-  }, [user?.id])
-
-  useEffect(() => {
-    if (user?.id) {
-      fetchBuktiPembayaran()
-    }
-  }, [user?.id, fetchBuktiPembayaran])
-
-  // Refresh bukti pembayaran setelah upload berhasil
-  useEffect(() => {
-    if (user?.id && !search.includes('payment=')) {
-      fetchBuktiPembayaran()
-    }
-  }, [user?.id, search, fetchBuktiPembayaran])
-
-  // Fetch payment history untuk menentukan apakah bukti sudah diverifikasi
-  const fetchPaymentHistory = useCallback(async () => {
-    if (!user?.id && !registrasi?.id) return
-
-    try {
-      const result = await pendaftaranAPI.getTransaksi(user?.id, registrasi?.id)
-      if (result.success && result.data) {
-        setPaymentHistory(result.data)
-      } else {
-        setPaymentHistory([])
-      }
-    } catch (err) {
-      console.error('Error fetching payment history:', err)
-      setPaymentHistory([])
-    }
-  }, [user?.id, registrasi?.id])
-
-  useEffect(() => {
-    if (user?.id || registrasi?.id) {
-      fetchPaymentHistory()
-    }
-  }, [fetchPaymentHistory, user?.id, registrasi?.id])
+  }, [user?.id, tahunHijriyah, tahunMasehi, registrasi, loading, refreshPembayaran])
 
   // Tentukan apakah bukti sudah diverifikasi
   const isBuktiVerified = useCallback((bukti) => {
@@ -429,7 +448,16 @@ function Pembayaran() {
 
       if (result.success) {
         showNotification('Berhasil mendaftar. Item pendaftaran akan segera dimuat.', 'success')
-        fetchRegistrasiData()
+        const sessionNik =
+          typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+        invalidatePembayaranAndDashboard(
+          user?.nik || sessionNik,
+          user.id,
+          tahunHijriyah,
+          tahunMasehi,
+          sessionNik
+        )
+        await refreshPembayaran(true)
       } else {
         showNotification(result.message || 'Gagal melakukan pendaftaran', 'error')
       }
@@ -449,7 +477,7 @@ function Pembayaran() {
       const result = await pendaftaranAPI.autoAssignItems(registrasi.id)
       if (result.success) {
         showNotification('Item pendaftaran berhasil diperbarui', 'success')
-        fetchRegistrasiData()
+        await refreshPembayaran(true)
       } else {
         showNotification(result.message || 'Gagal memperbarui item', 'error')
       }
@@ -564,7 +592,8 @@ function Pembayaran() {
             Informasi Pembayaran
           </h2>
           <button
-            onClick={fetchRegistrasiData}
+            type="button"
+            onClick={() => void refreshPembayaran(true)}
             disabled={loading}
             className="p-2 text-gray-500 hover:text-teal-600 dark:text-gray-400 dark:hover:text-teal-400 transition-colors"
             title="Muat ulang data"
@@ -778,6 +807,8 @@ function Pembayaran() {
           pathname={pathname}
           registrasi={registrasi}
           idSantri={user?.id}
+          paymentHistory={paymentHistory}
+          paymentDataLoading={loading}
           buktiPembayaranList={buktiPembayaranList}
           wajib={wajib}
           wajibNol={wajibNol}
@@ -793,10 +824,7 @@ function Pembayaran() {
           bisaUploadBukti={bisaUploadBukti}
           jumlahBukti={jumlahBukti}
           nomorBuktiBerikutnya={nomorBuktiBerikutnya}
-          onRefreshRegistrasi={async () => {
-            await fetchRegistrasiData()
-            await fetchBuktiPembayaran()
-          }}
+          onRefreshRegistrasi={invalidateAndRefreshPembayaran}
         />
       )}
 
@@ -811,8 +839,18 @@ function Pembayaran() {
         defaultFile={selectedFile}
         nomorBukti={nomorBuktiBerikutnya}
         onUploadSuccess={() => {
-          fetchRegistrasiData()
-          fetchBuktiPembayaran()
+          const sessionNik =
+            typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+          if (user?.id) {
+            invalidatePembayaranAndDashboard(
+              user?.nik || sessionNik,
+              user.id,
+              tahunHijriyah,
+              tahunMasehi,
+              sessionNik
+            )
+          }
+          void refreshPembayaran(true)
           setSelectedFile(null)
           setIsUploadBuktiOffcanvasOpen(false)
         }}

@@ -2,12 +2,10 @@ import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../store/authStore'
 import { useRef, useEffect, useState, useMemo } from 'react'
-import { getNavFavorites, setNavFavorites, toggleNavFavorite } from '../../utils/navFavorites'
-import { getExpandedMenuItemsMeta } from '../../config/menuConfig'
-import { getIcon } from '../../config/menuIcons'
+import { getNavFavorites, getNavFavoritesSyncId, setNavFavorites, toggleNavFavorite } from '../../utils/navFavorites'
+import api, { authAPI } from '../../services/api'
 import { userHasSuperAdminAccess, userHasAnyAdminCap, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
-import { buildExpandedMenuFromFiturItems } from '../../utils/sidebarNavFromFiturApi'
-import api from '../../services/api'
+import { buildUnifiedExpandedMenuFromFitur } from '../../utils/sidebarNavFromFiturApi'
 
 const navItems = [
   {
@@ -88,6 +86,8 @@ function Navigation() {
   const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const fiturMenuFromApi = useAuthStore((s) => s.fiturMenuFromApi)
+  const fiturMenuCatalog = useAuthStore((s) => s.fiturMenuCatalog)
+  const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
   const [aiMenuEnabledNav, setAiMenuEnabledNav] = useState(true)
 
   useEffect(() => {
@@ -277,21 +277,16 @@ function Navigation() {
     return fromRole.length > 0 ? fromRole : []
   }, [roleBasedNavItems])
   
-  const expandedMenuItems = useMemo(() => {
-    const fromApi = buildExpandedMenuFromFiturItems(fiturMenuFromApi)
-    if (fromApi) return fromApi
-    return getExpandedMenuItemsMeta().map((item) => ({
-      path: item.path,
-      label: item.label,
-      icon: getIcon(item.iconKey, 'w-5 h-5'),
-      showSeparator: item.showSeparator,
-      groupLabel: item.groupLabel,
-      requiresRole: item.requiresRole,
-      requiresSuperAdmin: item.requiresSuperAdmin,
-      requiresPermission: item.requiresPermission,
-      _fromApi: false
-    }))
-  }, [fiturMenuFromApi])
+  const expandedMenuItems = useMemo(
+    () =>
+      buildUnifiedExpandedMenuFromFitur({
+        fiturMenuFromApi,
+        fiturMenuCatalog,
+        fiturMenuCodes,
+        isSuperAdmin
+      }),
+    [fiturMenuFromApi, fiturMenuCatalog, fiturMenuCodes, isSuperAdmin]
+  )
   const expandedGroupIndices = useMemo(() => {
     const out = []
     let g = 0
@@ -364,24 +359,62 @@ function Navigation() {
     return map
   }, [filteredExpandedItems, roleBasedNavItems])
 
-  // Favorit navbar: path yang ditampilkan di bottom nav (custom per user, default = menu pertama dari role)
+  // Favorit navbar: path yang ditampilkan di bottom nav (lokal + sync app___fitur_favorit)
   const [navFavorites, setNavFavoritesState] = useState([])
 
+  const navFavSyncId = getNavFavoritesSyncId(user)
+  const allowedPathsKey = allAllowedNavPaths.join('\u0001')
+
   useEffect(() => {
-    if (!user?.id) return
-    const saved = getNavFavorites(user.id)
+    if (!navFavSyncId) return
+
     const defaultPaths = defaultRolePaths.length ? defaultRolePaths : allAllowedNavPaths.slice(0, 5)
-    if (saved && saved.length > 0) {
-      const filtered = saved.filter(p => allAllowedNavPaths.includes(p))
-      setNavFavoritesState(filtered.length ? filtered : defaultPaths)
-    } else {
+    const localSaved =
+      getNavFavorites(navFavSyncId) ||
+      (user?.id != null && String(user.id) !== String(navFavSyncId) ? getNavFavorites(String(user.id)) : null)
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await authAPI.getMyFiturFavorit({ app_key: 'ebeddien' })
+        if (cancelled) return
+        if (res?.success && Array.isArray(res.data?.paths)) {
+          const fromServer = res.data.paths.filter((p) => allAllowedNavPaths.includes(p))
+          if (fromServer.length > 0) {
+            setNavFavoritesState(fromServer)
+            setNavFavorites(navFavSyncId, fromServer)
+            return
+          }
+        }
+      } catch (_) {
+        /* jaringan / tabel belum ada → fallback lokal */
+      }
+      if (cancelled) return
+
+      if (localSaved && localSaved.length > 0) {
+        const filtered = localSaved.filter((p) => allAllowedNavPaths.includes(p))
+        const next = filtered.length ? filtered : defaultPaths
+        setNavFavoritesState(next)
+        setNavFavorites(navFavSyncId, next)
+        if (filtered.length > 0) {
+          authAPI.putMyFiturFavorit({ app_key: 'ebeddien', ordered_paths: next }).catch(() => {})
+        }
+        return
+      }
       setNavFavoritesState(defaultPaths)
+    })()
+
+    return () => {
+      cancelled = true
     }
-  }, [user?.id, defaultRolePaths.length, filteredExpandedItems.length])
+  }, [navFavSyncId, allowedPathsKey, defaultRolePaths.join('\u0001'), user?.id])
 
   const handleToggleNavFavorite = (path, add) => {
     const next = toggleNavFavorite(navFavorites, path, add)
-    setNavFavorites(user?.id, next)
+    if (navFavSyncId) {
+      setNavFavorites(navFavSyncId, next)
+      authAPI.putMyFiturFavorit({ app_key: 'ebeddien', ordered_paths: next }).catch(() => {})
+    }
     setNavFavoritesState(next)
   }
 

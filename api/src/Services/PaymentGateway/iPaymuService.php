@@ -892,19 +892,18 @@ class iPaymuService
             $current = $stmtCurrent->fetch(\PDO::FETCH_ASSOC);
             $currentStatus = $current['status'] ?? 'pending';
 
-            // Transisi yang diizinkan: pending -> paid | expired | failed. Jika sudah paid/expired/failed, skip update status payment & WA (idempotent)
-            $finalStatuses = ['paid', 'expired', 'failed', 'cancelled'];
-            if (in_array($currentStatus, $finalStatuses, true)) {
-                error_log("iPaymuService::updateTransactionFromCallback - Transaction {$transactionId} sudah final status: {$currentStatus}, hanya update notify_data");
-                // Update kolom notify_data/paid_at saja agar log tetap ada, tanpa ubah status payment atau kirim WA lagi
-                $paidAt = null;
-                if (isset($callbackData['paid_at'])) {
-                    try {
-                        $paidAt = date('Y-m-d H:i:s', strtotime($callbackData['paid_at']));
-                    } catch (\Exception $e) {
-                        // ignore
-                    }
-                }
+            // Sudah paid: idempotent, hanya simpan notify_data (jangan kirim WA / update payment dua kali)
+            if ($currentStatus === 'paid') {
+                $this->db->prepare("UPDATE payment___transaction SET notify_data = ? WHERE id = ?")
+                    ->execute([json_encode($callbackData, JSON_UNESCAPED_UNICODE), $transactionId]);
+                return;
+            }
+
+            // Dibatalkan / kadaluarsa / gagal di aplikasi, tetapi iPayMu mengabarkan terbayar (user bayar pakai QR/VA yang sama)
+            // → lanjut proses penuh di bawah agar pembayaran tercatat sukses.
+            if (in_array($currentStatus, ['cancelled', 'expired', 'failed'], true) && $status === 'paid') {
+                error_log("iPaymuService::updateTransactionFromCallback - Status lokal {$currentStatus} -> paid dari iPayMu, memproses pembayaran berhasil");
+            } elseif (in_array($currentStatus, ['expired', 'failed', 'cancelled'], true)) {
                 $this->db->prepare("UPDATE payment___transaction SET notify_data = ? WHERE id = ?")
                     ->execute([json_encode($callbackData, JSON_UNESCAPED_UNICODE), $transactionId]);
                 return;

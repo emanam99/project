@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../store/authStore'
-import { useBiodataViewStore } from '../../store/biodataViewStore'
 import { useThemeStore } from '../../store/themeStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { APP_VERSION } from '../../config/version'
@@ -13,8 +12,6 @@ function Header() {
   const appEnv = getAppEnv()
   const isStaging = appEnv === 'staging'
   const { user } = useAuthStore()
-  const biodataViewMode = useBiodataViewStore((s) => s.biodataViewMode)
-  const enterBiodataEditMode = useBiodataViewStore((s) => s.enterBiodataEditMode)
   const { theme, toggleTheme } = useThemeStore()
   const { tahunHijriyah, tahunMasehi, loadTahunAjaran, lastUpdated } = useTahunAjaranStore()
   const location = useLocation()
@@ -43,12 +40,6 @@ function Header() {
       window.removeEventListener('focus', handleFocus)
     }
   }, [loadTahunAjaran])
-
-  // Get page title based on route
-  const isBiodataRoute = () => {
-    const path = location.pathname
-    return path === '/biodata' || path.startsWith('/biodata')
-  }
 
   const getPageTitle = () => {
     const path = location.pathname
@@ -107,9 +98,9 @@ function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     const { logout } = useAuthStore.getState()
-    logout()
+    await logout()
     window.location.href = '/login'
   }
 
@@ -136,16 +127,6 @@ function Header() {
 
       {/* Right Section - Theme Toggle & User */}
       <div className="relative flex items-center gap-3 flex-shrink-0">
-        {isBiodataRoute() && biodataViewMode === 'read' && (
-          <button
-            type="button"
-            onClick={() => enterBiodataEditMode()}
-            className="px-3 py-2 rounded-lg bg-white/20 hover:bg-white/30 border border-white/40 text-white text-sm font-semibold transition-colors whitespace-nowrap"
-            title="Ubah data biodata"
-          >
-            Ubah
-          </button>
-        )}
         {/* Theme Toggle Button */}
         <button
           onClick={toggleTheme}

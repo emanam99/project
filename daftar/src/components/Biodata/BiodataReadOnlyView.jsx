@@ -1,5 +1,7 @@
+import { CheckCircleIcon } from '@heroicons/react/24/solid'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { OPSI_BY_FORMAL, FORMAL_SHOW_STATUS_MURID } from '../../pages/PilihanStatusMurid'
+import { parseServerTimestamp } from '../../utils/biodataLocalCache'
 
 function displayVal(v) {
   if (v == null) return '—'
@@ -18,12 +20,74 @@ function formatDateId(v) {
   }
 }
 
+function formatDateTimeId(v) {
+  if (!v) return '—'
+  try {
+    const d = new Date(String(v).replace(' ', 'T'))
+    if (Number.isNaN(d.getTime())) return displayVal(v)
+    return d.toLocaleString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return displayVal(v)
+  }
+}
+
+function DiperbaruiTerakhirFooter({ tanggalUpdateSantri, tanggalUpdateRegistrasi }) {
+  const tsS = parseServerTimestamp(tanggalUpdateSantri)
+  const tsR = parseServerTimestamp(tanggalUpdateRegistrasi)
+  const hasS = tsS > 0
+  const hasR = tsR > 0
+  const sTerbaru = hasS && (!hasR || tsS >= tsR)
+  const rTerbaru = hasR && (!hasS || tsR >= tsS)
+
+  return (
+    <div className="mt-16 pt-8 border-t-4 border-teal-600 dark:border-teal-400">
+      <h3 className="text-lg font-semibold text-teal-600 dark:text-teal-400 mb-4">Diperbarui terakhir</h3>
+      <div className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 p-4">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Data santri</div>
+            <div className="text-sm text-gray-900 dark:text-gray-100">{formatDateTimeId(tanggalUpdateSantri)}</div>
+          </div>
+          {sTerbaru && (
+            <CheckCircleIcon
+              className="h-6 w-6 shrink-0 text-emerald-500 dark:text-emerald-400"
+              title="Pembaruan terbaru (data santri)"
+              aria-label="Pembaruan terbaru"
+            />
+          )}
+        </div>
+        <div className="flex items-start gap-3 border-t border-gray-200 dark:border-gray-600 pt-4">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Pendaftaran (psb___registrasi)
+            </div>
+            <div className="text-sm text-gray-900 dark:text-gray-100">{formatDateTimeId(tanggalUpdateRegistrasi)}</div>
+          </div>
+          {rTerbaru && (
+            <CheckCircleIcon
+              className="h-6 w-6 shrink-0 text-emerald-500 dark:text-emerald-400"
+              title="Pembaruan terbaru (psb___registrasi)"
+              aria-label="Pembaruan terbaru"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ReadRow({ label, value }) {
   const shown = value === undefined || value === null || String(value).trim() === '' ? '—' : value
   return (
     <div className="mb-4">
       <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</div>
-      <div className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words border-b border-gray-200 dark:border-gray-600 pb-2 min-h-[1.5rem]">
+      <div className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words min-h-[1.5rem]">
         {shown}
       </div>
     </div>
@@ -103,7 +167,13 @@ function GelombangRead({ formData }) {
 /**
  * Tampilan biodata mode baca: label di atas, nilai di bawah (tanpa input).
  */
-function BiodataReadOnlyView({ sectionRefs, formData, kondisiFields = [] }) {
+function BiodataReadOnlyView({
+  sectionRefs,
+  formData,
+  kondisiFields = [],
+  tanggalUpdateSantri = null,
+  tanggalUpdateRegistrasi = null,
+}) {
   const showMadrasahDetail = formData.madrasah === 'Iya'
   const showSekolahDetail = formData.sekolah && formData.sekolah !== 'Tidak Pernah Sekolah'
 
@@ -125,20 +195,6 @@ function BiodataReadOnlyView({ sectionRefs, formData, kondisiFields = [] }) {
         <ReadRow label="Hobi" value={displayVal(formData.hobi)} />
         <ReadRow label="Cita-cita" value={displayVal(formData.cita_cita)} />
         <ReadRow label="Kebutuhan khusus" value={displayVal(formData.kebutuhan_khusus)} />
-
-        <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-300 mt-6 mb-2">Kategori &amp; pendidikan</h4>
-        <ReadRow label="Kategori" value={displayVal(formData.kategori)} />
-        <ReadRow label="Diniyah" value={displayVal(formData.diniyah)} />
-        <ReadRow label="Kelas diniyah" value={displayVal(formData.kelas_diniyah)} />
-        <ReadRow label="Kelompok diniyah" value={displayVal(formData.kel_diniyah)} />
-        <ReadRow label="NIM diniyah" value={displayVal(formData.nim_diniyah)} />
-        <ReadRow label="Formal" value={displayVal(formData.formal)} />
-        <ReadRow label="Kelas formal" value={displayVal(formData.kelas_formal)} />
-        <ReadRow label="Kelompok formal" value={displayVal(formData.kel_formal)} />
-        <ReadRow label="NIM formal" value={displayVal(formData.nim_formal)} />
-        <ReadRow label="LTTQ" value={displayVal(formData.lttq)} />
-        <ReadRow label="Kelas LTTQ" value={displayVal(formData.kelas_lttq)} />
-        <ReadRow label="Kelompok LTTQ" value={displayVal(formData.kel_lttq)} />
       </div>
 
       <ReadOrangTua sectionRef={sectionRefs.biodataAyah} title="Biodata Ayah" prefix="ayah" formData={formData} />
@@ -235,6 +291,11 @@ function BiodataReadOnlyView({ sectionRefs, formData, kondisiFields = [] }) {
           </>
         )}
       </div>
+
+      <DiperbaruiTerakhirFooter
+        tanggalUpdateSantri={tanggalUpdateSantri}
+        tanggalUpdateRegistrasi={tanggalUpdateRegistrasi}
+      />
     </div>
   )
 }

@@ -8,15 +8,49 @@ import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, getAppEnv } from '../../services/api'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { APP_VERSION } from '../../config/version'
-import { getHeaderGroups } from '../../config/menuConfig'
+import { STATIC_FALLBACK_MENU_CATALOG_ROWS } from '../../config/menuConfig'
 import { userHasSuperAdminAccess, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
-
-const HEADER_GROUPS = getHeaderGroups()
+import {
+  catalogMenusToNavFlat,
+  filterCatalogMenuByUserCodes,
+  getHeaderGroupsFromMenuFlat
+} from '../../utils/menuCatalogNav'
 
 function Header() {
   const appEnv = getAppEnv()
   const isStaging = appEnv === 'staging'
   const { user, logout } = useAuthStore()
+  const fiturMenuCatalog = useAuthStore((s) => s.fiturMenuCatalog)
+  const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
+  const fiturMenuFetchStatus = useAuthStore((s) => s.fiturMenuFetchStatus)
+  const fiturMenuCatalogFetchStatus = useAuthStore((s) => s.fiturMenuCatalogFetchStatus)
+
+  const headerGroups = useMemo(() => {
+    const staticFlat = catalogMenusToNavFlat(STATIC_FALLBACK_MENU_CATALOG_ROWS)
+    const dataReady =
+      fiturMenuFetchStatus === 'ok' &&
+      fiturMenuCatalogFetchStatus === 'ok' &&
+      Array.isArray(fiturMenuCatalog) &&
+      fiturMenuCatalog.length > 0
+    if (dataReady) {
+      const filtered = filterCatalogMenuByUserCodes(
+        fiturMenuCatalog,
+        fiturMenuCodes,
+        userHasSuperAdminAccess(user)
+      )
+      const flat = catalogMenusToNavFlat(filtered)
+      if (flat.length > 0) {
+        return getHeaderGroupsFromMenuFlat(flat)
+      }
+    }
+    return getHeaderGroupsFromMenuFlat(staticFlat)
+  }, [
+    fiturMenuCatalog,
+    fiturMenuCodes,
+    fiturMenuFetchStatus,
+    fiturMenuCatalogFetchStatus,
+    user
+  ])
   const { theme, toggleTheme } = useThemeStore()
   const { tahunAjaran, setTahunAjaran, options, tahunAjaranMasehi, setTahunAjaranMasehi, optionsMasehi } = useTahunAjaranStore()
   const navigate = useNavigate()
@@ -125,7 +159,7 @@ function Header() {
     const path = location.pathname
     if (path === '/' || path === '/dashboard') return 'Dashboard Pembayaran'
     if (path === '/aktivitas-saya') return 'Aktivitas Saya'
-    for (const group of HEADER_GROUPS) {
+    for (const group of headerGroups) {
       for (const route of group.routes) {
         const match = route.prefix
           ? (path === route.path || path.startsWith(route.path + '/'))
@@ -140,7 +174,7 @@ function Header() {
   const getActiveGroup = () => {
     const path = location.pathname
     if (path === '/' || path === '/dashboard') return 'UWABA'
-    for (const group of HEADER_GROUPS) {
+    for (const group of headerGroups) {
       for (const route of group.routes) {
         const match = route.prefix
           ? (path === route.path || path.startsWith(route.path + '/'))
@@ -164,7 +198,7 @@ function Header() {
     return path === '/aktivitas' || path.startsWith('/aktivitas/')
   }
 
-  // Cek grup aktif (satu sumber dari HEADER_GROUPS)
+  // Cek grup aktif dari headerGroups (katalog DB + kode user)
   const isKeuanganGroup = () => getActiveGroup() === 'Keuangan'
   const isPendaftaranGroup = () => getActiveGroup() === 'Pendaftaran'
   const isKalenderGroup = () => getActiveGroup() === 'Kalender'
@@ -181,7 +215,7 @@ function Header() {
   useEffect(() => {
     const title = getPageTitle()
     document.title = `${title} - Sistem Pembayaran`
-  }, [location.pathname])
+  }, [location.pathname, headerGroups])
 
   // Format currency
   const formatCurrency = (amount) => {

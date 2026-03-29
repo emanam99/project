@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useEffect, useState, lazy, Suspense } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, useDragControls } from 'framer-motion'
 import Layout from './components/Layout/Layout'
 import { LoginFormCard } from './pages/Login'
 import { DaftarFormCard } from './pages/Daftar'
@@ -155,6 +155,7 @@ function AuthPagesWrapper() {
   const toggleTheme = useThemeStore((s) => s.toggleTheme)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [isMd, setIsMd] = useState(false)
+  const calendarDragControls = useDragControls()
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px)')
@@ -324,6 +325,23 @@ function AuthPagesWrapper() {
               animate={isMd ? { x: 0 } : { y: 0 }}
               exit={isMd ? { x: '-100%' } : { y: '100%' }}
               transition={{ type: 'tween', duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+              {...(!isMd
+                ? {
+                    drag: 'y',
+                    dragControls: calendarDragControls,
+                    dragListener: false,
+                    dragConstraints: { top: 0, bottom: typeof window !== 'undefined' ? window.innerHeight : 900 },
+                    dragElastic: 0,
+                    dragMomentum: false,
+                    onDragEnd: (_e, info) => {
+                      const dismissY = 100
+                      const dismissVel = 420
+                      if (info.offset.y > dismissY || info.velocity.y > dismissVel) {
+                        setCalendarOpen(false)
+                      }
+                    },
+                  }
+                : {})}
             >
               {/* Atas: strip gelombang air (mobile) */}
               {/* Header desktop: judul + tombol tutup (offcanvas kiri) */}
@@ -340,18 +358,28 @@ function AuthPagesWrapper() {
                   </svg>
                 </button>
               </div>
-              <div className="flex-shrink-0 relative h-10 overflow-hidden bg-white dark:bg-gray-900 text-white dark:text-gray-900 md:hidden">
-                <svg
-                  className="absolute left-0 top-0 w-[200%] h-full offcanvas-wave-svg"
-                  viewBox="0 0 800 40"
-                  preserveAspectRatio="none"
+              <div
+                className="flex-shrink-0 md:hidden flex flex-col items-center pt-2.5 pb-0 bg-white dark:bg-gray-900 touch-none select-none"
+                onPointerDown={(e) => calendarDragControls.start(e)}
+                role="presentation"
+              >
+                <span
+                  className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 mb-2 shrink-0 z-[1]"
                   aria-hidden
-                >
-                  <path
-                    fill="currentColor"
-                    d="M 0,40 L 800,40 L 800,20 C 750,32 650,8 600,20 C 550,32 450,8 400,20 C 350,32 250,8 200,20 C 150,32 50,8 0,20 Z"
-                  />
-                </svg>
+                />
+                <div className="relative w-full h-10 overflow-hidden text-white dark:text-gray-900">
+                  <svg
+                    className="absolute left-0 top-0 w-[200%] h-full offcanvas-wave-svg"
+                    viewBox="0 0 800 40"
+                    preserveAspectRatio="none"
+                    aria-hidden
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M 0,40 L 800,40 L 800,20 C 750,32 650,8 600,20 C 550,32 450,8 400,20 C 350,32 250,8 200,20 C 150,32 50,8 0,20 Z"
+                    />
+                  </svg>
+                </div>
               </div>
               <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                 <Suspense fallback={<div className="flex items-center justify-center p-8 text-gray-500">Memuat kalender…</div>}>
@@ -360,8 +388,15 @@ function AuthPagesWrapper() {
                   </div>
                 </Suspense>
               </div>
-              {/* Bawah: tombol panah ke bawah (mobile saja) */}
-              <div className="flex-shrink-0 flex justify-center py-3 pb-5 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 md:hidden">
+              {/* Bawah: tombol panah ke bawah (mobile saja) — area kosong bisa di-drag ke bawah untuk tutup */}
+              <div
+                className="flex-shrink-0 flex justify-center py-3 pb-5 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 md:hidden touch-none select-none"
+                onPointerDown={(e) => {
+                  if (e.target.closest('button')) return
+                  calendarDragControls.start(e)
+                }}
+                role="presentation"
+              >
                 <button
                   type="button"
                   onClick={() => setCalendarOpen(false)}

@@ -127,10 +127,13 @@ export default function BayarOffcanvas({
       if (r?.success && r?.data?.is_sandbox) setIsSandboxMode(true)
       else setIsSandboxMode(false)
     }).catch(() => setIsSandboxMode(false))
-  }, [isOpen, isPendaftaran, idReg, idSantri])
+  }, [isOpen, isPendaftaran, idReg, idSantri, idReferensi, tabelReferensi])
 
+  // 'cancelled' lokal/API: hitung mundur tetap jalan — QR/VA bisa masih valid sampai expired_at iPayMu
   useEffect(() => {
-    if (!vaInfo?.expired_at || !['pending', null, undefined].includes(transactionStatus)) {
+    const terminal = ['expired', 'failed', 'paid', 'success']
+    const isPending = transactionStatus == null || !terminal.includes(String(transactionStatus || '').toLowerCase())
+    if (!vaInfo?.expired_at || !isPending) {
       setCountdownRemaining(null)
       return
     }
@@ -176,16 +179,52 @@ export default function BayarOffcanvas({
         const r = await paymentTransactionAPI.checkStatus(vaInfo.session_id)
         if (!mounted || paymentResolvedRef.current) return
         if (!r?.success || !r.data) return
-        const s = String(r.data.status || '').toLowerCase().trim()
-        setTransactionStatus(r.data.status)
+        const rawStatus = r.data.status
+        const s = String(rawStatus || '').toLowerCase().trim()
+        setTransactionStatus(rawStatus)
+
         if (s === 'paid' || s === 'success') {
           paymentResolvedRef.current = true
           onNotify('Pembayaran berhasil!', 'success')
+          const tx = r.data
+          let bankName = 'Bank'
+          if (tx.payment_method === 'va' && tx.payment_channel) {
+            const ch = VA_CHANNELS.find(c => c.value === tx.payment_channel)
+            bankName = ch ? ch.label : tx.payment_channel
+          } else if (tx.payment_method === 'cstore' && tx.payment_channel) {
+            const ch = CSTORE_CHANNELS.find(c => c.value === tx.payment_channel)
+            bankName = ch ? ch.label : tx.payment_channel
+          } else if (tx.payment_method === 'qris') bankName = 'QRIS'
+          setVaInfo(prev => ({
+            ...prev,
+            va_number: tx.va_number ?? prev?.va_number,
+            qr_code: tx.qr_code ?? prev?.qr_code,
+            payment_method: tx.payment_method ?? prev?.payment_method,
+            payment_channel: tx.payment_channel ?? prev?.payment_channel,
+            bank: bankName,
+            payment_url: tx.payment_url ?? prev?.payment_url,
+            session_id: tx.session_id ?? prev?.session_id,
+            transaction_id: tx.id ?? tx.trx_id ?? prev?.transaction_id,
+            amount: tx.amount ?? prev?.amount,
+            admin_fee: tx.admin_fee ?? prev?.admin_fee,
+            total: tx.total ?? prev?.total,
+          }))
           setSuccessCountdown(4)
-        } else if (['expired', 'cancelled', 'failed'].includes(s)) {
+          return
+        }
+
+        if (s === 'cancelled') {
+          setTransactionStatus(rawStatus)
+          return
+        }
+
+        if (s === 'expired' || s === 'failed') {
           paymentResolvedRef.current = true
-          setVaInfo(null)
-          setTransactionStatus(null)
+          if (mounted) {
+            setVaInfo(null)
+            setTransactionStatus(null)
+            goToStep(1)
+          }
         }
       } catch (_) {}
     }
@@ -196,6 +235,48 @@ export default function BayarOffcanvas({
 
   const goToStep = (step) => {
     setIpaymuStep(step)
+  }
+
+  const handleManualCheckStatus = async () => {
+    if (!vaInfo?.session_id || isCheckingStatus) return
+    setIsCheckingStatus(true)
+    try {
+      const r = await paymentTransactionAPI.checkStatus(vaInfo.session_id)
+      if (!r?.success || !r.data) return
+      const tx = r.data
+      const raw = tx.status
+      const s = String(raw || '').toLowerCase()
+      setTransactionStatus(raw)
+      if (s !== 'paid' && s !== 'success') return
+      onNotify('Pembayaran berhasil!', 'success')
+      let bankName = 'Bank'
+      if (tx.payment_method === 'va' && tx.payment_channel) {
+        const ch = VA_CHANNELS.find(c => c.value === tx.payment_channel)
+        bankName = ch ? ch.label : tx.payment_channel
+      } else if (tx.payment_method === 'cstore' && tx.payment_channel) {
+        const ch = CSTORE_CHANNELS.find(c => c.value === tx.payment_channel)
+        bankName = ch ? ch.label : tx.payment_channel
+      } else if (tx.payment_method === 'qris') bankName = 'QRIS'
+      setVaInfo((prev) => ({
+        ...prev,
+        va_number: tx.va_number ?? prev?.va_number,
+        qr_code: tx.qr_code ?? prev?.qr_code,
+        payment_method: tx.payment_method ?? prev?.payment_method,
+        payment_channel: tx.payment_channel ?? prev?.payment_channel,
+        bank: bankName,
+        payment_url: tx.payment_url ?? prev?.payment_url,
+        session_id: tx.session_id ?? prev?.session_id,
+        transaction_id: tx.id ?? tx.trx_id ?? prev?.transaction_id,
+        amount: tx.amount ?? prev?.amount,
+        admin_fee: tx.admin_fee ?? prev?.admin_fee,
+        total: tx.total ?? prev?.total,
+      }))
+      setSuccessCountdown(4)
+    } catch (_) {
+      /* abaikan */
+    } finally {
+      setIsCheckingStatus(false)
+    }
   }
 
   const handleAmountInput = (e) => {
@@ -325,24 +406,37 @@ export default function BayarOffcanvas({
         bankName = ch ? ch.label : paymentChannel
       } else if (paymentMethod === 'qris') bankName = 'QRIS'
 
+      let expiredAtTs = Date.now() + 24 * 60 * 60 * 1000
+      if (rd.expired_at) {
+        const parsed = new Date(rd.expired_at).getTime()
+        if (!Number.isNaN(parsed)) expiredAtTs = parsed
+      }
+      const displayAmount = rd.amount != null && rd.amount !== '' ? Number(rd.amount) : amount
+      const displayTotal = rd.total != null && rd.total !== '' ? Number(rd.total) : (displayAmount + (Number(rd.admin_fee) || 0))
+
       setVaInfo({
         va_number: finalVa,
         bank: bankName,
         payment_method: paymentMethod,
         payment_channel: paymentChannel || null,
-        amount,
+        amount: displayAmount,
         admin_fee: rd.admin_fee ?? 0,
-        total: rd.total ?? amount,
+        total: displayTotal,
         payment_url: rd.payment_url || null,
         qr_code: finalQr,
         session_id: sessionId,
         transaction_id: txId,
-        expired_at: Date.now() + 24 * 60 * 60 * 1000,
+        expired_at: expiredAtTs,
       })
       setTransactionStatus('pending')
+      paymentResolvedRef.current = false
       setStepDirection(1)
       goToStep(3)
-      onNotify('Pembayaran berhasil dibuat', 'success')
+      if (rd.reused_existing) {
+        onNotify('Memakai tagihan yang sama (nominal & metode sama, belum kedaluwarsa). Tidak dibuat order baru. Hitung mundur mengikuti sisa waktu berlaku.', 'info')
+      } else {
+        onNotify('Pembayaran berhasil dibuat', 'success')
+      }
       if (rd.payment_url) window.open(rd.payment_url, '_blank')
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Gagal membuat pembayaran iPayMu'
@@ -568,10 +662,15 @@ export default function BayarOffcanvas({
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <div className="font-semibold text-blue-700 dark:text-blue-300">Menunggu Pembayaran</div>
+                        {String(transactionStatus || '').toLowerCase() === 'cancelled' && (
+                          <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                            Dibatalkan di aplikasi — jika sudah membayar via QR/VA, gunakan &quot;Cek status&quot; atau tunggu konfirmasi otomatis.
+                          </p>
+                        )}
                         {countdownRemaining != null && <div className="text-sm font-mono text-blue-600 dark:text-blue-400 mt-1">Kadaluwarsa: {Math.floor(countdownRemaining / 3600)}:{String(Math.floor((countdownRemaining % 3600) / 60)).padStart(2, '0')}:{String(countdownRemaining % 60).padStart(2, '0')}</div>}
                       </div>
                       {vaInfo.session_id && (
-                        <button type="button" onClick={async () => { setIsCheckingStatus(true); try { const r = await paymentTransactionAPI.checkStatus(vaInfo.session_id); if (r?.success && r?.data) { setTransactionStatus(r.data.status); const s = String(r.data.status||'').toLowerCase(); if (s === 'paid' || s === 'success') { onNotify('Pembayaran berhasil!', 'success'); setSuccessCountdown(4) } } } catch (_) {} finally { setIsCheckingStatus(false) } }} disabled={isCheckingStatus} className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/50 text-teal-600" title="Cek status">
+                        <button type="button" onClick={handleManualCheckStatus} disabled={isCheckingStatus} className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/50 text-teal-600" title="Cek status">
                           {isCheckingStatus ? <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                         </button>
                       )}

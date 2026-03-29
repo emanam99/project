@@ -2,7 +2,9 @@
 
 namespace App\Controllers;
 
+use App\Config\EbeddienFiturSelectorRepository;
 use App\Config\RoleConfig;
+use App\Config\RolePolicyResolver;
 use App\Database;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -28,24 +30,28 @@ class SettingsController
     }
 
     /**
-     * GET /api/settings/roles-config - Daftar role dari tabel role + akses (aplikasi & permission) dari RoleConfig.
+     * GET /api/settings/roles-config - Daftar role dari tabel role + akses efektif (DB override atau RoleConfig).
      * Hanya super_admin.
      */
     public function getRolesConfig(Request $request, Response $response): Response
     {
         try {
-            $stmt = $this->db->query("SELECT id, `key`, label FROM `role` ORDER BY id ASC");
+            $stmt = $this->db->query(
+                'SELECT id, `key`, label, `permissions_json`, `allowed_apps_json` FROM `role` ORDER BY id ASC'
+            );
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             $apps = RoleConfig::APPS;
             $roles = [];
             foreach ($rows as $row) {
-                $roleKey = $row['key'] ?? '';
-                $allowedApps = RoleConfig::getAllowedApps($roleKey);
+                $roleKey = (string) ($row['key'] ?? '');
+                $allowedApps = RolePolicyResolver::getAllowedApps($roleKey);
                 // Halaman Role hanya menampilkan role yang punya akses ke aplikasi UWABA
-                if (!in_array('uwaba', $allowedApps)) {
+                if (!in_array('uwaba', $allowedApps, true)) {
                     continue;
                 }
+                $permRaw = $row['permissions_json'] ?? null;
+                $appsRaw = $row['allowed_apps_json'] ?? null;
                 $roles[] = [
                     'id' => (int) ($row['id'] ?? 0),
                     'key' => $roleKey,
@@ -54,7 +60,9 @@ class SettingsController
                     'allowed_apps_labels' => array_map(function ($appKey) use ($apps) {
                         return $apps[$appKey] ?? $appKey;
                     }, $allowedApps),
-                    'permissions' => RoleConfig::getPermissions($roleKey),
+                    'permissions' => RolePolicyResolver::getPermissions($roleKey),
+                    'permissions_policy_source' => ($permRaw === null || $permRaw === '') ? 'php' : 'database',
+                    'allowed_apps_policy_source' => ($appsRaw === null || $appsRaw === '') ? 'php' : 'database',
                 ];
             }
 
@@ -73,6 +81,276 @@ class SettingsController
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * GET /api/settings/ebeddien-fitur-selectors — baris ebeddien_fitur_selector (middleware).
+     */
+    public function getEbeddienFiturSelectors(Request $request, Response $response): Response
+    {
+        try {
+            $stmt = $this->db->query(
+                'SELECT `selector_key`, `codes_json`, `updated_at` FROM `ebeddien_fitur_selector` ORDER BY `selector_key` ASC'
+            );
+            $rows = $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+            $items = [];
+            foreach ($rows as $row) {
+                $key = (string) ($row['selector_key'] ?? '');
+                if ($key === '') {
+                    continue;
+                }
+                $decoded = json_decode((string) ($row['codes_json'] ?? '[]'), true);
+                $codes = is_array($decoded) ? array_values(array_filter($decoded, static fn ($v) => is_string($v) && $v !== '')) : [];
+                $items[] = [
+                    'selector_key' => $key,
+                    'codes' => $codes,
+                    'updated_at' => $row['updated_at'] ?? null,
+                ];
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => ['items' => $items],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getEbeddienFiturSelectors ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil selector fitur',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/settings/ebeddien-fitur-selectors/{selectorKey} — body: { "codes": string[] }.
+     */
+    public function putEbeddienFiturSelector(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $key = trim((string) ($args['selectorKey'] ?? ''));
+            if (!preg_match('/^[A-Za-z][A-Za-z0-9_]{0,63}$/', $key)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'selector_key tidak valid',
+                ], 400);
+            }
+            $body = (array) $request->getParsedBody();
+            $codes = $body['codes'] ?? null;
+            if (!is_array($codes)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Body wajib berisi "codes" (array string)',
+                ], 400);
+            }
+            $clean = [];
+            foreach ($codes as $c) {
+                if (!is_string($c) || trim($c) === '') {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Setiap kode harus string non-kosong',
+                    ], 400);
+                }
+                $clean[] = $c;
+            }
+            $json = json_encode($clean, JSON_UNESCAPED_UNICODE);
+            $stmt = $this->db->prepare(
+                'INSERT INTO `ebeddien_fitur_selector` (`selector_key`, `codes_json`) VALUES (?, ?) '
+                . 'ON DUPLICATE KEY UPDATE `codes_json` = VALUES(`codes_json`)'
+            );
+            $stmt->execute([$key, $json]);
+            EbeddienFiturSelectorRepository::clearCache();
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Selector disimpan.',
+                'data' => [
+                    'selector_key' => $key,
+                    'codes' => $clean,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::putEbeddienFiturSelector ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan selector',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * PATCH /api/settings/role-policy/{roleKey} — body opsional: permissions (array|null), allowed_apps (array|null); null = hapus override (pakai PHP).
+     */
+    public function patchRolePolicy(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $roleKey = str_replace(' ', '_', strtolower(trim((string) ($args['roleKey'] ?? ''))));
+            if ($roleKey === '' || !preg_match('/^[a-z0-9_]+$/', $roleKey)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'roleKey tidak valid',
+                ], 400);
+            }
+            $stmt = $this->db->prepare('SELECT `id`, `key` FROM `role` WHERE `key` = ? LIMIT 1');
+            $stmt->execute([$roleKey]);
+            $roleRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($roleRow === false) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Role tidak ditemukan',
+                ], 404);
+            }
+            $body = (array) $request->getParsedBody();
+            if (!array_key_exists('permissions', $body) && !array_key_exists('allowed_apps', $body)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Sertakan minimal salah satu: permissions, allowed_apps',
+                ], 400);
+            }
+
+            $sets = [];
+            $params = [];
+            if (array_key_exists('permissions', $body)) {
+                $p = $body['permissions'];
+                if ($p === null) {
+                    $sets[] = '`permissions_json` = NULL';
+                } elseif (is_array($p)) {
+                    foreach ($p as $x) {
+                        if (!is_string($x) || trim($x) === '') {
+                            return $this->jsonResponse($response, [
+                                'success' => false,
+                                'message' => 'permissions harus array string',
+                            ], 400);
+                        }
+                    }
+                    $norm = array_values(array_unique(array_map(static fn ($x) => strtolower(trim((string) $x)), $p)));
+                    $sets[] = '`permissions_json` = ?';
+                    $params[] = json_encode($norm, JSON_UNESCAPED_UNICODE);
+                } else {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'permissions harus array atau null',
+                    ], 400);
+                }
+            }
+            if (array_key_exists('allowed_apps', $body)) {
+                $a = $body['allowed_apps'];
+                if ($a === null) {
+                    $sets[] = '`allowed_apps_json` = NULL';
+                } elseif (is_array($a)) {
+                    foreach ($a as $x) {
+                        if (!is_string($x) || trim($x) === '') {
+                            return $this->jsonResponse($response, [
+                                'success' => false,
+                                'message' => 'allowed_apps harus array string',
+                            ], 400);
+                        }
+                    }
+                    $norm = array_values(array_unique(array_map(static fn ($x) => strtolower(trim((string) $x)), $a)));
+                    $sets[] = '`allowed_apps_json` = ?';
+                    $params[] = json_encode($norm, JSON_UNESCAPED_UNICODE);
+                } else {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'allowed_apps harus array atau null',
+                    ], 400);
+                }
+            }
+            if ($sets === []) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tidak ada perubahan',
+                ], 400);
+            }
+            $params[] = (int) ($roleRow['id'] ?? 0);
+            $sql = 'UPDATE `role` SET ' . implode(', ', $sets) . ' WHERE `id` = ?';
+            $upd = $this->db->prepare($sql);
+            $upd->execute($params);
+            RolePolicyResolver::clearCache();
+
+            $sel = $this->db->prepare('SELECT `permissions_json`, `allowed_apps_json` FROM `role` WHERE `id` = ? LIMIT 1');
+            $sel->execute([(int) $roleRow['id']]);
+            $snap = $sel->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Kebijakan role diperbarui.',
+                'data' => [
+                    'key' => $roleKey,
+                    'permissions' => RolePolicyResolver::getPermissions($roleKey),
+                    'allowed_apps' => RolePolicyResolver::getAllowedApps($roleKey),
+                    'permissions_policy_source' => (($snap['permissions_json'] ?? null) === null || ($snap['permissions_json'] ?? '') === '') ? 'php' : 'database',
+                    'allowed_apps_policy_source' => (($snap['allowed_apps_json'] ?? null) === null || ($snap['allowed_apps_json'] ?? '') === '') ? 'php' : 'database',
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::patchRolePolicy ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal memperbarui kebijakan role',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/settings/role-policy/sync-from-php — salin RoleConfig ke kolom JSON semua baris role.
+     */
+    public function postRolePolicySyncFromPhp(Request $request, Response $response): Response
+    {
+        try {
+            $rows = $this->db->query('SELECT `id`, `key` FROM `role` ORDER BY `id` ASC')->fetchAll(\PDO::FETCH_ASSOC);
+            $upd = $this->db->prepare(
+                'UPDATE `role` SET `permissions_json` = ?, `allowed_apps_json` = ? WHERE `id` = ?'
+            );
+            foreach ($rows as $r) {
+                $k = (string) ($r['key'] ?? '');
+                $id = (int) ($r['id'] ?? 0);
+                if ($id <= 0 || $k === '') {
+                    continue;
+                }
+                $perms = RoleConfig::getPermissions($k);
+                $apps = RoleConfig::getAllowedApps($k);
+                $upd->execute([
+                    json_encode(array_values($perms), JSON_UNESCAPED_UNICODE),
+                    json_encode(array_values($apps), JSON_UNESCAPED_UNICODE),
+                    $id,
+                ]);
+            }
+            RolePolicyResolver::clearCache();
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Semua role diselaraskan dari RoleConfig ke database.',
+                'data' => ['roles_updated' => count($rows)],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::postRolePolicySyncFromPhp ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal sinkron dari RoleConfig',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/settings/role-policy/clear-cache — buang cache RolePolicyResolver di worker PHP ini.
+     * Berguna setelah edit manual kolom permissions_json / allowed_apps_json (phpMyAdmin, migrasi CLI).
+     */
+    public function postRolePolicyClearCache(Request $request, Response $response): Response
+    {
+        RolePolicyResolver::clearCache();
+
+        return $this->jsonResponse($response, [
+            'success' => true,
+            'message' => 'Cache kebijakan role dibuang untuk proses PHP ini.',
+        ], 200);
     }
 
     /**
@@ -104,7 +382,7 @@ class SettingsController
             }, $rolesStmt->fetchAll(\PDO::FETCH_ASSOC));
 
             $fiturStmt = $this->db->prepare(
-                'SELECT `id`, `parent_id`, `code`, `label`, `path`, `group_label`, `sort_order`, `type` '
+                'SELECT `id`, `parent_id`, `code`, `label`, `path`, `icon_key`, `group_label`, `sort_order`, `type` '
                 . 'FROM `app___fitur` WHERE `id_app` = ? AND `type` IN (\'menu\', \'action\') ORDER BY `parent_id` IS NOT NULL ASC, `sort_order` ASC, `id` ASC'
             );
             $fiturStmt->execute([$appId]);
@@ -117,12 +395,14 @@ class SettingsController
                 $rfStmt->execute([$fid]);
                 $roleIds = array_map('intval', array_column($rfStmt->fetchAll(\PDO::FETCH_ASSOC), 'role_id'));
                 $pid = $f['parent_id'] ?? null;
+                $iconKey = $f['icon_key'] ?? null;
                 $items[] = [
                     'id' => $fid,
                     'parent_id' => $pid !== null && $pid !== '' ? (int) $pid : null,
                     'code' => (string) ($f['code'] ?? ''),
                     'label' => (string) ($f['label'] ?? ''),
                     'path' => (string) ($f['path'] ?? ''),
+                    'icon_key' => $iconKey !== null && $iconKey !== '' ? (string) $iconKey : null,
                     'group_label' => (string) ($f['group_label'] ?? ''),
                     'sort_order' => (int) ($f['sort_order'] ?? 0),
                     'type' => (string) ($f['type'] ?? 'menu'),
@@ -264,7 +544,9 @@ class SettingsController
     }
 
     /**
-     * PATCH /api/settings/ebeddien-menu-fitur/{fiturId} — body: { role_ids: number[] } untuk satu menu saja.
+     * PATCH /api/settings/ebeddien-menu-fitur/{fiturId}
+     * Body: { role_ids?: number[], label?, icon_key?, group_label?, sort_order? }
+     * — perbarui role___fitur dan/atau kolom tampilan di app___fitur (label, icon_key, group_label, sort_order).
      */
     public function patchEbeddienMenuFiturItem(Request $request, Response $response, array $args): Response
     {
@@ -275,9 +557,22 @@ class SettingsController
             }
 
             $body = (array) $request->getParsedBody();
-            $roleIds = $body['role_ids'] ?? null;
-            if (!is_array($roleIds)) {
-                return $this->jsonResponse($response, ['success' => false, 'message' => 'role_ids wajib berupa array'], 400);
+            $hasRoleIds = array_key_exists('role_ids', $body);
+            $hasLabel = array_key_exists('label', $body);
+            $hasIconKey = array_key_exists('icon_key', $body);
+            $hasGroupLabel = array_key_exists('group_label', $body);
+            $hasSortOrder = array_key_exists('sort_order', $body);
+            $hasMeta = $hasLabel || $hasIconKey || $hasGroupLabel || $hasSortOrder;
+
+            if (!$hasRoleIds && !$hasMeta) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Kirim role_ids dan/atau label, icon_key, group_label, sort_order.',
+                ], 400);
+            }
+
+            if ($hasRoleIds && !is_array($body['role_ids'])) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'role_ids harus array'], 400);
             }
 
             $appStmt = $this->db->prepare('SELECT `id` FROM `app` WHERE `key` = ? LIMIT 1');
@@ -288,42 +583,130 @@ class SettingsController
             }
             $appId = (int) $appRow['id'];
 
-            $verifyFitur = $this->db->prepare(
-                'SELECT `id` FROM `app___fitur` WHERE `id` = ? AND `id_app` = ? AND `type` IN (\'menu\', \'action\') LIMIT 1'
+            $loadFitur = $this->db->prepare(
+                'SELECT `id`, `label`, `icon_key`, `group_label`, `sort_order` FROM `app___fitur` '
+                . 'WHERE `id` = ? AND `id_app` = ? AND `type` IN (\'menu\', \'action\') LIMIT 1'
             );
-            $verifyFitur->execute([$fiturId, $appId]);
-            if ($verifyFitur->fetch(\PDO::FETCH_ASSOC) === false) {
+            $loadFitur->execute([$fiturId, $appId]);
+            $fiturRow = $loadFitur->fetch(\PDO::FETCH_ASSOC);
+            if ($fiturRow === false) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Fitur tidak ditemukan.'], 404);
             }
 
-            $verifyRole = $this->db->prepare('SELECT `id` FROM `role` WHERE `id` = ? LIMIT 1');
-            $this->db->beginTransaction();
-            $this->db->prepare('DELETE FROM `role___fitur` WHERE `fitur_id` = ?')->execute([$fiturId]);
-            $ins = $this->db->prepare('INSERT INTO `role___fitur` (`role_id`, `fitur_id`) VALUES (?, ?)');
-            $seen = [];
-            foreach ($roleIds as $rid) {
-                $rid = (int) $rid;
-                if ($rid <= 0 || isset($seen[$rid])) {
-                    continue;
-                }
-                $seen[$rid] = true;
-                $verifyRole->execute([$rid]);
-                if ($verifyRole->fetch(\PDO::FETCH_ASSOC) === false) {
-                    $this->db->rollBack();
+            $newLabel = (string) ($fiturRow['label'] ?? '');
+            $newIconKey = $fiturRow['icon_key'] ?? null;
+            $newGroupLabel = (string) ($fiturRow['group_label'] ?? '');
+            $newSortOrder = (int) ($fiturRow['sort_order'] ?? 0);
 
-                    return $this->jsonResponse($response, [
-                        'success' => false,
-                        'message' => 'Role id tidak dikenal: ' . $rid,
-                    ], 400);
+            if ($hasLabel) {
+                $label = trim((string) $body['label']);
+                if ($label === '') {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'Label tidak boleh kosong.'], 400);
                 }
-                $ins->execute([$rid, $fiturId]);
+                if (mb_strlen($label) > 255) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'Label maksimal 255 karakter.'], 400);
+                }
+                $newLabel = $label;
             }
+
+            if ($hasIconKey) {
+                $ik = trim((string) $body['icon_key']);
+                if ($ik === '') {
+                    $newIconKey = null;
+                } else {
+                    if (mb_strlen($ik) > 64) {
+                        return $this->jsonResponse($response, ['success' => false, 'message' => 'icon_key maksimal 64 karakter.'], 400);
+                    }
+                    $newIconKey = $ik;
+                }
+            }
+
+            if ($hasGroupLabel) {
+                $gl = trim((string) $body['group_label']);
+                $newGroupLabel = $gl === '' ? '' : (mb_substr($gl, 0, 128) ?: '');
+            }
+
+            if ($hasSortOrder) {
+                $so = $body['sort_order'];
+                if (is_bool($so) || !is_numeric($so)) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'sort_order harus angka.'], 400);
+                }
+                $newSortOrder = (int) $so;
+                if ($newSortOrder < -999999 || $newSortOrder > 999999) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'sort_order di luar rentang yang diizinkan.'], 400);
+                }
+            }
+
+            $this->db->beginTransaction();
+
+            if ($hasMeta) {
+                $upd = $this->db->prepare(
+                    'UPDATE `app___fitur` SET `label` = ?, `icon_key` = ?, `group_label` = ?, `sort_order` = ? '
+                    . 'WHERE `id` = ? AND `id_app` = ? LIMIT 1'
+                );
+                $upd->execute([
+                    $newLabel,
+                    $newIconKey,
+                    $newGroupLabel === '' ? null : $newGroupLabel,
+                    $newSortOrder,
+                    $fiturId,
+                    $appId,
+                ]);
+            }
+
+            if ($hasRoleIds) {
+                $roleIds = $body['role_ids'];
+                $verifyRole = $this->db->prepare('SELECT `id` FROM `role` WHERE `id` = ? LIMIT 1');
+                $this->db->prepare('DELETE FROM `role___fitur` WHERE `fitur_id` = ?')->execute([$fiturId]);
+                $ins = $this->db->prepare('INSERT INTO `role___fitur` (`role_id`, `fitur_id`) VALUES (?, ?)');
+                $seen = [];
+                foreach ($roleIds as $rid) {
+                    $rid = (int) $rid;
+                    if ($rid <= 0 || isset($seen[$rid])) {
+                        continue;
+                    }
+                    $seen[$rid] = true;
+                    $verifyRole->execute([$rid]);
+                    if ($verifyRole->fetch(\PDO::FETCH_ASSOC) === false) {
+                        $this->db->rollBack();
+
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Role id tidak dikenal: ' . $rid,
+                        ], 400);
+                    }
+                    $ins->execute([$rid, $fiturId]);
+                }
+            }
+
             $this->db->commit();
+
+            $rfStmt = $this->db->prepare(
+                'SELECT `role_id` FROM `role___fitur` WHERE `fitur_id` = ? ORDER BY `role_id` ASC'
+            );
+            $rfStmt->execute([$fiturId]);
+            $savedRoleIds = array_map('intval', array_column($rfStmt->fetchAll(\PDO::FETCH_ASSOC), 'role_id'));
+
+            $outStmt = $this->db->prepare(
+                'SELECT `label`, `icon_key`, `group_label`, `sort_order` FROM `app___fitur` WHERE `id` = ? AND `id_app` = ? LIMIT 1'
+            );
+            $outStmt->execute([$fiturId, $appId]);
+            $outRow = $outStmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+            $glOut = $outRow['group_label'] ?? null;
 
             return $this->jsonResponse($response, [
                 'success' => true,
-                'message' => 'Akses role untuk menu ini disimpan.',
-                'data' => ['fitur_id' => $fiturId, 'role_ids' => array_keys($seen)],
+                'message' => $hasMeta && $hasRoleIds
+                    ? 'Menu dan akses role disimpan.'
+                    : ($hasMeta ? 'Pengaturan tampilan disimpan.' : 'Akses role disimpan.'),
+                'data' => [
+                    'fitur_id' => $fiturId,
+                    'role_ids' => $savedRoleIds,
+                    'label' => (string) ($outRow['label'] ?? ''),
+                    'icon_key' => !empty($outRow['icon_key']) ? (string) $outRow['icon_key'] : null,
+                    'group_label' => $glOut !== null && $glOut !== '' ? (string) $glOut : '',
+                    'sort_order' => (int) ($outRow['sort_order'] ?? 0),
+                ],
             ], 200);
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) {
@@ -333,7 +716,7 @@ class SettingsController
 
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan akses menu',
+                'message' => 'Gagal menyimpan',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -354,7 +737,7 @@ class SettingsController
             foreach ($apps as $appKey => $appLabel) {
                 $roleKeys = [];
                 foreach (array_keys($roleLabels) as $roleKey) {
-                    if (RoleConfig::canAccessApp($roleKey, $appKey)) {
+                    if (RolePolicyResolver::canAccessApp($roleKey, $appKey)) {
                         $roleKeys[] = $roleKey;
                     }
                 }
@@ -390,7 +773,7 @@ class SettingsController
             foreach (array_keys($allPermissions) as $permKey) {
                 $roleKeys = [];
                 foreach (array_keys($roleLabels) as $roleKey) {
-                    if (RoleConfig::hasPermission($roleKey, $permKey)) {
+                    if (RolePolicyResolver::hasPermission($roleKey, $permKey)) {
                         $roleKeys[] = $roleKey;
                     }
                 }

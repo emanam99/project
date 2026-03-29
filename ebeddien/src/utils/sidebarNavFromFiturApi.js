@@ -1,5 +1,6 @@
 import { GROUP_ORDER } from '../config/menuConfig'
 import { getIcon } from '../config/menuIcons.jsx'
+import { extractMenuIconKey, pickMenuRowsForSidebar } from './menuCatalogNav'
 
 function groupRank(label) {
   const i = GROUP_ORDER.indexOf(label)
@@ -21,7 +22,7 @@ function sortFiturItems(apiItems) {
  * @returns {Array<Record<string, unknown>>|null}
  */
 export function buildSidebarNavFromFiturItems(apiItems) {
-  if (!apiItems || !Array.isArray(apiItems) || apiItems.length === 0) return null
+  if (!apiItems || !Array.isArray(apiItems) || apiItems.length === 0) return []
   const menusOnly = apiItems.filter((it) => (it.type || 'menu') === 'menu')
   const sorted = sortFiturItems(menusOnly)
   const n = sorted.length
@@ -33,7 +34,7 @@ export function buildSidebarNavFromFiturItems(apiItems) {
     return {
       path: item.path || '/',
       label: item.label || '',
-      icon: getIcon(item.icon_key || 'home', 'w-6 h-6'),
+      icon: getIcon(extractMenuIconKey(item) || 'home', 'w-6 h-6'),
       showSeparatorAfter,
       requiresRole: meta.requiresRole,
       requiresSuperAdmin: meta.requiresSuperAdmin,
@@ -46,12 +47,28 @@ export function buildSidebarNavFromFiturItems(apiItems) {
 }
 
 /**
- * Bentuk menu expanded (offcanvas) selaras getExpandedMenuItemsMeta().
+ * Bentuk menu expanded (offcanvas); struktur selaras item sidebar (showSeparator, groupLabel).
  * @param {unknown} apiItems
  * @returns {Array<Record<string, unknown>>|null}
  */
+/**
+ * Sidebar: prioritas my-menu → katalog DB + kode (array kosong jika belum ada data).
+ */
+export function buildUnifiedSidebarNavFromFitur(params) {
+  const { rows } = pickMenuRowsForSidebar(params)
+  return buildSidebarNavFromFiturItems(rows)
+}
+
+/**
+ * Expanded nav (offcanvas): sama prioritas.
+ */
+export function buildUnifiedExpandedMenuFromFitur(params) {
+  const { rows } = pickMenuRowsForSidebar(params)
+  return buildExpandedMenuFromFiturItems(rows)
+}
+
 export function buildExpandedMenuFromFiturItems(apiItems) {
-  if (!apiItems || !Array.isArray(apiItems) || apiItems.length === 0) return null
+  if (!apiItems || !Array.isArray(apiItems) || apiItems.length === 0) return []
   const menusOnly = apiItems.filter((it) => (it.type || 'menu') === 'menu')
   const sorted = sortFiturItems(menusOnly)
   const n = sorted.length
@@ -63,7 +80,7 @@ export function buildExpandedMenuFromFiturItems(apiItems) {
     return {
       path: item.path || '/',
       label: item.label || '',
-      icon: getIcon(item.icon_key || 'home', 'w-5 h-5'),
+      icon: getIcon(extractMenuIconKey(item) || 'home', 'w-5 h-5'),
       showSeparator,
       groupLabel: showSeparator ? g : undefined,
       requiresRole: meta.requiresRole,

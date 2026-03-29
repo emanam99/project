@@ -1,16 +1,24 @@
 /**
- * Favorit navbar per user (menu mana yang tampil di bottom nav).
- * Disimpan di localStorage: uwaba_nav_favorites_{userId}
- * Nilai: array of path string (urutan = urutan di navbar).
- * Jika belum ada atau kosong, pakai default dari role (caller yang tentukan).
+ * Favorit navbar per akun (menu yang tampil di bottom nav HP).
+ * Disimpan lokal: uwaba_nav_favorites_{syncId} + disinkronkan ke API (app___fitur_favorit).
+ * syncId = users.id (utama) atau fallback id pengurus agar selaras token.
  */
 
 const STORAGE_PREFIX = 'uwaba_nav_favorites_'
 
-export function getNavFavorites(userId) {
-  if (!userId) return null
+/** Kunci penyimpanan lokal — selaras resolveUsersId di backend. */
+export function getNavFavoritesSyncId(user) {
+  if (!user) return null
+  const uid = user.users_id != null && Number(user.users_id) > 0 ? Number(user.users_id) : null
+  if (uid != null) return String(uid)
+  if (user.id != null && user.id !== '') return String(user.id)
+  return null
+}
+
+export function getNavFavorites(syncId) {
+  if (!syncId) return null
   try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + userId)
+    const raw = localStorage.getItem(STORAGE_PREFIX + syncId)
     if (raw == null || raw === '') return null
     const arr = JSON.parse(raw)
     return Array.isArray(arr) ? arr : null
@@ -19,11 +27,11 @@ export function getNavFavorites(userId) {
   }
 }
 
-export function setNavFavorites(userId, paths) {
-  if (!userId) return
+export function setNavFavorites(syncId, paths) {
+  if (!syncId) return
   try {
     const value = Array.isArray(paths) ? paths : []
-    localStorage.setItem(STORAGE_PREFIX + userId, JSON.stringify(value))
+    localStorage.setItem(STORAGE_PREFIX + syncId, JSON.stringify(value))
   } catch (e) {
     console.warn('navFavorites: set failed', e)
   }
@@ -31,7 +39,6 @@ export function setNavFavorites(userId, paths) {
 
 /**
  * Toggle path di daftar favorit. Return array baru.
- * @param {string} userId
  * @param {string[]} currentPaths - urutan path saat ini
  * @param {string} path - path yang di-toggle
  * @param {boolean} add - true = tambah ke favorit, false = hapus

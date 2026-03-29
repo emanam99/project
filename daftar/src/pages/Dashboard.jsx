@@ -1,11 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useTahunAjaranStore } from '../store/tahunAjaranStore'
-import { pendaftaranAPI, resetCsrfToken } from '../services/api'
+import { pendaftaranAPI } from '../services/api'
 import { FEATURE_DAFTAR_WA_NOTIF_UI } from '../config/featureFlags'
+import {
+  getDashboardCacheKey,
+  readDashboardCache,
+  writeDashboardCache,
+  dashboardCacheMatchesUser,
+} from '../utils/dashboardLocalCache'
 
 const NOMOR_WA_PENDAFTARAN = '6285123123399'
+
+function dashboardIsValidId(id) {
+  if (!id) return false
+  const idStr = String(id).trim()
+  const invalidValues = ['', 'null', 'undefined', '-', '0']
+  return idStr !== '' && !invalidValues.includes(idStr) && id !== null && id !== undefined
+}
 
 function normalizeNomor(v) {
   if (!v) return ''
@@ -36,9 +49,8 @@ function Dashboard() {
   const navigate = useNavigate()
   const gelombangAktif = getGelombangAktif()
   
-  const handleLogout = () => {
-    resetCsrfToken()
-    logout()
+  const handleLogout = async () => {
+    await logout()
     navigate('/login', { replace: true })
   }
 
@@ -192,12 +204,7 @@ function Dashboard() {
     total: 17
   })
   const [keteranganStatus, setKeteranganStatus] = useState(null)
-
-  // Debug: Monitor berkasProgress changes
-  useEffect(() => {
-    console.log('=== berkasProgress State Changed ===')
-    console.log('berkasProgress:', berkasProgress)
-  }, [berkasProgress])
+  const dashboardHydratedFromCacheRef = useRef(false)
 
   const [steps, setSteps] = useState([
     {
@@ -234,20 +241,46 @@ function Dashboard() {
       )
     }
   ])
+  const stepsRef = useRef(steps)
+  stepsRef.current = steps
 
-  useEffect(() => {
-    console.log('========================================')
-    console.log('🚀 Dashboard useEffect STARTED')
-    console.log('User:', user)
-    console.log('User ID:', user?.id)
-    console.log('========================================')
-    
-    // Setelah login langsung ke Dashboard; tidak ada redirect ke halaman pilihan opsi.
-
-    const checkProgress = async () => {
+  // Hydrasi dari localStorage (sama pola dengan Biodata): tampil instan, API menyusul di latar belakang.
+  useLayoutEffect(() => {
+    dashboardHydratedFromCacheRef.current = false
+    const sessionNik =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+    if (!user?.id || !dashboardIsValidId(user?.id)) {
       setLoading(true)
+      return
+    }
+    const key = getDashboardCacheKey(user?.nik || sessionNik, user.id, tahunHijriyah, tahunMasehi)
+    const pack = readDashboardCache(key)
+    if (pack && dashboardCacheMatchesUser(pack.meta, user, sessionNik)) {
+      setSteps((prev) => prev.map((s, i) => ({ ...s, status: pack.stepStatuses[i] ?? s.status })))
+      setBerkasProgress(pack.berkasProgress)
+      if (Object.prototype.hasOwnProperty.call(pack, 'keteranganStatus')) {
+        setKeteranganStatus(pack.keteranganStatus)
+      }
+      dashboardHydratedFromCacheRef.current = true
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+  }, [user?.id, user?.nik, tahunHijriyah, tahunMasehi])
+
+  const fetchDashboardProgress = useCallback(async (forceRefresh = false) => {
+      if (forceRefresh) {
+        dashboardHydratedFromCacheRef.current = false
+        setLoading(true)
+      } else if (!dashboardHydratedFromCacheRef.current) {
+        setLoading(true)
+      }
+      let progressForCache = { uploaded: 0, notAvailable: 0, total: 17 }
+      let keteranganTouched = false
+      let keteranganForCache = null
+
       try {
-        const updatedSteps = [...steps]
+        const updatedSteps = stepsRef.current.map((s) => ({ ...s }))
 
         // Cek jika user belum terdaftar (id kosong) - tetap izinkan Isi Biodata
         if (!user?.id) {
@@ -262,7 +295,6 @@ function Dashboard() {
 
         // Step 1: Cek biodata
         if (user?.id) {
-          console.log('✅ User has ID, setting biodata as completed')
           updatedSteps[0].status = 'completed'
           
           // Step 2: Cek berkas
@@ -289,23 +321,15 @@ function Dashboard() {
               'Surat Pindah'
             ]
             
-            // Get berkas yang sudah diupload
-            console.log('=== Fetching Berkas ===')
-            console.log('User ID:', user.id)
-            
             let berkasResponse = null
             let uploadedBerkas = []
-            
+
             try {
               berkasResponse = await pendaftaranAPI.getBerkasList(user.id)
-              console.log('Berkas Response:', berkasResponse)
-              
               const allBerkasFromServer = berkasResponse.success ? berkasResponse.data || [] : []
               uploadedBerkas = allBerkasFromServer.filter(b => !b.status_tidak_ada)
-              console.log('Uploaded Berkas:', uploadedBerkas.length)
             } catch (error) {
               console.error('Error fetching berkas:', error)
-              alert('Error fetching berkas: ' + error.message)
             }
             
             const allBerkasFromServer = berkasResponse?.success ? berkasResponse.data || [] : []
@@ -314,19 +338,13 @@ function Dashboard() {
             // Hitung total berkas yang sudah ditangani (upload + tidak ada)
             const totalHandled = uploadedBerkas.length + berkasNotAvailable.length
             const totalRequired = allBerkasTypes.length
-            
-            console.log('=== Calculation ===')
-            console.log('Total Handled:', totalHandled)
-            console.log('Total Required:', totalRequired)
-            console.log('Percentage:', ((totalHandled / totalRequired) * 100).toFixed(1) + '%')
-            
-            // Update berkas progress state
+
             const newProgress = {
               uploaded: uploadedBerkas.length,
               notAvailable: berkasNotAvailable.length,
               total: totalRequired
             }
-            console.log('Setting berkasProgress to:', newProgress)
+            progressForCache = newProgress
             setBerkasProgress(newProgress)
             
             // Jika semua berkas sudah ditangani (upload atau tandai tidak ada)
@@ -356,10 +374,7 @@ function Dashboard() {
             if (registrasiResult.success && registrasiResult.data) {
               const registrasi = registrasiResult.data
               const bayar = registrasi.bayar || 0
-              
-              console.log('=== Checking Pembayaran ===')
-              console.log('Total Bayar:', bayar)
-              
+
               if (bayar >= 200000) {
                 updatedSteps[2].status = 'completed'
               } else if (bayar > 0) {
@@ -375,10 +390,9 @@ function Dashboard() {
               updatedSteps[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
             }
           } catch (error) {
-            // Jika backend mengembalikan 400/404 untuk get-registrasi (misal belum ada registrasi),
-            // anggap saja sama seperti belum ada data registrasi: jangan spam error di console.
+            // getRegistrasi biasanya tidak throw (api.js mengembalikan success: false); ini cadangan.
             const status = error?.response?.status
-            if (status !== 400 && status !== 404) {
+            if (status !== 400 && status !== 404 && status !== 403) {
               console.error('Error checking pembayaran:', error)
             }
             updatedSteps[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
@@ -393,31 +407,60 @@ function Dashboard() {
                 tahun_masehi: tahunMasehi
               })
               if (res?.success && res?.data?.keterangan_status != null) {
+                keteranganTouched = true
+                keteranganForCache = res.data.keterangan_status
                 setKeteranganStatus(res.data.keterangan_status)
               } else {
                 const reg = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
                 if (reg?.success && reg?.data?.keterangan_status != null) {
+                  keteranganTouched = true
+                  keteranganForCache = reg.data.keterangan_status
                   setKeteranganStatus(reg.data.keterangan_status)
                 }
               }
             }
           } catch (error) {
-            console.error('Error sync keterangan_status:', error)
+            const st = error?.response?.status
+            if (st !== 403 && st !== 401) {
+              console.error('Error sync keterangan_status:', error)
+            }
           }
         } else {
           updatedSteps[0].status = 'in_progress'
         }
 
         setSteps(updatedSteps)
+
+        if (user?.id && dashboardIsValidId(user.id)) {
+          const sessionNik =
+            typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+          const cacheKey = getDashboardCacheKey(user?.nik || sessionNik, user.id, tahunHijriyah, tahunMasehi)
+          const prevPack = readDashboardCache(cacheKey)
+          writeDashboardCache(cacheKey, {
+            v: 1,
+            stepStatuses: updatedSteps.map((s) => s.status),
+            berkasProgress: progressForCache,
+            keteranganStatus: keteranganTouched
+              ? keteranganForCache
+              : (prevPack?.keteranganStatus ?? null),
+            meta: {
+              id_santri: String(user.id),
+              nik_snapshot: String(user?.nik || sessionNik || '').trim(),
+              tahun_hijriyah: tahunHijriyah ?? '',
+              tahun_masehi: tahunMasehi ?? '',
+            },
+          })
+        }
       } catch (error) {
         console.error('Error checking progress:', error)
       } finally {
         setLoading(false)
       }
-    }
+  }, [user?.id, user?.nik, tahunHijriyah, tahunMasehi])
 
-    checkProgress()
-  }, [user?.id, tahunHijriyah, tahunMasehi])
+  useEffect(() => {
+    void fetchDashboardProgress(false)
+  }, [fetchDashboardProgress])
 
   // Re-check progress saat halaman menjadi visible (user kembali dari tab/halaman lain)
   useEffect(() => {
@@ -501,7 +544,10 @@ function Dashboard() {
                 updated[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
               }
             } catch (error) {
-              console.error('Error checking pembayaran in visibility change:', error)
+              const st = error?.response?.status
+              if (st !== 400 && st !== 404 && st !== 403) {
+                console.error('Error checking pembayaran in visibility change:', error)
+              }
               updated[2].status = (biodataDone && berkasDone) ? 'in_progress' : 'pending'
             }
             
@@ -525,7 +571,10 @@ function Dashboard() {
                   }
                 }
               } catch (error) {
-                console.error('Error sync keterangan_status:', error)
+                const st = error?.response?.status
+                if (st !== 403 && st !== 401) {
+                  console.error('Error sync keterangan_status:', error)
+                }
               }
             }
           }
@@ -662,6 +711,25 @@ function Dashboard() {
               </div>
             )}
             {!keteranganStatus && <div></div>}
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={() => void fetchDashboardProgress(true)}
+              disabled={
+                loading ||
+                !user?.id ||
+                !dashboardIsValidId(user.id) ||
+                !tahunHijriyah ||
+                !tahunMasehi
+              }
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg transition-colors text-sm font-semibold inline-flex items-center gap-2 shadow-sm border border-gray-200 dark:border-gray-600 disabled:opacity-50 disabled:pointer-events-none"
+              title="Ambil ulang progres pendaftaran dari server"
+            >
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Segarkan
+            </button>
             <button
               onClick={handleLogout}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-semibold inline-flex items-center gap-2 shadow-md hover:shadow-lg"
@@ -672,6 +740,7 @@ function Dashboard() {
               </svg>
               Log Out
             </button>
+            </div>
           </div>
         </div>
 

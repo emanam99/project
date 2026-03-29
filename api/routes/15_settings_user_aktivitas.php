@@ -15,6 +15,11 @@ use App\Controllers\KontakController;
 return function (\Slim\App $app): void {
     $app->group('/api/settings', function ($group) {
         $group->get('/roles-config', [SettingsController::class, 'getRolesConfig']);
+        $group->post('/role-policy/clear-cache', [SettingsController::class, 'postRolePolicyClearCache']);
+        $group->post('/role-policy/sync-from-php', [SettingsController::class, 'postRolePolicySyncFromPhp']);
+        $group->patch('/role-policy/{roleKey}', [SettingsController::class, 'patchRolePolicy']);
+        $group->get('/ebeddien-fitur-selectors', [SettingsController::class, 'getEbeddienFiturSelectors']);
+        $group->put('/ebeddien-fitur-selectors/{selectorKey}', [SettingsController::class, 'putEbeddienFiturSelector']);
         $group->get('/ebeddien-menu-fitur', [SettingsController::class, 'getEbeddienMenuFitur']);
         $group->put('/ebeddien-menu-fitur', [SettingsController::class, 'putEbeddienMenuFitur']);
         $group->patch('/ebeddien-menu-fitur/{fiturId}', [SettingsController::class, 'patchEbeddienMenuFiturItem']);

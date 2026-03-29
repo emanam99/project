@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Config\RolePolicyResolver;
 use App\Database;
 use App\Helpers\PengurusHelper;
 use App\Helpers\RoleHelper;
@@ -874,7 +875,9 @@ class ManageUsersController
             if ($pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_CREATE, 'role', $newRoleId, null, $newRow, $request);
             }
-            
+
+            RolePolicyResolver::clearCache();
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'message' => 'Role berhasil dibuat',
@@ -978,7 +981,9 @@ class ManageUsersController
             if ($updatedRole && $pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'role', $roleId, $existingRole, $updatedRole, $request);
             }
-            
+
+            RolePolicyResolver::clearCache();
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'message' => 'Role berhasil diperbarui',

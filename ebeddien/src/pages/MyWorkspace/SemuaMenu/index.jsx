@@ -2,8 +2,9 @@ import { useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
-import { userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../../utils/roleAccess'
-import { navMenuItems } from '../../../config/navMenuConfig'
+import { userHasSuperAdminAccess } from '../../../utils/roleAccess'
+import { GROUP_ORDER } from '../../../config/menuConfig'
+import { buildFlatNavMenusFromFitur } from '../../../utils/menuCatalogNav'
 import { getMenuIcon } from '../Beranda/index.jsx'
 
 /** Warna per item seperti di Beranda — hanya dipakai untuk icon, kartu tanpa bg/border */
@@ -45,29 +46,56 @@ const itemVariants = {
   })
 }
 
+/** Katalog DB: Tanpa Tentang di daftar. Cadangan statis: semua grup termasuk Tentang. */
+const SEMUA_MENU_GROUP_ORDER_DB = GROUP_ORDER.filter((g) => g !== 'Tentang' && g !== 'Super Admin')
+const SEMUA_MENU_GROUP_ORDER_FULL = GROUP_ORDER.filter((g) => g !== 'Super Admin')
+
 export default function SemuaMenu() {
   const { user } = useAuthStore()
+  const fiturMenuFromApi = useAuthStore((s) => s.fiturMenuFromApi)
+  const fiturMenuCatalog = useAuthStore((s) => s.fiturMenuCatalog)
+  const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
+  const fiturMenuFetchStatus = useAuthStore((s) => s.fiturMenuFetchStatus)
   const navigate = useNavigate()
   const scrollRef = useRef(null)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
-  const hasPermission = (permission) => {
-    if (!user?.permissions || !Array.isArray(user.permissions)) return false
-    return user.permissions.includes(permission)
-  }
   const isSuperAdmin = userHasSuperAdminAccess(user)
 
-  const allowedMenus = useMemo(() => {
-    return navMenuItems.filter((item) => {
-      if (item.group === 'Tentang') return false
-      if (isSuperAdmin) return true
-      if (item.requiresSuperAdmin) return false
-      if (item.requiresRole) return hasRole(item.requiresRole)
-      if (item.requiresPermission) return hasPermission(item.requiresPermission)
-      return true
+  const menuCatalogForIcons = useMemo(() => {
+    const c = Array.isArray(fiturMenuCatalog) ? [...fiturMenuCatalog] : []
+    const a = Array.isArray(fiturMenuFromApi)
+      ? fiturMenuFromApi.filter((it) => (it.type || 'menu') === 'menu')
+      : []
+    return [...a, ...c]
+  }, [fiturMenuFromApi, fiturMenuCatalog])
+
+  const { allowedMenus, groupOrderForPage, menuSource } = useMemo(() => {
+    const { menus, source } = buildFlatNavMenusFromFitur({
+      fiturMenuFromApi,
+      fiturMenuCatalog,
+      fiturMenuCodes,
+      isSuperAdmin,
+      fiturMenuFetchStatus
     })
-  }, [user, isSuperAdmin])
+    if (source === 'loading') {
+      return {
+        allowedMenus: [],
+        groupOrderForPage: SEMUA_MENU_GROUP_ORDER_DB,
+        menuSource: 'loading'
+      }
+    }
+    const flat = menus.filter((item) => item.group !== 'Tentang')
+    const groupOrderForPage =
+      source === 'static-fallback' ? SEMUA_MENU_GROUP_ORDER_FULL : SEMUA_MENU_GROUP_ORDER_DB
+    return { allowedMenus: flat, groupOrderForPage, menuSource: source }
+  }, [
+    isSuperAdmin,
+    fiturMenuFromApi,
+    fiturMenuCatalog,
+    fiturMenuCodes,
+    fiturMenuFetchStatus
+  ])
 
   const menusByGroup = useMemo(() => {
     const map = new Map()
@@ -79,26 +107,10 @@ export default function SemuaMenu() {
     return map
   }, [allowedMenus])
 
-  const groupOrder = [
-    'My Workspace',
-    'Pendaftaran',
-    'UWABA',
-    'UGT',
-    'Cashless',
-    'Keuangan',
-    'Umroh',
-    'Ijin',
-    'Kalender',
-    'Kalender Pesantren',
-    'Domisili',
-    'Lembaga',
-    'Setting',
-    'Lainnya'
-  ]
   const orderedGroups = useMemo(() => {
     const seen = new Set()
     const result = []
-    for (const g of groupOrder) {
+    for (const g of groupOrderForPage) {
       if (menusByGroup.has(g)) {
         result.push({ name: g, items: menusByGroup.get(g) })
         seen.add(g)
@@ -108,7 +120,7 @@ export default function SemuaMenu() {
       if (!seen.has(name)) result.push({ name, items })
     })
     return result
-  }, [menusByGroup])
+  }, [menusByGroup, groupOrderForPage])
 
   const filteredGroups = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -148,11 +160,19 @@ export default function SemuaMenu() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Cari menu..."
-            className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-gray-800/90 border border-gray-200 dark:border-gray-600/60 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 dark:focus:border-teal-400 transition-colors"
+            disabled={menuSource === 'loading'}
+            className="w-full pl-10 pr-4 py-3 rounded-xl bg-white dark:bg-gray-800/90 border border-gray-200 dark:border-gray-600/60 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 dark:focus:border-teal-400 transition-colors disabled:opacity-60"
             aria-label="Cari menu"
           />
         </div>
+        {menuSource === 'loading' ? (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-500 dark:text-gray-400 text-sm">
+            <div className="animate-spin rounded-full h-10 w-10 border-2 border-teal-500 border-t-transparent mb-3" />
+            Memuat daftar menu…
+          </div>
+        ) : null}
         {/* Mobile: 1 kolom; PC/tablet (md+): 2 kolom. Wrapper + margin bawah tiap kotak agar spasi seragam, tidak ada yang berdempetan. */}
+        {menuSource !== 'loading' ? (
         <div className="md:columns-2 md:gap-6 md:[column-fill:balance]">
           {filteredGroups.map(({ name, items }, groupIndex) => (
             <div key={name} className="mb-6 break-inside-avoid last:mb-0">
@@ -183,7 +203,7 @@ export default function SemuaMenu() {
                       className="group flex flex-col items-center justify-start gap-2 w-full max-w-[5.5rem] sm:max-w-[6rem] min-w-0 px-1 py-2 sm:py-3 transition-all duration-200 text-gray-700 dark:text-gray-200 hover:opacity-90"
                     >
                       <span className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-200 ${c.cardBg} ${c.iconText}`}>
-                        {getMenuIcon(item.path)}
+                        {getMenuIcon(item.path, 'w-5 h-5', menuCatalogForIcons)}
                       </span>
                       <span className="text-[11px] font-medium text-center leading-tight line-clamp-2 min-h-[2.25rem] flex items-center justify-center text-gray-600 dark:text-gray-300 group-hover:text-gray-800 dark:group-hover:text-gray-100 w-full">
                         {item.label}
@@ -196,6 +216,7 @@ export default function SemuaMenu() {
             </div>
           ))}
         </div>
+        ) : null}
       </div>
     </motion.div>
   )

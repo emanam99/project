@@ -5,42 +5,33 @@ import { useAuthStore } from '../../store/authStore'
 import { useSidebarStore } from '../../store/sidebarStore'
 import api from '../../services/api'
 import { getGambarUrl } from '../../config/images'
-import { getMenuItemsWithSeparators, GROUP_ORDER } from '../../config/menuConfig'
-import { getIcon } from '../../config/menuIcons'
+import { GROUP_ORDER } from '../../config/menuConfig'
 import { userMatchesAnyAllowedRole, userHasSuperAdminAccess, userHasAnyAdminCap } from '../../utils/roleAccess'
-import { buildSidebarNavFromFiturItems } from '../../utils/sidebarNavFromFiturApi'
+import { buildUnifiedSidebarNavFromFitur } from '../../utils/sidebarNavFromFiturApi'
 
 const GROUP_LABELS = GROUP_ORDER
 
 function Sidebar() {
   const { isCollapsed, toggleCollapsed } = useSidebarStore()
   const fiturMenuFromApi = useAuthStore((s) => s.fiturMenuFromApi)
+  const fiturMenuCatalog = useAuthStore((s) => s.fiturMenuCatalog)
+  const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
 
-  const staticNavItems = useMemo(
+  const { user } = useAuthStore()
+  const navItems = useMemo(
     () =>
-      getMenuItemsWithSeparators().map((item) => ({
-        path: item.path,
-        label: item.label,
-        icon: getIcon(item.iconKey, 'w-6 h-6'),
-        showSeparatorAfter: item.showSeparatorAfter,
-        requiresRole: item.requiresRole,
-        requiresSuperAdmin: item.requiresSuperAdmin,
-        requiresPermission: item.requiresPermission,
-        group: item.group,
-        _fromApi: false
-      })),
-    []
+      buildUnifiedSidebarNavFromFitur({
+        fiturMenuFromApi,
+        fiturMenuCatalog,
+        fiturMenuCodes,
+        isSuperAdmin: userHasSuperAdminAccess(user)
+      }),
+    [fiturMenuFromApi, fiturMenuCatalog, fiturMenuCodes, user]
   )
-
-  const navItems = useMemo(() => {
-    const fromApi = buildSidebarNavFromFiturItems(fiturMenuFromApi)
-    return fromApi ?? staticNavItems
-  }, [fiturMenuFromApi, staticNavItems])
   const [isScrolling, setIsScrolling] = useState(false)
   const scrollTimeoutRef = useRef(null)
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { user } = useAuthStore()
   const hasSuperAdminMenu = userHasSuperAdminAccess(user)
   const [aiMenuEnabled, setAiMenuEnabled] = useState(true)
 

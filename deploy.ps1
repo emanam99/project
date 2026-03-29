@@ -329,16 +329,29 @@ if ($doApi) {
 
     # --- Migrasi & seed Phinx di server (opsi sudah ditanya di awal) ---
     $phinxEnv = if ($isStaging) { 'development' } else { 'production' }
-    if ($runMigrations -eq 'y' -or $runMigrations -eq 'Y') {
-        Write-Host "[API] Menjalankan: php vendor/bin/phinx migrate -e $phinxEnv" -ForegroundColor Cyan
-        $migrateCmd = 'cd ' + $REMOTE_API_PATH + ' && php vendor/bin/phinx migrate -e ' + $phinxEnv
-        ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $migrateCmd
-        Write-Host '[API] Phinx migrate selesai.' -ForegroundColor Green
+    $doMigrate = ($runMigrations -eq 'y' -or $runMigrations -eq 'Y')
+    $doSeed = ($runSeeds -eq 'y' -or $runSeeds -eq 'Y')
+    $sshBase = @('-p', "$SSH_PORT", '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=10', "${SSH_USER}@${SSH_HOST}")
+
+    function Invoke-RemotePhinx {
+        param([string]$Label, [string]$RemoteCmd)
+        Write-Host "[API] Menjalankan: $Label" -ForegroundColor Cyan
+        & ssh @sshBase $RemoteCmd
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "[API] Gagal: $Label (SSH exit $LASTEXITCODE). Cek jaringan/VPN, firewall, atau jalankan perintah manual di Hostinger hPanel → SSH."
+        }
     }
-    if ($runSeeds -eq 'y' -or $runSeeds -eq 'Y') {
-        Write-Host "[API] Menjalankan: php vendor/bin/phinx seed:run -e $phinxEnv" -ForegroundColor Cyan
-        $seedCmd = 'cd ' + $REMOTE_API_PATH + ' && php vendor/bin/phinx seed:run -e ' + $phinxEnv
-        ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $seedCmd
+
+    # Satu sesi SSH untuk migrate + seed mengurangi risiko timeout pada koneksi kedua (Hostinger port 65002).
+    if ($doMigrate -and $doSeed) {
+        $both = 'cd ' + $REMOTE_API_PATH + ' && php vendor/bin/phinx migrate -e ' + $phinxEnv + ' && php vendor/bin/phinx seed:run -e ' + $phinxEnv
+        Invoke-RemotePhinx "phinx migrate lalu seed:run (satu koneksi SSH)" $both
+        Write-Host '[API] Phinx migrate + seed selesai.' -ForegroundColor Green
+    } elseif ($doMigrate) {
+        Invoke-RemotePhinx "php vendor/bin/phinx migrate -e $phinxEnv" ('cd ' + $REMOTE_API_PATH + ' && php vendor/bin/phinx migrate -e ' + $phinxEnv)
+        Write-Host '[API] Phinx migrate selesai.' -ForegroundColor Green
+    } elseif ($doSeed) {
+        Invoke-RemotePhinx "php vendor/bin/phinx seed:run -e $phinxEnv" ('cd ' + $REMOTE_API_PATH + ' && php vendor/bin/phinx seed:run -e ' + $phinxEnv)
         Write-Host '[API] Phinx seed selesai.' -ForegroundColor Green
     }
 

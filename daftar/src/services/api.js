@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { performLogoutCleanup } from '../utils/logoutSession'
 
 // --- Environment label (development | staging | production) ---
 // Dari VITE_APP_ENV di .env; sama dengan aplikasi uwaba
@@ -96,6 +97,12 @@ export function resetCsrfToken() {
   csrfTokenPromise = null
 }
 
+/** CSRF di-reset dulu; performLogoutCleanup memuat tahun ajaran store secara dinamis (hindari siklus impor). */
+async function runFullLogoutCleanup() {
+  resetCsrfToken()
+  await performLogoutCleanup()
+}
+
 const apiBaseUrl = getSlimApiUrl()
 if (typeof console !== 'undefined' && console.log) {
   console.log('[Daftar] API Base URL:', apiBaseUrl, '| Env:', getAppEnv())
@@ -159,8 +166,7 @@ api.interceptors.response.use(
                           errorMessage.includes('login kembali')
       
       if (isTokenError || originalRequest._retry) {
-        localStorage.removeItem('auth_token')
-        resetCsrfToken()
+        await runFullLogoutCleanup()
         window.location.href = '/login'
         return Promise.reject(new Error('Token tidak valid atau sudah kadaluarsa. Redirecting to login...'))
       }
@@ -173,8 +179,7 @@ api.interceptors.response.use(
         return api(originalRequest)
       }
       
-      localStorage.removeItem('auth_token')
-      resetCsrfToken()
+      await runFullLogoutCleanup()
       window.location.href = '/login'
       return Promise.reject(new Error('Token tidak valid atau sudah kadaluarsa. Redirecting to login...'))
     }
@@ -205,10 +210,7 @@ export const authAPI = {
     return response.data
   },
   
-  logout: () => {
-    resetCsrfToken()
-    localStorage.removeItem('auth_token')
-  }
+  logout: () => runFullLogoutCleanup()
 }
 
 // Santri API
@@ -265,19 +267,32 @@ export const pendaftaranAPI = {
     }
   },
   
+  /** GET registrasi (auth). Tidak melempar axios error — return { success: false } agar UI daftar tetap stabil (403/4xx). */
   getRegistrasi: async (idSantri, tahunHijriyah = null, tahunMasehi = null) => {
-    const params = new URLSearchParams()
-    params.append('id_santri', idSantri)
-    if (tahunHijriyah && tahunHijriyah !== '') {
-      params.append('tahun_hijriyah', tahunHijriyah)
+    try {
+      const params = new URLSearchParams()
+      params.append('id_santri', idSantri)
+      if (tahunHijriyah && tahunHijriyah !== '') {
+        params.append('tahun_hijriyah', tahunHijriyah)
+      }
+      if (tahunMasehi && tahunMasehi !== '') {
+        params.append('tahun_masehi', tahunMasehi)
+      }
+      params.append('_t', Date.now())
+      const response = await api.get(`/pendaftaran/get-registrasi?${params.toString()}`)
+      return response.data
+    } catch (error) {
+      const status = error.response?.status
+      const msg = error.response?.data?.message || error.message || 'Gagal mengambil registrasi'
+      if (status && ![400, 401, 403, 404].includes(status)) {
+        console.warn('[Daftar] getRegistrasi:', msg)
+      }
+      return {
+        success: false,
+        data: null,
+        message: msg
+      }
     }
-    if (tahunMasehi && tahunMasehi !== '') {
-      params.append('tahun_masehi', tahunMasehi)
-    }
-    // Tambahkan timestamp untuk menghindari cache browser
-    params.append('_t', Date.now())
-    const response = await api.get(`/pendaftaran/get-registrasi?${params.toString()}`)
-    return response.data
   },
 
   getRegistrasiDetail: async (idRegistrasi) => {
@@ -458,10 +473,23 @@ export const pendaftaranAPI = {
     return response.data
   },
 
-  /** Hitung dan update keterangan_status di backend (id_santri, tahun_hijriyah?, tahun_masehi?) */
+  /** Hitung dan update keterangan_status di backend. Tidak melempar — return { success: false } saat 4xx/network. */
   syncKeteranganStatus: async (data) => {
-    const response = await api.post('/pendaftaran/sync-keterangan-status', data)
-    return response.data
+    try {
+      const response = await api.post('/pendaftaran/sync-keterangan-status', data)
+      return response.data
+    } catch (error) {
+      const status = error.response?.status
+      const msg = error.response?.data?.message || error.message || 'Gagal sinkron keterangan status'
+      if (status && ![400, 401, 403, 404].includes(status)) {
+        console.warn('[Daftar] syncKeteranganStatus:', msg)
+      }
+      return {
+        success: false,
+        data: null,
+        message: msg
+      }
+    }
   }
 }
 

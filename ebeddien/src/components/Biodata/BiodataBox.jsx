@@ -556,14 +556,18 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
       if (result.success && result.isRegistered) {
         setWaStatus('registered')
         showNotification('✓ Nomor terdaftar di WhatsApp', 'success')
-        // Auto-hide setelah 3 detik
         setTimeout(() => {
           setWaStatus('registered')
         }, 3000)
-      } else {
+      } else if (result.success && !result.isRegistered) {
         setWaStatus('not_registered')
-        showNotification('✗ ' + (result.message || 'Nomor tidak terdaftar di WhatsApp'), 'warning')
-        // Auto-hide setelah 3 detik
+        showNotification('✗ Nomor tidak terdaftar di WhatsApp', 'warning')
+        setTimeout(() => {
+          setWaStatus(null)
+        }, 3000)
+      } else {
+        setWaStatus(null)
+        showNotification(result.message || 'Tidak dapat memverifikasi nomor (layanan WhatsApp tidak merespons). Coba lagi nanti.', 'error')
         setTimeout(() => {
           setWaStatus(null)
         }, 3000)

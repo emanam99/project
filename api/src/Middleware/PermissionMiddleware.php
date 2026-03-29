@@ -76,7 +76,7 @@ class PermissionMiddleware implements MiddlewareInterface
             $hasPermission = RoleHelper::hasPermission($pengurusId, $this->requiredPermission);
         }
         if (!$hasPermission) {
-            $hasPermission = RoleHelper::tokenHasPermissionFromRoleConfig($user, $this->requiredPermission);
+            $hasPermission = RoleHelper::tokenHasPermissionFromRolePolicy($user, $this->requiredPermission);
         }
 
         if (!$hasPermission) {

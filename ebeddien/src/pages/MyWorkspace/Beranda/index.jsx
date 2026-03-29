@@ -90,7 +90,7 @@ const listItemTransition = { duration: 0.35, ease: easing }
 /* Animasi perpindahan blok tanggal/jam (bawah ↔ kanan) */
 const dateBlockLayoutTransition = { type: 'tween', duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }
 import { profilAPI, pendaftaranAPI } from '../../../services/api'
-import { navMenuItems, getItemByPath } from '../../../config/menuConfig'
+import { buildFlatNavMenusFromFitur, iconKeyForPathFromCatalog } from '../../../utils/menuCatalogNav'
 import { getIcon } from '../../../config/menuIcons'
 import { getTanggalFromAPI } from '../../../utils/hijriDate'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
@@ -207,9 +207,11 @@ const defaultMenuIcon = (
   </svg>
 )
 
-export function getMenuIcon(path, className = 'w-5 h-5') {
-  const item = getItemByPath(path)
-  return getIcon(item?.iconKey, className)
+export function getMenuIcon(path, className = 'w-5 h-5', menuCatalog = null) {
+  const key = iconKeyForPathFromCatalog(menuCatalog, path)
+  if (key) return getIcon(key, className)
+  if (menuIconsByPath[path]) return menuIconsByPath[path]
+  return getIcon('home', className)
 }
 
 /** Warna per path untuk kotak menu — bg kartu = bg icon (satu warna), text icon, border/hover */
@@ -231,6 +233,9 @@ function getMenuColor(path, index) {
 
 export default function Beranda() {
   const { user, fiturMenuCodes } = useAuthStore()
+  const fiturMenuFromApi = useAuthStore((s) => s.fiturMenuFromApi)
+  const fiturMenuCatalog = useAuthStore((s) => s.fiturMenuCatalog)
+  const fiturMenuFetchStatus = useAuthStore((s) => s.fiturMenuFetchStatus)
   const navigate = useNavigate()
   const displayName = user?.nama || user?.username || 'Pengguna'
   const initial = (displayName || user?.username || '?').trim().charAt(0).toUpperCase()
@@ -388,35 +393,65 @@ export default function Beranda() {
     }).catch(() => setAktivitasList([])).finally(() => setAktivitasLoading(false))
   }, [user?.id])
 
-  // Menu yang bisa diakses user (selain grup Tentang)
-  const hasPermission = (permission) => {
-    if (!user?.permissions || !Array.isArray(user.permissions)) return false
-    return user.permissions.includes(permission)
-  }
+  // Menu yang bisa diakses user (selain grup Tentang) — dari katalog DB + kode fitur
   const isSuperAdmin = userHasSuperAdminAccess(user)
 
   const BERANDA_GROUP_ORDER = [
-    'My Workspace', 'Pendaftaran', 'UWABA', 'UGT', 'Cashless', 'Keuangan',
-    'Umroh', 'Ijin', 'Kalender', 'Kalender Pesantren', 'Lembaga', 'Setting', 'Lainnya'
+    'My Workspace',
+    'Super Admin',
+    'Pendaftaran',
+    'UWABA',
+    'UGT',
+    'Cashless',
+    'Keuangan',
+    'Umroh',
+    'Ijin',
+    'Kalender',
+    'Kalender Pesantren',
+    'Domisili',
+    'Lembaga',
+    'Setting',
+    'Tentang',
+    'Lainnya'
   ]
-  const allowedMenus = useMemo(() => {
-    const filtered = navMenuItems.filter((item) => {
-      if (item.group === 'Tentang') return false
-      if (isSuperAdmin) return true
-      if (item.requiresSuperAdmin) return false
-      if (item.requiresRole) return hasRole(item.requiresRole)
-      if (item.requiresPermission) return hasPermission(item.requiresPermission)
-      return true
+  /** Sama prioritas dengan sidebar: /v2/me/fitur-menu → katalog + kode → cadangan statis (tanpa paksa dua fetch OK). */
+  const { allowedMenus, menuListLoading } = useMemo(() => {
+    const { menus, source } = buildFlatNavMenusFromFitur({
+      fiturMenuFromApi,
+      fiturMenuCatalog,
+      fiturMenuCodes,
+      isSuperAdmin,
+      fiturMenuFetchStatus
     })
+    if (source === 'loading') {
+      return { allowedMenus: [], menuListLoading: true }
+    }
+    const filtered = menus.filter((item) => item.group !== 'Tentang')
     const orderMap = Object.fromEntries(BERANDA_GROUP_ORDER.map((g, i) => [g, i]))
-    return [...filtered].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       const ga = a.group || 'Lainnya'
       const gb = b.group || 'Lainnya'
       const ia = orderMap[ga] ?? 999
       const ib = orderMap[gb] ?? 999
-      return ia - ib || (ga.localeCompare(gb) || (a.label || '').localeCompare(b.label || ''))
+      return ia - ib || ga.localeCompare(gb) || (a.label || '').localeCompare(b.label || '')
     })
-  }, [navMenuItems, isSuperAdmin, user])
+    return { allowedMenus: sorted, menuListLoading: false }
+  }, [
+    isSuperAdmin,
+    fiturMenuFromApi,
+    fiturMenuCatalog,
+    fiturMenuCodes,
+    fiturMenuFetchStatus
+  ])
+
+  /** Gabung baris menu API + katalog agar icon_key dari /me/fitur-menu ikut dipakai pencarian path. */
+  const menuCatalogForIcons = useMemo(() => {
+    const c = Array.isArray(fiturMenuCatalog) ? [...fiturMenuCatalog] : []
+    const a = Array.isArray(fiturMenuFromApi)
+      ? fiturMenuFromApi.filter((it) => (it.type || 'menu') === 'menu')
+      : []
+    return [...a, ...c]
+  }, [fiturMenuFromApi, fiturMenuCatalog])
 
   const greeting = getTimeGreeting()
   const { isCollapsed: sidebarCollapsed } = useSidebarStore()
@@ -641,13 +676,26 @@ export default function Beranda() {
             .dark .beranda-menu-scroll::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, 0.6); }
           `}</style>
           <motion.div
-            className={allowedMenus.length <= menuSingleRowThreshold ? 'flex gap-2' : 'flex flex-col gap-2'}
+            className={
+              menuListLoading || allowedMenus.length === 0
+                ? 'flex gap-2 items-center min-h-[88px]'
+                : allowedMenus.length <= menuSingleRowThreshold
+                  ? 'flex gap-2'
+                  : 'flex flex-col gap-2'
+            }
             style={{ width: 'max-content', minWidth: '100%' }}
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
           >
-            {allowedMenus.length <= menuSingleRowThreshold ? (
+            {menuListLoading ? (
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 px-2 py-3">
+                <span className="inline-block h-5 w-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                Memuat menu…
+              </div>
+            ) : allowedMenus.length === 0 ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400 px-2 py-3">Belum ada menu yang ditampilkan.</p>
+            ) : allowedMenus.length <= menuSingleRowThreshold ? (
               allowedMenus.map((item, idx) => {
                 const c = getMenuColor(item.path, idx)
                 return (
@@ -660,7 +708,7 @@ export default function Beranda() {
                     className={`group flex flex-col items-center justify-center gap-1.5 min-w-[56px] sm:min-w-[64px] px-2 py-3 rounded-lg border shadow-sm hover:shadow transition-all duration-200 shrink-0 text-gray-700 dark:text-gray-200 ${c.cardBg} ${c.card}`}
                   >
                     <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center shrink-0 ${c.cardBg} ${c.iconText} transition-colors duration-200`}>
-                      {getMenuIcon(item.path)}
+                      {getMenuIcon(item.path, 'w-5 h-5', menuCatalogForIcons)}
                     </span>
                     <span className="text-[10px] sm:text-[11px] font-medium text-center leading-tight line-clamp-2 text-gray-700 dark:text-gray-200">
                       {item.label}
@@ -686,7 +734,7 @@ export default function Beranda() {
                       className={`group flex flex-col items-center justify-center gap-1.5 min-w-[56px] sm:min-w-[64px] px-2 py-3 rounded-lg border shadow-sm hover:shadow transition-all duration-200 shrink-0 text-gray-700 dark:text-gray-200 ${c.cardBg} ${c.card}`}
                     >
                       <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-md flex items-center justify-center shrink-0 ${c.cardBg} ${c.iconText} transition-colors duration-200`}>
-                        {getMenuIcon(item.path)}
+                        {getMenuIcon(item.path, 'w-5 h-5', menuCatalogForIcons)}
                       </span>
                       <span className="text-[10px] sm:text-[11px] font-medium text-center leading-tight line-clamp-2 text-gray-700 dark:text-gray-200">
                         {item.label}

@@ -178,6 +178,29 @@ class PaymentTransactionController
             $adminFee = $this->getAdminFeeForChannel($input['payment_method'] ?? 'va', $input['payment_channel'] ?? '');
             $total = $amount + $adminFee;
             $name = $input['name'];
+            // Pendaftaran PSB: nama di iPayMu harus nama santri (santri.nama), bukan nama wali dari payload klien.
+            $tabelRefNama = isset($input['tabel_referensi']) ? trim((string) $input['tabel_referensi']) : 'psb___registrasi';
+            if ($tabelRefNama === 'psb___registrasi') {
+                $idSantriNama = $input['id_santri'] ?? null;
+                if (($idSantriNama === null || $idSantriNama === '') && !empty($input['id_registrasi'])) {
+                    $stmtRs = $this->db->prepare('SELECT id_santri FROM psb___registrasi WHERE id = ? LIMIT 1');
+                    $stmtRs->execute([(int) $input['id_registrasi']]);
+                    $rowRs = $stmtRs->fetch(\PDO::FETCH_ASSOC);
+                    $idSantriNama = $rowRs['id_santri'] ?? null;
+                }
+                if ($idSantriNama !== null && $idSantriNama !== '') {
+                    $resolvedNama = SantriHelper::resolveId($this->db, $idSantriNama);
+                    if ($resolvedNama !== null) {
+                        $stmtNm = $this->db->prepare('SELECT nama FROM santri WHERE id = ? LIMIT 1');
+                        $stmtNm->execute([$resolvedNama]);
+                        $rowNm = $stmtNm->fetch(\PDO::FETCH_ASSOC);
+                        if ($rowNm && trim((string) ($rowNm['nama'] ?? '')) !== '') {
+                            $name = trim((string) $rowNm['nama']);
+                            $input['name'] = $name;
+                        }
+                    }
+                }
+            }
             $phone = $input['phone'];
             $email = $input['email'];
             $paymentMethod = $input['payment_method'] ?? 'va';
@@ -186,7 +209,19 @@ class PaymentTransactionController
             
             // Cek apakah id_payment diberikan atau perlu dibuat baru
             $idPayment = isset($input['id_payment']) && !empty($input['id_payment']) ? (int)$input['id_payment'] : null;
-            
+
+            // Tanpa id_payment: jika sudah ada transaksi pending (nominal + metode + channel sama, belum kedaluwarsa), kembalikan itu — tanpa order baru ke iPayMu.
+            if ($idPayment === null && empty($input['force_new_ipaymu'])) {
+                $reuseData = $this->tryReuseExistingPendingIpaymuTransaction($input, $amount, $paymentMethod, $paymentChannel);
+                if ($reuseData !== null) {
+                    return $this->jsonResponse($response, [
+                        'success' => true,
+                        'message' => 'Menggunakan tagihan pembayaran yang masih berlaku',
+                        'data' => $reuseData,
+                    ], 200);
+                }
+            }
+
             // Mulai transaction database
             $this->db->beginTransaction();
             
@@ -1088,16 +1123,15 @@ class PaymentTransactionController
                 ], 404);
             }
 
-            // Jika status masih pending, cek ke iPaymu (pakai sandbox jika frontend staging)
-            if ($transaction['status'] === 'pending') {
+            // Pending: sync ke iPayMu. Cancelled/expired/failed: tetap cek (user bisa bayar dengan QR/VA yang sama setelah batal di app)
+            $shouldPollIpaymu = in_array($transaction['status'], ['pending', 'cancelled', 'expired', 'failed'], true);
+            if ($shouldPollIpaymu) {
                 $ipaymuService = $this->getIpaymuServiceForRequest($request);
                 $ipaymuResponse = $ipaymuService->checkPaymentStatus($sessionId);
-                
+
                 if ($ipaymuResponse['success'] && isset($ipaymuResponse['data'])) {
-                    // Update transaction dengan data terbaru
                     $this->updateTransactionFromResponse($transaction['id'], $ipaymuResponse['data']);
-                    
-                    // Reload transaction
+
                     $stmt->execute([$sessionId]);
                     $transaction = $stmt->fetch(\PDO::FETCH_ASSOC);
                 }
@@ -1579,5 +1613,184 @@ class PaymentTransactionController
                 'message' => 'Gagal mengupdate transaksi: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Pakai ulang baris payment___transaction pending/cancelled (nominal + metode + channel sama, belum kedaluwarsa, ada session_id).
+     * Mencakup PSB Pendaftaran, UWABA, Khusus, Tunggakan (mybeddian) — selaras aplikasi daftar.
+     */
+    private function tryReuseExistingPendingIpaymuTransaction(array $input, float $amount, string $paymentMethod, string $paymentChannel): ?array
+    {
+        $tabelReferensi = isset($input['tabel_referensi']) ? trim((string) $input['tabel_referensi']) : 'psb___registrasi';
+        $allowedTables = ['psb___registrasi', 'uwaba___bayar', 'uwaba___khusus', 'uwaba___tunggakan'];
+        if (!in_array($tabelReferensi, $allowedTables, true)) {
+            return null;
+        }
+
+        $jenisNorm = $this->normalizeJenisPembayaranForIpaymuReuse((string) ($input['jenis_pembayaran'] ?? 'Pendaftaran'));
+        $jenisPerTable = [
+            'psb___registrasi' => 'Pendaftaran',
+            'uwaba___bayar' => 'Uwaba',
+            'uwaba___khusus' => 'Khusus',
+            'uwaba___tunggakan' => 'Tunggakan',
+        ];
+        if (($jenisPerTable[$tabelReferensi] ?? '') !== $jenisNorm) {
+            return null;
+        }
+
+        $idSantriParam = $input['id_santri'] ?? null;
+        $scopeExtraSql = '';
+        $scopeParams = [];
+
+        if ($tabelReferensi === 'psb___registrasi') {
+            $idRegistrasi = isset($input['id_registrasi']) ? (int) $input['id_registrasi'] : 0;
+            $idSantri = null;
+            if ($idRegistrasi > 0) {
+                $stmtR = $this->db->prepare('SELECT id_santri FROM psb___registrasi WHERE id = ? LIMIT 1');
+                $stmtR->execute([$idRegistrasi]);
+                $rowR = $stmtR->fetch(\PDO::FETCH_ASSOC);
+                if ($rowR && isset($rowR['id_santri'])) {
+                    $idSantri = (int) $rowR['id_santri'];
+                }
+            }
+            if ($idSantriParam !== null && $idSantri === null) {
+                $resolved = SantriHelper::resolveId($this->db, $idSantriParam);
+                $idSantri = $resolved !== null ? (int) $resolved : null;
+            }
+            $scopeParts = [];
+            if ($idRegistrasi > 0) {
+                $scopeParts[] = '(p.id_referensi = ? AND p.tabel_referensi = \'psb___registrasi\')';
+                $scopeParams[] = $idRegistrasi;
+            }
+            if ($idSantri !== null && $idSantri > 0) {
+                $scopeParts[] = 'p.id_santri = ?';
+                $scopeParams[] = $idSantri;
+            }
+            if ($scopeParts === []) {
+                return null;
+            }
+            $scopeExtraSql = ' AND (' . implode(' OR ', $scopeParts) . ')';
+        } elseif ($tabelReferensi === 'uwaba___bayar') {
+            $resolvedS = SantriHelper::resolveId($this->db, $idSantriParam);
+            if ($resolvedS === null || (int) $resolvedS <= 0) {
+                return null;
+            }
+            $idSantri = (int) $resolvedS;
+            $tahunAjaran = isset($input['tahun_ajaran']) ? trim((string) $input['tahun_ajaran']) : '';
+            if ($tahunAjaran === '' && isset($input['id_referensi'])) {
+                $tahunAjaran = trim((string) $input['id_referensi']);
+            }
+            if ($tahunAjaran === '') {
+                return null;
+            }
+            $cols = $this->db->query('SHOW COLUMNS FROM payment')->fetchAll(\PDO::FETCH_COLUMN);
+            $hasTahunAjaran = in_array('tahun_ajaran', $cols, true);
+            $idRefTrunc = (int) $tahunAjaran;
+            if ($hasTahunAjaran) {
+                $scopeExtraSql = ' AND p.id_santri = ? AND (p.tahun_ajaran = ? OR p.id_referensi = ?)';
+                $scopeParams = [$idSantri, $tahunAjaran, $idRefTrunc];
+            } else {
+                $scopeExtraSql = ' AND p.id_santri = ? AND p.id_referensi = ?';
+                $scopeParams = [$idSantri, $idRefTrunc];
+            }
+        } else {
+            $resolvedS = SantriHelper::resolveId($this->db, $idSantriParam);
+            if ($resolvedS === null || (int) $resolvedS <= 0) {
+                return null;
+            }
+            $idSantri = (int) $resolvedS;
+            $idRef = isset($input['id_referensi']) ? (int) $input['id_referensi'] : 0;
+            if ($idRef <= 0) {
+                return null;
+            }
+            $scopeExtraSql = ' AND p.id_referensi = ? AND p.id_santri = ?';
+            $scopeParams = [$idRef, $idSantri];
+        }
+
+        $channelNorm = trim((string) $paymentChannel);
+        $amountSql = number_format($amount, 2, '.', '');
+
+        $sql = 'SELECT pt.* FROM payment___transaction pt
+                INNER JOIN payment p ON pt.id_payment = p.id
+                WHERE pt.status IN (\'pending\', \'cancelled\')
+                AND p.tabel_referensi = ?
+                AND p.jenis_pembayaran = ?
+                AND pt.payment_method = ?
+                AND COALESCE(NULLIF(TRIM(pt.payment_channel), \'\'), \'\') = COALESCE(NULLIF(TRIM(?), \'\'), \'\')
+                AND ABS(CAST(pt.amount AS DECIMAL(15,2)) - CAST(? AS DECIMAL(15,2))) < 0.02
+                AND (pt.expired_at IS NULL OR pt.expired_at > NOW())
+                AND pt.session_id IS NOT NULL AND CHAR_LENGTH(TRIM(pt.session_id)) > 0'
+                . $scopeExtraSql . '
+                ORDER BY pt.id DESC
+                LIMIT 1';
+
+        $params = array_merge([$tabelReferensi, $jenisNorm, $paymentMethod, $channelNorm, $amountSql], $scopeParams);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+
+        $hasVa = trim((string) ($row['va_number'] ?? '')) !== '';
+        $hasQr = trim((string) ($row['qr_code'] ?? '')) !== '';
+        $hasUrl = trim((string) ($row['payment_url'] ?? '')) !== '';
+        if ($paymentMethod === 'va' && !$hasVa && !$hasUrl) {
+            return null;
+        }
+        if ($paymentMethod === 'cstore' && !$hasVa && !$hasUrl) {
+            return null;
+        }
+        if ($paymentMethod === 'qris' && !$hasQr && !$hasUrl) {
+            return null;
+        }
+
+        // Batal di app hanya mengubah status lokal; QR/VA bisa masih valid — pakai ulang dan buka lagi alur bayar
+        if (($row['status'] ?? '') === 'cancelled') {
+            $this->db->prepare('UPDATE payment___transaction SET status = \'pending\', tanggal_update = NOW() WHERE id = ?')
+                ->execute([(int) $row['id']]);
+            $row['status'] = 'pending';
+        }
+
+        $row = $this->enrichTransactionWithFeeFromResponse($row);
+
+        $expiredAt = $row['expired_at'] ?? null;
+        if ($expiredAt instanceof \DateTimeInterface) {
+            $expiredAt = $expiredAt->format('Y-m-d H:i:s');
+        }
+
+        $amtOut = isset($row['sub_total']) && $row['sub_total'] !== null && $row['sub_total'] !== ''
+            ? (float) $row['sub_total']
+            : (float) ($row['amount'] ?? $amount);
+        $feeOut = isset($row['fee']) && $row['fee'] !== null && $row['fee'] !== '' ? (int) (float) $row['fee'] : null;
+        $totalOut = isset($row['total']) && $row['total'] !== null && $row['total'] !== '' ? (float) $row['total'] : null;
+
+        return [
+            'transaction_id' => (int) $row['id'],
+            'session_id' => $row['session_id'],
+            'ipaymu_transaction_id' => $row['trx_id'] ?? null,
+            'payment_url' => $row['payment_url'] ?? null,
+            'qr_code' => $row['qr_code'] ?? null,
+            'va_number' => $row['va_number'] ?? null,
+            'expired_at' => $expiredAt,
+            'amount' => $amtOut,
+            'admin_fee' => $feeOut,
+            'total' => $totalOut,
+            'reused_existing' => true,
+        ];
+    }
+
+    /** Samakan input frontend (UWABA, dll.) dengan nilai enum kolom payment.jenis_pembayaran. */
+    private function normalizeJenisPembayaranForIpaymuReuse(string $raw): string
+    {
+        $k = strtoupper(trim($raw));
+        $map = [
+            'PENDAFTARAN' => 'Pendaftaran',
+            'UWABA' => 'Uwaba',
+            'KHUSUS' => 'Khusus',
+            'TUNGGAKAN' => 'Tunggakan',
+        ];
+
+        return $map[$k] ?? $raw;
     }
 }

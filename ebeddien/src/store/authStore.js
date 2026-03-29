@@ -63,10 +63,13 @@ export const useAuthStore = create((set, get) => ({
   token: null,
   user: null,
   isAuthenticated: false,
-  /** Menu navigasi dari GET /v2/me/fitur-menu; null = pakai menuConfig.js */
+  /** Menu navigasi dari GET /v2/me/fitur-menu; kosong = susun dari katalog DB + kode user */
   fiturMenuFromApi: null,
+  /** Semua baris menu eBeddien dari GET /v2/fitur/ebeddien/menu-catalog */
+  fiturMenuCatalog: null,
   fiturMenuCodes: [],
   fiturMenuFetchStatus: 'idle',
+  fiturMenuCatalogFetchStatus: 'idle',
   /** Modal pengingat daftar passkey setelah login password (interval dari server). */
   passkeyPromptOpen: false,
   setPasskeyPromptOpen: (open) => set({ passkeyPromptOpen: !!open }),
@@ -94,6 +97,31 @@ export const useAuthStore = create((set, get) => ({
       if (!localStorage.getItem('auth_token')) return
       console.warn('[authStore] fetchFiturMenu:', e)
       set({ fiturMenuFromApi: null, fiturMenuCodes: [], fiturMenuFetchStatus: 'error' })
+    }
+  },
+
+  fetchFiturMenuCatalog: async () => {
+    const token = localStorage.getItem('auth_token')
+    if (!token) {
+      set({ fiturMenuCatalog: null, fiturMenuCatalogFetchStatus: 'idle' })
+      return
+    }
+    set({ fiturMenuCatalogFetchStatus: 'loading' })
+    try {
+      const res = await authAPI.getEbeddienMenuCatalog()
+      if (!localStorage.getItem('auth_token')) return
+      if (res.success && Array.isArray(res.data?.items)) {
+        set({
+          fiturMenuCatalog: res.data.items,
+          fiturMenuCatalogFetchStatus: 'ok'
+        })
+      } else {
+        set({ fiturMenuCatalog: [], fiturMenuCatalogFetchStatus: 'ok' })
+      }
+    } catch (e) {
+      if (!localStorage.getItem('auth_token')) return
+      console.warn('[authStore] fetchFiturMenuCatalog:', e)
+      set({ fiturMenuCatalog: null, fiturMenuCatalogFetchStatus: 'error' })
     }
   },
 
@@ -135,6 +163,7 @@ export const useAuthStore = create((set, get) => ({
       localStorage.setItem('user_data', JSON.stringify(normalizedUser))
       set({ token, user: normalizedUser, isAuthenticated: true })
       get().fetchFiturMenu().catch(() => {})
+      get().fetchFiturMenuCatalog().catch(() => {})
     } else {
       set({ token, user: null, isAuthenticated: true })
     }
@@ -151,8 +180,10 @@ export const useAuthStore = create((set, get) => ({
       isAuthenticated: false,
       passkeyPromptOpen: false,
       fiturMenuFromApi: null,
+      fiturMenuCatalog: null,
       fiturMenuCodes: [],
-      fiturMenuFetchStatus: 'idle'
+      fiturMenuFetchStatus: 'idle',
+      fiturMenuCatalogFetchStatus: 'idle'
     })
   },
 
@@ -257,6 +288,7 @@ export const useAuthStore = create((set, get) => ({
           localStorage.setItem('user_data', JSON.stringify(updatedUser))
           useAuthStore.setState({ user: updatedUser })
           get().fetchFiturMenu().catch(() => {})
+          get().fetchFiturMenuCatalog().catch(() => {})
           return true
         }
       }

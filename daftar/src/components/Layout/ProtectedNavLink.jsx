@@ -1,19 +1,16 @@
-import { useCallback } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useCallback, useState } from 'react'
+import { NavLink } from 'react-router-dom'
 import { useUnsavedChanges } from '../../contexts/UnsavedChangesContext'
 import UnsavedChangesModal from '../Modal/UnsavedChangesModal'
 import RequiredFieldsModal from '../Modal/RequiredFieldsModal'
-import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 
 function ProtectedNavLink({ to, children, ...props }) {
-  const navigate = useNavigate()
   const location = useLocation()
   const {
     hasUnsavedChanges,
     setPendingNav,
     clearPendingNav,
-    clearUnsavedChanges,
     handleSaveAndNavigate,
     validateBeforeNavigate
   } = useUnsavedChanges()
@@ -50,20 +47,12 @@ function ProtectedNavLink({ to, children, ...props }) {
   }, [hasUnsavedChanges, to, setPendingNav, location.pathname, validateBeforeNavigate])
 
   const handleSave = useCallback(async () => {
-    setShowModal(false)
     const saved = await handleSaveAndNavigate()
     if (saved) {
+      setShowModal(false)
       clearPendingNav()
-      navigate(to)
     }
-  }, [handleSaveAndNavigate, clearPendingNav, navigate, to])
-
-  const handleDiscard = useCallback(() => {
-    setShowModal(false)
-    clearPendingNav()
-    clearUnsavedChanges()
-    navigate(to)
-  }, [clearPendingNav, clearUnsavedChanges, navigate, to])
+  }, [handleSaveAndNavigate, clearPendingNav])
 
   const handleClose = useCallback(() => {
     setShowModal(false)
@@ -83,7 +72,6 @@ function ProtectedNavLink({ to, children, ...props }) {
         isOpen={showModal}
         onClose={handleClose}
         onSave={handleSave}
-        onDiscard={handleDiscard}
       />
       <RequiredFieldsModal
         isOpen={showRequiredFieldsModal}

@@ -152,11 +152,14 @@ class WhatsAppController
 
             $result = WhatsAppService::checkNumber($phoneNumber);
 
+            // Selalu HTTP 200 bila respons terstruktur: axios/frontend membaca `success` di body.
+            // Jangan pakai 502 di sini — itu untuk proxy/upstream HTTP; membingungkan klien dan
+            // UI salah menampilkan "nomor tidak terdaftar" saat layanan WA/Node tidak terjangkau.
             return $this->json($response, [
                 'success' => $result['success'],
                 'data' => $result['data'] ?? ['phoneNumber' => WhatsAppService::formatPhoneNumber($phoneNumber), 'isRegistered' => false],
                 'message' => $result['message'] ?? '',
-            ], $result['success'] ? 200 : 502);
+            ], 200);
         } catch (\Exception $e) {
             error_log('WhatsAppController::check ' . $e->getMessage());
             return $this->json($response, [

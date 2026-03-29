@@ -1,8 +1,19 @@
-import { useState } from 'react'
+import { useState, useLayoutEffect, useRef } from 'react'
 import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
+import {
+  getBerkasListCacheKey,
+  readBerkasListCache,
+  writeBerkasListCache,
+  berkasListCacheMatchesUser,
+} from '../../../utils/daftarPagesLocalCache'
 
-export const useBerkasManagement = (localId) => {
+/**
+ * @param {string} localId id santri (PK)
+ * @param {{ cacheNik?: string|null, onAfterMutation?: () => void }} [options]
+ */
+export const useBerkasManagement = (localId, options = {}) => {
+  const { cacheNik, onAfterMutation } = options
   const { showNotification } = useNotification()
   const [berkasList, setBerkasList] = useState([])
   const [loadingBerkas, setLoadingBerkas] = useState(false)
@@ -13,6 +24,30 @@ export const useBerkasManagement = (localId) => {
   const [isBerkasOffcanvasOpen, setIsBerkasOffcanvasOpen] = useState(false)
   const [selectedJenisBerkas, setSelectedJenisBerkas] = useState(null)
   const [existingBerkasToReplace, setExistingBerkasToReplace] = useState(null)
+  const hydratedFromCacheRef = useRef(false)
+  const onAfterMutationRef = useRef(onAfterMutation)
+  onAfterMutationRef.current = onAfterMutation
+
+  useLayoutEffect(() => {
+    hydratedFromCacheRef.current = false
+    if (!localId) {
+      setBerkasList([])
+      setLoadingBerkas(false)
+      return
+    }
+    const sessionNik =
+      typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+    const key = getBerkasListCacheKey(cacheNik || sessionNik, localId)
+    const pack = readBerkasListCache(key)
+    const pseudoUser = { id: localId, nik: cacheNik || '' }
+    if (pack && berkasListCacheMatchesUser(pack.meta, pseudoUser, sessionNik)) {
+      setBerkasList(pack.berkasList)
+      hydratedFromCacheRef.current = true
+      setLoadingBerkas(false)
+    } else {
+      setLoadingBerkas(true)
+    }
+  }, [localId, cacheNik])
 
   const fetchBerkasList = async (idSantri) => {
     if (!idSantri) {
@@ -20,14 +55,20 @@ export const useBerkasManagement = (localId) => {
       return
     }
 
-    setLoadingBerkas(true)
+    if (!hydratedFromCacheRef.current) {
+      setLoadingBerkas(true)
+    }
     try {
       const result = await pendaftaranAPI.getBerkasList(idSantri)
-      if (result.success && result.data) {
-        setBerkasList(result.data)
-      } else {
-        setBerkasList([])
-      }
+      const list = result.success && result.data ? result.data : []
+      setBerkasList(list)
+      const sessionNik =
+        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
+      const key = getBerkasListCacheKey(cacheNik || sessionNik, idSantri)
+      writeBerkasListCache(key, list, {
+        id_santri: String(idSantri),
+        nik_snapshot: String(cacheNik || sessionNik || '').trim(),
+      })
     } catch (err) {
       console.error('Error loading berkas list:', err)
       setBerkasList([])
@@ -67,7 +108,8 @@ export const useBerkasManagement = (localId) => {
       if (result.success) {
         showNotification('Berkas berhasil dihapus', 'success')
         if (localId) {
-          fetchBerkasList(localId)
+          await fetchBerkasList(localId)
+          onAfterMutationRef.current?.()
         }
         setShowDeleteModal(false)
         setBerkasToDelete(null)
@@ -88,9 +130,10 @@ export const useBerkasManagement = (localId) => {
     setBerkasToDelete(null)
   }
 
-  const handleUploadSuccess = () => {
+  const handleUploadSuccess = async () => {
     if (localId) {
-      fetchBerkasList(localId)
+      await fetchBerkasList(localId)
+      onAfterMutationRef.current?.()
     }
     setExistingBerkasToReplace(null)
   }
@@ -121,6 +164,6 @@ export const useBerkasManagement = (localId) => {
     handleDeleteClickBerkas,
     handleDeleteConfirmBerkas,
     handleCloseDeleteModalBerkas,
-    handleUploadSuccess
+    handleUploadSuccess,
   }
 }

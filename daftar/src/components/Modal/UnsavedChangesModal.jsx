@@ -1,6 +1,6 @@
 import Modal from './Modal'
 
-function UnsavedChangesModal({ isOpen, onClose, onSave, onDiscard }) {
+function UnsavedChangesModal({ isOpen, onClose, onSave }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="md">
       <div className="p-6">
@@ -25,19 +25,21 @@ function UnsavedChangesModal({ isOpen, onClose, onSave, onDiscard }) {
               Data Belum Disimpan
             </h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Anda memiliki perubahan yang belum disimpan. Apakah Anda ingin menyimpan sebelum pindah halaman?
+              Perubahan harus disimpan dulu sebelum Anda bisa pindah halaman. Simpan untuk menyimpan ke server dan tetap di Biodata, atau Batal untuk tetap di Biodata tanpa pindah.
             </p>
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-3 mt-6">
           <button
-            onClick={onDiscard}
+            type="button"
+            onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
           >
             Batal
           </button>
           <button
+            type="button"
             onClick={onSave}
             className="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors inline-flex items-center gap-2"
           >

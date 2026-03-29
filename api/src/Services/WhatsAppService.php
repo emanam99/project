@@ -197,6 +197,11 @@ class WhatsAppService
         if ($wakeUrl === $apiUrl) {
             $wakeUrl = rtrim($apiUrl, '/') . '/wake';
         }
+        $wakeBody = new \stdClass();
+        $sidWake = trim((string) ($cfg['session_id'] ?? ''));
+        if ($sidWake !== '') {
+            $wakeBody->sessionId = $sidWake;
+        }
         try {
             $client = new \GuzzleHttp\Client(['timeout' => 10]);
             $response = $client->post($wakeUrl, [
@@ -204,7 +209,7 @@ class WhatsAppService
                     'Content-Type' => 'application/json',
                     'X-API-Key' => $apiKey,
                 ],
-                'json' => (object) [],
+                'json' => $wakeBody,
             ]);
             $body = (string) $response->getBody();
             $data = is_string($body) ? json_decode($body, true) : [];

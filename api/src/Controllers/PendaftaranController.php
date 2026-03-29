@@ -1817,9 +1817,25 @@ class PendaftaranController
         $tahunMasehi = $input['tahun_masehi'] ?? null;
 
         $idSantriInt = (int) $idSantri;
+        $tahunHijriyahNorm = $this->registrasiDbStringOrNull($tahunHijriyah);
+        $tahunMasehiNorm = $this->registrasiDbStringOrNull($tahunMasehi);
+
         $targetRegId = null;
+
+        // 1) Utamakan baris yang sudah terikat tahun ajaran ini (hindari UPDATE baris "terbaru" lalu tabrak unique tahun)
+        if ($tahunHijriyahNorm !== null && $tahunMasehiNorm !== null) {
+            $stmtByYear = $this->db->prepare(
+                'SELECT id FROM psb___registrasi WHERE id_santri = ? AND tahun_hijriyah <=> ? AND tahun_masehi <=> ? LIMIT 1'
+            );
+            $stmtByYear->execute([$idSantriInt, $tahunHijriyahNorm, $tahunMasehiNorm]);
+            $rowYear = $stmtByYear->fetch(\PDO::FETCH_ASSOC);
+            if ($rowYear) {
+                $targetRegId = (int) $rowYear['id'];
+            }
+        }
+
         $idRegInput = isset($input['id_registrasi']) ? (int) $input['id_registrasi'] : 0;
-        if ($idRegInput > 0) {
+        if ($targetRegId === null && $idRegInput > 0) {
             $stmtOwn = $this->db->prepare('SELECT id, id_santri FROM psb___registrasi WHERE id = ? LIMIT 1');
             $stmtOwn->execute([$idRegInput]);
             $own = $stmtOwn->fetch(\PDO::FETCH_ASSOC);
@@ -1833,6 +1849,18 @@ class PendaftaranController
             $exists = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
             if ($exists) {
                 $targetRegId = (int) $exists['id'];
+            }
+        }
+
+        // 2) Jika target dari id_registrasi / "terakhir" akan menulis tahun yang sudah dipakai baris lain → update baris yang benar
+        if ($targetRegId !== null && $tahunHijriyahNorm !== null && $tahunMasehiNorm !== null) {
+            $stmtDup = $this->db->prepare(
+                'SELECT id FROM psb___registrasi WHERE id_santri = ? AND tahun_hijriyah <=> ? AND tahun_masehi <=> ? AND id != ? LIMIT 1'
+            );
+            $stmtDup->execute([$idSantriInt, $tahunHijriyahNorm, $tahunMasehiNorm, $targetRegId]);
+            $other = $stmtDup->fetch(\PDO::FETCH_ASSOC);
+            if ($other) {
+                $targetRegId = (int) $other['id'];
             }
         }
 
@@ -2709,7 +2737,7 @@ class PendaftaranController
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
             if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($user) && RoleHelper::tokenIsSantriDaftarContext($user)) {
-                $idSantri = $user['user_id'] ?? $user['id'] ?? $user['santri_id'] ?? null;
+                $idSantri = SantriHelper::resolveSantriIdFromDaftarToken($this->db, $user);
             }
             if (!$idSantri) {
                 return $this->jsonResponse($response, [
@@ -2725,6 +2753,7 @@ class PendaftaranController
                 ], 404);
             }
             $sql = "SELECT 
+                s.tanggal_dibuat, s.tanggal_update,
                 s.id, s.nis, s.nama, s.nik, s.tempat_lahir, s.tanggal_lahir, s.gender, s.nisn, s.no_kk, s.kepala_keluarga,
                 s.anak_ke, s.jumlah_saudara, s.saudara_di_pesantren, s.hobi, s.cita_cita, s.kebutuhan_khusus,
                 s.ayah, s.status_ayah, s.nik_ayah, s.tempat_lahir_ayah, s.tanggal_lahir_ayah,
@@ -2792,7 +2821,7 @@ class PendaftaranController
             $queryParams = $request->getQueryParams();
             $idSantri = $queryParams['id_santri'] ?? null;
             if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
-                $idSantri = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
+                $idSantri = SantriHelper::resolveSantriIdFromDaftarToken($this->db, $userArr);
             }
             $tahunHijriyah = $queryParams['tahun_hijriyah'] ?? null;
             $tahunMasehi = $queryParams['tahun_masehi'] ?? null;
@@ -2813,7 +2842,7 @@ class PendaftaranController
             }
 
             // Build query dengan filter tahun dan JOIN dengan pengurus + santri (untuk nis tampilan)
-            $sql = "SELECT r.id, r.id_santri, s.nis, r.wajib, r.bayar, r.kurang, r.id_admin, r.tahun_hijriyah, r.tahun_masehi, 
+            $sql = "SELECT r.id, r.id_santri, s.nis, r.tanggal_dibuat, r.tanggal_update, r.wajib, r.bayar, r.kurang, r.id_admin, r.tahun_hijriyah, r.tahun_masehi, 
                            r.status_pendaftar, r.keterangan_status, r.daftar_diniyah, r.daftar_formal, r.status_murid, r.prodi, r.gelombang,
                            r.status_santri, r.gender,
                            r.madrasah, r.nama_madrasah, r.alamat_madrasah, r.lulus_madrasah,
@@ -2844,7 +2873,7 @@ class PendaftaranController
 
             // Selaras dengan save-biodata: jika filter tahun tidak cocok (format beda di DB), tetap kembalikan registrasi terakhir santri.
             if (!$data && $resolvedId) {
-                $sqlFallback = "SELECT r.id, r.id_santri, s.nis, r.wajib, r.bayar, r.kurang, r.id_admin, r.tahun_hijriyah, r.tahun_masehi, 
+                $sqlFallback = "SELECT r.id, r.id_santri, s.nis, r.tanggal_dibuat, r.tanggal_update, r.wajib, r.bayar, r.kurang, r.id_admin, r.tahun_hijriyah, r.tahun_masehi, 
                            r.status_pendaftar, r.keterangan_status, r.daftar_diniyah, r.daftar_formal, r.status_murid, r.prodi, r.gelombang,
                            r.status_santri, r.gender,
                            r.madrasah, r.nama_madrasah, r.alamat_madrasah, r.lulus_madrasah,
@@ -2899,7 +2928,7 @@ class PendaftaranController
             }
 
             if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
-                $idSantriToken = $userArr['user_id'] ?? $userArr['id'] ?? $userArr['santri_id'] ?? null;
+                $idSantriToken = SantriHelper::resolveSantriIdFromDaftarToken($this->db, $userArr);
                 if ($idSantriToken !== null) {
                     $stmtOwn = $this->db->prepare("SELECT id FROM psb___registrasi WHERE id = ? AND id_santri = ? LIMIT 1");
                     $stmtOwn->execute([$idRegistrasi, $idSantriToken]);
