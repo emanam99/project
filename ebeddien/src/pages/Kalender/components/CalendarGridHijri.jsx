@@ -7,6 +7,8 @@ import { HIJRI_DAY_HEADERS } from '../utils/constants'
 import { getGridClassName, getGridLineStyle } from '../utils/gridView'
 import { getBulanName } from '../utils/bulanHijri'
 import { INDONESIAN_MONTHS } from '../utils/dateRange'
+import { matchesHariPentingHijriCalendar } from '../utils/hariPentingMatch'
+import { formatJamRangeLabel } from '../utils/hariPentingJam'
 import './CalendarGrid.css'
 
 /**
@@ -18,7 +20,17 @@ import './CalendarGrid.css'
  * hariPentingByDay: { [day]: string[] } warna per tanggal
  * hariPentingList: array penuh untuk popup rincian
  */
-export default function CalendarGridHijri({ monthData, showGregorian = true, showPasaran = true, gridViewSettings, showHariPentingMarkers = false, hariPentingByDay = {}, hariPentingList = [] }) {
+export default function CalendarGridHijri({
+  monthData,
+  showGregorian = true,
+  showPasaran = true,
+  gridViewSettings,
+  showHariPentingMarkers = false,
+  hariPentingByDay = {},
+  hariPentingList = [],
+  onRequestTambahPribadi,
+  canTambahPribadi = false
+}) {
   const [popup, setPopup] = useState({ open: false, day: null, rect: null })
 
   const closePopup = useCallback(() => setPopup((p) => ({ ...p, open: false })), [])
@@ -48,22 +60,9 @@ export default function CalendarGridHijri({ monthData, showGregorian = true, sho
     const gregYear = popupGregorianDate.getFullYear()
     const hijriBulan = monthData.id_bulan != null ? Number(monthData.id_bulan) : null
     const hijriYear = monthData.tahun != null ? Number(monthData.tahun) : null
-    return hariPentingList.filter((item) => {
-      if (item.aktif === 0) return false
-      if (item.kategori === 'hijriyah') {
-        const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-        const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-        const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-        return eventDay === day && (eventBulan == null || eventBulan === hijriBulan) && (eventTahun == null || eventTahun === '' || eventTahun === hijriYear)
-      }
-      if (item.kategori === 'masehi') {
-        const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-        const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-        const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-        return eventDay === gregDay && (eventBulan == null || eventBulan === gregMonth) && (eventTahun == null || eventTahun === '' || eventTahun === gregYear)
-      }
-      return false
-    })
+    return hariPentingList.filter((item) =>
+      matchesHariPentingHijriCalendar(day, hijriBulan, hijriYear, gregDay, gregMonth, gregYear, item)
+    )
   }, [popup.open, popup.day, hariPentingList, monthData])
   const { headers, emptyCount, days } = useMemo(() => {
     if (!monthData || !monthData.mulai || !monthData.akhir) {
@@ -198,7 +197,9 @@ export default function CalendarGridHijri({ monthData, showGregorian = true, sho
             <p className="kalender-grid__day-popup-empty">Tidak ada hari penting pada tanggal ini.</p>
           ) : (
             <ul className="kalender-grid__day-popup-list">
-              {itemsForDay.map((item) => (
+              {itemsForDay.map((item) => {
+                const jamStr = formatJamRangeLabel(item)
+                return (
                 <li key={item.id} className="kalender-grid__day-popup-item">
                   {item.warna_label && (
                     <span
@@ -209,14 +210,59 @@ export default function CalendarGridHijri({ monthData, showGregorian = true, sho
                   )}
                   <div className="kalender-grid__day-popup-item-body">
                     <div className="kalender-grid__day-popup-item-name">{item.nama_event}</div>
+                    {jamStr && (
+                      <div className="kalender-grid__day-popup-item-ket text-xs font-medium text-gray-600 dark:text-gray-300">
+                        {jamStr}
+                      </div>
+                    )}
                     {item.keterangan && (
                       <div className="kalender-grid__day-popup-item-ket">{item.keterangan}</div>
                     )}
                   </div>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
+        </div>
+        <div className="kalender-grid__day-popup-footer">
+          <button
+            type="button"
+            className="kalender-grid__day-popup-tambah"
+            disabled={!canTambahPribadi}
+            title={
+              !canTambahPribadi
+                ? 'Login untuk menambah jadwal pribadi (hanya Anda yang melihatnya)'
+                : 'Tambah jadwal pribadi di tanggal ini'
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              if (!onRequestTambahPribadi || !canTambahPribadi || popup.day == null || !monthData?.mulai) return
+              const startDate = new Date(monthData.mulai)
+              const popupGregorianDate = new Date(startDate)
+              popupGregorianDate.setDate(startDate.getDate() + (Number(popup.day) - 1))
+              const hijriBulan = monthData.id_bulan != null ? Number(monthData.id_bulan) : null
+              const hijriYear = monthData.tahun != null ? Number(monthData.tahun) : null
+              onRequestTambahPribadi({
+                defaultKategori: 'hijriyah',
+                hijri:
+                  hijriBulan != null && hijriYear != null
+                    ? { day: Number(popup.day), month: hijriBulan, year: hijriYear }
+                    : null,
+                gregorian: {
+                  day: popupGregorianDate.getDate(),
+                  month: popupGregorianDate.getMonth() + 1,
+                  year: popupGregorianDate.getFullYear()
+                }
+              })
+              closePopup()
+            }}
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+            Tambah jadwal saya
+          </button>
         </div>
       </div>
         </motion.div>
@@ -245,22 +291,9 @@ export default function CalendarGridHijri({ monthData, showGregorian = true, sho
           const gregYear = d.dayDate.getFullYear()
           const hijriBulan = monthData.id_bulan != null ? Number(monthData.id_bulan) : null
           const hijriYear = monthData.tahun != null ? Number(monthData.tahun) : null
-          return hariPentingList.filter((item) => {
-            if (item.aktif === 0) return false
-            if (item.kategori === 'hijriyah') {
-              const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-              const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-              const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-              return eventDay === day && (eventBulan == null || eventBulan === hijriBulan) && (eventTahun == null || eventTahun === '' || eventTahun === hijriYear)
-            }
-            if (item.kategori === 'masehi') {
-              const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-              const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-              const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-              return eventDay === gregDay && (eventBulan == null || eventBulan === gregMonth) && (eventTahun == null || eventTahun === '' || eventTahun === gregYear)
-            }
-            return false
-          })
+          return hariPentingList.filter((item) =>
+            matchesHariPentingHijriCalendar(day, hijriBulan, hijriYear, gregDay, gregMonth, gregYear, item)
+          )
         })()
         const hasHariPenting = itemsOnDay.length > 0
         const handleDayClick = (e) => {

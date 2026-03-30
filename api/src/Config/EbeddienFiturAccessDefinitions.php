@@ -294,4 +294,22 @@ final class EbeddienFiturAccessDefinitions
             'menu.kalender_pesantren.pengaturan',
         ];
     }
+
+    /** POST /api/kalender (bulk bulan) — terpisah dari tab hari penting. */
+    public static function kalenderPengaturanBulanSelectors(): array
+    {
+        return self::merge(
+            ['action.kalender.pengaturan.tab_bulan'],
+            ['menu.kalender.pengaturan']
+        );
+    }
+
+    /** Grup /api/hari-penting (picker, simpan, hapus). */
+    public static function kalenderPengaturanHariPentingSelectors(): array
+    {
+        return self::merge(
+            ['action.kalender.pengaturan.tab_hari_penting'],
+            ['menu.kalender.pengaturan']
+        );
+    }
 }

@@ -77,9 +77,29 @@ try {
 
 # --- Upload + ekstrak di VPS ---
 Write-Host "[WA] Upload ke VPS ($REMOTE_PATH)..." -ForegroundColor Cyan
-& scp @scpArgs $tarPath "${sshTarget}:${REMOTE_PATH}/"
+$scpOk = $false
+for ($i = 0; $i -lt 3; $i++) {
+    if ($i -gt 0) {
+        Write-Host "[WA] Ulangi scp (percobaan $($i + 1)/3) setelah 4 detik..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 4
+    }
+    & scp @scpArgs $tarPath "${sshTarget}:${REMOTE_PATH}/"
+    if ($LASTEXITCODE -eq 0) { $scpOk = $true; break }
+}
+if (-not $scpOk) {
+    Write-Host ""
+    Write-Host "[WA] scp gagal setelah 3 percobaan. 'Connection closed' biasanya: fail2ban, firewall VPS, anti-bruteforce SSH, atau jaringan tidak stabil." -ForegroundColor Red
+    Write-Host "      Uji: ssh $sshTarget  |  Di VPS: sudo fail2ban-client status sshd  |  Arsip lokal: $tarPath" -ForegroundColor Yellow
+    exit 1
+}
+
 $extractCmd = "cd $REMOTE_PATH && tar --warning=no-timestamp -xf $WA_TAR && rm -f $WA_TAR"
 & ssh @sshArgs $sshTarget $extractCmd
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[WA] Ekstrak di VPS gagal. Periksa apakah $REMOTE_PATH ada dan tar tersedia. Arsip lokal: $tarPath" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
 Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
 
 # --- .env di server: jika belum ada, buat minimal (PORT) ---

@@ -338,7 +338,7 @@ if ($doApi) {
         Write-Host "[API] Menjalankan: $Label" -ForegroundColor Cyan
         & ssh @sshBase $RemoteCmd
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "[API] Gagal: $Label (SSH exit $LASTEXITCODE). Cek jaringan/VPN, firewall, atau jalankan perintah manual di Hostinger hPanel → SSH."
+            Write-Error "[API] Gagal: $Label (SSH exit $LASTEXITCODE). Cek jaringan/VPN/firewall, atau jalankan Phinx manual lewat hPanel Hostinger (Advanced - SSH / Terminal)."
         }
     }
 

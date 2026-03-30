@@ -9,9 +9,19 @@ const BULAN_HIJRIYAH = ['Muharram', 'Safar', 'Rabiul Awal', 'Rabiul Akhir', 'Jum
 /** Urutkan list hari penting: tanggal paling rendah dulu (tanggal null/ kosong di akhir) */
 function sortByTanggal(list) {
   return [...list].sort((a, b) => {
-    const tglA = a.tanggal != null && a.tanggal !== '' ? Number(a.tanggal) : 99
-    const tglB = b.tanggal != null && b.tanggal !== '' ? Number(b.tanggal) : 99
-    return tglA - tglB
+    const keyA =
+      a.tipe === 'dari_sampai' && a.tanggal_dari
+        ? a.tanggal_dari
+        : a.tanggal != null && a.tanggal !== ''
+          ? String(a.tanggal).padStart(2, '0')
+          : '99'
+    const keyB =
+      b.tipe === 'dari_sampai' && b.tanggal_dari
+        ? b.tanggal_dari
+        : b.tanggal != null && b.tanggal !== ''
+          ? String(b.tanggal).padStart(2, '0')
+          : '99'
+    return keyA.localeCompare(keyB)
   })
 }
 

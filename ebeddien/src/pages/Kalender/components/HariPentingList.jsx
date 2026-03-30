@@ -1,7 +1,27 @@
+import { formatHijriDateDisplay } from '../../../components/PickDateHijri/PickDateHijri'
+import { formatJamRangeLabel } from '../utils/hariPentingJam'
+
 const BULAN_MASEHI = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const BULAN_HIJRIYAH = ['Muharram', 'Safar', 'Rabiul Awal', 'Rabiul Akhir', 'Jumadil Awal', 'Jumadil Akhir', 'Rajab', "Sya'ban", 'Ramadhan', 'Syawal', 'Dzulkaidah', 'Dzulhijjah']
 
+function formatYmdMasehi(ymd) {
+  if (!ymd || typeof ymd !== 'string') return ''
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return ymd
+  const y = m[1]
+  const mo = Number(m[2])
+  const d = Number(m[3])
+  const namaBln = BULAN_MASEHI[mo - 1]
+  return `${d} ${namaBln != null ? namaBln : mo} ${y}`
+}
+
 function formatTanggal(item, tab) {
+  if (item.tipe === 'dari_sampai' && item.tanggal_dari && item.tanggal_sampai) {
+    if (item.kategori === 'hijriyah') {
+      return `${formatHijriDateDisplay(item.tanggal_dari)} – ${formatHijriDateDisplay(item.tanggal_sampai)}`
+    }
+    return `${formatYmdMasehi(item.tanggal_dari)} – ${formatYmdMasehi(item.tanggal_sampai)}`
+  }
   const tgl = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
   const bln = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
   const thn = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
@@ -50,6 +70,7 @@ export default function HariPentingList({ list = [], loading = false, onRefresh,
       <ul className="space-y-2.5 list-none p-0 m-0">
         {list.map((item) => {
           const tanggalLabel = formatTanggal(item, tab)
+          const jamLabel = formatJamRangeLabel(item)
           return (
             <li
               key={item.id}
@@ -66,9 +87,9 @@ export default function HariPentingList({ list = [], loading = false, onRefresh,
                 <div className="font-semibold text-gray-800 dark:text-gray-100">
                   {item.nama_event}
                 </div>
-                {tanggalLabel && (
+                {(tanggalLabel || jamLabel) && (
                   <div className="mt-1 text-xs font-medium text-teal-600 dark:text-teal-400">
-                    {tanggalLabel}
+                    {[tanggalLabel, jamLabel].filter(Boolean).join(' · ')}
                   </div>
                 )}
                 {item.keterangan && (

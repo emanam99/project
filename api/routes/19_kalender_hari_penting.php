@@ -9,12 +9,18 @@ use App\Controllers\KalenderController;
 use App\Controllers\HariPentingController;
 
 return function (\Slim\App $app): void {
+    /** Jadwal hari penting pribadi (target users.id pembuat saja) — semua user login, tanpa menu admin kalender */
+    $app->post('/api/hari-penting/personal-self', [HariPentingController::class, 'postPersonalSelf'])
+        ->add(new AuthMiddleware());
+
     $app->group('/api/kalender', function ($group) {
         $group->post('', [KalenderController::class, 'postBulk']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::kalenderGoogleStaffSelectors(), ['admin_kalender', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::kalenderPengaturanBulanSelectors(), ['admin_kalender', 'super_admin']))->add(new AuthMiddleware());
 
     $app->group('/api/hari-penting', function ($group) {
+        $group->get('/user-picker', [HariPentingController::class, 'getUserPicker']);
+        $group->get('/lembaga-options', [HariPentingController::class, 'getLembagaOptions']);
         $group->post('', [HariPentingController::class, 'post']);
         $group->delete('', [HariPentingController::class, 'delete']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::kalenderGoogleStaffSelectors(), ['admin_kalender', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::kalenderPengaturanHariPentingSelectors(), ['admin_kalender', 'super_admin']))->add(new AuthMiddleware());
 };

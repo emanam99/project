@@ -23,9 +23,13 @@ function PrintBoyong({ data = {}, inOffcanvas = false }) {
           </div>
 
           <div className="surat-boyong-nomor">
-            <p>Nomor&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: {nomor}</p>
-            <p>Lampiran&nbsp;&nbsp;: -</p>
-            <p>Perihal&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: Surat Rekomendasi</p>
+            <table className="surat-boyong-nomor-table">
+              <tbody>
+                <tr><td className="label">Nomor</td><td className="sep">:</td><td className="value">{nomor}</td></tr>
+                <tr><td className="label">Lampiran</td><td className="sep">:</td><td className="value">-</td></tr>
+                <tr><td className="label">Perihal</td><td className="sep">:</td><td className="value">Surat Rekomendasi</td></tr>
+              </tbody>
+            </table>
           </div>
 
           <div className="surat-boyong-isi">

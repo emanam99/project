@@ -48,8 +48,30 @@ class MenuActionsFiturSeed extends AbstractSeed
         $this->seedLaporanUwaba($conn, $pidStmt, $ins);
         $this->seedUgtMadrasahScope($conn, $pidStmt, $ins);
         $this->seedUgtLaporan($conn, $pidStmt, $ins);
+        $this->seedKalenderPengaturan($conn, $pidStmt, $ins);
 
         $this->reparentPendaftaranItemRoutes($conn);
+    }
+
+    private function seedKalenderPengaturan(\PDO $conn, \PDOStatement $pidStmt, \PDOStatement $ins): void
+    {
+        $parentId = $this->parentId($conn, $pidStmt, 'menu.kalender.pengaturan');
+        if ($parentId === null) {
+            return;
+        }
+        $meta = '{"requiresRole":["admin_kalender","super_admin"]}';
+        $actions = [
+            ['action.kalender.pengaturan.tab_bulan', 'Pengaturan kalender · Tab bulan (matriks)', 10],
+            ['action.kalender.pengaturan.tab_hari_penting', 'Pengaturan kalender · Tab hari penting', 20],
+            ['action.hari_penting.target.global', 'Hari penting · Target audiens global', 30],
+            ['action.hari_penting.target.lembaga', 'Hari penting · Target lembaga (sesuai jabatan)', 40],
+            ['action.hari_penting.target.user_selembaga', 'Hari penting · Target pengguna selembaga', 50],
+            ['action.hari_penting.target.self', 'Hari penting · Target hanya diri sendiri', 60],
+        ];
+        foreach ($actions as $a) {
+            // Urutan placeholder: parent_id, code, label, group_label, sort_order, meta_json
+            $ins->execute([$parentId, $a[0], $a[1], 'Kalender', $a[2], $meta]);
+        }
     }
 
     private function parentId(\PDO $conn, \PDOStatement $pidStmt, string $code): ?int

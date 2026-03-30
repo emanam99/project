@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import CalendarHijri from './components/CalendarHijri'
 import CalendarMasehi from './components/CalendarMasehi'
+import TambahHariPentingPribadiOffcanvas from './components/TambahHariPentingPribadiOffcanvas'
 import { kalenderAPI } from '../../services/api'
+import { useAuthStore } from '../../store/authStore'
 import { loadFontSettings, saveFontSettings, loadGridViewSettings, saveGridViewSettings, loadShowHariPentingMarkers, saveShowHariPentingMarkers, loadActiveTab, saveActiveTab } from './utils/kalenderStorage'
 import { getTodayCache, setTodayCache } from './utils/kalenderCache'
 import './Kalender.css'
@@ -13,6 +15,13 @@ function getInitialTodayState() {
 }
 
 export default function KalenderPage() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const token = useAuthStore((s) => s.token)
+  const canTambahPribadi = Boolean(isAuthenticated && token)
+
+  const [hariPentingRefreshKey, setHariPentingRefreshKey] = useState(0)
+  const [personalPayload, setPersonalPayload] = useState(null)
+
   const [state, setState] = useState(getInitialTodayState)
   const { todayInfo, loadingToday } = state
   const setTodayInfo = (v) => setState((s) => ({ ...s, todayInfo: v }))
@@ -60,8 +69,24 @@ export default function KalenderPage() {
     saveActiveTab(activeTab)
   }, [activeTab])
 
+  const handleRequestTambahPribadi = useCallback((payload) => {
+    setPersonalPayload(payload)
+  }, [])
+
+  const bumpHariPenting = useCallback(() => {
+    setHariPentingRefreshKey((k) => k + 1)
+  }, [])
+
+  const personalOffcanvasOpen = personalPayload != null
+
   return (
     <div className="kalender-page h-full min-h-0 flex flex-col overflow-hidden">
+      <TambahHariPentingPribadiOffcanvas
+        open={personalOffcanvasOpen}
+        payload={personalPayload}
+        onClose={() => setPersonalPayload(null)}
+        onSaved={bumpHariPenting}
+      />
       {/* Tab Hijriyah / Masehi – tetap di atas, tidak ikut scroll */}
       <div className="kalender-page__tabs flex-shrink-0">
         <button
@@ -112,6 +137,9 @@ export default function KalenderPage() {
                 onGridViewSettingsChange={setGridViewSettings}
                 showHariPentingMarkers={showHariPentingMarkers}
                 onShowHariPentingMarkersChange={setShowHariPentingMarkers}
+                hariPentingRefreshKey={hariPentingRefreshKey}
+                onRequestTambahPribadi={handleRequestTambahPribadi}
+                canTambahPribadi={canTambahPribadi}
               />
             )
         )}
@@ -123,6 +151,9 @@ export default function KalenderPage() {
             onGridViewSettingsChange={setGridViewSettings}
             showHariPentingMarkers={showHariPentingMarkers}
             onShowHariPentingMarkersChange={setShowHariPentingMarkers}
+            hariPentingRefreshKey={hariPentingRefreshKey}
+            onRequestTambahPribadi={handleRequestTambahPribadi}
+            canTambahPribadi={canTambahPribadi}
           />
         )}
       </div>

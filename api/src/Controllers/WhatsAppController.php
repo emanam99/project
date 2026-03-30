@@ -134,13 +134,15 @@ class WhatsAppController
     /**
      * Cek nomor WA (apakah terdaftar di WhatsApp).
      * POST /api/wa/check
-     * Body: { "phoneNumber": "08xxx atau 62xxx" }
+     * Body: { "phoneNumber": "08xxx atau 62xxx", "sessionId": "default|wa2|..." (opsional) }
      */
     public function check(Request $request, Response $response): Response
     {
         try {
             $data = $request->getParsedBody();
             $phoneNumber = trim($data['phoneNumber'] ?? $data['phone_number'] ?? '');
+            $sessionId = isset($data['sessionId']) ? trim((string) $data['sessionId']) : (isset($data['session_id']) ? trim((string) $data['session_id']) : '');
+            $sessionId = $sessionId !== '' ? $sessionId : null;
 
             if ($phoneNumber === '') {
                 return $this->json($response, [
@@ -150,7 +152,7 @@ class WhatsAppController
                 ], 400);
             }
 
-            $result = WhatsAppService::checkNumber($phoneNumber);
+            $result = WhatsAppService::checkNumber($phoneNumber, $sessionId);
 
             // Selalu HTTP 200 bila respons terstruktur: axios/frontend membaca `success` di body.
             // Jangan pakai 502 di sini — itu untuk proxy/upstream HTTP; membingungkan klien dan

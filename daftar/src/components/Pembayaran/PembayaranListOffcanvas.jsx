@@ -62,6 +62,7 @@ function PembayaranListOffcanvas({
   const [stepDirection, setStepDirection] = useState(1) // 1: maju (kanan), -1: mundur (kiri)
   const [transactionStatus, setTransactionStatus] = useState(null) // Status transaksi: 'pending', 'paid', 'expired', 'cancelled', 'failed'
   const [isCheckingStatus, setIsCheckingStatus] = useState(false) // Loading state untuk check status manual
+  const [openingIpaymuHistoryId, setOpeningIpaymuHistoryId] = useState(null)
   const [countdownRemaining, setCountdownRemaining] = useState(null) // Sisa detik sampai kadaluwarsa (untuk hitungan mundur)
   const [isSandboxMode, setIsSandboxMode] = useState(false) // Mode sandbox dari pengaturan - untuk tampilkan peringatan
   const cancelInProgressRef = useRef(false) // Blok multiple klik pembatalan
@@ -141,6 +142,26 @@ function PembayaranListOffcanvas({
     { value: 'alfamart', label: 'Alfamart' },
     { value: 'indomaret', label: 'Indomaret' }
   ]
+
+  const normalizeIpaymuStatus = (status) => {
+    const s = String(status || '').toLowerCase().trim()
+    if (!s) return 'pending'
+    if (s === 'success') return 'paid'
+    return s
+  }
+
+  const getIpaymuBankName = (paymentMethod, paymentChannel) => {
+    if (paymentMethod === 'va' && paymentChannel) {
+      const channelData = vaChannels.find(c => c.value === paymentChannel)
+      return channelData ? channelData.label : String(paymentChannel).toUpperCase()
+    }
+    if (paymentMethod === 'cstore' && paymentChannel) {
+      const channelData = cstoreChannels.find(c => c.value === paymentChannel)
+      return channelData ? channelData.label : String(paymentChannel).toUpperCase()
+    }
+    if (paymentMethod === 'qris') return 'QRIS'
+    return 'iPayMu'
+  }
 
   // Helper function untuk mendapatkan nomor dari jenis_berkas
   const getBuktiNumber = (berkas) => {
@@ -242,6 +263,72 @@ function PembayaranListOffcanvas({
 
     return combined
   }, [paymentHistory, buktiPembayaranList])
+
+  const ipaymuCreateHistory = useMemo(() => {
+    const rows = (paymentHistory || []).filter((p) => {
+      const via = String(p?.via || '').toLowerCase().trim()
+      return via === 'ipaymu' || via === 'ipay mu'
+    })
+    return rows
+      .map((p) => ({
+        ...p,
+        txStatus: normalizeIpaymuStatus(p?.transaction_status || p?.status || 'pending'),
+        txId: p?.id_payment_transaction || p?.session_id || p?.ipaymu_transaction_id || p?.id,
+      }))
+      .sort((a, b) => {
+        const da = new Date(a?.created_at || a?.tanggal_dibuat || 0).getTime()
+        const db = new Date(b?.created_at || b?.tanggal_dibuat || 0).getTime()
+        return db - da
+      })
+  }, [paymentHistory])
+
+  const handleOpenIpaymuHistory = async (tx) => {
+    if (!tx?.txId) return
+    setOpeningIpaymuHistoryId(tx.txId)
+    try {
+      const statusResult = await paymentTransactionAPI.checkStatus(tx.txId)
+      const txData = statusResult?.success && statusResult?.data ? statusResult.data : null
+      const rawStatus = txData?.status || tx?.txStatus || 'pending'
+      const normalizedStatus = normalizeIpaymuStatus(rawStatus)
+      const bankName = getIpaymuBankName(
+        txData?.payment_method || tx?.payment_method,
+        txData?.payment_channel || tx?.payment_channel
+      )
+      const expiredAt = (txData?.expired_at && new Date(txData.expired_at).getTime())
+        || (tx?.expired_at && new Date(tx.expired_at).getTime())
+        || ((tx?.created_at || tx?.tanggal_dibuat)
+          ? new Date(tx.created_at || tx.tanggal_dibuat).getTime() + 24 * 60 * 60 * 1000
+          : Date.now() + 24 * 60 * 60 * 1000)
+
+      setVaInfo({
+        va_number: txData?.va_number || tx?.va_number || null,
+        bank: bankName,
+        payment_method: txData?.payment_method || tx?.payment_method || null,
+        payment_channel: txData?.payment_channel || tx?.payment_channel || null,
+        payment_url: txData?.payment_url || tx?.payment_url || null,
+        qr_code: txData?.qr_code || tx?.qr_code || null,
+        session_id: txData?.session_id || tx?.session_id || tx.txId,
+        transaction_id: txData?.transaction_id || tx?.ipaymu_transaction_id || tx.txId,
+        ipaymu_transaction_id: txData?.transaction_id || tx?.ipaymu_transaction_id || tx.txId,
+        amount: txData?.amount || tx?.nominal || null,
+        admin_fee: txData?.admin_fee ?? tx?.admin_fee ?? 0,
+        total: txData?.total ?? tx?.total ?? txData?.amount ?? tx?.nominal ?? 0,
+        expired_at: expiredAt
+      })
+      setTransactionStatus(rawStatus)
+      setStepDirection(1)
+      if (normalizedStatus === 'paid') {
+        goToIPaymuStep(4)
+      } else {
+        // pending/cancelled/expired/failed tetap dibuka ke halaman menunggu/detail
+        goToIPaymuStep(3)
+      }
+    } catch (err) {
+      showNotification('Gagal membuka detail transaksi iPayMu', 'error')
+    } finally {
+      setOpeningIpaymuHistoryId(null)
+    }
+  }
 
   /** Setelah mutasi: satu refetch parent (sudah termasuk getTransaksi + cache) */
   const syncAfterPembayaranMutation = useCallback(async () => {
@@ -1203,7 +1290,7 @@ function PembayaranListOffcanvas({
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-                {showIPaymuModal ? (vaInfo ? 'Informasi Pembayaran' : 'Bayar dengan iPayMu') : 'Rincian Pembayaran'}
+                {showIPaymuModal ? (vaInfo ? 'Informasi Pembayaran' : 'Tambah Pembayaran') : 'Rincian Pembayaran'}
               </h2>
               <button
                 onClick={showIPaymuModal ? () => {
@@ -1906,13 +1993,55 @@ function PembayaranListOffcanvas({
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                             </svg>
-                            iPayMu
+                            Tambah Pembayaran
                           </>
                         )}
                       </button>
                       <p className="text-[10px] text-center text-gray-500 dark:text-gray-400">Pembayaran Terdeteksi Otomatis</p>
                     </div>
                   </div>
+                  {ipaymuCreateHistory.length > 0 && (
+                    <div className="mt-3 border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
+                      <p className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-2">Riwayat Buat Pembayaran iPayMu</p>
+                      <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                        {ipaymuCreateHistory.slice(0, 6).map((tx) => {
+                          const status = normalizeIpaymuStatus(tx.txStatus)
+                          const statusLabel = status === 'paid'
+                            ? 'Paid'
+                            : status === 'cancelled'
+                              ? 'Dibatalkan'
+                              : status === 'expired'
+                                ? 'Expired'
+                                : status === 'failed'
+                                  ? 'Gagal'
+                                  : 'Menunggu'
+                          const methodLabel = tx.payment_method === 'qris'
+                            ? 'QRIS'
+                            : tx.payment_method === 'cstore'
+                              ? (cstoreChannels.find(c => c.value === tx.payment_channel)?.label || 'CStore')
+                              : tx.payment_method === 'va'
+                                ? (vaChannels.find(c => c.value === tx.payment_channel)?.label || 'VA')
+                                : 'iPayMu'
+                          return (
+                            <button
+                              key={String(tx.txId)}
+                              type="button"
+                              onClick={() => handleOpenIpaymuHistory(tx)}
+                              disabled={openingIpaymuHistoryId === tx.txId}
+                              className="w-full text-left px-2 py-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">
+                                  {methodLabel} - Rp {Number(tx.nominal || 0).toLocaleString('id-ID')}
+                                </span>
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400">{statusLabel}</span>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
                 </>

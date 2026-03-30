@@ -32,7 +32,7 @@ export const formatPhoneNumber = (phoneNumber) => {
  * @param {string} phoneNumber - Nomor telepon yang akan dicek (bisa dengan atau tanpa format)
  * @returns {Promise<{success: boolean, isRegistered: boolean, message?: string, error?: Error}>}
  */
-export const checkWhatsAppNumber = async (phoneNumber) => {
+export const checkWhatsAppNumber = async (phoneNumber, sessionId = null) => {
   if (!phoneNumber || String(phoneNumber).trim() === '') {
     return {
       success: false,
@@ -43,7 +43,7 @@ export const checkWhatsAppNumber = async (phoneNumber) => {
 
   try {
     const formattedNumber = formatPhoneNumber(phoneNumber.trim())
-    const result = await checkWhatsAppNumberViaAPI(formattedNumber)
+    const result = await checkWhatsAppNumberViaAPI(formattedNumber, sessionId)
 
     const data = result.data || {}
     const isRegistered = !!data.isRegistered

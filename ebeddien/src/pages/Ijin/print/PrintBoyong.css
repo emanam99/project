@@ -41,9 +41,28 @@
   line-height: 1.2;
 }
 
-.surat-boyong-nomor p {
-  margin: 0;
+.surat-boyong-nomor-table {
+  width: 100%;
+  border-collapse: collapse;
   line-height: 1.35;
+}
+
+.surat-boyong-nomor-table .label {
+  vertical-align: top;
+  padding: 0 8px 0 0;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.surat-boyong-nomor-table .sep {
+  vertical-align: top;
+  padding: 1px 8px 1px 0;
+  width: 1%;
+}
+
+.surat-boyong-nomor-table .value {
+  vertical-align: top;
+  padding: 1px 0;
 }
 
 .surat-boyong-isi {
@@ -101,7 +120,7 @@
 .surat-boyong-ttd-images {
   position: relative;
   width: 260px;
-  height: 150px;
+  height: 80px;
   margin: 12px 0 2px 0;
   margin-left: auto;
   margin-right: 0;
@@ -109,8 +128,8 @@
 
 .surat-boyong-ttd-img {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  left: 75px;
+  top: -15px;
   width: 200px;
   height: 85px;
   object-fit: contain;
@@ -121,8 +140,8 @@
 
 .surat-boyong-stempel {
   position: absolute;
-  right: 110px;
-  bottom: 0;
+  left: 41px;
+  top: -25px;
   width: 135px;
   height: 135px;
   object-fit: contain;

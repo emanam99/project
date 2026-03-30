@@ -771,7 +771,16 @@ class PaymentTransactionController
                         } else {
                             $errorMessage .= ' (Pastikan akun iPayMu Anda sudah teraktivasi untuk QRIS di production mode)';
                         }
-                    } elseif ($paymentMethod === 'cstore' && (stripos($errorMessage, 'payment code') !== false || stripos($errorMessage, 'code') !== false || stripos($errorMessage, 'alfamart') !== false || stripos($errorMessage, 'indomaret') !== false)) {
+                    } elseif (
+                        $paymentMethod === 'cstore'
+                        && (
+                            stripos($errorMessage, 'payment code') !== false
+                            || stripos($errorMessage, 'payment channel') !== false
+                            || stripos($errorMessage, 'invalid channel') !== false
+                            || stripos($errorMessage, 'alfamart') !== false
+                            || stripos($errorMessage, 'indomaret') !== false
+                        )
+                    ) {
                         if ($isSandbox) {
                             $errorMessage .= ' (Catatan: CStore (Alfamart/Indomaret) mungkin tidak didukung di sandbox mode iPayMu. Silakan gunakan production mode atau metode pembayaran lain seperti VA)';
                         } else {
@@ -1716,7 +1725,8 @@ class PaymentTransactionController
                 AND p.tabel_referensi = ?
                 AND p.jenis_pembayaran = ?
                 AND pt.payment_method = ?
-                AND COALESCE(NULLIF(TRIM(pt.payment_channel), \'\'), \'\') = COALESCE(NULLIF(TRIM(?), \'\'), \'\')
+                AND COALESCE(TRIM(pt.payment_channel) COLLATE utf8mb4_unicode_ci, \'\' COLLATE utf8mb4_unicode_ci)
+                    = COALESCE(TRIM(CAST(? AS CHAR CHARACTER SET utf8mb4)) COLLATE utf8mb4_unicode_ci, \'\' COLLATE utf8mb4_unicode_ci)
                 AND ABS(CAST(pt.amount AS DECIMAL(15,2)) - CAST(? AS DECIMAL(15,2))) < 0.02
                 AND (pt.expired_at IS NULL OR pt.expired_at > NOW())
                 AND pt.session_id IS NOT NULL AND CHAR_LENGTH(TRIM(pt.session_id)) > 0'

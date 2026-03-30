@@ -6,6 +6,8 @@ import { INDONESIAN_MONTHS, formatDateRangeHijri } from '../utils/dateRange'
 import { getBulanName } from '../utils/bulanHijri'
 import { toArabicDigits } from '../utils/arabicDigits'
 import { kalenderAPI, hariPentingAPI } from '../../../services/api'
+import { matchesHariPentingMasehiCalendar } from '../utils/hariPentingMatch'
+import { formatJamRangeLabel } from '../utils/hariPentingJam'
 import { getConvertCache, setConvertCache } from '../utils/kalenderCache'
 import KalenderFontAccordion from './KalenderFontAccordion'
 import { loadShowHijriyah, saveShowHijriyah, loadShowPasaran, saveShowPasaran } from '../utils/kalenderStorage'
@@ -15,7 +17,17 @@ import './CalendarGrid.css'
 
 const GREG_DAY_HEADERS = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
 
-export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gridViewSettings, onGridViewSettingsChange, showHariPentingMarkers = true, onShowHariPentingMarkersChange }) {
+export default function CalendarMasehi({
+  fontSettings,
+  onFontSettingsChange,
+  gridViewSettings,
+  onGridViewSettingsChange,
+  showHariPentingMarkers = true,
+  onShowHariPentingMarkersChange,
+  hariPentingRefreshKey = 0,
+  onRequestTambahPribadi,
+  canTambahPribadi = false
+}) {
   const [year, setYear] = useState(() => new Date().getFullYear())
   const [month, setMonth] = useState(() => new Date().getMonth() + 1)
   const [showPasaran, setShowPasaran] = useState(loadShowPasaran)
@@ -46,23 +58,9 @@ export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gri
     const day = Number(popup.day)
     const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     const hijriStr = hijriMap[iso]
-    return hariPentingList.filter((item) => {
-      if (item.aktif === 0) return false
-      if (item.kategori === 'masehi') {
-        const matchDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-        const matchBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-        const matchTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-        return matchDay === day && (matchBulan == null || matchBulan === month) && (matchTahun == null || matchTahun === year)
-      }
-      if (item.kategori === 'hijriyah' && hijriStr && hijriStr !== '0000-00-00') {
-        const [hy, hm, hd] = hijriStr.split('-').map(Number)
-        const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-        const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-        const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-        return eventDay != null && eventBulan != null && hm === eventBulan && hd === eventDay && (eventTahun == null || eventTahun === '' || hy === eventTahun)
-      }
-      return false
-    })
+    return hariPentingList.filter((item) =>
+      matchesHariPentingMasehiCalendar(iso, hijriStr, day, month, year, item)
+    )
   }, [popup.open, popup.day, hariPentingList, hijriMap, year, month])
 
   const { monthName, daysInMonth, firstDay, dayCells } = useMemo(() => {
@@ -139,7 +137,7 @@ export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gri
       })
       .catch(() => { if (!cancelled) setHariPentingList([]) })
     return () => { cancelled = true }
-  }, [year, month, showHariPentingMarkers])
+  }, [year, month, showHariPentingMarkers, hariPentingRefreshKey])
 
   const hariPentingByDay = useMemo(() => {
     const map = {}
@@ -148,25 +146,10 @@ export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gri
       const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const hijriStr = hijriMap[iso]
       for (const item of hariPentingList) {
-        if (item.aktif === 0) continue
         const color = item.warna_label || '#0d9488'
-        if (item.kategori === 'masehi') {
-          const matchDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-          const matchBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-          const matchTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-          if (matchDay != null && matchDay === day && (matchBulan == null || matchBulan === month) && (matchTahun == null || matchTahun === year)) {
-            if (!map[day]) map[day] = []
-            if (!map[day].includes(color)) map[day].push(color)
-          }
-        } else if (item.kategori === 'hijriyah' && hijriStr && hijriStr !== '0000-00-00') {
-          const [hy, hm, hd] = hijriStr.split('-').map(Number)
-          const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-          const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-          const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-          if (eventDay != null && eventBulan != null && hm === eventBulan && hd === eventDay && (eventTahun == null || eventTahun === '' || hy === eventTahun)) {
-            if (!map[day]) map[day] = []
-            if (!map[day].includes(color)) map[day].push(color)
-          }
+        if (matchesHariPentingMasehiCalendar(iso, hijriStr, day, month, year, item)) {
+          if (!map[day]) map[day] = []
+          if (!map[day].includes(color)) map[day].push(color)
         }
       }
     }
@@ -325,23 +308,10 @@ export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gri
             const day = d.day
             const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const hijriStr = hijriMap[iso]
-            return hariPentingList.filter((item) => {
-              if (item.aktif === 0) return false
-              if (item.kategori === 'masehi') {
-                const matchDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-                const matchBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-                const matchTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-                return matchDay === day && (matchBulan == null || matchBulan === month) && (matchTahun == null || matchTahun === year)
-              }
-              if (item.kategori === 'hijriyah' && hijriStr && hijriStr !== '0000-00-00') {
-                const [hy, hm, hd] = hijriStr.split('-').map(Number)
-                const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-                const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-                const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-                return eventDay != null && eventBulan != null && hm === eventBulan && hd === eventDay && (eventTahun == null || eventTahun === '' || hy === eventTahun)
-              }
-              return false
-            })
+            const isoDay = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+            return hariPentingList.filter((item) =>
+              matchesHariPentingMasehiCalendar(isoDay, hijriStr, day, month, year, item)
+            )
           })()
           const hasHariPenting = itemsOnDay.length > 0
           const handleDayClick = (e) => {
@@ -443,7 +413,9 @@ export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gri
                     <p className="kalender-grid__day-popup-empty">Tidak ada hari penting pada tanggal ini.</p>
                   ) : (
                     <ul className="kalender-grid__day-popup-list">
-                      {itemsForDay.map((item) => (
+                      {itemsForDay.map((item) => {
+                        const jamStr = formatJamRangeLabel(item)
+                        return (
                         <li key={item.id} className="kalender-grid__day-popup-item">
                           {item.warna_label && (
                             <span
@@ -454,14 +426,55 @@ export default function CalendarMasehi({ fontSettings, onFontSettingsChange, gri
                           )}
                           <div className="kalender-grid__day-popup-item-body">
                             <div className="kalender-grid__day-popup-item-name">{item.nama_event}</div>
+                            {jamStr && (
+                              <div className="kalender-grid__day-popup-item-ket text-xs font-medium text-gray-600 dark:text-gray-300">
+                                {jamStr}
+                              </div>
+                            )}
                             {item.keterangan && (
                               <div className="kalender-grid__day-popup-item-ket">{item.keterangan}</div>
                             )}
                           </div>
                         </li>
-                      ))}
+                        )
+                      })}
                     </ul>
                   )}
+                </div>
+                <div className="kalender-grid__day-popup-footer">
+                  <button
+                    type="button"
+                    className="kalender-grid__day-popup-tambah"
+                    disabled={!canTambahPribadi}
+                    title={
+                      !canTambahPribadi
+                        ? 'Login untuk menambah jadwal pribadi (hanya Anda yang melihatnya)'
+                        : 'Tambah jadwal pribadi di tanggal ini'
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (!onRequestTambahPribadi || !canTambahPribadi) return
+                      const d = Number(popup.day)
+                      const iso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+                      const hijriStr = hijriMap[iso]
+                      let hijri = null
+                      if (hijriStr && hijriStr !== '0000-00-00') {
+                        const [hy, hm, hd] = hijriStr.split('-').map((x) => parseInt(x, 10))
+                        hijri = { day: hd, month: hm, year: hy }
+                      }
+                      onRequestTambahPribadi({
+                        defaultKategori: 'masehi',
+                        gregorian: { day: d, month, year },
+                        hijri
+                      })
+                      closePopup()
+                    }}
+                  >
+                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Tambah jadwal saya
+                  </button>
                 </div>
               </div>
             </motion.div>

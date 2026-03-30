@@ -128,8 +128,13 @@ export const getApiBaseUrl = () => apiBaseUrl
  * Cek nomor WhatsApp lewat backend API (satu jalur: ikut setting notifikasi WatZap/WA server).
  * Response: { success, data: { phoneNumber, isRegistered }, message }
  */
-export const checkWhatsAppNumberViaAPI = (phoneNumber) =>
-  api.post('/wa/check', { phoneNumber: String(phoneNumber || '').trim() }).then((r) => r.data)
+export const checkWhatsAppNumberViaAPI = (phoneNumber, sessionId = null) => {
+  const body = { phoneNumber: String(phoneNumber || '').trim() }
+  if (sessionId != null && String(sessionId).trim() !== '') {
+    body.sessionId = String(sessionId).trim()
+  }
+  return api.post('/wa/check', body).then((r) => r.data)
+}
 
 // Batas umur token login: 5 jam dari terakhir digunakan (sliding). Lewat = hapus token dan wajib login lagi.
 const AUTH_TOKEN_MAX_AGE_MS = 5 * 60 * 60 * 1000
@@ -764,14 +769,18 @@ export const waBackendAPI = {
     const token = localStorage.getItem('auth_token')
     const body = { phoneNumber: (phoneNumber || '').trim() }
     if (sessionId) body.sessionId = sessionId
-    const { data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/check`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
+    const { data } = await fetchJsonWithTimeout(
+      `${base}/api/whatsapp/check`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(body)
       },
-      body: JSON.stringify(body)
-    })
+      30000
+    )
     return data
   }
 }
@@ -1021,7 +1030,7 @@ export const kalenderAPI = {
   }
 }
 
-// Hari Penting API (GET public, POST/DELETE admin_kalender)
+// Hari Penting API (GET public + filter target jika token; POST/DELETE admin_kalender)
 export const hariPentingAPI = {
   getList: async (params = {}) => {
     const q = new URLSearchParams()
@@ -1030,7 +1039,20 @@ export const hariPentingAPI = {
     if (params.bulan) q.set('bulan', params.bulan)
     if (params.tanggal) q.set('tanggal', params.tanggal)
     if (params.hari_pekan) q.set('hari_pekan', params.hari_pekan)
+    if (params.include_targets === true || params.include_targets === '1') q.set('include_targets', '1')
     const url = q.toString() ? `/hari-penting?${q.toString()}` : '/hari-penting'
+    const response = await api.get(url)
+    return response.data
+  },
+  getLembagaOptions: async () => {
+    const response = await api.get('/hari-penting/lembaga-options')
+    return response.data
+  },
+  getUserPicker: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search) q.set('search', params.search)
+    if (params.limit) q.set('limit', String(params.limit))
+    const url = `/hari-penting/user-picker${q.toString() ? `?${q.toString()}` : ''}`
     const response = await api.get(url)
     return response.data
   },
@@ -1048,6 +1070,11 @@ export const hariPentingAPI = {
   },
   post: async (data) => {
     const response = await api.post('/hari-penting', data)
+    return response.data
+  },
+  /** Tambah hari penting target hanya users.id pembuat (semua user login; tanpa aksi admin kalender) */
+  createPersonalSelf: async (data) => {
+    const response = await api.post('/hari-penting/personal-self', data)
     return response.data
   }
 }

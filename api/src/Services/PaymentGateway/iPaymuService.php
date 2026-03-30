@@ -583,13 +583,23 @@ class iPaymuService
                     'message' => 'Payment channel wajib diisi untuk metode pembayaran CStore. Pilih Alfamart atau Indomaret.'
                 ];
             }
-            // Validasi channel untuk CStore
-            $validCStoreChannels = ['alfamart', 'indomaret'];
+            // Normalisasi channel untuk CStore (terima variasi input dari frontend/UI)
             $channelLower = strtolower(trim($paymentChannel));
+            $cstoreAliases = [
+                'alfa' => 'alfamart',
+                'alfamart' => 'alfamart',
+                'indo' => 'indomaret',
+                'indomaret' => 'indomaret',
+                'indomart' => 'indomaret',
+            ];
+            if (isset($cstoreAliases[$channelLower])) {
+                $channelLower = $cstoreAliases[$channelLower];
+            }
+            $validCStoreChannels = ['alfamart', 'indomaret'];
             if (!in_array($channelLower, $validCStoreChannels)) {
                 return [
                     'success' => false,
-                    'message' => 'Payment channel tidak valid untuk CStore. Gunakan "alfamart" atau "indomaret".'
+                    'message' => 'Payment channel tidak valid untuk CStore. Gunakan "alfamart" atau "indomaret". Input diterima: "' . $paymentChannel . '".'
                 ];
             }
             $requestData['paymentChannel'] = $channelLower;
@@ -726,6 +736,7 @@ class iPaymuService
             $trxId = $callbackData['trx_id'] ?? null;
             $paymentMethod = $callbackData['payment_method'] ?? $callbackData['via'] ?? null;
             $paymentChannel = $callbackData['payment_channel'] ?? $callbackData['channel'] ?? null;
+            $normalizedStatus = $this->mapStatusFromCallbackData($callbackData);
 
             // Idempotency: callback dengan session_id + trx_id sama hanya diproses sekali
             if ($sessionId !== null && $sessionId !== '' && $trxId !== null && $trxId !== '') {
@@ -759,9 +770,9 @@ class iPaymuService
             }
 
             // Simpan ke tabel payment___callback (termasuk fee, sub_total, total jika kolom ada - migrasi 56)
-            $fee = isset($callbackData['fee']) ? (float) $callbackData['fee'] : null;
-            $subTotal = isset($callbackData['sub_total']) ? (float) $callbackData['sub_total'] : null;
-            $total = isset($callbackData['total']) ? (float) $callbackData['total'] : null;
+            $fee = $this->toNullableFloat($callbackData['fee'] ?? $callbackData['Fee'] ?? null);
+            $subTotal = $this->toNullableFloat($callbackData['sub_total'] ?? $callbackData['SubTotal'] ?? null);
+            $total = $this->toNullableFloat($callbackData['total'] ?? $callbackData['Total'] ?? null);
 
             $cols = $this->db->query("SHOW COLUMNS FROM payment___callback")->fetchAll(\PDO::FETCH_COLUMN);
             $hasFeeCols = in_array('fee', $cols, true) && in_array('sub_total', $cols, true) && in_array('total', $cols, true);
@@ -774,7 +785,7 @@ class iPaymuService
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $params = [
                     $sessionId, $callbackData['trx_id'] ?? null, $callbackData['reference_id'] ?? null,
-                    $callbackData['status'] ?? null, $callbackData['status_code'] ?? null, $callbackData['status_message'] ?? null,
+                    $normalizedStatus, $callbackData['status_code'] ?? $callbackData['Status'] ?? null, $callbackData['status_message'] ?? $callbackData['Message'] ?? null,
                     $callbackData['amount'] ?? null, $fee, $subTotal, $total,
                     $paymentMethod, $paymentChannel, $paidAt, json_encode($callbackData, JSON_UNESCAPED_UNICODE),
                     $_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_USER_AGENT'] ?? null
@@ -787,7 +798,7 @@ class iPaymuService
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $params = [
                     $sessionId, $callbackData['trx_id'] ?? null, $callbackData['reference_id'] ?? null,
-                    $callbackData['status'] ?? null, $callbackData['status_code'] ?? null, $callbackData['status_message'] ?? null,
+                    $normalizedStatus, $callbackData['status_code'] ?? $callbackData['Status'] ?? null, $callbackData['status_message'] ?? $callbackData['Message'] ?? null,
                     $callbackData['amount'] ?? null, $paymentMethod, $paymentChannel, $paidAt,
                     json_encode($callbackData, JSON_UNESCAPED_UNICODE), $_SERVER['REMOTE_ADDR'] ?? null, $_SERVER['HTTP_USER_AGENT'] ?? null
                 ];
@@ -884,7 +895,7 @@ class iPaymuService
             }
 
             $transactionId = $transaction['id'];
-            $status = $this->mapStatus($callbackData['status'] ?? '');
+            $status = $this->mapStatusFromCallbackData($callbackData);
 
             // Validasi state: ambil status transaksi saat ini; hanya proses jika masih pending
             $stmtCurrent = $this->db->prepare("SELECT id, status FROM payment___transaction WHERE id = ? LIMIT 1");
@@ -1038,10 +1049,42 @@ class iPaymuService
             'cancelled' => 'cancelled',
             'dibatalkan' => 'cancelled', // Status dari iPayMu dalam bahasa Indonesia
             'refunded' => 'refunded',
-            'dikembalikan' => 'refunded' // Status dari iPayMu dalam bahasa Indonesia
+            'dikembalikan' => 'refunded', // Status dari iPayMu dalam bahasa Indonesia
+            '1' => 'paid',
+            '6' => 'paid',
+            '0' => 'pending',
+            '-1' => 'pending',
+            '2' => 'cancelled',
+            '3' => 'refunded',
         ];
 
         return $statusMap[strtolower($ipaymuStatus)] ?? 'pending';
+    }
+
+    /**
+     * Normalisasi status callback iPayMu:
+     * - Terima string (paid/success/berhasil, dll)
+     * - Terima kode numerik status/status_code/transaction_status_code
+     */
+    private function mapStatusFromCallbackData(array $callbackData): string
+    {
+        $raw = $callbackData['status']
+            ?? $callbackData['Status']
+            ?? $callbackData['status_code']
+            ?? $callbackData['transaction_status_code']
+            ?? $callbackData['TransactionStatus']
+            ?? $callbackData['PaymentStatus']
+            ?? '';
+
+        return $this->mapStatus((string) $raw);
+    }
+
+    private function toNullableFloat($value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return (float) $value;
     }
 
     /**

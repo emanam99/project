@@ -185,4 +185,14 @@ final class EbeddienFiturAccess
     {
         return EbeddienFiturSelectorRepository::codesForMethod('kalenderGoogleStaffSelectors');
     }
+
+    public static function kalenderPengaturanBulanSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('kalenderPengaturanBulanSelectors');
+    }
+
+    public static function kalenderPengaturanHariPentingSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('kalenderPengaturanHariPentingSelectors');
+    }
 }

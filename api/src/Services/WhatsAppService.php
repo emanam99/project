@@ -127,6 +127,68 @@ class WhatsAppService
     }
 
     /**
+     * Ambil daftar semua slot WA dari Node /status.
+     *
+     * @return array<string, mixed> map sessionId => status data
+     */
+    private static function fetchAllNodeSessionsStatus(): array
+    {
+        $url = self::getWaStatusApiUrl();
+        try {
+            $client = new \GuzzleHttp\Client(['timeout' => 8]);
+            $response = $client->get($url);
+            $body = json_decode((string) $response->getBody(), true);
+            if (!is_array($body) || !isset($body['data']) || !is_array($body['data'])) {
+                return [];
+            }
+            $sessions = $body['data']['sessions'] ?? [];
+            return is_array($sessions) ? $sessions : [];
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::fetchAllNodeSessionsStatus ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Cari kandidat sessionId yang sudah connected untuk retry cek nomor.
+     *
+     * @return string[] urutan: slot connected selain preferred dulu, lalu preferred
+     */
+    private static function getConnectedSessionCandidates(string $preferredSessionId): array
+    {
+        $sessions = self::fetchAllNodeSessionsStatus();
+        if ($sessions === []) {
+            return [];
+        }
+
+        $connected = [];
+        foreach ($sessions as $sid => $st) {
+            if (!is_string($sid) || trim($sid) === '' || !is_array($st)) {
+                continue;
+            }
+            $status = strtolower((string) ($st['status'] ?? ''));
+            $baileysStatus = strtolower((string) ($st['baileysStatus'] ?? ''));
+            if ($status === 'connected' || $baileysStatus === 'connected') {
+                $connected[] = trim($sid);
+            }
+        }
+
+        if ($connected === []) {
+            return [];
+        }
+
+        $preferred = trim($preferredSessionId);
+        $connected = array_values(array_unique($connected));
+        usort($connected, static function (string $a, string $b) use ($preferred): int {
+            if ($a === $preferred) return 1;
+            if ($b === $preferred) return -1;
+            return strcmp($a, $b);
+        });
+
+        return $connected;
+    }
+
+    /**
      * Samakan session kirim dengan slot WA yang terhubung (Node: req.body.sessionId).
      *
      * @param array<string, mixed> $payload
@@ -190,6 +252,10 @@ class WhatsAppService
         $cfg = self::getConfig();
         $apiUrl = $cfg['api_url'];
         $apiKey = $cfg['api_key'];
+        $preferredSessionId = trim((string) ($cfg['session_id'] ?? ''));
+        if ($preferredSessionId === '') {
+            $preferredSessionId = 'default';
+        }
         if (empty($apiUrl) || empty($apiKey)) {
             return ['success' => false, 'message' => 'Backend WA belum dikonfigurasi.'];
         }
@@ -360,9 +426,10 @@ class WhatsAppService
      * Return format sama dengan response backend: success, data: { phoneNumber, isRegistered }, message.
      *
      * @param string $noWa Nomor WA (08xxx atau 62xxx)
+     * @param string|null $sessionId Slot Node (default, wa2, …). Jika null, pakai WA_SESSION_ID / default.
      * @return array ['success' => bool, 'data' => ['phoneNumber' => string, 'isRegistered' => bool], 'message' => string]
      */
-    public static function checkNumber(string $noWa): array
+    public static function checkNumber(string $noWa, ?string $sessionId = null): array
     {
         $phone = self::formatPhoneNumber($noWa);
         if (strlen($phone) < 10) {
@@ -378,6 +445,9 @@ class WhatsAppService
         }
 
         $cfg = self::getConfig();
+        if ($sessionId !== null && trim($sessionId) !== '') {
+            $cfg['session_id'] = trim($sessionId);
+        }
         $apiUrl = $cfg['api_url'];
         $apiKey = $cfg['api_key'];
         $checkUrl = preg_replace('#/api/whatsapp/send$#', '/api/whatsapp/check', $apiUrl);
@@ -391,6 +461,10 @@ class WhatsAppService
         }
 
         $jsonPayload = self::mergeWaSessionPayload(['phoneNumber' => $phone], $cfg);
+        $preferredSessionId = trim((string) ($cfg['session_id'] ?? ''));
+        if ($preferredSessionId === '') {
+            $preferredSessionId = 'default';
+        }
 
         if (self::getNotificationProvider() === 'wa_sendiri') {
             self::wakeWaServer();
@@ -434,6 +508,42 @@ class WhatsAppService
                     error_log('WhatsAppService::checkNumber: Node belum siap, retry setelah wake: ' . $errMsg);
 
                     continue;
+                }
+                if (self::getNotificationProvider() === 'wa_sendiri' && self::nodeSendIndicatesReconnect($errMsg)) {
+                    $sessionCandidates = self::getConnectedSessionCandidates($preferredSessionId);
+                    foreach ($sessionCandidates as $sid) {
+                        if ($sid === $preferredSessionId) {
+                            continue;
+                        }
+                        try {
+                            $retryPayload = ['phoneNumber' => $phone, 'sessionId' => $sid];
+                            $retryResponse = $client->post($checkUrl, [
+                                'headers' => [
+                                    'Content-Type' => 'application/json',
+                                    'X-API-Key' => $apiKey,
+                                ],
+                                'json' => $retryPayload,
+                            ]);
+                            $retryCode = $retryResponse->getStatusCode();
+                            $retryBody = (string) $retryResponse->getBody();
+                            $retryData = is_string($retryBody) ? json_decode($retryBody, true) : [];
+                            if (!is_array($retryData)) {
+                                $retryData = [];
+                            }
+                            if ($retryCode >= 200 && $retryCode < 300 && !empty($retryData['success']) && isset($retryData['data']) && is_array($retryData['data'])) {
+                                return [
+                                    'success' => true,
+                                    'data' => [
+                                        'phoneNumber' => $retryData['data']['phoneNumber'] ?? $phone,
+                                        'isRegistered' => (bool) ($retryData['data']['isRegistered'] ?? false),
+                                    ],
+                                    'message' => $retryData['message'] ?? (($retryData['data']['isRegistered'] ?? false) ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar di WhatsApp'),
+                                ];
+                            }
+                        } catch (\Throwable $retryErr) {
+                            error_log('WhatsAppService::checkNumber fallback session ' . $sid . ': ' . $retryErr->getMessage());
+                        }
+                    }
                 }
 
                 return [
@@ -1328,6 +1438,66 @@ class WhatsAppService
 
                     continue;
                 }
+                if (self::getNotificationProvider() === 'wa_sendiri' && self::nodeSendIndicatesReconnect($errMsg)) {
+                    $sessionCandidates = self::getConnectedSessionCandidates($preferredSessionId);
+                    foreach ($sessionCandidates as $sid) {
+                        if ($sid === $preferredSessionId) {
+                            continue;
+                        }
+                        try {
+                            $retryPayload = array_merge([
+                                'phoneNumber' => $phone,
+                                'message' => $message,
+                                'sessionId' => $sid,
+                            ], ($chatId !== null && $chatId !== '' ? ['chatId' => $chatId] : []));
+                            $retryResponse = $client->post($apiUrl, [
+                                'headers' => [
+                                    'Content-Type' => 'application/json',
+                                    'X-API-Key' => $apiKey,
+                                ],
+                                'json' => $retryPayload,
+                            ]);
+                            $retryCode = $retryResponse->getStatusCode();
+                            $retryBody = (string) $retryResponse->getBody();
+                            $retryData = is_string($retryBody) ? json_decode($retryBody, true) : [];
+                            if (!is_array($retryData)) {
+                                $retryData = [];
+                            }
+                            if ($retryCode >= 200 && $retryCode < 300 && !empty($retryData['success'])) {
+                                $messageId = isset($retryData['messageId']) && trim((string) $retryData['messageId']) !== '' ? trim((string) $retryData['messageId']) : null;
+                                $result = [
+                                    'success' => true,
+                                    'message' => $retryData['message'] ?? 'OK',
+                                    'messageId' => $messageId,
+                                    'senderPhoneNumber' => !empty($retryData['senderPhoneNumber']) ? trim((string) $retryData['senderPhoneNumber']) : null,
+                                ];
+                                if ($logContext !== null) {
+                                    self::logSentMessage(
+                                        $phone,
+                                        $message,
+                                        0,
+                                        'sent',
+                                        $retryData['message'] ?? null,
+                                        $logContext['id_santri'] ?? null,
+                                        $logContext['id_pengurus'] ?? null,
+                                        $logContext['tujuan'] ?? 'wali_santri',
+                                        $logContext['id_pengurus_pengirim'] ?? null,
+                                        $logContext['kategori'] ?? 'custom',
+                                        $logContext['sumber'] ?? 'system',
+                                        $messageId
+                                    );
+                                }
+                                if (!$kontakStatus['exists']) {
+                                    self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
+                                }
+
+                                return $result;
+                            }
+                        } catch (\Throwable $retryErr) {
+                            error_log('WhatsAppService::sendMessage fallback session ' . $sid . ': ' . $retryErr->getMessage());
+                        }
+                    }
+                }
                 error_log('WhatsAppService: ' . $errMsg . ' body=' . substr($body, 0, 200));
                 $result = ['success' => false, 'message' => $errMsg];
                 if ($logContext !== null) {
@@ -1403,6 +1573,10 @@ class WhatsAppService
         $cfg = self::getConfig();
         $apiUrl = $cfg['api_url'];
         $apiKey = $cfg['api_key'];
+        $preferredSessionId = trim((string) ($cfg['session_id'] ?? ''));
+        if ($preferredSessionId === '') {
+            $preferredSessionId = 'default';
+        }
         $baseUrl = preg_replace('#/send$#', '', $apiUrl);
         $editUrl = rtrim($baseUrl, '/') . '/edit-message';
 
@@ -1604,6 +1778,63 @@ class WhatsAppService
             }
 
             $errMsg = $data['message'] ?? $data['error'] ?? "HTTP {$code}";
+            if (self::getNotificationProvider() === 'wa_sendiri' && self::nodeSendIndicatesReconnect((string) $errMsg)) {
+                $sessionCandidates = self::getConnectedSessionCandidates($preferredSessionId);
+                foreach ($sessionCandidates as $sid) {
+                    if ($sid === $preferredSessionId) {
+                        continue;
+                    }
+                    try {
+                        $retryPayload = [
+                            'phoneNumber' => $phone,
+                            'message' => $message,
+                            'sessionId' => $sid,
+                        ];
+                        if ($imageBase64 !== '' && $imageMimetype !== '') {
+                            $retryPayload['imageBase64'] = $imageBase64;
+                            $retryPayload['imageMimetype'] = $imageMimetype;
+                        }
+                        $retryResponse = $client->post($apiUrl, [
+                            'headers' => [
+                                'Content-Type' => 'application/json',
+                                'X-API-Key' => $apiKey,
+                            ],
+                            'json' => $retryPayload,
+                        ]);
+                        $retryCode = $retryResponse->getStatusCode();
+                        $retryBody = (string) $retryResponse->getBody();
+                        $retryData = json_decode($retryBody, true);
+                        if ($retryCode >= 200 && $retryCode < 300 && !empty($retryData['success'])) {
+                            $result = [
+                                'success' => true,
+                                'message' => $retryData['message'] ?? 'OK',
+                                'senderPhoneNumber' => !empty($retryData['senderPhoneNumber']) ? trim((string) $retryData['senderPhoneNumber']) : null,
+                            ];
+                            if ($logContext !== null) {
+                                self::logSentMessage(
+                                    $phone,
+                                    $message,
+                                    1,
+                                    'terkirim',
+                                    $result['message'],
+                                    $logContext['id_santri'] ?? null,
+                                    $logContext['id_pengurus'] ?? null,
+                                    $logContext['tujuan'] ?? 'wali_santri',
+                                    $logContext['id_pengurus_pengirim'] ?? null,
+                                    $logContext['kategori'] ?? 'custom',
+                                    $logContext['sumber'] ?? 'system'
+                                );
+                            }
+                            if (!$kontakStatus['exists']) {
+                                self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
+                            }
+                            return $result;
+                        }
+                    } catch (\Throwable $retryErr) {
+                        error_log('WhatsAppService::sendMessageWithImage fallback session ' . $sid . ': ' . $retryErr->getMessage());
+                    }
+                }
+            }
             error_log('WhatsAppService sendMessageWithImage: ' . $errMsg);
             $result = ['success' => false, 'message' => $errMsg];
             if ($logContext !== null) {

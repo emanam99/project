@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { kalenderAPI, hariPentingAPI } from '../../../services/api'
+import { matchesHariPentingHijriCalendar } from '../utils/hariPentingMatch'
 import { useKalenderYear } from '../hooks/useKalenderYear'
 import CalendarGridHijri from './CalendarGridHijri'
 import KalenderFontAccordion from './KalenderFontAccordion'
@@ -10,7 +11,21 @@ import { loadShowGregorian, saveShowGregorian, loadShowPasaran, saveShowPasaran 
 import { fontSettingsToStyle } from '../utils/fontSettings'
 import './CalendarHijri.css'
 
-export default function CalendarHijri({ initialYear, initialMonth, todayHijriYear, todayHijriMonth, fontSettings, onFontSettingsChange, gridViewSettings, onGridViewSettingsChange, showHariPentingMarkers = true, onShowHariPentingMarkersChange }) {
+export default function CalendarHijri({
+  initialYear,
+  initialMonth,
+  todayHijriYear,
+  todayHijriMonth,
+  fontSettings,
+  onFontSettingsChange,
+  gridViewSettings,
+  onGridViewSettingsChange,
+  showHariPentingMarkers = true,
+  onShowHariPentingMarkersChange,
+  hariPentingRefreshKey = 0,
+  onRequestTambahPribadi,
+  canTambahPribadi = false
+}) {
   const [year, setYear] = useState(initialYear ?? 1446)
   const [month, setMonth] = useState(initialMonth ?? 1)
   const [showPasaran, setShowPasaran] = useState(loadShowPasaran)
@@ -37,7 +52,7 @@ export default function CalendarHijri({ initialYear, initialMonth, todayHijriYea
       })
       .catch(() => { if (!cancelled) setHariPentingList([]) })
     return () => { cancelled = true }
-  }, [year, month, showHariPentingMarkers])
+  }, [year, month, showHariPentingMarkers, hariPentingRefreshKey])
 
   const monthData = useMemo(() => {
     if (!yearData || !yearData.length) return null
@@ -66,24 +81,12 @@ export default function CalendarHijri({ initialYear, initialMonth, todayHijriYea
       const gregYear = dayDate.getFullYear()
 
       for (const item of hariPentingList) {
-        if (item.aktif === 0) continue
         const color = item.warna_label || '#0d9488'
-        if (item.kategori === 'hijriyah') {
-          const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-          const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-          const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-          if (eventDay != null && eventDay === day && (eventBulan == null || eventBulan === hijriBulan) && (eventTahun == null || eventTahun === '' || eventTahun === hijriYear)) {
-            if (!map[day]) map[day] = []
-            if (!map[day].includes(color)) map[day].push(color)
-          }
-        } else if (item.kategori === 'masehi') {
-          const eventDay = item.tanggal != null && item.tanggal !== '' ? Number(item.tanggal) : null
-          const eventBulan = item.bulan != null && item.bulan !== '' ? Number(item.bulan) : null
-          const eventTahun = item.tahun != null && item.tahun !== '' ? Number(item.tahun) : null
-          if (eventDay != null && eventDay === gregDay && (eventBulan == null || eventBulan === gregMonth) && (eventTahun == null || eventTahun === '' || eventTahun === gregYear)) {
-            if (!map[day]) map[day] = []
-            if (!map[day].includes(color)) map[day].push(color)
-          }
+        if (
+          matchesHariPentingHijriCalendar(day, hijriBulan, hijriYear, gregDay, gregMonth, gregYear, item)
+        ) {
+          if (!map[day]) map[day] = []
+          if (!map[day].includes(color)) map[day].push(color)
         }
       }
     }
@@ -286,6 +289,8 @@ export default function CalendarHijri({ initialYear, initialMonth, todayHijriYea
           showHariPentingMarkers={showHariPentingMarkers}
           hariPentingByDay={hariPentingByDay}
           hariPentingList={hariPentingList}
+          onRequestTambahPribadi={onRequestTambahPribadi}
+          canTambahPribadi={canTambahPribadi}
         />
       ) : (
         <div className="kalender-hijri__empty">

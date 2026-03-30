@@ -14,6 +14,7 @@ use App\Controllers\PengaturanController;
 use App\Controllers\VersionChangelogController;
 use App\Controllers\KalenderController;
 use App\Controllers\HariPentingController;
+use App\Middleware\OptionalAuthMiddleware;
 use App\Controllers\WhatsAppController;
 use App\Controllers\WarmerController;
 use App\Controllers\WatzapController;
@@ -64,7 +65,8 @@ return function (\Slim\App $app): void {
 
     // Kalender & Hari Penting - Public GET
     $app->get('/api/kalender', [KalenderController::class, 'get']);
-    $app->get('/api/hari-penting', [HariPentingController::class, 'getList']);
+    $app->get('/api/hari-penting', [HariPentingController::class, 'getList'])
+        ->add(new OptionalAuthMiddleware());
 
     // Webhook WatZap (tanpa auth). WatZap mengirim event ke sini. URL: API_PUBLIC_URL atau WATZAP_WEBHOOK_URL di .env.
     $app->post('/api/watzap/webhook', [WatzapController::class, 'webhook']);

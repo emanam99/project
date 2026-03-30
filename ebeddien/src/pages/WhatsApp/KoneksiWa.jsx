@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
 import api, { waBackendAPI, whatsappTemplateAPI, warmerAPI, warmerNodeAPI } from '../../services/api'
-import { checkWhatsAppNumber } from '../../utils/whatsappCheck'
 
 const POLL_INTERVAL_CONNECTING = 2000
 const POLL_INTERVAL_IDLE = 10000
@@ -887,18 +886,31 @@ export default function KoneksiWa() {
       showNotification('Masukkan nomor yang ingin dicek', 'warning')
       return
     }
+    if (connectedSessionsForTest.length === 0) {
+      showNotification('Belum ada slot WhatsApp terhubung (cek status & Baileys). Hubungkan dulu di tab Koneksi.', 'warning')
+      return
+    }
     setChecking(true)
     setCheckResult(null)
     try {
-      const result = await checkWhatsAppNumber(phone)
-      if (result.success) {
+      // Harus pakai slot yang sama dengan dropdown (Node /check), bukan PHP /wa/check tanpa sessionId.
+      const res = await waBackendAPI.checkNumber(phone, effectiveTestSessionId || undefined)
+      if (res?.success && res?.data) {
+        const isRegistered = !!res.data.isRegistered
         setCheckResult({
-          isRegistered: result.isRegistered,
-          phoneNumber: phone
+          isRegistered,
+          phoneNumber: res.data.phoneNumber || phone
         })
-        showNotification(result.message ?? (result.isRegistered ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar'), result.isRegistered ? 'success' : 'info')
+        const msg =
+          res.message ||
+          (isRegistered ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar di WhatsApp')
+        showNotification(msg, isRegistered ? 'success' : 'info')
       } else {
-        showNotification(result.message || 'Gagal mengecek nomor', 'error')
+        const pesan = res?.message || 'Gagal mengecek nomor'
+        showNotification(pesan, 'error')
+        if (typeof pesan === 'string' && (pesan.toLowerCase().includes('belum login') || pesan.toLowerCase().includes('scan qr'))) {
+          showNotification('Pastikan slot yang dipilih di atas sudah terhubung, atau pilih slot lain yang statusnya terhubung.', 'info')
+        }
       }
     } catch (e) {
       showNotification('Gagal mengecek: ' + (e?.message || 'Network error'), 'error')
@@ -992,7 +1004,9 @@ export default function KoneksiWa() {
   const canTambah = sessionsList.length < MAX_WA_SESSIONS
   const anyConnecting = sessionsList.some(([, s]) => s?.status === 'connecting')
   const anyHasQr = sessionsList.some(([, s]) => s?.qrCode || s?.baileysQrCode)
-  const isConnected = sessionsList.some(([, s]) => s?.status === 'connected')
+  const isConnected = sessionsList.some(
+    ([, s]) => s?.status === 'connected' || s?.baileysStatus === 'connected'
+  )
   const isBaileysReady = sessionsList.some(([, s]) => s?.baileysStatus === 'connected')
 
   const handleDeleteSlot = async (sessionId = 'default') => {

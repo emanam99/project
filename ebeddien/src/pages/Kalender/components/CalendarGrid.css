@@ -470,6 +470,50 @@
   color: #9ca3af;
 }
 
+.kalender-grid__day-popup-footer {
+  padding: 8px 10px 10px;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.dark .kalender-grid__day-popup-footer {
+  border-top-color: rgb(55 65 81);
+}
+
+.kalender-grid__day-popup-tambah {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #fff;
+  background: #0d9488;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.kalender-grid__day-popup-tambah:hover:not(:disabled) {
+  background: #0f766e;
+}
+
+.kalender-grid__day-popup-tambah:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dark .kalender-grid__day-popup-tambah {
+  background: #14b8a6;
+}
+
+.dark .kalender-grid__day-popup-tambah:hover:not(:disabled) {
+  background: #0d9488;
+}
+
 .kalender-grid__day-popup-list {
   list-style: none;
   margin: 0;
