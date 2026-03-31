@@ -385,7 +385,7 @@ export const authAPI = {
     return response.data
   },
 
-  /** Konfirmasi daftar: kirim link WA (aktif 5 menit). Origin frontend dikirim otomatis lewat interceptor axios. */
+  /** Konfirmasi daftar: buat token (10 menit), kembalikan data wa.me + prefill — link setup dikirim di chat WA setelah konfirmasi simpan nomor. */
   daftarKonfirmasi: async (idPengurus, nik, noWa) => {
     const response = await api.post('/v2/auth/daftar-konfirmasi', { id_pengurus: idPengurus, nik, no_wa: noWa })
     return response.data
@@ -730,6 +730,28 @@ export const waBackendAPI = {
     return data
   },
   /**
+   * Bangunkan / paksa sambung ulang Baileys (POST /wake). force=true memutus lalu init ulang (obat zombie / macet).
+   */
+  wake: async (sessionId = 'default', force = false) => {
+    const base = getWaBackendUrl()
+    const token = localStorage.getItem('auth_token')
+    const body = { sessionId: sessionId || 'default' }
+    if (force) body.force = true
+    const { data } = await fetchJsonWithTimeout(
+      `${base}/api/whatsapp/wake`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(body)
+      },
+      20000
+    )
+    return data
+  },
+  /**
    * Kirim pesan lewat backend WA (untuk tes di halaman Koneksi WA).
    * @param {string} phoneNumber - Nomor 08xxx atau 62xxx
    * @param {string} message - Isi pesan
@@ -748,14 +770,19 @@ export const waBackendAPI = {
       body.imageBase64 = imageBase64
       body.imageMimetype = imageMimetype || 'image/png'
     }
-    const { res, data } = await fetchJsonWithTimeout(`${base}/api/whatsapp/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
+    /** Antrian kirim di Node + jeda antar pesan bisa membuat respons sangat lambat */
+    const { res, data } = await fetchJsonWithTimeout(
+      `${base}/api/whatsapp/send`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(body)
       },
-      body: JSON.stringify(body)
-    })
+      15 * 60 * 1000
+    )
     if (res && !res.ok && !data.message) data.message = res.status === 503 ? 'Layanan WA sibuk. Coba lagi atau scan QR Baileys di tab Koneksi.' : 'Gagal mengirim pesan.'
     return data
   },

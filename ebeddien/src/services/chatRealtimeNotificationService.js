@@ -1,4 +1,5 @@
-const ACTIVE_MS = 8000
+/** Batas umur pesan untuk toast in-app (bukan dedup). Harus longgar: latensi jaringan + skew jam server vs klien. */
+const ACTIVE_MS = 120000
 
 export function normalizeIncomingChatPayload(payload) {
   if (!payload || typeof payload !== 'object') return null

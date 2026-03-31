@@ -149,6 +149,10 @@ return [
     'app' => [
         'url' => env('APP_URL', 'http://localhost:5173'),
         'ebeddien_url' => env('EBEDDIEN_APP_URL', ''),
+        // Nomor WA (digit 62…) untuk wa.me saat daftar eBeddien — chat ke nomor QR yang terhubung di server WA.
+        'ebeddien_daftar_wa_qr_number' => preg_replace('/\D/', '', (string) env('EBEDDIEN_DAFTAR_WA_QR_NUMBER', '6282232999921')),
+        // Nomor admin (wa.me) jika layanan WA/cek nomor bermasalah — pesan otomatis "Masalah daftar Aplikasi…"
+        'ebeddien_daftar_wa_admin' => preg_replace('/\D/', '', (string) env('EBEDDIEN_DAFTAR_WA_ADMIN', '6282232999921')),
         // Base URL aplikasi Mybeddian — untuk link WA saat daftar santri (setup akun). Dev: http://localhost:5174. Production: https://mybeddian.example.com
         'mybeddian_url' => env('MYBEDDIAN_APP_URL', 'http://localhost:5174'),
     ],

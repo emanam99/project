@@ -88,6 +88,23 @@ class WhatsAppService
     }
 
     /**
+     * Timeout Guzzle untuk POST kirim ke Node WA (/api/whatsapp/send).
+     * Di Node tidak ada antrian global; waktu tunggu = proses kirim pesan ini saja (bukan antre pesan lain).
+     */
+    private static function getWaNodeSendTimeoutSec(): int
+    {
+        $raw = getenv('WA_NODE_SEND_TIMEOUT_SEC');
+        if ($raw !== false && $raw !== '') {
+            $t = (int) trim((string) $raw);
+            if ($t >= 30 && $t <= 3600) {
+                return $t;
+            }
+        }
+
+        return 900;
+    }
+
+    /**
      * URL GET /status pada server Node (tanpa auth) dari WA_API_URL …/send.
      */
     private static function getWaStatusApiUrl(): string
@@ -242,9 +259,10 @@ class WhatsAppService
      * Dipanggil saat pendaftar menekan "Aktifkan notifikasi" agar WA siap menerima pesan Daftar Notifikasi.
      * Hanya dipanggil jika notification_provider = wa_sendiri.
      *
+     * @param bool $force Paksa disconnect + init ulang di Node (mengatasi zombie / macet connecting).
      * @return array ['success' => bool, 'message' => string]
      */
-    public static function wakeWaServer(): array
+    public static function wakeWaServer(bool $force = false): array
     {
         if (self::getNotificationProvider() !== 'wa_sendiri') {
             return ['success' => true, 'message' => 'Provider bukan WA server sendiri.'];
@@ -267,6 +285,9 @@ class WhatsAppService
         $sidWake = trim((string) ($cfg['session_id'] ?? ''));
         if ($sidWake !== '') {
             $wakeBody->sessionId = $sidWake;
+        }
+        if ($force) {
+            $wakeBody->force = true;
         }
         try {
             $client = new \GuzzleHttp\Client(['timeout' => 10]);
@@ -467,13 +488,13 @@ class WhatsAppService
         }
 
         if (self::getNotificationProvider() === 'wa_sendiri') {
-            self::wakeWaServer();
+            self::wakeWaServer(false);
         }
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
             if ($attempt > 0) {
                 usleep(2500000);
-                self::wakeWaServer();
+                self::wakeWaServer(true);
             }
             try {
                 $client = new \GuzzleHttp\Client(['timeout' => 30]);
@@ -1375,16 +1396,16 @@ class WhatsAppService
         ], ($chatId !== null && $chatId !== '' ? ['chatId' => $chatId] : [])), $cfg);
 
         if (self::getNotificationProvider() === 'wa_sendiri') {
-            self::wakeWaServer();
+            self::wakeWaServer(false);
         }
 
         for ($attempt = 0; $attempt < 2; $attempt++) {
             if ($attempt > 0) {
                 usleep(2500000);
-                self::wakeWaServer();
+                self::wakeWaServer(true);
             }
             try {
-                $client = new \GuzzleHttp\Client(['timeout' => 20]);
+                $client = new \GuzzleHttp\Client(['timeout' => self::getWaNodeSendTimeoutSec()]);
                 $response = $client->post($apiUrl, [
                     'headers' => [
                         'Content-Type' => 'application/json',
@@ -1737,7 +1758,7 @@ class WhatsAppService
         $payload = self::mergeWaSessionPayload($payload, $cfg);
 
         try {
-            $client = new \GuzzleHttp\Client(['timeout' => 20]);
+            $client = new \GuzzleHttp\Client(['timeout' => self::getWaNodeSendTimeoutSec()]);
             $response = $client->post($apiUrl, [
                 'headers' => [
                     'Content-Type' => 'application/json',

@@ -47,10 +47,22 @@ export const checkWhatsAppNumber = async (phoneNumber, sessionId = null) => {
 
     const data = result.data || {}
     const isRegistered = !!data.isRegistered
+    const ok = !!result.success
+
+    // success false = server WA tidak terjangkau / belum login QR — bukan "nomor tidak punya WA".
+    if (!ok) {
+      return {
+        success: false,
+        isRegistered: false,
+        waServerDown: true,
+        message: result.message ?? 'Tidak bisa menghubungi server WhatsApp untuk cek nomor.'
+      }
+    }
 
     return {
-      success: !!result.success,
+      success: true,
       isRegistered,
+      waServerDown: false,
       message: result.message ?? (isRegistered ? 'Nomor terdaftar di WhatsApp' : 'Nomor tidak terdaftar di WhatsApp')
     }
   } catch (error) {
@@ -59,6 +71,7 @@ export const checkWhatsAppNumber = async (phoneNumber, sessionId = null) => {
     return {
       success: false,
       isRegistered: false,
+      waServerDown: true,
       message: msg,
       error: error
     }

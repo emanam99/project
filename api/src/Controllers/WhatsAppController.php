@@ -6,6 +6,7 @@ use App\Database;
 use App\Helpers\TextSanitizer;
 use App\Services\AiWhatsappBridgeService;
 use App\Services\DaftarNotifFlow;
+use App\Services\EbeddienDaftarWaFlow;
 use App\Services\WaInteractiveMenuService;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -271,6 +272,12 @@ class WhatsAppController
             $isDaftarNotif = $reply !== null && $reply !== '';
             $replySource = $isDaftarNotif ? 'daftar_notif' : null;
             if (!$isDaftarNotif) {
+                $reply = EbeddienDaftarWaFlow::handle($nomorTujuan, $message, $jid);
+                if ($reply !== null && $reply !== '') {
+                    $replySource = 'ebeddien_daftar_wa';
+                }
+            }
+            if (!$isDaftarNotif && ($reply === null || $reply === '')) {
                 // Pengguna dengan "Akses AI dari WA" aktif: AI dulu, baru menu interaktif.
                 $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $jid);
                 if ($reply !== null && $reply !== '') {

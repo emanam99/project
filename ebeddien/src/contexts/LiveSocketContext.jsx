@@ -32,7 +32,8 @@ let liveSocketInstance = null
 function getOrCreateSocket() {
   if (liveSocketInstance != null) return liveSocketInstance
   liveSocketInstance = io(getLiveServerUrl(), {
-    transports: ['polling', 'websocket'],
+    // WebSocket dulu: hindari latensi long-polling di awal sesi (chat & presence lebih responsif).
+    transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 1000,
   })

@@ -155,6 +155,15 @@ class UserChatController
         }
     }
 
+    /**
+     * Jalankan push setelah respons HTTP ke server Live selesai (register_shutdown_function).
+     */
+    public function runDeferredChatPush(int $fromUsersId, int $toUsersId, string $message, int $conversationId): void
+    {
+        $db = Database::getInstance()->getConnection();
+        $this->sendPushForIncomingMessage($db, $fromUsersId, $toUsersId, $message, $conversationId);
+    }
+
     /** Ambil atau buat conversation private antara dua user. Boleh user1 === user2 (chat ke diri sendiri). */
     private function getOrCreatePrivateConversation(\PDO $db, int $user1, int $user2): ?int
     {
@@ -571,8 +580,20 @@ class UserChatController
                     $recipientId = (int) $resolvedTo;
                 }
             }
+            // Web Push jangan blokir respons ke server Live (Socket.IO). Tanpa ini, setiap pesan menunggu
+            // HTTP ke FCM/Web Push selesai dulu → chat terasa lambat.
             if ($recipientId > 0) {
-                $this->sendPushForIncomingMessage($db, (int) $senderId, $recipientId, $message, (int) $conversationId);
+                $sf = (int) $senderId;
+                $rf = (int) $recipientId;
+                $mf = $message;
+                $cf = (int) $conversationId;
+                register_shutdown_function(static function () use ($sf, $rf, $mf, $cf) {
+                    try {
+                        (new self())->runDeferredChatPush($sf, $rf, $mf, $cf);
+                    } catch (\Throwable $e) {
+                        error_log('UserChatController::deferredChatPush ' . $e->getMessage());
+                    }
+                });
             }
 
             $response->getBody()->write(json_encode([

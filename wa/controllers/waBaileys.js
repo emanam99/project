@@ -427,9 +427,30 @@ export async function waitForBaileysQrOrConnected(sessionId = DEFAULT_SESSION, m
   return false;
 }
 
+/**
+ * True jika socket Baileys ada dan status internal = connected DAN WebSocket masih hidup.
+ * Jika WA mati diam-diam (zombie), bersihkan ref agar wake/kirim bisa init ulang.
+ */
 export function isBaileysConnected(sessionId = DEFAULT_SESSION) {
   const id = sessionId || DEFAULT_SESSION;
-  return sockRefBySession[id] != null && getBaileysStatusObj(id).status === 'connected';
+  const sock = sockRefBySession[id];
+  const st = getBaileysStatusObj(id);
+  if (!sock || st.status !== 'connected') return false;
+  try {
+    const ws = sock.ws;
+    if (ws && typeof ws.readyState === 'number' && ws.readyState !== 1) {
+      if (WA_VERBOSE_LOG) {
+        console.warn('[WA Baileys]', id, 'Koneksi tampak connected tapi WebSocket tidak aktif (readyState=' + ws.readyState + '). Reset state.');
+      }
+      delete sockRefBySession[id];
+      st.status = 'disconnected';
+      st.qrCode = null;
+      st.phoneNumber = null;
+      syncBaileysToStore(id);
+      return false;
+    }
+  } catch (_) {}
+  return true;
 }
 
 /** True jika folder auth Baileys punya file (pernah scan Langkah 2). */

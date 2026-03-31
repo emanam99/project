@@ -97,7 +97,7 @@ export function resetCsrfToken() {
   csrfTokenPromise = null
 }
 
-/** CSRF di-reset dulu; performLogoutCleanup memuat tahun ajaran store secara dinamis (hindari siklus impor). */
+/** CSRF di-reset dulu; performLogoutCleanup mereset store (pengaturanAPI di store dipanggil async). */
 async function runFullLogoutCleanup() {
   resetCsrfToken()
   await performLogoutCleanup()

@@ -135,34 +135,44 @@ class AuthControllerV2
      *
      * @param 'pengurus'|'santri' $entityType
      */
-    private function insertUserSetupToken(string $tokenHash, string $entityType, int $entityId, string $noWa): void
+    private function insertUserSetupToken(string $tokenHash, string $entityType, int $entityId, string $noWa, int $ttlMinutes = 5): void
     {
+        $ttl = max(1, min(10080, $ttlMinutes));
         if ($this->userSetupTokensHasEntityColumns()) {
-            $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)');
-            $ins->execute([$tokenHash, $entityType, $entityId, $noWa]);
+            $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, entity_type, entity_id, expires_at, no_wa) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?)');
+            $ins->execute([$tokenHash, $entityType, $entityId, $ttl, $noWa]);
             return;
         }
         if ($entityType === 'pengurus') {
             if ($this->userSetupTokensMainHasNoWaColumn()) {
-                $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, id_pengurus, expires_at, no_wa) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)');
-                $ins->execute([$tokenHash, $entityId, $noWa]);
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, id_pengurus, expires_at, no_wa) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?)');
+                $ins->execute([$tokenHash, $entityId, $ttl, $noWa]);
             } else {
-                $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, id_pengurus, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))');
-                $ins->execute([$tokenHash, $entityId]);
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens (token_hash, id_pengurus, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))');
+                $ins->execute([$tokenHash, $entityId, $ttl]);
             }
             return;
         }
         if ($entityType === 'santri' && $this->userSetupTokensSantriLegacyTableExists()) {
             if ($this->userSetupTokensSantriLegacyHasNoWaColumn()) {
-                $ins = $this->db->prepare('INSERT INTO user___setup_tokens_santri (token_hash, id_santri, expires_at, no_wa) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE), ?)');
-                $ins->execute([$tokenHash, $entityId, $noWa]);
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens_santri (token_hash, id_santri, expires_at, no_wa) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?)');
+                $ins->execute([$tokenHash, $entityId, $ttl, $noWa]);
             } else {
-                $ins = $this->db->prepare('INSERT INTO user___setup_tokens_santri (token_hash, id_santri, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))');
-                $ins->execute([$tokenHash, $entityId]);
+                $ins = $this->db->prepare('INSERT INTO user___setup_tokens_santri (token_hash, id_santri, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))');
+                $ins->execute([$tokenHash, $entityId, $ttl]);
             }
             return;
         }
         throw new \RuntimeException('Skema user___setup_tokens perlu migrasi. Jalankan: php vendor/bin/phinx migrate (dari folder api).');
+    }
+
+    /** Tampilan nomor untuk pesan WA (prefill): 08… jika prefix 62. */
+    private function formatNoWaDisplayForMessage(string $noWa62): string
+    {
+        if (strpos($noWa62, '62') === 0 && strlen($noWa62) >= 11) {
+            return '0' . substr($noWa62, 2);
+        }
+        return $noWa62;
     }
 
     private function normalizeNoWaTo62(string $noWa): ?string
@@ -243,56 +253,66 @@ class AuthControllerV2
             }
 
             if (!ctype_digit((string)$idPengurus)) {
-                return $this->json($response, ['success' => false, 'message' => 'NIP Pengurus tidak valid'], 400);
+                return $this->json($response, ['success' => false, 'code' => 'nip_invalid', 'message' => 'NIP tidak valid'], 400);
             }
 
             $idPengurusResolved = PengurusHelper::resolveIdByNip($this->db, trim($idPengurus));
             if ($idPengurusResolved === null) {
-                return $this->json($response, ['success' => false, 'message' => 'NIP Pengurus tidak ditemukan'], 404);
+                return $this->json($response, ['success' => false, 'code' => 'nip_not_found', 'message' => 'NIP tidak ditemukan. Periksa NIP atau hubungi admin.'], 404);
             }
 
-            $stmt = $this->db->prepare("SELECT id, nama, id_user FROM pengurus WHERE id = ? LIMIT 1");
+            $stmt = $this->db->prepare("SELECT id, nama, id_user, nik AS nik_db FROM pengurus WHERE id = ? LIMIT 1");
             $stmt->execute([$idPengurusResolved]);
             $pengurus = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!$pengurus) {
-                return $this->json($response, ['success' => false, 'message' => 'Pengurus tidak ditemukan'], 404);
+                return $this->json($response, ['success' => false, 'code' => 'nip_not_found', 'message' => 'Pengurus tidak ditemukan'], 404);
             }
 
             if (!empty($pengurus['id_user'])) {
                 return $this->json($response, [
                     'success' => true,
                     'already_registered' => true,
-                    'message' => 'Akun sudah terdaftar. Silakan login dengan username dan password.',
+                    'code' => 'nip_has_account',
+                    'message' => 'NIP ini sudah punya akun. Silakan login dengan username dan password.',
                 ], 200);
             }
 
-            // Cek NIK sudah dipakai pengurus lain (satu NIK satu pengurus)
-            $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
-            $stmtNik->execute([$nik, $idPengurusResolved]);
-            if ($stmtNik->fetch()) {
-                return $this->json($response, [
-                    'success' => false,
-                    'message' => 'NIK ini sudah terdaftar untuk pengurus lain. Jika ini Anda, silakan login dengan NIP yang sesuai. Jika bukan, periksa NIK atau hubungi admin.',
-                ], 400);
+            // Jika NIK di database untuk pengurus ini masih kosong, lewati cek bentrok NIK antar pengurus.
+            $nikDbRaw = trim((string) ($pengurus['nik_db'] ?? ''));
+            if ($nikDbRaw !== '') {
+                $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
+                $stmtNik->execute([$nik, $idPengurusResolved]);
+                if ($stmtNik->fetch()) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'code' => 'nik_conflict',
+                        'message' => 'NIK ini sudah dipakai pengurus lain. Periksa NIK atau hubungi admin. Jika ini Anda, gunakan NIP yang sesuai.',
+                    ], 400);
+                }
             }
             if ($this->isNoWaUsedByOtherUser($noWa62)) {
                 return $this->json($response, [
                     'success' => false,
-                    'message' => 'Nomor WhatsApp sudah dipakai akun lain.',
+                    'code' => 'wa_in_use',
+                    'message' => 'Nomor WhatsApp ini sudah dipakai akun lain. Gunakan nomor lain.',
                 ], 400);
             }
             if ($this->isNoWaReservedInActiveSetupToken($noWa62)) {
                 return $this->json($response, [
                     'success' => false,
-                    'message' => 'Nomor WhatsApp sedang dipakai pada proses pendaftaran lain. Gunakan nomor lain atau tunggu token sebelumnya kedaluwarsa (5 menit).',
+                    'code' => 'wa_pending_setup',
+                    'message' => 'Nomor ini masih terikat proses aktivasi sebelumnya. Tunggu hingga token kedaluwarsa (10 menit) atau gunakan nomor lain.',
                 ], 400);
             }
+
+            $nipTampil = PengurusHelper::getNipById($this->db, $idPengurusResolved) ?? (string) $idPengurusResolved;
 
             return $this->json($response, [
                 'success' => true,
                 'already_registered' => false,
                 'nama' => $pengurus['nama'] ?: 'Pengurus',
+                'nip' => $nipTampil,
                 'no_wa' => $noWa62,
             ], 200);
         } catch (\Exception $e) {
@@ -302,8 +322,8 @@ class AuthControllerV2
     }
 
     /**
-     * Konfirmasi daftar: update NIK di pengurus, simpan no_wa di setup token, kirim link WA (aktif 5 menit).
-     * NIK/no_wa diverifikasi ulang agar aman dari race condition antar request.
+     * Konfirmasi daftar: update NIK di pengurus, simpan no_wa di setup token (aktif 10 menit).
+     * Pengguna melanjutkan ke WhatsApp (nomor QR) dengan template pesan; link setup dikirim setelah balasan di WA.
      */
     public function daftarKonfirmasi(Request $request, Response $response): Response
     {
@@ -320,7 +340,7 @@ class AuthControllerV2
 
             $idPengurusResolved = PengurusHelper::resolveIdByNip($this->db, $idPengurus);
             if ($idPengurusResolved === null) {
-                return $this->json($response, ['success' => false, 'message' => 'NIP Pengurus tidak ditemukan'], 404);
+                return $this->json($response, ['success' => false, 'code' => 'nip_not_found', 'message' => 'NIP tidak ditemukan.'], 404);
             }
 
             $nikValidation = NikHelper::validate($nik);
@@ -333,77 +353,84 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'message' => 'Nomor WhatsApp tidak valid'], 400);
             }
 
-            $stmt = $this->db->prepare("SELECT id, nama, id_user FROM pengurus WHERE id = ? LIMIT 1");
+            $stmt = $this->db->prepare("SELECT id, nama, id_user, nik AS nik_db FROM pengurus WHERE id = ? LIMIT 1");
             $stmt->execute([$idPengurusResolved]);
             $pengurus = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$pengurus || !empty($pengurus['id_user'])) {
-                return $this->json($response, ['success' => false, 'message' => 'Data tidak valid atau sudah terdaftar'], 400);
+                return $this->json($response, ['success' => false, 'code' => 'nip_has_account', 'message' => 'Data tidak valid atau akun sudah terdaftar'], 400);
             }
 
-            // Cek NIK sudah dipakai pengurus lain (satu NIK satu pengurus)
-            $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
-            $stmtNik->execute([$nik, $idPengurusResolved]);
-            if ($stmtNik->fetch()) {
-                return $this->json($response, [
-                    'success' => false,
-                    'message' => 'NIK ini sudah terdaftar untuk pengurus lain. Jika ini Anda, silakan login dengan NIP yang sesuai. Jika bukan, periksa NIK atau hubungi admin.',
-                ], 400);
+            $nikDbRaw = trim((string) ($pengurus['nik_db'] ?? ''));
+            if ($nikDbRaw !== '') {
+                $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
+                $stmtNik->execute([$nik, $idPengurusResolved]);
+                if ($stmtNik->fetch()) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'code' => 'nik_conflict',
+                        'message' => 'NIK ini sudah dipakai pengurus lain. Periksa NIK atau hubungi admin.',
+                    ], 400);
+                }
             }
             if ($this->isNoWaUsedByOtherUser($noWa62)) {
                 return $this->json($response, [
                     'success' => false,
-                    'message' => 'Nomor WhatsApp sudah dipakai akun lain.',
+                    'code' => 'wa_in_use',
+                    'message' => 'Nomor WhatsApp ini sudah dipakai akun lain.',
                 ], 400);
             }
             if ($this->isNoWaReservedInActiveSetupToken($noWa62)) {
                 return $this->json($response, [
                     'success' => false,
-                    'message' => 'Nomor WhatsApp sedang dipakai pada proses pendaftaran lain. Gunakan nomor lain atau tunggu token sebelumnya kedaluwarsa (5 menit).',
+                    'code' => 'wa_pending_setup',
+                    'message' => 'Nomor ini masih terikat proses aktivasi sebelumnya. Tunggu hingga token kedaluwarsa (10 menit) atau gunakan nomor lain.',
                 ], 400);
             }
 
-            // Update NIK di pengurus (no_wa hanya di users, disimpan via token untuk postSetupAkun)
             $upd = $this->db->prepare("UPDATE pengurus SET nik = ? WHERE id = ?");
             $upd->execute([$nik, $idPengurusResolved]);
 
             $plainToken = bin2hex(random_bytes(32));
             $tokenHash = hash('sha256', $plainToken);
-            $this->withIndonesiaTimezone(function () use ($tokenHash, $idPengurusResolved, $noWa62) {
-                $this->insertUserSetupToken($tokenHash, 'pengurus', $idPengurusResolved, $noWa62);
+            $ttlMin = 10;
+            $this->withIndonesiaTimezone(function () use ($tokenHash, $idPengurusResolved, $noWa62, $ttlMin) {
+                $this->insertUserSetupToken($tokenHash, 'pengurus', $idPengurusResolved, $noWa62, $ttlMin);
             });
 
             $config = require __DIR__ . '/../../config.php';
             $baseUrl = $this->getFrontendBaseUrl($request, $config);
-            $link = $baseUrl . '/setup-akun?token=' . urlencode($plainToken);
+            $setupUrl = $baseUrl . '/setup-akun?token=' . urlencode($plainToken);
 
-            $message = "🔒 *Verifikasi Daftar UWABA*\n\n";
-            $message .= "Link buat username dan password (aktif 5 menit):\n" . $link . "\n\n";
-            $message .= "> Jangan teruskan pesan isi ke siapapun demi keamanan.";
-            $logContext = ['id_santri' => null, 'id_pengurus' => $idPengurusResolved, 'tujuan' => 'pengurus', 'id_pengurus_pengirim' => null, 'kategori' => 'setup_akun', 'sumber' => 'auth'];
-            $sendResult = WhatsAppService::sendMessage($noWa62, $message, null, $logContext);
-            if (!$sendResult['success']) {
-                return $this->json($response, [
-                    'success' => false,
-                    'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Coba lagi nanti.'),
-                ], 502);
-            }
-            if (WhatsAppService::deliveryWasNotActuallySent($sendResult)) {
-                return $this->json($response, [
-                    'success' => false,
-                    'message' => 'Gagal mengirim link ke WhatsApp: ' . ($sendResult['message'] ?? 'Pesan tidak terkirim.'),
-                ], 502);
-            }
-            if (!empty($sendResult['messageId'])) {
-                try {
-                    $this->db->prepare("UPDATE user___setup_tokens SET wa_message_id = ? WHERE token_hash = ?")->execute([trim($sendResult['messageId']), $tokenHash]);
-                } catch (\Throwable $e) {
-                    // Kolom wa_message_id mungkin belum ada sebelum migrasi
-                }
+            $namaTampil = trim((string) ($pengurus['nama'] ?? '')) ?: 'Pengurus';
+            $nipTampil = PengurusHelper::getNipById($this->db, $idPengurusResolved) ?? (string) $idPengurusResolved;
+            $noTampil = $this->formatNoWaDisplayForMessage($noWa62);
+
+            $prefillLines = [
+                'Aktifkan akun eBeddien',
+                'Nama: ' . $namaTampil,
+                'NIK: ' . $nik,
+                'Nomor: ' . $noTampil,
+                'Token: ' . $plainToken,
+            ];
+            $prefillMessage = implode("\n", $prefillLines);
+
+            $waQrDigits = preg_replace('/\D/', '', (string) ($config['app']['ebeddien_daftar_wa_qr_number'] ?? '6282232999921'));
+            if (strlen($waQrDigits) < 10) {
+                $waQrDigits = '6282232999921';
             }
 
             return $this->json($response, [
                 'success' => true,
-                'message' => 'Link telah dikirim ke WhatsApp. Cek nomor yang Anda masukkan. Link aktif 5 menit.',
+                'message' => 'Token aktivasi dibuat. Lanjutkan ke WhatsApp untuk mengirim pesan verifikasi. Link setup dikirim di chat setelah Anda mengonfirmasi menyimpan nomor.',
+                'expires_in_minutes' => $ttlMin,
+                'setup_token' => $plainToken,
+                'setup_url' => $setupUrl,
+                'wa_me_phone' => $waQrDigits,
+                'prefill_message' => $prefillMessage,
+                'nama' => $namaTampil,
+                'nip' => $nipTampil,
+                'nik' => $nik,
+                'no_wa_display' => $noTampil,
             ], 200);
         } catch (\RuntimeException $e) {
             error_log('AuthControllerV2::daftarKonfirmasi ' . $e->getMessage());

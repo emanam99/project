@@ -61,8 +61,8 @@ export const useRencanaKomentarNotification = () => {
       await sendNotification({
         title: '💬 Komentar Baru di Rencana Pengeluaran',
         body: `${komentarAuthor} mengomentari: "${keteranganPreview}"\n\n"${komentarPreview}"`,
-        icon: getGambarUrl('/icon/ebeddien192.png'),
-        badge: getGambarUrl('/icon/ebeddien128.png'),
+        icon: getGambarUrl('/icon/notif.png'),
+        badge: getGambarUrl('/icon/notif.png'),
         tag: `rencana-komentar-${rencanaId}`, // Tag untuk grouping
         data: {
           url: rencanaUrl,
@@ -75,7 +75,7 @@ export const useRencanaKomentarNotification = () => {
           {
             action: 'view',
             title: 'Lihat Rencana',
-            icon: getGambarUrl('/icon/ebeddien128.png')
+            icon: getGambarUrl('/icon/notif.png')
           }
         ]
       })

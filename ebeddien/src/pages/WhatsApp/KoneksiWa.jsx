@@ -7,7 +7,8 @@ import api, { waBackendAPI, whatsappTemplateAPI, warmerAPI, warmerNodeAPI } from
 
 const POLL_INTERVAL_CONNECTING = 2000
 const POLL_INTERVAL_IDLE = 10000
-const MAX_WA_SESSIONS = 10
+/** Total slot dengan Node: default + wa2 + wa3 (maks. 3) — sama dengan MAX_SESSIONS di server WA */
+const MAX_WA_SESSIONS = 3
 const KATEGORI_OPTIONS = ['umum', 'pendaftaran', 'uwaba', 'keuangan', 'lainnya']
 
 /** Kategori warmer: bisa pilih preset atau ketik sendiri (Lainnya). Backend terima kategori apa saja. */
@@ -20,7 +21,7 @@ const WARMER_CATEGORY_OPTIONS = [
   { value: 'other', label: 'Lainnya (ketik di bawah)' }
 ]
 
-/** SessionId untuk slot baru: wa2, wa3, ... wa10 (default sudah slot pertama) */
+/** SessionId untuk slot baru: wa2, wa3 (default = slot utama) */
 function getNextSessionId(sessions) {
   const keys = Object.keys(sessions || {})
   for (let i = 2; i <= MAX_WA_SESSIONS; i++) {
@@ -1077,6 +1078,28 @@ export default function KoneksiWa() {
     }
   }
 
+  /** Putus + init ulang di Node — jika UI “terhubung” tapi kirim/cek gagal, atau wake macet. */
+  const handleForceWakeSlot = async (sessionId) => {
+    if (!waEngineEnabled) {
+      showNotification('Server WA dihentikan. Start dulu.', 'warning')
+      return
+    }
+    setActionLoading(`wake-force-${sessionId}`)
+    try {
+      const res = await waBackendAPI.wake(sessionId, true)
+      if (res?.success) {
+        showNotification(res?.message || 'Meminta sambung ulang ke WhatsApp...', 'info')
+        await fetchStatus()
+      } else {
+        showNotification(res?.message || 'Gagal paksa sambung ulang', 'error')
+      }
+    } catch (e) {
+      showNotification(e?.message || 'Backend WA tidak terjangkau.', 'error')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   if (loading && !anyHasQr) {
     return (
       <div className="h-full flex items-center justify-center min-h-[200px]">
@@ -1193,7 +1216,7 @@ export default function KoneksiWa() {
                       </p>
                     )}
                     <div className="flex flex-wrap items-center gap-2 pt-2">
-                      {s?.status === 'connected' ? (
+                      {(s?.status || s?.baileysStatus) === 'connected' ? (
                         <button
                           type="button"
                           onClick={() => handleDisconnect(sessionId)}
@@ -1219,6 +1242,17 @@ export default function KoneksiWa() {
                           className="px-3 py-1.5 rounded-lg bg-[#25D366] hover:bg-[#20BD5A] text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Hubungkan
+                        </button>
+                      )}
+                      {((s?.status || s?.baileysStatus) === 'connected' || (s?.status || s?.baileysStatus) === 'connecting') && (
+                        <button
+                          type="button"
+                          onClick={() => handleForceWakeSlot(sessionId)}
+                          disabled={!!actionLoading}
+                          title="Memutus socket internal lalu menyambung lagi. Pakai jika tampilan terhubung tapi tidak bisa kirim/cek, atau setelah server lama jalan."
+                          className="px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-600 text-blue-800 dark:text-blue-200 text-sm hover:bg-blue-50 dark:hover:bg-blue-950/40 disabled:opacity-50"
+                        >
+                          {actionLoading === `wake-force-${sessionId}` ? 'Menyambung...' : 'Paksa sambung ulang'}
                         </button>
                       )}
                       <button

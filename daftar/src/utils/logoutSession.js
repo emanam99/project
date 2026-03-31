@@ -1,17 +1,16 @@
 /**
  * Pembersihan sesi penuh saat logout: storage browser, cache web (opsional), state Zustand, event context.
- * tahunAjaranStore di-import dinamis agar tidak ada siklus api.js → logoutSession → tahunAjaranStore → api.js
- * (boleh di-import statis dari api.js dan authStore.js tanpa peringatan Vite).
+ * pengaturanAPI hanya dipakai async di tahunAjaranStore, sehingga siklus api → logoutSession → store → api aman di runtime.
  */
 import { clearAllClientStorage, clearOptionalWebCaches } from './clientStorage'
 import { useBiodataViewStore } from '../store/biodataViewStore'
+import { useTahunAjaranStore } from '../store/tahunAjaranStore'
 import { resetThemeAfterStorageCleared } from '../store/themeStore'
 
 export async function performLogoutCleanup() {
   clearAllClientStorage()
   await clearOptionalWebCaches()
 
-  const { useTahunAjaranStore } = await import('../store/tahunAjaranStore')
   useTahunAjaranStore.setState({
     tahunHijriyah: null,
     tahunMasehi: null,

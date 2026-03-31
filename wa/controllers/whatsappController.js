@@ -1,5 +1,5 @@
 /**
- * Koneksi & operasi WhatsApp via Baileys saja (multi-session, max 10).
+ * Koneksi & operasi WhatsApp via Baileys saja (multi-session, maks. 3 slot: default + wa2 + wa3).
  */
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -25,7 +25,8 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_BASE = path.resolve(__dirname, '../whatsapp-sessions');
 const DEFAULT_SESSION = 'default';
-const MAX_SESSIONS = 10;
+/** Total slot: default + wa2 … wa{MAX_SESSIONS} → untuk 3 slot: default, wa2, wa3 */
+const MAX_SESSIONS = 3;
 
 let waEngineEnabled = true;
 const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
@@ -33,6 +34,22 @@ const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
 function getSafeSessionId(rawSessionId) {
   const sessionId = (rawSessionId || DEFAULT_SESSION).toString().trim() || DEFAULT_SESSION;
   return sessionId.replace(/[^a-zA-Z0-9_-]/g, '_') || DEFAULT_SESSION;
+}
+
+/** Slot tambahan hanya wa2 … wa{MAX_SESSIONS} (slot 1 = default utama). */
+function isAllowedSessionId(id) {
+  const x = (id || DEFAULT_SESSION).toString();
+  if (x === DEFAULT_SESSION) return true;
+  const m = /^wa(\d+)$/.exec(x);
+  if (!m) return false;
+  const num = parseInt(m[1], 10);
+  return num >= 2 && num <= MAX_SESSIONS;
+}
+
+/** Putus/logout/hapus slot lama (wa4…) jika masih ada folder auth di disk. */
+function isAllowedSessionIdOrLegacyOnDisk(id) {
+  const safe = (id || DEFAULT_SESSION).toString();
+  return isAllowedSessionId(safe) || hasBaileysAuthFolder(safe);
 }
 
 /** Folder auth lama whatsapp-web.js â€” dibersihkan saat logout/hapus slot. */
@@ -69,19 +86,24 @@ export function getSessionIdsFromDisk() {
       }
     }
   } catch (_) {}
-  const arr = [...ids];
+  const arr = [...ids].filter(isAllowedSessionId);
   return arr.length ? arr : [DEFAULT_SESSION];
 }
 
 function countSessions() {
   const ids = new Set();
-  for (const id of getSessionIds()) ids.add(id);
+  for (const id of getSessionIds()) {
+    if (isAllowedSessionId(id)) ids.add(id);
+  }
   try {
     if (existsSync(SESSIONS_BASE)) {
       const dirs = readdirSync(SESSIONS_BASE);
       if (dirs.includes('baileys-default')) ids.add(DEFAULT_SESSION);
       for (const d of dirs) {
-        if (d.startsWith('baileys-') && d !== 'baileys-default') ids.add(d.replace(/^baileys-/, ''));
+        if (d.startsWith('baileys-') && d !== 'baileys-default') {
+          const sid = d.replace(/^baileys-/, '');
+          if (isAllowedSessionId(sid)) ids.add(sid);
+        }
       }
     }
   } catch (_) {}
@@ -119,41 +141,88 @@ function respondWaEngineStopped(res) {
   });
 }
 
-/** Restore sesi default dari disk (auth Baileys). */
+/** Restore semua sesi yang punya auth di disk (default, wa2, …) — setelah restart PM2 semua slot bisa hidup lagi. */
 export function initWaOnStart() {
   if (!waEngineEnabled) return;
-  const defaultPath = getBaileysAuthPath(DEFAULT_SESSION);
-  if (!existsSync(defaultPath)) return;
-  try {
-    const files = readdirSync(defaultPath);
-    if (files.length === 0) return;
-  } catch (_) {
-    return;
-  }
-  if (isBaileysConnected(DEFAULT_SESSION)) return;
-  setWaStatus(DEFAULT_SESSION, { status: 'connecting', baileysStatus: 'connecting' });
-  initBaileys(DEFAULT_SESSION).catch((err) => {
-    console.error('[WA] initBaileys on start error:', err?.message || err);
-    setWaStatus(DEFAULT_SESSION, {
-      status: 'disconnected',
-      qrCode: null,
-      baileysStatus: 'disconnected',
-      baileysQrCode: null,
+  const ids = getSessionIdsFromDisk();
+  let started = 0;
+  for (const id of ids) {
+    const authPath = getBaileysAuthPath(id);
+    if (!existsSync(authPath)) continue;
+    try {
+      if (readdirSync(authPath).length === 0) continue;
+    } catch (_) {
+      continue;
+    }
+    if (isBaileysConnected(id)) continue;
+    setWaStatus(id, { status: 'connecting', baileysStatus: 'connecting' });
+    started += 1;
+    initBaileys(id).catch((err) => {
+      console.error('[WA] initBaileys on start error:', id, err?.message || err);
+      setWaStatus(id, {
+        status: 'disconnected',
+        qrCode: null,
+        baileysStatus: 'disconnected',
+        baileysQrCode: null,
+      });
     });
-  });
-  console.log('[WA] Restore sesi default (Baileys)...');
+  }
+  if (started > 0) {
+    console.log('[WA] Restore sesi Baileys dari disk (', started, 'slot):', ids.join(', '));
+  }
 }
 
 export const wakeWhatsApp = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || req.query?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionId(safeId)) {
+      return res.status(400).json({
+        success: false,
+        message: `Session tidak diizinkan. Gunakan default atau wa2–wa${MAX_SESSIONS} (maks. ${MAX_SESSIONS} slot).`,
+      });
+    }
+    const force =
+      req.body?.force === true ||
+      String(req.query?.force || '') === '1' ||
+      String(req.query?.force || '').toLowerCase() === 'true';
+
+    /** Paksa putus + init ulang — mengatasi slot macet “connecting”, zombie socket, atau state tidak sinkron. */
+    if (force) {
+      await disconnectBaileys(safeId);
+      setWaStatus(safeId, {
+        status: 'connecting',
+        qrCode: null,
+        baileysStatus: 'connecting',
+        baileysQrCode: null,
+      });
+      initBaileys(safeId).catch((err) => {
+        console.error('[WA] wake (force) initBaileys error:', err?.message || err);
+        setWaStatus(safeId, {
+          status: 'disconnected',
+          qrCode: null,
+          baileysStatus: 'disconnected',
+          baileysQrCode: null,
+        });
+      });
+      console.log('[WA] Wake force: koneksi ulang untuk session', safeId);
+      return res.json({
+        success: true,
+        message: 'Memaksa sambung ulang ke WhatsApp...',
+        data: { status: 'connecting', forced: true },
+      });
+    }
+
     if (isBaileysConnected(safeId)) {
       return res.json({ success: true, message: 'WA sudah aktif.', data: { status: 'connected' } });
     }
     const st = getWaStatus(safeId);
     if (st.status === 'connecting' || st.baileysStatus === 'connecting') {
-      return res.json({ success: true, message: 'WA sedang menghubungkan...', data: { status: 'connecting' } });
+      return res.json({
+        success: true,
+        message: 'WA sedang menghubungkan... Jika lama tidak selesai, panggil wake dengan force=1 atau putuskan lalu hubungkan lagi.',
+        data: { status: 'connecting' },
+      });
     }
     if (countSessions() >= MAX_SESSIONS && !hasBaileysAuthFolder(safeId)) {
       return res.status(200).json({ success: true, message: 'Slot WA penuh. Coba lagi nanti.', data: { status: 'busy' } });
@@ -185,6 +254,13 @@ export const connectWhatsApp = async (req, res) => {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
     const refreshQr = req.body?.refreshQr === true;
+
+    if (!isAllowedSessionId(safeId)) {
+      return res.status(400).json({
+        success: false,
+        message: `Session tidak diizinkan. Hanya slot utama (default) dan wa2–wa${MAX_SESSIONS} (maks. ${MAX_SESSIONS} slot).`,
+      });
+    }
 
     if (countSessions() >= MAX_SESSIONS && !hasBaileysAuthFolder(safeId)) {
       return res.status(400).json({
@@ -293,6 +369,9 @@ export const connectWhatsApp = async (req, res) => {
 export const disconnectWhatsApp = async (req, res) => {
   try {
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionIdOrLegacyOnDisk(safeId)) {
+      return res.status(400).json({ success: false, message: 'Session tidak diizinkan.' });
+    }
     await disconnectBaileys(safeId);
     setWaStatus(safeId, {
       status: 'disconnected',
@@ -318,6 +397,9 @@ export const disconnectWhatsApp = async (req, res) => {
 export const logoutWhatsApp = async (req, res) => {
   try {
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionIdOrLegacyOnDisk(safeId)) {
+      return res.status(400).json({ success: false, message: 'Session tidak diizinkan.' });
+    }
     await disconnectBaileys(safeId);
     const legacy = getLegacyWwebjsPath(safeId);
     if (existsSync(legacy)) rmSync(legacy, { recursive: true, force: true });
@@ -347,6 +429,9 @@ export const logoutWhatsApp = async (req, res) => {
 export const deleteSlotWhatsApp = async (req, res) => {
   try {
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionIdOrLegacyOnDisk(safeId)) {
+      return res.status(400).json({ success: false, message: 'Session tidak diizinkan.' });
+    }
     await disconnectBaileys(safeId);
     const legacy = getLegacyWwebjsPath(safeId);
     if (existsSync(legacy)) rmSync(legacy, { recursive: true, force: true });
@@ -370,6 +455,12 @@ export const sendMessage = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionId(safeId)) {
+      return res.status(400).json({
+        success: false,
+        message: `Session tidak diizinkan. Gunakan default atau wa2–wa${MAX_SESSIONS}.`,
+      });
+    }
     const { phoneNumber, message, imageBase64, imageMimetype, chatId: bodyChatId, linkPreview: bodyLinkPreview } = req.body || {};
     const text = typeof message === 'string' ? message : '';
     /** Default true: Baileys mengambil preview URL dari teks (lihat generateWAMessageContent / link preview). */
@@ -393,7 +484,15 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    const result = await sendMessageBaileys(safeId, phoneNumber, text, imageBase64, imageMimetype, chatIdOverride, linkPreviewEnabled);
+    const result = await sendMessageBaileys(
+      safeId,
+      phoneNumber,
+      text,
+      imageBase64,
+      imageMimetype,
+      chatIdOverride,
+      linkPreviewEnabled
+    );
     if (WA_VERBOSE_LOG) {
       console.log('[WA] send via Baileys: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));
     }
@@ -418,6 +517,9 @@ export const getChatMessages = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || req.query?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionId(safeId)) {
+      return res.status(400).json({ success: false, message: 'Session tidak diizinkan.', data: [] });
+    }
     if (!isBaileysConnected(safeId)) {
       return res.status(200).json({ success: false, message: 'Belum login. Scan QR di tab Koneksi WA.', data: [] });
     }
@@ -439,6 +541,9 @@ export const editMessage = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionId(safeId)) {
+      return res.status(400).json({ success: false, message: 'Session tidak diizinkan.' });
+    }
     if (!isBaileysConnected(safeId)) {
       return res.status(200).json({ success: false, message: 'Belum login. Scan QR di tab Koneksi WA.' });
     }
@@ -463,6 +568,9 @@ export const checkNumber = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionId(safeId)) {
+      return res.status(400).json({ success: false, message: 'Session tidak diizinkan.' });
+    }
     const { phoneNumber } = req.body || {};
     if (!isBaileysConnected(safeId)) {
       await ensureBaileysReadyForSend(safeId, 20000).catch(() => {});
@@ -493,6 +601,9 @@ export const resolveJids = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = getSafeSessionId(req.body?.sessionId || DEFAULT_SESSION);
+    if (!isAllowedSessionId(safeId)) {
+      return res.status(400).json({ success: false, message: 'Session tidak diizinkan.', data: { jids: [] } });
+    }
     const phoneNumber = req.body?.phoneNumber || req.body?.phone_number || '';
     if (!phoneNumber || String(phoneNumber).trim() === '') {
       return res.status(400).json({ success: false, message: 'phoneNumber wajib' });

@@ -207,8 +207,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'Anda memiliki notifikasi baru',
-    icon: data.icon || 'https://alutsmani.id/gambar/icon/ebeddien192.png',
-    badge: data.badge || 'https://alutsmani.id/gambar/icon/ebeddien128.png',
+    icon: data.icon || 'https://alutsmani.id/gambar/icon/notif.png',
+    badge: data.badge || 'https://alutsmani.id/gambar/icon/notif.png',
     tag: data.tag,
     data: data.data || {},
     requireInteraction: data.requireInteraction || false,

@@ -1,0 +1,20 @@
+# Satu file per folder deploy: /var/www/wa (prod) atau /var/www/wa2 (staging).
+# Variabel PORT di .env (3001 / 3003) dipakai untuk mapping port & proses Node.
+# Deploy: docker-compose build && docker-compose up -d
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: alutsmani-wa:local
+    container_name: ${WA_CONTAINER_NAME:-wa-app}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    env_file:
+      - .env
+    volumes:
+      - ./whatsapp-sessions:/app/whatsapp-sessions
+    environment:
+      NODE_ENV: production

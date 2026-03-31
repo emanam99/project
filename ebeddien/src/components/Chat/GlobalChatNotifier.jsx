@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useLiveSocket } from '../../contexts/LiveSocketContext'
@@ -9,6 +10,13 @@ import {
   isNotificationFresh,
   normalizeIncomingChatPayload,
 } from '../../services/chatRealtimeNotificationService'
+import { getGambarUrl } from '../../config/images'
+import {
+  getNotificationPermission,
+  showNotification as showSystemNotification,
+} from '../../services/pwaNotificationService'
+
+const CHAT_NOTIF_ICON = getGambarUrl('/icon/notif.png')
 
 const AUTO_CLOSE_MS = 9000
 const SEND_ACK_TIMEOUT_MS = 8000
@@ -49,18 +57,33 @@ export default function GlobalChatNotifier() {
     }).catch(() => {})
   }, [user?.id, user?.users_id])
 
+  const dismiss = useCallback(() => {
+    setActiveNotif(null)
+    setReplyText('')
+    setReplyOpen(false)
+    setSendError('')
+    setIsSending(false)
+    pendingReplyRef.current = null
+  }, [])
+
+  // Auto-tutup hanya saat panel balas belum dibuka; setelah "Balas" tetap sampai kirim / X / klik luar
   useEffect(() => {
     if (!activeNotif) return
+    if (replyOpen) {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current)
+        closeTimerRef.current = null
+      }
+      return
+    }
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
     closeTimerRef.current = setTimeout(() => {
-      setActiveNotif(null)
-      setReplyText('')
-      setReplyOpen(false)
+      dismiss()
     }, AUTO_CLOSE_MS)
     return () => {
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
     }
-  }, [activeNotif])
+  }, [activeNotif, replyOpen, dismiss])
 
   useEffect(() => () => {
     if (pendingReplyRef.current?.timeoutId) {
@@ -78,25 +101,34 @@ export default function GlobalChatNotifier() {
       const key = buildNotificationKey(normalized)
       if (seenKeysRef.current.has(key)) return
       seenKeysRef.current.add(key)
-      if (location.pathname === '/chat') return
+      const onChatPage = location.pathname === '/chat' || location.pathname.startsWith('/chat/')
+      if (onChatPage) return
+      if (myUsersId != null && normalized.toUserId != null && normalized.toUserId !== myUsersId) return
       setReplyText('')
       setReplyOpen(false)
       setActiveNotif(normalized)
+
+      // Notifikasi OS (baki/laci) saat tab tidak terlihat — ikon eBeddien kecil
+      if (typeof document !== 'undefined' && document.hidden) {
+        getNotificationPermission().then((perm) => {
+          if (perm !== 'granted') return
+          showSystemNotification({
+            title: normalized.senderName || 'Pesan baru',
+            body: normalized.message.length > 220 ? `${normalized.message.slice(0, 217)}…` : normalized.message,
+            tag: `ebeddien-chat-${normalized.fromUserId}`,
+            renotify: true,
+            icon: CHAT_NOTIF_ICON,
+            badge: CHAT_NOTIF_ICON,
+            data: { url: `/chat?u=${normalized.fromUserId}` },
+          }).catch(() => {})
+        })
+      }
     }
     socket.on('receive_message', onReceive)
     return () => {
       socket.off('receive_message', onReceive)
     }
   }, [socket, myUsersId, location.pathname])
-
-  const dismiss = () => {
-    setActiveNotif(null)
-    setReplyText('')
-    setReplyOpen(false)
-    setSendError('')
-    setIsSending(false)
-    pendingReplyRef.current = null
-  }
 
   const openChatRoom = () => {
     if (!activeNotif) return
@@ -152,30 +184,44 @@ export default function GlobalChatNotifier() {
     return () => {
       socket.off('send_message_result', onSendResult)
     }
-  }, [socket])
+  }, [socket, dismiss])
 
   const wrapperClass = useMemo(() => (
     isDesktop
-      ? 'fixed z-[90] bottom-4 right-4 w-[360px] max-w-[calc(100vw-1rem)]'
-      : 'fixed z-[90] top-[calc(env(safe-area-inset-top,0px)+0.5rem)] left-2 right-2'
+      ? 'fixed z-[9999] bottom-4 right-4 w-[360px] max-w-[calc(100vw-1rem)] pointer-events-auto'
+      : 'fixed z-[9999] top-[calc(env(safe-area-inset-top,0px)+0.5rem)] left-2 right-2 pointer-events-auto'
   ), [isDesktop])
 
-  return (
+  const toastTree = (
     <AnimatePresence initial={false}>
       {activeNotif && (
         <motion.div
           key={String(activeNotif.id)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="global-chat-notif-title"
           initial={isDesktop ? { opacity: 0, x: 40 } : { opacity: 0, y: -36 }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           exit={isDesktop ? { opacity: 0, x: 48 } : { opacity: 0, y: -48 }}
           transition={{ duration: 0.22, ease: 'easeOut' }}
           className={wrapperClass}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
             <div className="px-3 py-2 bg-teal-600 text-white flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-xs text-teal-100">Pesan baru</p>
-                <p className="text-sm font-semibold truncate">{activeNotif.senderName}</p>
+              <div className="flex items-start gap-2 min-w-0">
+                <img
+                  src={CHAT_NOTIF_ICON}
+                  alt=""
+                  width={36}
+                  height={36}
+                  className="shrink-0 rounded-lg bg-white/15 object-contain p-0.5"
+                  decoding="async"
+                />
+                <div className="min-w-0">
+                  <p className="text-xs text-teal-100">Pesan baru</p>
+                  <p id="global-chat-notif-title" className="text-sm font-semibold truncate">{activeNotif.senderName}</p>
+                </div>
               </div>
               <button
                 type="button"
@@ -248,5 +294,20 @@ export default function GlobalChatNotifier() {
         </motion.div>
       )}
     </AnimatePresence>
+  )
+
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <>
+      {activeNotif && (
+        <div
+          className="fixed inset-0 z-[9998] bg-black/25 dark:bg-black/45"
+          onClick={dismiss}
+          aria-hidden
+        />
+      )}
+      {toastTree}
+    </>,
+    document.body,
   )
 }

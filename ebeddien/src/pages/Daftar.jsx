@@ -6,6 +6,13 @@ import { authAPI } from '../services/api'
 import { APP_VERSION } from '../config/version'
 import { getGambarUrl } from '../config/images'
 import { normalizeNikInput, isNikValid } from '../utils/nikUtils'
+import { checkWhatsAppNumber } from '../utils/whatsappCheck'
+
+const WA_PROBE_DELAY_MS = 2000
+
+/** Fallback sama default API — wa.me admin bantuan */
+const waAdminDigits =
+  String(import.meta.env?.VITE_EBEDDIEN_DAFTAR_WA_ADMIN || '6282232999921').replace(/\D/g, '') || '6282232999921'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -24,6 +31,28 @@ function normalizeNoWaTo62(raw) {
   return digits
 }
 
+function messageDaftarBantuan(nip, noWaInput) {
+  const n = String(noWaInput || '').trim()
+  return `Masalah daftar Aplikasi. NIP: ${nip}. No WA: ${n}.`
+}
+
+function mapDaftarCheckError(code, fallback) {
+  switch (code) {
+    case 'nip_not_found':
+      return 'NIP tidak ditemukan. Periksa lagi atau hubungi admin.'
+    case 'nip_invalid':
+      return 'NIP tidak valid.'
+    case 'nik_conflict':
+      return 'NIK bentrok dengan pengurus lain. Periksa NIK atau hubungi admin.'
+    case 'wa_in_use':
+      return 'Nomor WhatsApp ini sudah dipakai akun lain.'
+    case 'wa_pending_setup':
+      return 'Nomor ini masih dipakai proses aktivasi (tunggu ±10 menit atau ganti nomor).'
+    default:
+      return fallback
+  }
+}
+
 export function DaftarFormCard() {
   const [idPengurus, setIdPengurus] = useState('')
   const [nik, setNik] = useState('')
@@ -36,6 +65,11 @@ export function DaftarFormCard() {
   const prevThemeRef = useRef(null)
   const { theme } = useThemeStore()
 
+  /** idle | pending | ok | invalid | server_down */
+  const [waProbe, setWaProbe] = useState('idle')
+  const [waHint, setWaHint] = useState('')
+  const waTimerRef = useRef(null)
+
   useEffect(() => {
     if (prevThemeRef.current === null) { prevThemeRef.current = theme; return }
     if (prevThemeRef.current !== theme) { prevThemeRef.current = theme; setFlipPhase('close') }
@@ -43,6 +77,46 @@ export function DaftarFormCard() {
 
   const handleInputCloseComplete = () => { if (flipPhase === 'close') setFlipPhase('open') }
   const handleInputOpenComplete = () => { if (flipPhase === 'open') setFlipPhase('idle') }
+
+  useEffect(() => {
+    if (waTimerRef.current) {
+      clearTimeout(waTimerRef.current)
+      waTimerRef.current = null
+    }
+    const digits = String(noWa).replace(/\D/g, '')
+    if (digits.length < 10) {
+      setWaProbe('idle')
+      setWaHint('')
+      return
+    }
+    setWaProbe('pending')
+    setWaHint('Menunggu sebentar untuk cek nomor…')
+    waTimerRef.current = setTimeout(async () => {
+      const norm = normalizeNoWaTo62(noWa)
+      const result = await checkWhatsAppNumber(norm)
+      if (result.waServerDown) {
+        setWaProbe('server_down')
+        setWaHint('')
+        return
+      }
+      if (result.isRegistered) {
+        setWaProbe('ok')
+        setWaHint('Nomor terdaftar di WhatsApp.')
+        return
+      }
+      setWaProbe('invalid')
+      setWaHint('Pastikan nomor valid dan terdaftar WhatsApp di HP ini.')
+    }, WA_PROBE_DELAY_MS)
+    return () => {
+      if (waTimerRef.current) clearTimeout(waTimerRef.current)
+    }
+  }, [noWa])
+
+  const formValid =
+    idPengurus.trim() !== '' &&
+    isNikValid(nik.trim()) &&
+    normalizeNoWaTo62(noWa).length >= 10 &&
+    waProbe === 'ok'
 
   const handleDaftar = async (e) => {
     e.preventDefault()
@@ -53,19 +127,44 @@ export function DaftarFormCard() {
     if (!isNikValid(nikTrim)) { setError('Coba kembali periksa NIK.'); return }
     const noWaNorm = normalizeNoWaTo62(noWa)
     if (noWaNorm.length < 10) { setError('Nomor WhatsApp tidak valid.'); return }
+    if (waProbe !== 'ok') {
+      setError(waProbe === 'server_down'
+        ? 'Layanan cek WhatsApp sedang bermasalah. Gunakan tombol bantuan admin di bawah atau coba lagi.'
+        : 'Pastikan nomor WhatsApp aktif dan terdaftar sebelum mendaftar.')
+      return
+    }
     setLoading(true)
     try {
       const res = await authAPI.daftarCheck(idPengurus.trim(), nikTrim, noWaNorm)
-      if (!res.success) { setError(res.message || 'Gagal cek data'); return }
-      if (res.already_registered) { setError(res.message || 'Akun sudah terdaftar. Silakan login.'); return }
-      setConfirmModal({ nama: res.nama || 'Pengurus', no_wa: res.no_wa })
+      if (!res.success) {
+        setError(mapDaftarCheckError(res.code, res.message || 'Gagal cek data'))
+        return
+      }
+      if (res.already_registered) {
+        setError(res.message || 'Akun sudah terdaftar. Silakan login.')
+        return
+      }
+      setConfirmModal({
+        nama: res.nama || 'Pengurus',
+        nip: res.nip || idPengurus.trim(),
+        nik: nikTrim,
+        no_wa: res.no_wa || noWaNorm,
+        no_wa_display: noWaNorm.startsWith('62') ? `0${noWaNorm.slice(2)}` : noWaNorm
+      })
     } catch (err) {
-      setError(err.response?.data?.message || 'Terjadi kesalahan. Coba lagi.')
+      const data = err.response?.data
+      setError(mapDaftarCheckError(data?.code, data?.message || 'Terjadi kesalahan. Coba lagi.'))
       if (err.response?.status === 429) setError(err.response?.data?.message || 'Terlalu banyak percobaan daftar. Coba lagi nanti.')
     } finally { setLoading(false) }
   }
 
-  const handleKonfirmasi = async () => {
+  const openWaMe = (phoneDigits, text) => {
+    const p = String(phoneDigits).replace(/\D/g, '')
+    const url = `https://wa.me/${p}?text=${encodeURIComponent(text)}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleLanjutkan = async () => {
     if (!confirmModal) return
     setError('')
     const nikTrim = nik.trim()
@@ -75,10 +174,20 @@ export function DaftarFormCard() {
     setLoading(true)
     try {
       const res = await authAPI.daftarKonfirmasi(idPengurus.trim(), nikTrim, noWaNorm)
-      if (res.success) { setSuccessMessage(res.message || 'Link telah dikirim ke WhatsApp.'); setConfirmModal(null) }
-      else setError(res.message || 'Gagal mengirim link')
+      if (!res.success) {
+        setError(mapDaftarCheckError(res.code, res.message || 'Gagal membuat token aktivasi'))
+        return
+      }
+      const phone = res.wa_me_phone || '6282232999921'
+      const msg = res.prefill_message || ''
+      setConfirmModal(null)
+      setSuccessMessage(
+        'WhatsApp dibuka ke nomor layanan. Kirim pesan yang sudah terisi, lalu balas pertanyaan di chat sampai Anda menerima link pengaturan username dan password.'
+      )
+      openWaMe(phone, msg)
     } catch (err) {
-      setError(err.response?.data?.message || 'Gagal mengirim link.')
+      const data = err.response?.data
+      setError(mapDaftarCheckError(data?.code, data?.message || 'Gagal melanjutkan.'))
       if (err.response?.status === 429) setError(err.response?.data?.message || 'Terlalu banyak percobaan. Coba lagi nanti.')
     } finally { setLoading(false) }
   }
@@ -112,7 +221,7 @@ export function DaftarFormCard() {
           <div className="hidden md:block text-center mb-8">
             <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1 tracking-tight">Daftar Akun</h1>
           </div>
-          <p className="text-gray-500 dark:text-gray-400 text-xs mb-4">Satu NIK hanya untuk satu pengurus. Jika NIK sudah terdaftar, silakan login.</p>
+          <p className="text-gray-500 dark:text-gray-400 text-xs mb-4">Satu NIK hanya untuk satu pengurus (kecuali data NIK Anda di sistem masih kosong — tidak dicek bentrok). Jika sudah punya akun, silakan login.</p>
           <form onSubmit={handleDaftar} className="space-y-5" style={{ perspective: '600px' }}>
             <motion.div
               variants={itemVariants}
@@ -121,7 +230,7 @@ export function DaftarFormCard() {
               transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
               onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
             >
-              <input type="text" value={idPengurus} onChange={(e) => setIdPengurus(e.target.value)} className={inputClass} placeholder="NIP Pengurus (contoh: 333)" required />
+              <input type="text" inputMode="numeric" value={idPengurus} onChange={(e) => setIdPengurus(e.target.value.replace(/\D/g, '').slice(0, 12))} className={inputClass} placeholder="NIP Pengurus" required />
             </motion.div>
             <motion.div
               variants={itemVariants}
@@ -141,6 +250,39 @@ export function DaftarFormCard() {
               onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
             >
               <input type="text" inputMode="numeric" value={noWa} onChange={(e) => setNoWa(e.target.value.replace(/\D/g, '').slice(0, 16))} className={inputClass} placeholder="No. WA (08xxxxxxxxxx)" required />
+              {noWa.replace(/\D/g, '').length >= 10 && waProbe === 'pending' && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{waHint}</p>
+              )}
+              {waProbe === 'ok' && (
+                <p className="mt-1 text-xs text-green-700 dark:text-green-400">{waHint}</p>
+              )}
+              {waProbe === 'invalid' && (
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">{waHint}</p>
+              )}
+              {waProbe === 'server_down' && (
+                <div className="mt-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                  <p className="font-medium">WhatsApp bermasalah (cek nomor tidak tersedia atau koneksi QR belum siap).</p>
+                  <p className="mt-1">Jika WhatsApp bermasalah hubungi admin.</p>
+                  <button
+                    type="button"
+                    className="mt-2 text-primary-600 dark:text-primary-400 font-medium underline"
+                    onClick={() => openWaMe(waAdminDigits, messageDaftarBantuan(idPengurus.trim() || '—', noWa))}
+                  >
+                    Buka WhatsApp admin
+                  </button>
+                </div>
+              )}
+              {waProbe === 'invalid' && (
+                <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                  <button
+                    type="button"
+                    className="text-primary-600 dark:text-primary-400 font-medium underline"
+                    onClick={() => openWaMe(waAdminDigits, messageDaftarBantuan(idPengurus.trim() || '—', noWa))}
+                  >
+                    Hubungi admin jika nomor sudah benar
+                  </button>
+                </div>
+              )}
             </motion.div>
             {error && (
               <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 px-4 py-3 text-sm">
@@ -154,7 +296,7 @@ export function DaftarFormCard() {
                 <span>{successMessage}</span>
               </motion.div>
             )}
-            <motion.button variants={itemVariants} type="submit" disabled={loading} className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
+            <motion.button variants={itemVariants} type="submit" disabled={loading || !formValid} className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow" whileHover={{ scale: loading || !formValid ? 1 : 1.01 }} whileTap={{ scale: loading || !formValid ? 1 : 0.99 }}>
               {loading ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Memeriksa...</span> : 'Daftar'}
             </motion.button>
             <p className="text-center text-sm text-gray-600 dark:text-gray-400 pt-2">Sudah punya akun? <Link to="/login" className="font-medium text-primary-600 dark:text-primary-400 hover:underline">Masuk</Link></p>
@@ -164,14 +306,16 @@ export function DaftarFormCard() {
 
       {confirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => !loading && setConfirmModal(null)}>
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-sm w-full border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Konfirmasi Daftar</h3>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">Daftar atas nama <strong>{confirmModal.nama}</strong>.</p>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">Pastikan nomor WhatsApp yang Anda masukkan aktif. Link akan dikirim ke:</p>
-            <p className="font-mono text-primary-600 dark:text-primary-400 mb-4">{confirmModal.no_wa}</p>
-            <div className="flex gap-3">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Lanjut ke WhatsApp</h3>
+            <p className="text-gray-600 dark:text-gray-400 text-sm mb-3">
+              Anda akan diarahkan ke WhatsApp untuk mengaktifkan akun eBeddien <strong className="text-gray-800 dark:text-gray-100">{confirmModal.nama}</strong>.
+              Pastikan NIK sudah sesuai <strong className="font-mono">{confirmModal.nik}</strong> dan nomor aktif di WhatsApp HP ini:{' '}
+              <strong className="font-mono">{confirmModal.no_wa_display}</strong>.
+            </p>
+            <div className="flex gap-3 mt-4">
               <button type="button" onClick={() => setConfirmModal(null)} disabled={loading} className="flex-1 py-2.5 rounded-xl border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Batal</button>
-              <button type="button" onClick={handleKonfirmasi} disabled={loading} className="flex-1 py-2.5 rounded-xl font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">{loading ? 'Mengirim...' : 'Konfirmasi'}</button>
+              <button type="button" onClick={handleLanjutkan} disabled={loading} className="flex-1 py-2.5 rounded-xl font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">{loading ? 'Memproses…' : 'Lanjutkan'}</button>
             </div>
           </motion.div>
         </div>
