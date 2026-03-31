@@ -58,6 +58,15 @@ class DeepseekController
      */
     private function curlPostJsonWithRetry(string $url, array $headers, array $payload): array
     {
+        if (!function_exists('curl_init') || !function_exists('curl_exec')) {
+            return [
+                'raw' => false,
+                'http_code' => 0,
+                'curl_error' => 'PHP cURL extension not enabled',
+                'curl_errno' => -3,
+            ];
+        }
+
         $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
         $attempts = 3;
         $last = [
@@ -1141,6 +1150,10 @@ class DeepseekController
      */
     private function forwardPostToNode(string $path, array $payload, int $timeoutSeconds): ?array
     {
+        if (!function_exists('curl_init') || !function_exists('curl_exec')) {
+            return null;
+        }
+
         $url = $this->getNodeProxyBase() . $path;
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
         if ($json === false) {
@@ -1360,19 +1373,8 @@ class DeepseekController
      * @param array<int, array{role:string,content:string}> $messages
      * @return array{raw:string|false,http_code:int,curl_error:string,curl_errno:int}
      */
-    private function curlDeepseekOpenAiChat(string $apiKey, array $payload): array
+    private function deepseekPostWithCurl(string $url, string $apiKey, string $jsonPayload): array
     {
-        $url = self::DEEPSEEK_OPENAI_BASE . '/chat/completions';
-        $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
-        if ($jsonPayload === false) {
-            return [
-                'raw' => false,
-                'http_code' => 0,
-                'curl_error' => 'json_encode failed',
-                'curl_errno' => -2,
-            ];
-        }
-
         $headers = [
             'Content-Type: application/json',
             'Accept: application/json',
@@ -1400,6 +1402,83 @@ class DeepseekController
             'curl_error' => $curlErr,
             'curl_errno' => $curlErrNo,
         ];
+    }
+
+    /**
+     * Fallback jika cURL tidak dimuat di PHP Apache (CLI bisa beda php.ini). Butuh allow_url_fopen + openssl.
+     *
+     * @return array{raw:string|false,http_code:int,curl_error:string,curl_errno:int}
+     */
+    private function deepseekPostWithFileGetContents(string $url, string $apiKey, string $jsonPayload): array
+    {
+        $fopenOk = filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN);
+        if (!$fopenOk) {
+            return [
+                'raw' => false,
+                'http_code' => 0,
+                'curl_error' => 'allow_url_fopen=Off dan cURL tidak tersedia untuk proses ini.',
+                'curl_errno' => -3,
+            ];
+        }
+
+        $headerBlock = implode("\r\n", [
+            'Content-Type: application/json',
+            'Accept: application/json',
+            'Authorization: Bearer ' . $apiKey,
+        ]);
+        $ctx = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => $headerBlock,
+                'content' => $jsonPayload,
+                'timeout' => 180,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $raw = @file_get_contents($url, false, $ctx);
+        $httpCode = 0;
+        if (isset($http_response_header[0]) && preg_match('/HTTP\/\S+\s+(\d{3})/', $http_response_header[0], $m)) {
+            $httpCode = (int) $m[1];
+        }
+        if ($raw === false) {
+            $err = error_get_last();
+            $msg = is_array($err) ? (string) ($err['message'] ?? 'Permintaan HTTPS gagal') : 'file_get_contents gagal';
+
+            return [
+                'raw' => false,
+                'http_code' => $httpCode,
+                'curl_error' => $msg,
+                'curl_errno' => -4,
+            ];
+        }
+
+        return [
+            'raw' => $raw,
+            'http_code' => $httpCode,
+            'curl_error' => '',
+            'curl_errno' => 0,
+        ];
+    }
+
+    private function curlDeepseekOpenAiChat(string $apiKey, array $payload): array
+    {
+        $url = self::DEEPSEEK_OPENAI_BASE . '/chat/completions';
+        $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        if ($jsonPayload === false) {
+            return [
+                'raw' => false,
+                'http_code' => 0,
+                'curl_error' => 'json_encode failed',
+                'curl_errno' => -2,
+            ];
+        }
+
+        if (function_exists('curl_init') && function_exists('curl_exec')) {
+            return $this->deepseekPostWithCurl($url, $apiKey, $jsonPayload);
+        }
+
+        return $this->deepseekPostWithFileGetContents($url, $apiKey, $jsonPayload);
     }
 
     /**
@@ -1575,6 +1654,14 @@ class DeepseekController
             $appEnv = strtolower((string) getenv('APP_ENV'));
             $isProduction = $appEnv === 'production';
 
+            if ((int) ($curlResult['curl_errno'] ?? 0) === -3) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Tidak ada jalur HTTP tersedia: aktifkan extension=curl di php.ini yang dipakai Apache, atau set allow_url_fopen=On.',
+                    'hint' => 'Perintah `php -m` memakai PHP CLI — bisa berbeda dengan Apache. Buka phpinfo() lewat browser untuk memastikan.',
+                ], 503);
+            }
+
             if ($raw === false || $curlResult['curl_error'] !== '') {
                 $payloadErr = [
                     'success' => false,
@@ -1715,13 +1802,13 @@ class DeepseekController
 
             if ($sessionFilter !== '') {
                 $stmt = $db->prepare(
-                    'SELECT id, user_message, ai_response FROM ai___chat WHERE users_id = ? AND session_id = ? ORDER BY id DESC LIMIT '
+                    'SELECT id, user_message, ai_response, `timestamp` AS row_at FROM ai___chat WHERE users_id = ? AND session_id = ? ORDER BY id DESC LIMIT '
                     . (int) $limit
                 );
                 $stmt->execute([$usersId, $sessionFilter]);
             } else {
                 $stmt = $db->prepare(
-                    'SELECT id, user_message, ai_response FROM ai___chat WHERE users_id = ? ORDER BY id DESC LIMIT '
+                    'SELECT id, user_message, ai_response, `timestamp` AS row_at FROM ai___chat WHERE users_id = ? ORDER BY id DESC LIMIT '
                     . (int) $limit
                 );
                 $stmt->execute([$usersId]);
@@ -1748,16 +1835,26 @@ class DeepseekController
                 if ($u === '') {
                     continue;
                 }
+                $rowAt = $row['row_at'] ?? null;
+                $createdAt = '';
+                if ($rowAt !== null && $rowAt !== '') {
+                    $ts = strtotime((string) $rowAt);
+                    if ($ts !== false) {
+                        $createdAt = date('c', $ts);
+                    }
+                }
                 $messages[] = [
                     'id' => 'ebc-' . $id . '-u',
                     'role' => 'user',
                     'content' => $u,
+                    'created_at' => $createdAt,
                 ];
                 $messages[] = [
                     'id' => 'ebc-' . $id . '-a',
                     'role' => 'assistant',
                     'content' => $reply !== '' ? $reply : '_(kosong)_',
                     'thinking' => $thinking !== '' ? $thinking : null,
+                    'created_at' => $createdAt,
                 ];
             }
 

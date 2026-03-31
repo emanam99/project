@@ -278,18 +278,14 @@ class AuthControllerV2
                 ], 200);
             }
 
-            // Jika NIK di database untuk pengurus ini masih kosong, lewati cek bentrok NIK antar pengurus.
-            $nikDbRaw = trim((string) ($pengurus['nik_db'] ?? ''));
-            if ($nikDbRaw !== '') {
-                $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
-                $stmtNik->execute([$nik, $idPengurusResolved]);
-                if ($stmtNik->fetch()) {
-                    return $this->json($response, [
-                        'success' => false,
-                        'code' => 'nik_conflict',
-                        'message' => 'NIK ini sudah dipakai pengurus lain. Periksa NIK atau hubungi admin. Jika ini Anda, gunakan NIP yang sesuai.',
-                    ], 400);
-                }
+            $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
+            $stmtNik->execute([$nik, $idPengurusResolved]);
+            if ($stmtNik->fetch()) {
+                return $this->json($response, [
+                    'success' => false,
+                    'code' => 'nik_conflict',
+                    'message' => 'NIK ini sudah dipakai pengurus lain. Periksa NIK atau hubungi admin. Jika ini Anda, gunakan NIP yang sesuai.',
+                ], 400);
             }
             if ($this->isNoWaUsedByOtherUser($noWa62)) {
                 return $this->json($response, [
@@ -360,17 +356,14 @@ class AuthControllerV2
                 return $this->json($response, ['success' => false, 'code' => 'nip_has_account', 'message' => 'Data tidak valid atau akun sudah terdaftar'], 400);
             }
 
-            $nikDbRaw = trim((string) ($pengurus['nik_db'] ?? ''));
-            if ($nikDbRaw !== '') {
-                $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
-                $stmtNik->execute([$nik, $idPengurusResolved]);
-                if ($stmtNik->fetch()) {
-                    return $this->json($response, [
-                        'success' => false,
-                        'code' => 'nik_conflict',
-                        'message' => 'NIK ini sudah dipakai pengurus lain. Periksa NIK atau hubungi admin.',
-                    ], 400);
-                }
+            $stmtNik = $this->db->prepare("SELECT id FROM pengurus WHERE nik = ? AND id != ? LIMIT 1");
+            $stmtNik->execute([$nik, $idPengurusResolved]);
+            if ($stmtNik->fetch()) {
+                return $this->json($response, [
+                    'success' => false,
+                    'code' => 'nik_conflict',
+                    'message' => 'NIK ini sudah dipakai pengurus lain. Periksa NIK atau hubungi admin.',
+                ], 400);
             }
             if ($this->isNoWaUsedByOtherUser($noWa62)) {
                 return $this->json($response, [
@@ -432,6 +425,18 @@ class AuthControllerV2
                 'nik' => $nik,
                 'no_wa_display' => $noTampil,
             ], 200);
+        } catch (\PDOException $e) {
+            $sqlState = (string) ($e->getCode() ?? '');
+            $msg = (string) $e->getMessage();
+            if ($sqlState === '23000' && stripos($msg, 'unique_pengurus_nik') !== false) {
+                return $this->json($response, [
+                    'success' => false,
+                    'code' => 'nik_conflict',
+                    'message' => 'NIK ini sudah dipakai pengurus lain. Periksa NIK lalu coba lagi.',
+                ], 400);
+            }
+            error_log('AuthControllerV2::daftarKonfirmasi PDO ' . $msg);
+            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan saat memproses data. Coba lagi.'], 500);
         } catch (\RuntimeException $e) {
             error_log('AuthControllerV2::daftarKonfirmasi ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 503);

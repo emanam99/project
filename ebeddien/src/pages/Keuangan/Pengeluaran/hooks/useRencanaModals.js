@@ -1,5 +1,11 @@
 import { useState, useCallback } from 'react'
 import { pengeluaranAPI } from '../../../../services/api'
+
+const wakeWaBestEffort = async () => {
+  try {
+    await pengeluaranAPI.wakeRencanaWa()
+  } catch (_) {}
+}
 import { useNotification } from '../../../../contexts/NotificationContext'
 
 /**
@@ -10,6 +16,14 @@ import { useNotification } from '../../../../contexts/NotificationContext'
  * @param {Array} allRencana - Array of all rencana (untuk mencari data)
  * @returns {Object} State dan handlers untuk modals
  */
+/** @param {number[]} selectedIds @param {Array<{id:number, whatsapp?:string}>} listAdmins */
+const waRecipientsFrom = (selectedIds, listAdmins) => {
+  if (!Array.isArray(selectedIds) || !Array.isArray(listAdmins)) return []
+  return listAdmins
+    .filter((a) => selectedIds.includes(a.id) && a.whatsapp)
+    .map((a) => ({ id: a.id, whatsapp: a.whatsapp }))
+}
+
 export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotifications, allRencana) => {
   const { showNotification } = useNotification()
   
@@ -57,39 +71,50 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
       // Ambil data rencana dari allRencana atau rencanaDetail untuk notifikasi
       const rencanaData = allRencana.find(r => r.id === confirmId) || rencanaDetail
       
+      const recipients = waRecipientsFrom(confirmSelectedAdmins, confirmListAdmins)
+      if (recipients.length > 0) {
+        await wakeWaBestEffort()
+      }
+
       let response
       if (confirmAction === 'approve') {
-        response = await pengeluaranAPI.approveRencana(confirmId)
+        response = await pengeluaranAPI.approveRencana(confirmId, recipients.length ? { recipients } : {})
         if (response.success) {
           showNotification('Rencana berhasil di-approve', 'success')
+          const wa = response.data?.wa_notif
+          if (wa) {
+            const ok = wa.success_count ?? 0
+            const fail = wa.fail_count ?? 0
+            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+          } else if (rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
+            await sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
+          }
           loadAllRencana()
-          
-          // Tutup offcanvas jika terbuka
+
           if (onCloseOffcanvas) {
             onCloseOffcanvas()
-          }
-          
-          // Kirim notifikasi jika ada rencana data dan admin terpilih
-          if (rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
           }
         } else {
           showNotification(response.message || 'Gagal meng-approve rencana', 'error')
         }
       } else if (confirmAction === 'reject') {
-        response = await pengeluaranAPI.rejectRencana(confirmId)
+        response = await pengeluaranAPI.rejectRencana(confirmId, recipients.length ? { recipients } : {})
         if (response.success) {
           showNotification('Rencana berhasil ditolak', 'success')
+          const wa = response.data?.wa_notif
+          if (wa) {
+            const ok = wa.success_count ?? 0
+            const fail = wa.fail_count ?? 0
+            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+          } else if (rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
+            await sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
+          }
           loadAllRencana()
-          
-          // Tutup offcanvas jika terbuka
+
           if (onCloseOffcanvas) {
             onCloseOffcanvas()
-          }
-          
-          // Kirim notifikasi jika ada rencana data dan admin terpilih
-          if (rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
           }
         } else {
           showNotification(response.message || 'Gagal menolak rencana', 'error')
@@ -111,39 +136,50 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
     try {
       setLoading(true)
       
+      const recipients = waRecipientsFrom(confirmRencanaSelectedAdmins, rencanaListAdmins)
+      if (recipients.length > 0) {
+        await wakeWaBestEffort()
+      }
+
       let response
       if (pendingAction === 'approve') {
-        response = await pengeluaranAPI.approveRencana(rencanaDetail.id)
+        response = await pengeluaranAPI.approveRencana(rencanaDetail.id, recipients.length ? { recipients } : {})
         if (response.success) {
           showNotification('Rencana berhasil di-approve', 'success')
+          const wa = response.data?.wa_notif
+          if (wa) {
+            const ok = wa.success_count ?? 0
+            const fail = wa.fail_count ?? 0
+            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+          } else if (confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
+            await sendNotifications(rencanaDetail, 'approve', confirmRencanaSelectedAdmins, rencanaListAdmins)
+          }
           loadAllRencana()
-          
-          // Tutup offcanvas jika terbuka
+
           if (onCloseOffcanvas) {
             onCloseOffcanvas()
-          }
-          
-          // Kirim notifikasi jika ada admin terpilih
-          if (confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaDetail, 'approve', confirmRencanaSelectedAdmins, rencanaListAdmins)
           }
         } else {
           showNotification(response.message || 'Gagal meng-approve rencana', 'error')
         }
       } else if (pendingAction === 'reject') {
-        response = await pengeluaranAPI.rejectRencana(rencanaDetail.id)
+        response = await pengeluaranAPI.rejectRencana(rencanaDetail.id, recipients.length ? { recipients } : {})
         if (response.success) {
           showNotification('Rencana berhasil ditolak', 'success')
+          const wa = response.data?.wa_notif
+          if (wa) {
+            const ok = wa.success_count ?? 0
+            const fail = wa.fail_count ?? 0
+            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+          } else if (confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
+            await sendNotifications(rencanaDetail, 'reject', confirmRencanaSelectedAdmins, rencanaListAdmins)
+          }
           loadAllRencana()
-          
-          // Tutup offcanvas jika terbuka
+
           if (onCloseOffcanvas) {
             onCloseOffcanvas()
-          }
-          
-          // Kirim notifikasi jika ada admin terpilih
-          if (confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaDetail, 'reject', confirmRencanaSelectedAdmins, rencanaListAdmins)
           }
         } else {
           showNotification(response.message || 'Gagal menolak rencana', 'error')

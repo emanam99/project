@@ -1,13 +1,15 @@
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { pengeluaranAPI, lembagaAPI, pemasukanAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
 import { userHasSuperAdminAccess } from '../../utils/roleAccess'
-import { useRencanaKomentarNotification } from '../../hooks/useRencanaKomentarNotification'
 import Modal from '../Modal/Modal'
 import PrintPengeluaranOffcanvas from '../../pages/Keuangan/Pengeluaran/components/PrintPengeluaranOffcanvas'
+
+/** Cooldown tombol "kirim ulang" notifikasi WA (rencana) agar tidak di-spam. */
+const RESEND_NOTIF_COOLDOWN_MS = 8000
 
 function DetailOffcanvas({
   isOpen,
@@ -42,7 +44,6 @@ function DetailOffcanvas({
 }) {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
-  const { sendKomentarNotification } = useRencanaKomentarNotification()
   const [komentar, setKomentar] = useState([])
   const [viewers, setViewers] = useState([])
   const [files, setFiles] = useState([])
@@ -60,6 +61,7 @@ function DetailOffcanvas({
   const [isRejectedOpen, setIsRejectedOpen] = useState(false)
   const [isViewerOpen, setIsViewerOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [showViewerListOffcanvas, setShowViewerListOffcanvas] = useState(false)
   // State untuk accordion komentar (default tertutup)
   const [openKomentarAccordions, setOpenKomentarAccordions] = useState({})
   // State untuk penerima (hanya untuk type pengeluaran)
@@ -84,6 +86,26 @@ function DetailOffcanvas({
   const [showDeletePengeluaranModal, setShowDeletePengeluaranModal] = useState(false)
   const [deleteWithRencana, setDeleteWithRencana] = useState(false)
   const [deletingPengeluaran, setDeletingPengeluaran] = useState(false)
+  const [resendNotifCooldown, setResendNotifCooldown] = useState(false)
+  const resendNotifCooldownTimerRef = useRef(null)
+
+  const clearResendNotifCooldownTimer = () => {
+    if (resendNotifCooldownTimerRef.current) {
+      clearTimeout(resendNotifCooldownTimerRef.current)
+      resendNotifCooldownTimerRef.current = null
+    }
+  }
+
+  const handleResendNotificationClick = () => {
+    if (resendNotifCooldown || !onSendNotification) return
+    setResendNotifCooldown(true)
+    onSendNotification()
+    clearResendNotifCooldownTimer()
+    resendNotifCooldownTimerRef.current = setTimeout(() => {
+      setResendNotifCooldown(false)
+      resendNotifCooldownTimerRef.current = null
+    }, RESEND_NOTIF_COOLDOWN_MS)
+  }
 
   // Prevent body scroll when offcanvas is open
   useEffect(() => {
@@ -95,11 +117,15 @@ function DetailOffcanvas({
       setIsRejectedOpen(false)
       setIsViewerOpen(false)
       setIsHistoryOpen(false)
+      setShowViewerListOffcanvas(false)
       setIsEditMode(false)
+      setResendNotifCooldown(false)
+      clearResendNotifCooldownTimer()
     }
 
     return () => {
       document.body.style.overflow = 'unset'
+      clearResendNotifCooldownTimer()
     }
   }, [isOpen])
 
@@ -511,21 +537,7 @@ function DetailOffcanvas({
         setNewKomentar('')
         showNotification('Komentar berhasil ditambahkan', 'success')
 
-        // Kirim notifikasi PWA ke super_admin dan admin_uwaba
-        // Hanya untuk type 'rencana' (bukan pengeluaran atau pemasukan)
-        if (type === 'rencana' && detailData) {
-          try {
-            await sendKomentarNotification({
-              rencanaId: idRencana,
-              rencanaKeterangan: detailData.keterangan || 'Rencana Pengeluaran',
-              komentar: newKomentar.trim(),
-              komentarAuthor: user?.nama || 'Admin'
-            })
-          } catch (notifError) {
-            // Jangan ganggu flow utama jika notifikasi gagal
-            console.error('Error sending PWA notification:', notifError)
-          }
-        }
+        // Push notifikasi lintas sesi ditangani backend pada endpoint createKomentar.
       } else {
         showNotification(response.message || 'Gagal menambahkan komentar', 'error')
       }
@@ -657,35 +669,54 @@ function DetailOffcanvas({
               overflow: 'hidden'
             }}
           >
-              {/* Header */}
-              <div className="px-4 pt-4 pb-3 border-b dark:border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-bold dark:text-gray-200 truncate pr-2">
-                  {detailData?.keterangan || title || (type === 'rencana' ? 'Detail Rencana Pengeluaran' : type === 'pemasukan' ? 'Detail Pemasukan' : 'Detail Pengeluaran')}
-                </h2>
-                <div className="flex items-center gap-2">
-                  {/* DELETE BUTTON - Pengeluaran (fitur atau super_admin) */}
-                  {showPengeluaranDelete && (
-                    <button
-                      onClick={() => {
-                        setDeleteWithRencana(false)
-                        setShowDeletePengeluaranModal(true)
-                      }}
-                      className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
-                      title="Hapus Pengeluaran"
+              {/* Handle + header (judul sampai 2 baris untuk rencana / judul panjang) */}
+              <div className="shrink-0 border-b border-gray-200/90 dark:border-gray-700 bg-gradient-to-b from-gray-50/95 to-white dark:from-gray-800/90 dark:to-gray-800 rounded-t-2xl">
+                <div className="flex justify-center pt-3 pb-1" aria-hidden="true">
+                  <div className="h-1 w-11 rounded-full bg-gray-300/90 dark:bg-gray-600" />
+                </div>
+                <div className="px-4 pb-3 flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <h2
+                      className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 leading-snug break-words line-clamp-2"
+                      title={detailData?.keterangan || title || ''}
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      {detailData?.keterangan || title || (type === 'rencana' ? 'Detail Rencana Pengeluaran' : type === 'pemasukan' ? 'Detail Pemasukan' : 'Detail Pengeluaran')}
+                    </h2>
+                    {type === 'rencana' && detailData && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Rencana pengeluaran</span>
+                        {detailData.ket && getStatusBadge ? getStatusBadge(detailData.ket) : null}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 -mr-1">
+                    {/* DELETE BUTTON - Pengeluaran (fitur atau super_admin) */}
+                    {showPengeluaranDelete && (
+                      <button
+                        onClick={() => {
+                          setDeleteWithRencana(false)
+                          setShowDeletePengeluaranModal(true)
+                        }}
+                        className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
+                        title="Hapus Pengeluaran"
+                        type="button"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700/80"
+                      aria-label="Tutup"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
-                  )}
-                  <button
-                    onClick={onClose}
-                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors p-2"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  </div>
                 </div>
               </div>
 
@@ -848,29 +879,25 @@ function DetailOffcanvas({
                       <div className="space-y-6 lg:overflow-y-auto lg:pr-2 lg:h-full">
                         {/* Informasi Umum */}
                         <div>
-                          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-3">
-                            Informasi Umum
+                          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+                            Informasi umum
                           </h3>
-                          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 space-y-3">
-                            <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Keterangan:</span>
-                              <span className="text-sm text-gray-800 dark:text-gray-200">{detailData.keterangan || 'Tanpa Keterangan'}</span>
-                            </div>
+                          <div className="rounded-xl border border-gray-200/90 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/60 p-4 space-y-3">
                             {detailData.kategori && (
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Kategori:</span>
-                                <span className="text-sm text-gray-800 dark:text-gray-200">{detailData.kategori}</span>
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Kategori</span>
+                                <span className="text-sm text-gray-900 dark:text-gray-100 text-right">{detailData.kategori}</span>
                               </div>
                             )}
                             {detailData.lembaga && (
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Lembaga:</span>
-                                <span className="text-sm text-gray-800 dark:text-gray-200">{detailData.lembaga}</span>
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Lembaga</span>
+                                <span className="text-sm text-gray-900 dark:text-gray-100 text-right">{detailData.lembaga}</span>
                               </div>
                             )}
                             {detailData.sumber_uang && (
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Sumber Uang:</span>
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Sumber uang</span>
                                 <span className={`text-sm font-medium ${detailData.sumber_uang === 'Cash'
                                   ? 'text-green-600 dark:text-green-400'
                                   : 'text-orange-600 dark:text-orange-400'
@@ -879,50 +906,44 @@ function DetailOffcanvas({
                                 </span>
                               </div>
                             )}
-                            <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Nominal:</span>
-                              <span className="text-lg font-bold text-teal-600 dark:text-teal-400">
+                            <div className="flex justify-between gap-3 items-baseline pt-1 border-t border-gray-200/80 dark:border-gray-600">
+                              <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total</span>
+                              <span className="text-lg font-bold text-teal-600 dark:text-teal-400 tabular-nums">
                                 {formatCurrency(parseFloat(detailData.nominal || 0))}
                               </span>
                             </div>
-                            {detailData.ket && (
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Status:</span>
-                                <span>{getStatusBadge ? getStatusBadge(detailData.ket) : detailData.ket}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Dibuat Oleh:</span>
-                              <span className="text-sm text-gray-800 dark:text-gray-200">
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Dibuat oleh</span>
+                              <span className="text-sm text-gray-900 dark:text-gray-100 text-right">
                                 {detailData.admin_nama || 'Unknown'}
                               </span>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Tanggal Dibuat:</span>
-                              <span className="text-sm text-gray-800 dark:text-gray-200">
+                            <div className="flex justify-between gap-3">
+                              <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Tanggal</span>
+                              <span className="text-sm text-gray-900 dark:text-gray-100 text-right">
                                 {formatDate ? formatDate(detailData.tanggal_dibuat) : new Date(detailData.tanggal_dibuat).toLocaleString('id-ID')}
                               </span>
                             </div>
                             {detailData.hijriyah && (
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Hijriyah:</span>
-                                <span className="text-sm text-gray-800 dark:text-gray-200">
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Hijriyah</span>
+                                <span className="text-sm text-gray-900 dark:text-gray-100 text-right">
                                   {detailData.hijriyah}
                                 </span>
                               </div>
                             )}
                             {detailData.tahun_ajaran && (
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Tahun Ajaran:</span>
-                                <span className="text-sm text-gray-800 dark:text-gray-200">
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Tahun ajaran</span>
+                                <span className="text-sm text-gray-900 dark:text-gray-100 text-right">
                                   {detailData.tahun_ajaran}
                                 </span>
                               </div>
                             )}
                             {detailData.ket === 'di approve' && detailData.admin_approve_nama && (
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Di-approve Oleh:</span>
-                                <span className="text-sm text-gray-800 dark:text-gray-200">
+                              <div className="flex justify-between gap-3">
+                                <span className="text-sm font-medium text-gray-500 dark:text-gray-400 shrink-0">Disetujui oleh</span>
+                                <span className="text-sm text-gray-900 dark:text-gray-100 text-right">
                                   {detailData.admin_approve_nama}
                                 </span>
                               </div>
@@ -930,87 +951,82 @@ function DetailOffcanvas({
                           </div>
                         </div>
 
-                        {/* Detail Items dengan Status */}
+                        {/* Siapa saja yang sudah lihat — di atas Detail item; klik buka offcanvas */}
+                        {type === 'rencana' && (
+                          <div className="mb-3 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setShowViewerListOffcanvas(true)}
+                              className="inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/80 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              aria-label={`Sudah dilihat ${Array.isArray(viewers) ? viewers.length : 0} orang`}
+                            >
+                              <svg className="h-4 w-4 text-teal-600 dark:text-teal-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              <span className="tabular-nums font-medium">{Array.isArray(viewers) ? viewers.length : 0}</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Detail item: [nama] lalu [harga × jumlah tengah] [total kanan] */}
                         {detailData.details && detailData.details.length > 0 && (
                           <div>
-                            <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2">
-                              <svg className="w-5 h-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                              </svg>
-                              Detail Items
+                            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                              Detail item
                             </h3>
-                            <div className="overflow-x-auto">
-                              <table className="w-full border-collapse text-sm">
-                                <thead>
-                                  <tr className="bg-gray-100 dark:bg-gray-700">
-                                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      Item
-                                    </th>
-                                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      Harga
-                                    </th>
-                                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      Jumlah
-                                    </th>
-                                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-right text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      Nominal
-                                    </th>
-                                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      Oleh
-                                    </th>
-                                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-center text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      Versi
-                                    </th>
-                                    <th className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300">
-                                      Status
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {detailData.details.map((detail, index) => (
-                                    <tr key={index} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${detail.rejected ? 'bg-red-50 dark:bg-red-900/20' : ''
-                                      }`}>
-                                      <td className={`border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs text-gray-800 dark:text-gray-200 ${detail.rejected ? 'line-through' : ''
-                                        }`}>
-                                        {detail.item}
-                                      </td>
-                                      <td className={`border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs text-right text-gray-800 dark:text-gray-200 ${detail.rejected ? 'line-through' : ''
-                                        }`}>
-                                        {formatCurrency(parseFloat(detail.harga || 0))}
-                                      </td>
-                                      <td className={`border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs text-right text-gray-800 dark:text-gray-200 ${detail.rejected ? 'line-through' : ''
-                                        }`}>
-                                        {detail.jumlah}
-                                      </td>
-                                      <td className={`border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs text-right font-medium text-gray-800 dark:text-gray-200 ${detail.rejected ? 'line-through' : ''
-                                        }`}>
-                                        {formatCurrency(parseFloat(detail.nominal || 0))}
-                                      </td>
-                                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs text-gray-800 dark:text-gray-200">
-                                        {detail.admin_nama || 'Unknown'}
-                                      </td>
-                                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs text-center text-gray-800 dark:text-gray-200">
-                                        {detail.versi || '-'}
-                                      </td>
-                                      <td className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs">
-                                        {detail.rejected ? (
-                                          <div>
-                                            <span className="text-red-600 dark:text-red-400 font-medium">Ditolak</span>
-                                            {detail.alasan_penolakan && (
-                                              <div className="mt-1 text-xs text-red-500 dark:text-red-400 italic">
-                                                {detail.alasan_penolakan}
-                                              </div>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <span className="text-green-600 dark:text-green-400 font-medium">Disetujui</span>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                            <ul className="space-y-2.5">
+                              {detailData.details.map((detail, index) => (
+                                <li
+                                  key={index}
+                                  className={`rounded-xl border bg-white px-3.5 py-3 dark:bg-gray-800/80 ${
+                                    detail.rejected
+                                      ? 'border-red-200/80 dark:border-red-900/40'
+                                      : 'border-gray-200/90 dark:border-gray-600'
+                                  }`}
+                                >
+                                  {Boolean(detail.rejected) ? (
+                                    <div className="mb-2 flex justify-end">
+                                      <span className="rounded-md bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                                        Ditolak
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  <p
+                                    className={`mb-2 text-[15px] font-medium leading-snug text-gray-900 dark:text-gray-100 ${
+                                      detail.rejected ? 'text-red-900/90 line-through dark:text-red-200/90' : ''
+                                    }`}
+                                  >
+                                    {detail.item || '—'}
+                                  </p>
+                                  <div className="flex items-center gap-3 text-sm">
+                                    <span
+                                      className={`min-w-0 flex-1 text-left tabular-nums text-gray-600 dark:text-gray-400 ${
+                                        detail.rejected ? 'line-through opacity-80' : ''
+                                      }`}
+                                    >
+                                      {formatCurrency(parseFloat(detail.harga || 0))}
+                                      <span className="mx-1.5 text-gray-400 dark:text-gray-500">×</span>
+                                      {detail.jumlah ?? '—'}
+                                    </span>
+                                    <span
+                                      className={`shrink-0 text-right text-base font-semibold tabular-nums ${
+                                        detail.rejected
+                                          ? 'text-red-600 line-through dark:text-red-400'
+                                          : 'text-teal-600 dark:text-teal-400'
+                                      }`}
+                                    >
+                                      {formatCurrency(parseFloat(detail.nominal || 0))}
+                                    </span>
+                                  </div>
+                                  {Boolean(detail.rejected) && detail.alasan_penolakan ? (
+                                    <div className="mt-3 rounded-lg border border-red-200/60 bg-red-50/50 px-3 py-2 text-xs leading-relaxed text-red-900 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-100">
+                                      {detail.alasan_penolakan}
+                                    </div>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         )}
 
@@ -1160,80 +1176,6 @@ function DetailOffcanvas({
                           </div>
                         )}
 
-                        {/* Viewer Info - untuk rencana - Accordion */}
-                        {type === 'rencana' && (
-                          <div className="mt-4">
-                            <button
-                              onClick={() => setIsViewerOpen(!isViewerOpen)}
-                              className="w-full flex items-center justify-between text-base font-semibold text-gray-800 dark:text-gray-200 mb-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                            >
-                              <div className="flex items-center gap-2">
-                                <svg className="w-5 h-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                                <span>Sudah Dilihat ({Array.isArray(viewers) ? viewers.length : 0})</span>
-                              </div>
-                              <motion.svg
-                                animate={{ rotate: isViewerOpen ? 180 : 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="w-5 h-5 text-gray-600 dark:text-gray-400"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                              </motion.svg>
-                            </button>
-                            <AnimatePresence>
-                              {isViewerOpen && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="overflow-hidden"
-                                >
-                                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                                    {loadingKomentar ? (
-                                      <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
-                                        Memuat...
-                                      </div>
-                                    ) : Array.isArray(viewers) && viewers.length > 0 ? (
-                                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                                        {viewers.map((viewer) => (
-                                          <div key={viewer.id} className="flex items-center justify-between text-sm bg-white dark:bg-gray-800 rounded-lg p-2 border border-gray-200 dark:border-gray-600">
-                                            <div className="flex items-center gap-2">
-                                              <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
-                                                <svg className="w-4 h-4 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                                </svg>
-                                              </div>
-                                              <div>
-                                                <p className="font-medium text-gray-800 dark:text-gray-200 text-xs">
-                                                  {viewer.admin_nama || 'Unknown'}
-                                                </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                                  {new Date(viewer.tanggal_dilihat).toLocaleString('id-ID')}
-                                                  {viewer.jumlah_view > 1 && ` • ${viewer.jumlah_view}x dilihat`}
-                                                </p>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <div className="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
-                                        Belum ada yang melihat
-                                      </div>
-                                    )}
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        )}
-
                         {/* Komentar Section - untuk rencana */}
                         {type === 'rencana' && (
                           <div className="mt-4">
@@ -1373,13 +1315,19 @@ function DetailOffcanvas({
                               {detailData && onSendNotification && selectedAdmins?.length > 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => onSendNotification && onSendNotification()}
-                                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center gap-2"
+                                  disabled={resendNotifCooldown}
+                                  onClick={handleResendNotificationClick}
+                                  title={
+                                    resendNotifCooldown
+                                      ? 'Tunggu beberapa detik sebelum kirim ulang'
+                                      : 'Kirim ulang notifikasi WhatsApp ke admin terpilih'
+                                  }
+                                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-600"
                                 >
-                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0112.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
                                   </svg>
-                                  kirim ulang
+                                  {resendNotifCooldown ? 'tunggu…' : 'kirim ulang'}
                                 </button>
                               )}
                             </div>
@@ -2367,6 +2315,93 @@ function DetailOffcanvas({
             </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Offcanvas daftar viewer (rencana): ikon mata + count di kolom kiri membuka ini */}
+      <AnimatePresence>
+        {showViewerListOffcanvas && type === 'rencana' && (
+          <>
+            <motion.div
+              key="viewer-list-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black bg-opacity-40"
+              style={{ zIndex: 100000 }}
+              onClick={() => setShowViewerListOffcanvas(false)}
+            />
+            <motion.div
+              key="viewer-list-panel"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={offcanvasTransition}
+              className="bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl flex flex-col"
+              style={{
+                position: 'fixed',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                maxHeight: '85vh',
+                zIndex: 100001,
+                overflow: 'hidden'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="shrink-0 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex justify-center pt-3 pb-1" aria-hidden="true">
+                  <div className="h-1 w-11 rounded-full bg-gray-300 dark:bg-gray-600" />
+                </div>
+                <div className="flex items-center justify-between px-4 pb-3">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 pr-2">Yang sudah melihat</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowViewerListOffcanvas(false)}
+                    className="shrink-0 rounded-full p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    aria-label="Tutup"
+                  >
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
+                {loadingKomentar ? (
+                  <div className="flex justify-center py-10">
+                    <div className="h-9 w-9 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+                  </div>
+                ) : Array.isArray(viewers) && viewers.length > 0 ? (
+                  <ul className="space-y-2">
+                    {viewers.map((viewer, vIdx) => (
+                      <li
+                        key={viewer.id != null ? viewer.id : `viewer-${vIdx}`}
+                        className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/60 px-3 py-2.5"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/40">
+                          <svg className="h-5 w-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{viewer.admin_nama || 'Unknown'}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {viewer.tanggal_dilihat ? new Date(viewer.tanggal_dilihat).toLocaleString('id-ID') : '—'}
+                            {viewer.jumlah_view > 1 && ` · ${viewer.jumlah_view}× dilihat`}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Belum ada yang melihat</p>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Modal Konfirmasi Hapus Komentar */}
       < Modal
         isOpen={showDeleteModal}

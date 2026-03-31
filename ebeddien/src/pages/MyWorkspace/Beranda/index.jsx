@@ -346,17 +346,25 @@ export default function Beranda() {
     }).catch(() => setDashboardPendaftaran(null)).finally(() => setDashboardPendaftaranLoading(false))
   }, [hasRolePsb, tahunAjaran, tahunAjaranMasehi])
 
-  // Foto profil
+  // Foto profil (hanya fetch blob jika API user menyebut ada foto — hindari request sia-sia)
   useEffect(() => {
     if (!user?.id) return
     setPhotoLoaded(false)
     let cancelled = false
-    profilAPI.getProfilFotoBlob().then((blob) => {
+    profilAPI.getUser(user.id).then((res) => {
+      if (cancelled || !res?.success || !res.user?.foto_profil) {
+        if (!cancelled) setPhotoUrl(null)
+        return
+      }
+      return profilAPI.getProfilFotoBlob()
+    }).then((blob) => {
       if (!cancelled && blob instanceof Blob) {
         if (photoUrlRef.current) URL.revokeObjectURL(photoUrlRef.current)
         const url = URL.createObjectURL(blob)
         photoUrlRef.current = url
         setPhotoUrl(url)
+      } else if (!cancelled) {
+        setPhotoUrl(null)
       }
     }).catch(() => {
       if (!cancelled) setPhotoUrl(null)

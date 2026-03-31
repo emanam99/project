@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
@@ -42,6 +42,19 @@ const ASSISTANT_NAME = 'eBeddien'
 /** Satu sesi chat utama (mode API) — selaras dengan backend DeepseekController::EBEDDIEN_MAIN_SESSION_ID */
 const EBEDDIEN_MAIN_SESSION_ID = 'ebeddien-main'
 
+/** Panel "Mulai percakapan" + saran: hanya jika belum ada pesan atau aktivitas terakhir > 24 jam. */
+const STARTER_HIDE_WITHIN_MS = 24 * 60 * 60 * 1000
+
+function shouldShowConversationStarter(messageList) {
+  if (!Array.isArray(messageList) || messageList.length === 0) return true
+  const times = messageList
+    .map((m) => (m?.createdAt ? new Date(m.createdAt).getTime() : null))
+    .filter((t) => t != null && Number.isFinite(t))
+  if (times.length === 0) return false
+  const last = Math.max(...times)
+  return Date.now() - last > STARTER_HIDE_WITHIN_MS
+}
+
 function mapServerHistoryToMessages(rows) {
   if (!Array.isArray(rows)) return []
   return rows
@@ -50,15 +63,19 @@ function mapServerHistoryToMessages(rows) {
       if (role !== 'user' && role !== 'assistant') return null
       const id = typeof row?.id === 'string' && row.id ? row.id : msgId()
       const content = typeof row?.content === 'string' ? row.content : ''
+      const createdAt =
+        typeof row?.created_at === 'string' && row.created_at.trim() !== '' ? row.created_at.trim() : null
+      const timeFields = createdAt ? { createdAt } : {}
       if (role === 'assistant') {
         return {
           id,
           role: 'assistant',
           content,
-          ...(row?.thinking ? { thinking: row.thinking } : {})
+          ...(row?.thinking ? { thinking: row.thinking } : {}),
+          ...timeFields
         }
       }
-      return { id, role: 'user', content }
+      return { id, role: 'user', content, ...timeFields }
     })
     .filter(Boolean)
 }
@@ -354,10 +371,10 @@ export default function DeepseekChat() {
   const [apiOfficialInput, setApiOfficialInput] = useState('')
   const [apiOfficialModel, setApiOfficialModel] = useState('deepseek-chat')
   const [apiOfficialBusy, setApiOfficialBusy] = useState(false)
-  /** Setelah GET /deepseek/chat-history selesai (mode API) — agar saran cepat tidak muncul sebelum riwayat. */
+  /** Setelah GET /deepseek/chat-history selesai (mode API) — baru render area obrolan + saran cepat. */
   const [apiHistoryFetched, setApiHistoryFetched] = useState(false)
   const [proxyHistoryFetched, setProxyHistoryFetched] = useState(false)
-  /** Tiga saran dari data training (server) saat layar kosong; diisi ulang saat sesi baru. */
+  /** Tiga saran dari data training (server); tetap ditampilkan di bawah riwayat. */
   const [suggestedPrompts, setSuggestedPrompts] = useState([])
   const [suggestedPromptsLoading, setSuggestedPromptsLoading] = useState(false)
   const apiOfficialScrollRef = useRef(null)
@@ -443,7 +460,7 @@ export default function DeepseekChat() {
       el.scrollTop = el.scrollHeight
     })
     return () => cancelAnimationFrame(raf)
-  }, [messages, sending])
+  }, [messages, sending, suggestedPromptsLoading, suggestedPrompts])
 
   useEffect(() => {
     const el = apiOfficialScrollRef.current
@@ -452,7 +469,7 @@ export default function DeepseekChat() {
       el.scrollTop = el.scrollHeight
     })
     return () => cancelAnimationFrame(raf)
-  }, [apiOfficialMessages, apiOfficialBusy, aiChatMode])
+  }, [apiOfficialMessages, apiOfficialBusy, aiChatMode, suggestedPromptsLoading, suggestedPrompts])
 
   useEffect(() => {
     if (dsToken && !accountLoading && accountEmail && aiChatMode === 'proxy') {
@@ -745,13 +762,13 @@ export default function DeepseekChat() {
     }
   }, [accountEmail, aiChatMode, dsToken, sessionId])
 
+  /** Saran cepat (3) dari bank training — dimuat setelah riwayat siap, tetap dipakai walau sudah ada chat lama. */
   useEffect(() => {
     const shouldFetch =
       accountEmail &&
       apiHistoryFetched &&
       proxyHistoryFetched &&
-      ((aiChatMode === 'api' && apiOfficialMessages.length === 0) ||
-        (aiChatMode === 'proxy' && dsToken && messages.length === 0))
+      (aiChatMode === 'api' || (aiChatMode === 'proxy' && dsToken))
 
     if (!shouldFetch) {
       setSuggestedPromptsLoading(false)
@@ -776,15 +793,7 @@ export default function DeepseekChat() {
     return () => {
       cancelled = true
     }
-  }, [
-    accountEmail,
-    aiChatMode,
-    apiHistoryFetched,
-    proxyHistoryFetched,
-    apiOfficialMessages.length,
-    messages.length,
-    dsToken
-  ])
+  }, [accountEmail, aiChatMode, apiHistoryFetched, proxyHistoryFetched, dsToken])
 
   const extractLoginToken = (res) => {
     const direct = res?.data?.token
@@ -911,7 +920,8 @@ export default function DeepseekChat() {
 
     setSendError(null)
     setInput('')
-    const userMsg = { id: msgId(), role: 'user', content: text }
+    const now = new Date().toISOString()
+    const userMsg = { id: msgId(), role: 'user', content: text, createdAt: now }
     setMessages((m) => [...m, userMsg])
     setSending(true)
 
@@ -953,7 +963,8 @@ export default function DeepseekChat() {
           {
             id: msgId(),
             role: 'assistant',
-            content: errText
+            content: errText,
+            createdAt: new Date().toISOString()
           }
         ])
         if (isAiDailyLimitMessage(errText)) void refreshAiUsageFromServer()
@@ -968,7 +979,12 @@ export default function DeepseekChat() {
         setSendError(d.message || 'Chat error')
         setMessages((m) => [
           ...m,
-          { id: msgId(), role: 'assistant', content: `**Error:** ${d.message || 'Gagal'}` }
+          {
+            id: msgId(),
+            role: 'assistant',
+            content: `**Error:** ${d.message || 'Gagal'}`,
+            createdAt: new Date().toISOString()
+          }
         ])
         return
       }
@@ -1022,13 +1038,17 @@ export default function DeepseekChat() {
           id: msgId(),
           role: 'assistant',
           content: reply || '_(tidak ada teks)_',
-          thinking: thinking || undefined
+          thinking: thinking || undefined,
+          createdAt: new Date().toISOString()
         }
       ])
       void refreshAiUsageFromServer()
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Gagal mengirim'
-      setMessages((m) => [...m, { id: msgId(), role: 'assistant', content: msg }])
+      setMessages((m) => [
+        ...m,
+        { id: msgId(), role: 'assistant', content: msg, createdAt: new Date().toISOString() }
+      ])
       if (err.response?.status === 429 || isAiDailyLimitMessage(msg)) void refreshAiUsageFromServer()
     } finally {
       setSending(false)
@@ -1046,7 +1066,8 @@ export default function DeepseekChat() {
     if (!text || apiOfficialBusy) return
     setApiOfficialInput('')
     /** Satu giliran per request; 3 percakapan terakhir diambil server dari ai___chat (users_id + session_id). */
-    const userMsg = { id: msgId(), role: 'user', content: text }
+    const now = new Date().toISOString()
+    const userMsg = { id: msgId(), role: 'user', content: text, createdAt: now }
     setApiOfficialMessages((m) => [...m, userMsg])
     setApiOfficialBusy(true)
     try {
@@ -1057,7 +1078,10 @@ export default function DeepseekChat() {
       })
       if (!res.success) {
         const errText = res.message || 'Gagal'
-        setApiOfficialMessages((m) => [...m, { id: msgId(), role: 'assistant', content: errText }])
+        setApiOfficialMessages((m) => [
+          ...m,
+          { id: msgId(), role: 'assistant', content: errText, createdAt: new Date().toISOString() }
+        ])
         if (isAiDailyLimitMessage(errText)) void refreshAiUsageFromServer()
         return
       }
@@ -1068,13 +1092,17 @@ export default function DeepseekChat() {
           id: msgId(),
           role: 'assistant',
           content: d.message || '_(kosong)_',
-          thinking: d.reasoning || undefined
+          thinking: d.reasoning || undefined,
+          createdAt: new Date().toISOString()
         }
       ])
       void refreshAiUsageFromServer()
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Gagal mengirim'
-      setApiOfficialMessages((m) => [...m, { id: msgId(), role: 'assistant', content: msg }])
+      setApiOfficialMessages((m) => [
+        ...m,
+        { id: msgId(), role: 'assistant', content: msg, createdAt: new Date().toISOString() }
+      ])
       if (err.response?.status === 429 || isAiDailyLimitMessage(msg)) void refreshAiUsageFromServer()
     } finally {
       setApiOfficialBusy(false)
@@ -1082,6 +1110,15 @@ export default function DeepseekChat() {
   }
 
   const setHeaderFromLayout = useChatAiHeaderSlot()
+
+  const showApiConversationStarter = useMemo(
+    () => shouldShowConversationStarter(apiOfficialMessages),
+    [apiOfficialMessages]
+  )
+  const showProxyConversationStarter = useMemo(
+    () => shouldShowConversationStarter(messages),
+    [messages]
+  )
 
   useLayoutEffect(() => {
     if (!setHeaderFromLayout) return
@@ -1160,46 +1197,6 @@ export default function DeepseekChat() {
                   ref={apiOfficialScrollRef}
                   className="chat-scrollbar min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth px-2 py-3 sm:p-4"
                 >
-                  <AnimatePresence initial={false}>
-                    {apiOfficialMessages.length === 0 && !apiOfficialBusy ? (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-center py-6 sm:py-10 px-2"
-                      >
-                        <p className="text-base sm:text-lg font-medium text-gray-800 dark:text-gray-100">
-                          Mulai percakapan
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-md mx-auto">
-                          {ASSISTANT_NAME} memakai bank Q&amp;A lembaga (tabel terkurasi) untuk saran cepat. Pilih saran atau ketik di bawah.
-                        </p>
-                        <div className="mt-6 flex flex-col sm:flex-row flex-wrap justify-center gap-2 max-w-xl mx-auto">
-                          {suggestedPromptsLoading
-                            ? [0, 1, 2].map((i) => (
-                                <div
-                                  key={i}
-                                  className="h-14 w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200/50 dark:border-primary-900/40 bg-gray-100 dark:bg-gray-800/80 animate-pulse"
-                                  aria-hidden
-                                />
-                              ))
-                            : (suggestedPrompts.length ? suggestedPrompts : padSuggestedPromptsWithFallback([])).map(
-                                (p, idx) => (
-                                  <button
-                                    key={`${idx}-${p.slice(0, 32)}`}
-                                    type="button"
-                                    disabled={apiOfficialBusy}
-                                    onClick={() => submitApiOfficial(null, p)}
-                                    className="text-left text-xs sm:text-sm px-3 py-2.5 rounded-xl border border-primary-200 dark:border-primary-800/50 bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:bg-primary-50/80 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors line-clamp-2"
-                                  >
-                                    {p}
-                                  </button>
-                                )
-                              )}
-                        </div>
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-
                   {apiOfficialMessages.map((msg) =>
                     msg.role === 'user' ? (
                       <BubbleUser key={msg.id} text={msg.content} fontClass={chatFont.user} />
@@ -1214,6 +1211,46 @@ export default function DeepseekChat() {
                       />
                     )
                   )}
+
+                  {showApiConversationStarter ? (
+                    <motion.div
+                      layout
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className={`text-center px-2 ${apiOfficialMessages.length > 0 ? 'mt-6 border-t border-gray-200/90 pt-8 dark:border-gray-700/80' : 'py-6 sm:py-10'}`}
+                    >
+                      <p className="text-base sm:text-lg font-medium text-gray-800 dark:text-gray-100">
+                        Mulai percakapan
+                      </p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-md mx-auto">
+                        {ASSISTANT_NAME} memakai bank Q&amp;A lembaga (tabel terkurasi) untuk saran cepat. Pilih saran atau ketik di bawah.
+                      </p>
+                      <div className="mt-6 flex flex-col sm:flex-row flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                        {suggestedPromptsLoading
+                          ? [0, 1, 2].map((i) => (
+                              <div
+                                key={i}
+                                className="h-14 w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200/50 dark:border-primary-900/40 bg-gray-100 dark:bg-gray-800/80 animate-pulse"
+                                aria-hidden
+                              />
+                            ))
+                          : (suggestedPrompts.length ? suggestedPrompts : padSuggestedPromptsWithFallback([])).map(
+                              (p, idx) => (
+                                <button
+                                  key={`${idx}-${p.slice(0, 32)}`}
+                                  type="button"
+                                  disabled={apiOfficialBusy}
+                                  onClick={() => submitApiOfficial(null, p)}
+                                  className="text-left text-xs sm:text-sm px-3 py-2.5 rounded-xl border border-primary-200 dark:border-primary-800/50 bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:bg-primary-50/80 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors line-clamp-2"
+                                >
+                                  {p}
+                                </button>
+                              )
+                            )}
+                      </div>
+                    </motion.div>
+                  ) : null}
 
                   {apiOfficialBusy ? (
                     <TypingIndicator nameClass={chatFont.assistantName} statusClass={chatFont.typing} />
@@ -1323,46 +1360,6 @@ export default function DeepseekChat() {
                   ref={messagesContainerRef}
                   className="chat-scrollbar min-h-0 min-w-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth px-2 py-3 sm:p-4"
                 >
-              <AnimatePresence initial={false}>
-                {messages.length === 0 && !sessionBusy ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-center py-6 sm:py-10 px-2"
-                  >
-                    <p className="text-base sm:text-lg font-medium text-gray-800 dark:text-gray-100">
-                      Mulai percakapan
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-md mx-auto">
-                      Ketik pertanyaan atau pilih saran — {ASSISTANT_NAME} memakai bank Q&amp;A lembaga bila tersedia.
-                    </p>
-                    <div className="mt-6 flex flex-col sm:flex-row flex-wrap justify-center gap-2 max-w-xl mx-auto">
-                      {suggestedPromptsLoading
-                        ? [0, 1, 2].map((i) => (
-                            <div
-                              key={i}
-                              className="h-14 w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200/50 dark:border-primary-900/40 bg-gray-100 dark:bg-gray-800/80 animate-pulse"
-                              aria-hidden
-                            />
-                          ))
-                        : (suggestedPrompts.length ? suggestedPrompts : padSuggestedPromptsWithFallback([])).map(
-                            (p, idx) => (
-                              <button
-                                key={`${idx}-${p.slice(0, 32)}`}
-                                type="button"
-                                disabled={sending || sessionBusy}
-                                onClick={() => submitMessage(p)}
-                                className="text-left text-xs sm:text-sm px-3 py-2.5 rounded-xl border border-primary-200 dark:border-primary-800/50 bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:bg-primary-50/80 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors line-clamp-2"
-                              >
-                                {p}
-                              </button>
-                            )
-                          )}
-                    </div>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-
               {messages.length === 0 && sessionBusy ? (
                 <p className="text-center text-sm text-gray-500 dark:text-gray-400 py-12">Menyiapkan sesi…</p>
               ) : null}
@@ -1381,6 +1378,46 @@ export default function DeepseekChat() {
                   />
                 )
               )}
+
+              {showProxyConversationStarter && !(messages.length === 0 && sessionBusy) ? (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className={`text-center px-2 ${messages.length > 0 ? 'mt-6 border-t border-gray-200/90 pt-8 dark:border-gray-700/80' : 'py-6 sm:py-10'}`}
+                >
+                  <p className="text-base sm:text-lg font-medium text-gray-800 dark:text-gray-100">
+                    Mulai percakapan
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-md mx-auto">
+                    {ASSISTANT_NAME} memakai bank Q&amp;A lembaga (tabel terkurasi) untuk saran cepat. Pilih saran atau ketik di bawah.
+                  </p>
+                  <div className="mt-6 flex flex-col sm:flex-row flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                    {suggestedPromptsLoading
+                      ? [0, 1, 2].map((i) => (
+                          <div
+                            key={i}
+                            className="h-14 w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200/50 dark:border-primary-900/40 bg-gray-100 dark:bg-gray-800/80 animate-pulse"
+                            aria-hidden
+                          />
+                        ))
+                      : (suggestedPrompts.length ? suggestedPrompts : padSuggestedPromptsWithFallback([])).map(
+                          (p, idx) => (
+                            <button
+                              key={`${idx}-${p.slice(0, 32)}`}
+                              type="button"
+                              disabled={sending || sessionBusy}
+                              onClick={() => submitMessage(p)}
+                              className="text-left text-xs sm:text-sm px-3 py-2.5 rounded-xl border border-primary-200 dark:border-primary-800/50 bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:bg-primary-50/80 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors line-clamp-2"
+                            >
+                              {p}
+                            </button>
+                          )
+                        )}
+                  </div>
+                </motion.div>
+              ) : null}
 
               {sending ? (
                 <TypingIndicator nameClass={chatFont.assistantName} statusClass={chatFont.typing} />

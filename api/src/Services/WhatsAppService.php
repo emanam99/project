@@ -59,6 +59,15 @@ class WhatsAppService
     ];
 
     /**
+     * Notif ke admin keuangan: nomor sumber = field WhatsApp pengurus di UI.
+     * Jangan pakai resolveDeliveryTarget (whatsapp___kontak.nomor_kanonik) — bisa mengirim ke HP lain sehingga "berhasil" tapi penerima yang dipilih tidak dapat pesan.
+     */
+    private const KATEGORI_KIRIM_KE_NOMOR_PENGURUS_TANPA_ALIAS = [
+        'pengeluaran_rencana_notif',
+        'pengeluaran_notif',
+    ];
+
+    /**
      * Sementara: nonaktifkan semua notif WA template PSB (sendPsb*): daftar, berkas, pembayaran (termasuk iPayMu),
      * status transaksi, dan diverifikasi. Set false untuk mengaktifkan kembali.
      */
@@ -1277,6 +1286,8 @@ class WhatsAppService
         } elseif ($isAuthKirimKeNomorProfil) {
             // Link reset/setup/username harus ke nomor yang sama dengan profil/konfirmasi, bukan ke nomor_kanonik lain.
             $phone = $originalPhone;
+        } elseif ($logContext !== null && in_array(($logContext['kategori'] ?? ''), self::KATEGORI_KIRIM_KE_NOMOR_PENGURUS_TANPA_ALIAS, true)) {
+            $phone = $originalPhone;
         } else {
             $delivery = self::resolveDeliveryTarget($originalPhone);
             $phone = $delivery['nomor'];
@@ -1685,6 +1696,8 @@ class WhatsAppService
 
         $isAuthKirimKeNomorProfil = $logContext !== null && in_array(($logContext['kategori'] ?? ''), self::KATEGORI_AUTH_KIRIM_KE_NOMOR_PROFIL, true);
         if ($isAuthKirimKeNomorProfil) {
+            $phone = $originalPhone;
+        } elseif ($logContext !== null && in_array(($logContext['kategori'] ?? ''), self::KATEGORI_KIRIM_KE_NOMOR_PENGURUS_TANPA_ALIAS, true)) {
             $phone = $originalPhone;
         } else {
             $delivery = self::resolveDeliveryTarget($originalPhone);

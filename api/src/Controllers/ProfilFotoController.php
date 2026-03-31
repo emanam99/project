@@ -161,12 +161,13 @@ class ProfilFotoController
             $path = $row['foto_profil'] ?? null;
 
             if (!$path) {
-                return $response->withStatus(404);
+                // Tanpa foto: 204 agar client tidak memicu "Failed to load resource" (404) di DevTools
+                return $response->withStatus(204);
             }
 
             $fullPath = $this->resolveFilePath($path);
             if (!is_file($fullPath)) {
-                return $response->withStatus(404);
+                return $response->withStatus(204);
             }
 
             $mime = mime_content_type($fullPath);

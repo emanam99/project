@@ -578,15 +578,15 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
 
   return (
     <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-      <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
+      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
         <div className="p-4 sm:p-6 lg:p-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            {/* Tabs */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mb-6">
+            {/* Tabs — sticky seperti input cari di halaman Pengurus */}
+            <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 mb-6">
               <div className="border-b border-gray-200 dark:border-gray-700">
                 <nav className="flex -mb-px flex-wrap">
                   {pengeluaranFitur.tabRencana && (

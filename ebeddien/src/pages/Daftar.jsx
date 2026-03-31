@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useThemeStore } from '../store/themeStore'
 import { authAPI } from '../services/api'
@@ -42,8 +42,10 @@ function mapDaftarCheckError(code, fallback) {
       return 'NIP tidak ditemukan. Periksa lagi atau hubungi admin.'
     case 'nip_invalid':
       return 'NIP tidak valid.'
+    case 'nip_has_account':
+      return 'NIP ini sudah terdaftar akun. Silakan login dengan akun yang sudah ada.'
     case 'nik_conflict':
-      return 'NIK bentrok dengan pengurus lain. Periksa NIK atau hubungi admin.'
+      return 'NIK ini sudah dipakai pengurus lain. Gunakan NIK yang benar milik Anda.'
     case 'wa_in_use':
       return 'Nomor WhatsApp ini sudah dipakai akun lain.'
     case 'wa_pending_setup':
@@ -54,6 +56,7 @@ function mapDaftarCheckError(code, fallback) {
 }
 
 export function DaftarFormCard() {
+  const navigate = useNavigate()
   const [idPengurus, setIdPengurus] = useState('')
   const [nik, setNik] = useState('')
   const [noWa, setNoWa] = useState('')
@@ -77,6 +80,10 @@ export function DaftarFormCard() {
 
   const handleInputCloseComplete = () => { if (flipPhase === 'close') setFlipPhase('open') }
   const handleInputOpenComplete = () => { if (flipPhase === 'open') setFlipPhase('idle') }
+  const clearInlineMessage = () => {
+    if (error) setError('')
+    if (successMessage) setSuccessMessage('')
+  }
 
   useEffect(() => {
     if (waTimerRef.current) {
@@ -178,13 +185,18 @@ export function DaftarFormCard() {
         setError(mapDaftarCheckError(res.code, res.message || 'Gagal membuat token aktivasi'))
         return
       }
-      const phone = res.wa_me_phone || '6282232999921'
-      const msg = res.prefill_message || ''
       setConfirmModal(null)
-      setSuccessMessage(
-        'WhatsApp dibuka ke nomor layanan. Kirim pesan yang sudah terisi, lalu balas pertanyaan di chat sampai Anda menerima link pengaturan username dan password.'
-      )
-      openWaMe(phone, msg)
+      const setupUrl = String(res.setup_url || '').trim()
+      const setupToken = String(res.setup_token || '').trim()
+      if (setupUrl) {
+        window.location.assign(setupUrl)
+        return
+      }
+      if (setupToken) {
+        navigate(`/setup-akun?token=${encodeURIComponent(setupToken)}`)
+        return
+      }
+      setError('Token setup akun tidak ditemukan. Coba lagi.')
     } catch (err) {
       const data = err.response?.data
       setError(mapDaftarCheckError(data?.code, data?.message || 'Gagal melanjutkan.'))
@@ -221,7 +233,6 @@ export function DaftarFormCard() {
           <div className="hidden md:block text-center mb-8">
             <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1 tracking-tight">Daftar Akun</h1>
           </div>
-          <p className="text-gray-500 dark:text-gray-400 text-xs mb-4">Satu NIK hanya untuk satu pengurus (kecuali data NIK Anda di sistem masih kosong — tidak dicek bentrok). Jika sudah punya akun, silakan login.</p>
           <form onSubmit={handleDaftar} className="space-y-5" style={{ perspective: '600px' }}>
             <motion.div
               variants={itemVariants}
@@ -239,7 +250,7 @@ export function DaftarFormCard() {
               transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
               onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
             >
-              <input type="text" inputMode="numeric" autoComplete="off" value={nik} onChange={(e) => setNik(normalizeNikInput(e.target.value))} className={`${inputClass} font-mono tracking-wide`} placeholder="NIK (16 digit)" maxLength={16} required />
+              <input type="text" inputMode="numeric" autoComplete="off" value={nik} onChange={(e) => { clearInlineMessage(); setNik(normalizeNikInput(e.target.value)) }} className={`${inputClass} font-mono tracking-wide`} placeholder="NIK (16 digit)" maxLength={16} required />
               {nik.length > 0 && nik.length !== 16 && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{nik.length}/16 digit</p>}
             </motion.div>
             <motion.div
@@ -249,7 +260,7 @@ export function DaftarFormCard() {
               transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
               onAnimationComplete={flipPhase === 'close' ? handleInputCloseComplete : flipPhase === 'open' ? handleInputOpenComplete : undefined}
             >
-              <input type="text" inputMode="numeric" value={noWa} onChange={(e) => setNoWa(e.target.value.replace(/\D/g, '').slice(0, 16))} className={inputClass} placeholder="No. WA (08xxxxxxxxxx)" required />
+              <input type="text" inputMode="numeric" value={noWa} onChange={(e) => { clearInlineMessage(); setNoWa(e.target.value.replace(/\D/g, '').slice(0, 16)) }} className={inputClass} placeholder="No. WA (08xxxxxxxxxx)" required />
               {noWa.replace(/\D/g, '').length >= 10 && waProbe === 'pending' && (
                 <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{waHint}</p>
               )}
@@ -296,7 +307,18 @@ export function DaftarFormCard() {
                 <span>{successMessage}</span>
               </motion.div>
             )}
-            <motion.button variants={itemVariants} type="submit" disabled={loading || !formValid} className="w-full py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow" whileHover={{ scale: loading || !formValid ? 1 : 1.01 }} whileTap={{ scale: loading || !formValid ? 1 : 0.99 }}>
+            <motion.button
+              variants={itemVariants}
+              type="submit"
+              disabled={loading || !formValid}
+              className={`w-full py-3.5 rounded-xl font-semibold text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all ${
+                loading || !formValid
+                  ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 login-btn-glow'
+              }`}
+              whileHover={{ scale: loading || !formValid ? 1 : 1.01 }}
+              whileTap={{ scale: loading || !formValid ? 1 : 0.99 }}
+            >
               {loading ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Memeriksa...</span> : 'Daftar'}
             </motion.button>
             <p className="text-center text-sm text-gray-600 dark:text-gray-400 pt-2">Sudah punya akun? <Link to="/login" className="font-medium text-primary-600 dark:text-primary-400 hover:underline">Masuk</Link></p>
@@ -307,15 +329,15 @@ export function DaftarFormCard() {
       {confirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => !loading && setConfirmModal(null)}>
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700">
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Lanjut ke WhatsApp</h3>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">Konfirmasi Data</h3>
             <p className="text-gray-600 dark:text-gray-400 text-sm mb-3">
-              Anda akan diarahkan ke WhatsApp untuk mengaktifkan akun eBeddien <strong className="text-gray-800 dark:text-gray-100">{confirmModal.nama}</strong>.
+              Data pendaftaran akun eBeddien untuk <strong className="text-gray-800 dark:text-gray-100">{confirmModal.nama}</strong> akan diproses.
               Pastikan NIK sudah sesuai <strong className="font-mono">{confirmModal.nik}</strong> dan nomor aktif di WhatsApp HP ini:{' '}
               <strong className="font-mono">{confirmModal.no_wa_display}</strong>.
             </p>
             <div className="flex gap-3 mt-4">
               <button type="button" onClick={() => setConfirmModal(null)} disabled={loading} className="flex-1 py-2.5 rounded-xl border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Batal</button>
-              <button type="button" onClick={handleLanjutkan} disabled={loading} className="flex-1 py-2.5 rounded-xl font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">{loading ? 'Memproses…' : 'Lanjutkan'}</button>
+              <button type="button" onClick={handleLanjutkan} disabled={loading} className="flex-1 py-2.5 rounded-xl font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">{loading ? 'Memproses…' : 'OK'}</button>
             </div>
           </motion.div>
         </div>

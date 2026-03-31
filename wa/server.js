@@ -1,5 +1,37 @@
 import 'dotenv/config';
 
+/**
+ * Baileys kadang melempar "Timed Out" / 408 dari waitForMessage (sendPassiveIq) saat socket sibuk atau jaringan lemah.
+ * Tanpa handler ini, unhandledRejection bisa menghentikan proses (nodemon "crashed").
+ */
+function isBaileysTimeoutLike(reason) {
+  if (reason == null) return false;
+  const out = typeof reason === 'object' && reason.output ? reason.output : null;
+  if (out && out.statusCode === 408) return true;
+  const p = out && out.payload ? out.payload : null;
+  const s = String(
+    (p && (p.message || p.error)) || (reason && reason.message) || reason
+  );
+  return /timed out|time-out|408|request time-out/i.test(s);
+}
+
+process.on('unhandledRejection', (reason) => {
+  if (isBaileysTimeoutLike(reason)) {
+    console.warn('[WA] Baileys timeout (non-fatal, proses tetap jalan):', reason?.message || reason);
+    return;
+  }
+  console.error('[WA] unhandledRejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  if (err && isBaileysTimeoutLike(err)) {
+    console.warn('[WA] Baileys uncaught timeout (non-fatal):', err.message || err);
+    return;
+  }
+  console.error('[WA] uncaughtException:', err);
+  process.exit(1);
+});
+
 // Redam warning Node/Baileys yang sering muncul (Buffer, ExperimentalWarning, dll.)
 const origEmit = process.emitWarning;
 process.emitWarning = function (msg, type, code, ...rest) {

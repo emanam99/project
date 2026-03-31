@@ -5,21 +5,21 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useLiveSocket } from '../../contexts/LiveSocketContext'
 import { useAuthStore } from '../../store/authStore'
 import { chatUserAPI } from '../../services/api'
+import { chatDexieStore, CHAT_CACHE_TTL_MS, shouldSyncFromServer } from '../../services/chatDexieStore'
+import { prefetchChatPhotos } from '../../services/chatPhotoPrefetchService'
 import {
   buildNotificationKey,
   isNotificationFresh,
   normalizeIncomingChatPayload,
 } from '../../services/chatRealtimeNotificationService'
-import { getGambarUrl } from '../../config/images'
 import {
   getNotificationPermission,
   showNotification as showSystemNotification,
 } from '../../services/pwaNotificationService'
 
-const CHAT_NOTIF_ICON = getGambarUrl('/icon/notif.png')
-
 const AUTO_CLOSE_MS = 9000
 const SEND_ACK_TIMEOUT_MS = 8000
+const getInitial = (text) => String(text || '?').trim().charAt(0).toUpperCase() || '?'
 
 export default function GlobalChatNotifier() {
   const { socket } = useLiveSocket()
@@ -33,9 +33,40 @@ export default function GlobalChatNotifier() {
   const [isSending, setIsSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768)
+  const [userPhotoMap, setUserPhotoMap] = useState({})
   const seenKeysRef = useRef(new Set())
   const closeTimerRef = useRef(null)
   const pendingReplyRef = useRef(null)
+  const photoObjectUrlRef = useRef(new Map())
+  const photoInflightRef = useRef(new Set())
+
+  const resolveChatPhotoUrl = useCallback((rawPath) => {
+    const raw = String(rawPath || '').trim()
+    if (!raw) return null
+    if (/^https?:\/\//i.test(raw)) return raw
+    let path = raw.startsWith('/') ? raw : `/${raw}`
+    if (path === '/uploads' || path.startsWith('/uploads/')) {
+      path = `/api${path}`
+    }
+    return `${window.location.origin}${path}`
+  }, [])
+
+  const hydrateUserPhotoBlob = useCallback((userId, rawFotoPath = null) => {
+    const uid = Number(userId)
+    if (!uid) return
+    if (photoInflightRef.current.has(uid)) return
+    photoInflightRef.current.add(uid)
+    chatUserAPI.getUserPhotoBlob(uid).then((blob) => {
+      if (!(blob instanceof Blob)) return
+      const prevUrl = photoObjectUrlRef.current.get(uid)
+      if (prevUrl) URL.revokeObjectURL(prevUrl)
+      const nextUrl = URL.createObjectURL(blob)
+      photoObjectUrlRef.current.set(uid, nextUrl)
+      setUserPhotoMap((prev) => ({ ...prev, [uid]: nextUrl }))
+    }).catch(() => {}).finally(() => {
+      photoInflightRef.current.delete(uid)
+    })
+  }, [])
 
   useEffect(() => {
     const onResize = () => setIsDesktop(window.innerWidth >= 768)
@@ -56,6 +87,71 @@ export default function GlobalChatNotifier() {
       }
     }).catch(() => {})
   }, [user?.id, user?.users_id])
+
+  useEffect(() => {
+    if (!myUsersId) return
+    chatDexieStore.pruneOldData(myUsersId).catch(() => {})
+    chatDexieStore.getUsers(myUsersId).then((cachedUsers) => {
+      if (!Array.isArray(cachedUsers) || cachedUsers.length === 0) return
+      const next = {}
+      const prefetchItems = []
+      cachedUsers.forEach((u) => {
+        const uid = Number(u.user_id ?? u.id)
+        if (!uid) return
+        next[uid] = u.foto_url || resolveChatPhotoUrl(u.foto_profil) || null
+        if (u.foto_url) prefetchItems.push({ url: u.foto_url, version: u.foto_version || u.foto_profil || u.foto_url })
+        if (u.foto_profil) hydrateUserPhotoBlob(uid, u.foto_profil)
+      })
+      setUserPhotoMap((prev) => ({ ...prev, ...next }))
+      if (prefetchItems.length > 0) prefetchChatPhotos(prefetchItems.slice(0, 20))
+    }).catch(() => {})
+    ;(async () => {
+      const meta = await chatDexieStore.getMeta(myUsersId, 'last_users_sync_at')
+      if (!shouldSyncFromServer(meta, CHAT_CACHE_TTL_MS.USERS)) return
+      const res = await chatUserAPI.getUsers().catch(() => null)
+      if (!(res?.success && Array.isArray(res.data))) return
+      const next = {}
+      const prefetchItems = []
+      res.data.forEach((u) => {
+        const uid = Number(u.id)
+        if (!uid) return
+        const raw = String(u.foto_profil || '').trim()
+        const url = resolveChatPhotoUrl(raw)
+        next[uid] = url
+        if (raw) {
+          prefetchItems.push({ url, version: raw })
+          hydrateUserPhotoBlob(uid, raw)
+        }
+      })
+      setUserPhotoMap(next)
+      chatDexieStore.upsertUsers(myUsersId, res.data).catch(() => {})
+      chatDexieStore.setMeta(myUsersId, 'last_users_sync_at', { at: new Date().toISOString() }).catch(() => {})
+      if (prefetchItems.length > 0) prefetchChatPhotos(prefetchItems.slice(0, 20))
+    })()
+  }, [myUsersId, resolveChatPhotoUrl, hydrateUserPhotoBlob])
+
+  useEffect(() => () => {
+    photoObjectUrlRef.current.forEach((url) => {
+      try { URL.revokeObjectURL(url) } catch { /* ignore */ }
+    })
+    photoObjectUrlRef.current.clear()
+    photoInflightRef.current.clear()
+  }, [])
+
+  const resolveSenderPhotoUrl = useCallback((fromUserId) => {
+    const raw = userPhotoMap?.[Number(fromUserId)]
+    if (!raw || typeof raw !== 'string') return null
+    return resolveChatPhotoUrl(raw)
+  }, [userPhotoMap, resolveChatPhotoUrl])
+
+  const handleSenderPhotoError = useCallback((userId) => {
+    const uid = Number(userId)
+    if (!uid) return
+    setUserPhotoMap((prev) => {
+      if (!prev?.[uid]) return prev
+      return { ...prev, [uid]: null }
+    })
+  }, [])
 
   const dismiss = useCallback(() => {
     setActiveNotif(null)
@@ -104,6 +200,7 @@ export default function GlobalChatNotifier() {
       const onChatPage = location.pathname === '/chat' || location.pathname.startsWith('/chat/')
       if (onChatPage) return
       if (myUsersId != null && normalized.toUserId != null && normalized.toUserId !== myUsersId) return
+      hydrateUserPhotoBlob(normalized.fromUserId)
       setReplyText('')
       setReplyOpen(false)
       setActiveNotif(normalized)
@@ -112,14 +209,20 @@ export default function GlobalChatNotifier() {
       if (typeof document !== 'undefined' && document.hidden) {
         getNotificationPermission().then((perm) => {
           if (perm !== 'granted') return
-          showSystemNotification({
+          const senderPhoto = resolveSenderPhotoUrl(normalized.fromUserId)
+          const notifOptions = {
             title: normalized.senderName || 'Pesan baru',
             body: normalized.message.length > 220 ? `${normalized.message.slice(0, 217)}…` : normalized.message,
             tag: `ebeddien-chat-${normalized.fromUserId}`,
             renotify: true,
-            icon: CHAT_NOTIF_ICON,
-            badge: CHAT_NOTIF_ICON,
             data: { url: `/chat?u=${normalized.fromUserId}` },
+          }
+          if (senderPhoto) {
+            notifOptions.icon = senderPhoto
+            notifOptions.badge = senderPhoto
+          }
+          showSystemNotification({
+            ...notifOptions,
           }).catch(() => {})
         })
       }
@@ -128,7 +231,7 @@ export default function GlobalChatNotifier() {
     return () => {
       socket.off('receive_message', onReceive)
     }
-  }, [socket, myUsersId, location.pathname])
+  }, [socket, myUsersId, location.pathname, resolveSenderPhotoUrl, hydrateUserPhotoBlob])
 
   const openChatRoom = () => {
     if (!activeNotif) return
@@ -210,14 +313,21 @@ export default function GlobalChatNotifier() {
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
             <div className="px-3 py-2 bg-teal-600 text-white flex items-start justify-between gap-2">
               <div className="flex items-start gap-2 min-w-0">
-                <img
-                  src={CHAT_NOTIF_ICON}
-                  alt=""
-                  width={36}
-                  height={36}
-                  className="shrink-0 rounded-lg bg-white/15 object-contain p-0.5"
-                  decoding="async"
-                />
+                {resolveSenderPhotoUrl(activeNotif.fromUserId) ? (
+                  <img
+                    src={resolveSenderPhotoUrl(activeNotif.fromUserId)}
+                    alt=""
+                    width={36}
+                    height={36}
+                    className="shrink-0 rounded-lg bg-white/15 object-cover p-0.5"
+                    decoding="async"
+                    onError={() => handleSenderPhotoError(activeNotif.fromUserId)}
+                  />
+                ) : (
+                  <div className="shrink-0 w-9 h-9 rounded-lg bg-white/15 text-white text-sm font-semibold flex items-center justify-center">
+                    {getInitial(activeNotif.senderName)}
+                  </div>
+                )}
                 <div className="min-w-0">
                   <p className="text-xs text-teal-100">Pesan baru</p>
                   <p id="global-chat-notif-title" className="text-sm font-semibold truncate">{activeNotif.senderName}</p>

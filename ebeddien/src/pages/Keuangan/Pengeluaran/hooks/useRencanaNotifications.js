@@ -12,6 +12,14 @@ export const useRencanaNotifications = () => {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
 
+  const wakeWaThen = async () => {
+    try {
+      await pengeluaranAPI.wakeRencanaWa()
+    } catch (_) {
+      /* wake best-effort; kirim tetap dicoba */
+    }
+  }
+
   /**
    * Kirim notifikasi ke multiple admins untuk rencana
    * @param {Object} rencanaData - Data rencana
@@ -78,6 +86,7 @@ export const useRencanaNotifications = () => {
     })
 
     try {
+      await wakeWaThen()
       const result = await pengeluaranAPI.sendNotifWa(
         updatedRencanaData.id,
         pesan,
@@ -128,6 +137,7 @@ export const useRencanaNotifications = () => {
     })
 
     try {
+      await wakeWaThen()
       const result = await pengeluaranAPI.sendNotifWa(
         rencanaData.id,
         pesan,

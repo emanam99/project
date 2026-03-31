@@ -18,6 +18,17 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  */
 class UserChatController
 {
+    private string $uploadsBasePath = '';
+
+    public function __construct()
+    {
+        $config = require __DIR__ . '/../../config.php';
+        $root = rtrim($config['uploads_base_path'] ?? __DIR__ . '/../..', '/\\');
+        $folder = $config['uploads_folder'] ?? 'uploads';
+        $uploadsDir = $root . DIRECTORY_SEPARATOR . trim($folder, '/\\');
+        $this->uploadsBasePath = rtrim(realpath($uploadsDir) ?: $uploadsDir, DIRECTORY_SEPARATOR . '/');
+    }
+
     private function json(Response $response, array $data, int $status = 200): Response
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
@@ -95,6 +106,54 @@ class UserChatController
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row && !empty($row['id_user']) ? (int) $row['id_user'] : null;
+    }
+
+    private function resolveUploadFilePath(string $pathFile): string
+    {
+        $pathFile = trim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $pathFile), DIRECTORY_SEPARATOR);
+        if (stripos($pathFile, 'uploads') === 0) {
+            $pathFile = trim(substr($pathFile, strlen('uploads')), DIRECTORY_SEPARATOR);
+        }
+        return $this->uploadsBasePath . DIRECTORY_SEPARATOR . $pathFile;
+    }
+
+    private function getGroupUploadDir(): string
+    {
+        $dir = $this->uploadsBasePath . DIRECTORY_SEPARATOR . 'chat_groups';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        return $dir;
+    }
+
+    private function hasConversationGroupPhotoColumn(\PDO $db): bool
+    {
+        try {
+            $row = $this->fetchOne($db, "SHOW COLUMNS FROM `chat___conversation` LIKE 'group_photo'");
+            return (bool) $row;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function hasMemberIsAdminColumn(\PDO $db): bool
+    {
+        try {
+            $row = $this->fetchOne($db, "SHOW COLUMNS FROM `chat___member` LIKE 'is_admin'");
+            return (bool) $row;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function fetchOne(\PDO $db, string $sql): ?array
+    {
+        $stmt = $db->query($sql);
+        if (!$stmt) {
+            return null;
+        }
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
     }
 
     /**
@@ -254,8 +313,10 @@ class UserChatController
                 return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 401);
             }
 
+            $hasGroupPhoto = $this->hasConversationGroupPhotoColumn($db);
+            $selectGroupPhoto = $hasGroupPhoto ? ", c.group_photo" : ", NULL AS group_photo";
             $stmt = $db->prepare("
-                SELECT m.conversation_id, c.type, c.name
+                SELECT m.conversation_id, c.type, c.name {$selectGroupPhoto}
                 FROM chat___member m
                 INNER JOIN chat___conversation c ON c.id = m.conversation_id
                 WHERE m.user_id = ?
@@ -327,6 +388,7 @@ class UserChatController
                     'peer_id' => $peerId,
                     'peer_name' => $peerName,
                     'is_self' => $isSelf,
+                    'group_photo' => isset($conv['group_photo']) && trim((string) $conv['group_photo']) !== '' ? trim((string) $conv['group_photo']) : null,
                     'last_message' => $last ? $last['message'] : null,
                     'last_at' => $last ? $last['tanggal_dibuat'] : null,
                     'unread_count' => $unread,
@@ -362,7 +424,7 @@ class UserChatController
                 return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 401);
             }
             $stmt = $db->prepare("
-                SELECT u.id, u.username, u.last_seen_at, p.nama AS nama_pengurus
+                SELECT u.id, u.username, u.last_seen_at, p.nama AS nama_pengurus, p.foto_profil
                 FROM users u
                 LEFT JOIN pengurus p ON p.id_user = u.id
                 WHERE (u.is_active IS NULL OR u.is_active = 1)
@@ -379,6 +441,7 @@ class UserChatController
                     'id' => $id,
                     'username' => $username,
                     'nama' => $namaPengurus,
+                    'foto_profil' => isset($row['foto_profil']) && trim((string) $row['foto_profil']) !== '' ? trim((string) $row['foto_profil']) : null,
                     'display_name' => $this->formatNamaUsername($namaPengurus, $username, $id),
                     'last_seen_at' => isset($row['last_seen_at']) && $row['last_seen_at'] !== null ? $row['last_seen_at'] : null,
                 ];
@@ -387,6 +450,246 @@ class UserChatController
         } catch (\Throwable $e) {
             error_log('UserChatController::getChatUsers ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'message' => 'Server error'], 500);
+        }
+    }
+
+    /**
+     * POST /api/chat/groups
+     * Body: { name: string, member_user_ids: number[] }, optional multipart file: group_photo
+     */
+    public function createGroup(Request $request, Response $response): Response
+    {
+        $payload = $request->getAttribute('user');
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            $body = json_decode((string) $request->getBody(), true) ?? [];
+        }
+        $name = trim((string) ($body['name'] ?? ''));
+        $memberIdsRaw = $body['member_user_ids'] ?? [];
+        if ($name === '') {
+            return $this->json($response, ['success' => false, 'message' => 'Nama grup wajib diisi'], 400);
+        }
+        if (!is_array($memberIdsRaw) || count($memberIdsRaw) < 1) {
+            return $this->json($response, ['success' => false, 'message' => 'Pilih minimal 1 anggota'], 400);
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $hasGroupPhoto = $this->hasConversationGroupPhotoColumn($db);
+            $hasMemberIsAdmin = $this->hasMemberIsAdminColumn($db);
+            $myUserId = $this->getMyUserIdFromPayload($db, $payload);
+            if ($myUserId === null || $myUserId < 1) {
+                return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+
+            $memberIds = [];
+            foreach ($memberIdsRaw as $id) {
+                $uid = $this->resolveToUsersId($db, (int) $id);
+                if ($uid !== null && $uid > 0 && $uid !== $myUserId) {
+                    $memberIds[$uid] = true;
+                }
+            }
+            $finalMembers = array_map('intval', array_keys($memberIds));
+            if (count($finalMembers) < 1) {
+                return $this->json($response, ['success' => false, 'message' => 'Pilih minimal 1 anggota valid'], 400);
+            }
+
+            $db->beginTransaction();
+            $stmtConv = $db->prepare("INSERT INTO chat___conversation (type, name, created_at, updated_at) VALUES ('group', ?, NOW(), NOW())");
+            $stmtConv->execute([$name]);
+            $conversationId = (int) $db->lastInsertId();
+
+            $groupPhotoPath = null;
+            $uploadedFiles = $request->getUploadedFiles();
+            $photo = $uploadedFiles['group_photo'] ?? null;
+            if ($hasGroupPhoto && $photo && $photo->getError() === UPLOAD_ERR_OK) {
+                $mediaType = (string) $photo->getClientMediaType();
+                $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+                if (!in_array($mediaType, $allowed, true)) {
+                    throw new \RuntimeException('Format gambar grup tidak didukung');
+                }
+                $ext = preg_match('#^image/(jpeg|png|webp|gif)$#', $mediaType, $m)
+                    ? ($m[1] === 'jpeg' ? 'jpg' : $m[1])
+                    : 'jpg';
+                $fileName = 'g' . $conversationId . '_' . uniqid('', true) . '.' . $ext;
+                $uploadDir = $this->getGroupUploadDir();
+                $filePath = $uploadDir . DIRECTORY_SEPARATOR . $fileName;
+                $photo->moveTo($filePath);
+                $groupPhotoPath = 'uploads/chat_groups/' . $fileName;
+                $db->prepare("UPDATE chat___conversation SET group_photo = ? WHERE id = ?")->execute([$groupPhotoPath, $conversationId]);
+            }
+
+            if ($hasMemberIsAdmin) {
+                $stmtMem = $db->prepare("INSERT INTO chat___member (conversation_id, user_id, is_admin, joined_at) VALUES (?, ?, ?, NOW())");
+                $stmtMem->execute([$conversationId, $myUserId, 1]);
+                foreach ($finalMembers as $uid) {
+                    $stmtMem->execute([$conversationId, $uid, 0]);
+                }
+            } else {
+                $stmtMem = $db->prepare("INSERT INTO chat___member (conversation_id, user_id, joined_at) VALUES (?, ?, NOW())");
+                $stmtMem->execute([$conversationId, $myUserId]);
+                foreach ($finalMembers as $uid) {
+                    $stmtMem->execute([$conversationId, $uid]);
+                }
+            }
+            $db->commit();
+
+            return $this->json($response, [
+                'success' => true,
+                'conversation_id' => $conversationId,
+                'name' => $name,
+                'group_photo' => $groupPhotoPath,
+                'member_user_ids' => array_merge([$myUserId], $finalMembers),
+                'my_user_id' => $myUserId,
+            ]);
+        } catch (\Throwable $e) {
+            if (isset($db) && $db instanceof \PDO && $db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('UserChatController::createGroup ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'message' => 'Gagal membuat grup'], 500);
+        }
+    }
+
+    /**
+     * GET /api/chat/users/{id}/photo
+     * Stream foto profil user lain (blob auth) untuk avatar chat.
+     */
+    /**
+     * GET /api/chat/conversations/{id}/photo
+     * Stream foto grup (anggota conversation saja). Tanpa header auth, URL statis /uploads sering gagal di browser.
+     */
+    public function getGroupPhoto(Request $request, Response $response, array $args): Response
+    {
+        $payload = $request->getAttribute('user');
+        $conversationId = isset($args['id']) ? (int) $args['id'] : 0;
+        if ($conversationId < 1) {
+            return $response->withStatus(400);
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $myUserId = $this->getMyUserIdFromPayload($db, $payload);
+            if ($myUserId === null || $myUserId < 1) {
+                return $response->withStatus(401);
+            }
+            if (!$this->hasConversationGroupPhotoColumn($db)) {
+                return $response->withStatus(204);
+            }
+            $stmt = $db->prepare("
+                SELECT c.type, c.group_photo
+                FROM chat___conversation c
+                INNER JOIN chat___member m ON m.conversation_id = c.id AND m.user_id = ?
+                WHERE c.id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$myUserId, $conversationId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row || ($row['type'] ?? '') !== 'group') {
+                return $response->withStatus(404);
+            }
+            $path = isset($row['group_photo']) ? trim((string) $row['group_photo']) : '';
+            if ($path === '') {
+                return $response->withStatus(204);
+            }
+            $fullPath = $this->resolveUploadFilePath($path);
+            if (!is_file($fullPath)) {
+                return $response->withStatus(204);
+            }
+            $mime = mime_content_type($fullPath);
+            if (!is_string($mime) || !preg_match('#^image/#', $mime)) {
+                $mime = 'image/jpeg';
+            }
+            $response->getBody()->write((string) file_get_contents($fullPath));
+            return $response->withHeader('Content-Type', $mime);
+        } catch (\Throwable $e) {
+            error_log('UserChatController::getGroupPhoto ' . $e->getMessage());
+            return $response->withStatus(500);
+        }
+    }
+
+    /**
+     * DELETE /api/chat/conversations/{id}
+     * Keluar dari percakapan (hapus baris member); jika tidak ada anggota, hapus conversation (pesan ikut CASCADE).
+     */
+    public function deleteConversation(Request $request, Response $response, array $args): Response
+    {
+        $payload = $request->getAttribute('user');
+        $conversationId = isset($args['id']) ? (int) $args['id'] : 0;
+        if ($conversationId < 1) {
+            return $this->json($response, ['success' => false, 'message' => 'ID percakapan tidak valid'], 400);
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $myUserId = $this->getMyUserIdFromPayload($db, $payload);
+            if ($myUserId === null || $myUserId < 1) {
+                return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+
+            $stmt = $db->prepare('SELECT 1 FROM chat___member WHERE conversation_id = ? AND user_id = ? LIMIT 1');
+            $stmt->execute([$conversationId, $myUserId]);
+            if (!$stmt->fetch()) {
+                return $this->json($response, ['success' => false, 'message' => 'Percakapan tidak ditemukan'], 404);
+            }
+
+            $del = $db->prepare('DELETE FROM chat___member WHERE conversation_id = ? AND user_id = ?');
+            $del->execute([$conversationId, $myUserId]);
+
+            $cntStmt = $db->prepare('SELECT COUNT(*) FROM chat___member WHERE conversation_id = ?');
+            $cntStmt->execute([$conversationId]);
+            $remaining = (int) $cntStmt->fetchColumn();
+            if ($remaining === 0) {
+                $delConv = $db->prepare('DELETE FROM chat___conversation WHERE id = ?');
+                $delConv->execute([$conversationId]);
+            }
+
+            return $this->json($response, ['success' => true, 'message' => 'Percakapan dihapus']);
+        } catch (\Throwable $e) {
+            error_log('UserChatController::deleteConversation ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'message' => 'Gagal menghapus percakapan'], 500);
+        }
+    }
+
+    public function getUserPhoto(Request $request, Response $response, array $args): Response
+    {
+        $payload = $request->getAttribute('user');
+        $targetUserId = isset($args['id']) ? (int) $args['id'] : 0;
+        if ($targetUserId < 1) {
+            return $response->withStatus(400);
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $myUserId = $this->getMyUserIdFromPayload($db, $payload);
+            if ($myUserId === null || $myUserId < 1) {
+                return $response->withStatus(401);
+            }
+
+            $stmt = $db->prepare("
+                SELECT p.foto_profil
+                FROM users u
+                LEFT JOIN pengurus p ON p.id_user = u.id
+                WHERE u.id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$targetUserId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $path = isset($row['foto_profil']) ? trim((string) $row['foto_profil']) : '';
+            if ($path === '') {
+                return $response->withStatus(204);
+            }
+
+            $fullPath = $this->resolveUploadFilePath($path);
+            if (!is_file($fullPath)) {
+                return $response->withStatus(204);
+            }
+
+            $mime = mime_content_type($fullPath);
+            if (!is_string($mime) || !preg_match('#^image/#', $mime)) {
+                $mime = 'image/jpeg';
+            }
+            $response->getBody()->write((string) file_get_contents($fullPath));
+            return $response->withHeader('Content-Type', $mime);
+        } catch (\Throwable $e) {
+            error_log('UserChatController::getUserPhoto ' . $e->getMessage());
+            return $response->withStatus(500);
         }
     }
 
@@ -402,6 +705,7 @@ class UserChatController
         $conversationId = isset($params['conversation_id']) ? (int) $params['conversation_id'] : 0;
         $peerId = isset($params['peer_id']) ? (int) $params['peer_id'] : 0;
         $limit = (int) ($params['limit'] ?? 20);
+        $beforeId = isset($params['before_id']) ? (int) $params['before_id'] : 0;
         $limit = min(max(1, $limit), 100);
 
         try {
@@ -431,14 +735,23 @@ class UserChatController
             // Update last_read_at
             $db->prepare("UPDATE chat___member SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?")->execute([$conversationId, $myUserId]);
 
-            $stmt = $db->prepare("
-                SELECT id, conversation_id, sender_id, message, tanggal_dibuat
-                FROM chat
-                WHERE conversation_id = ?
-                ORDER BY tanggal_dibuat DESC
-                LIMIT " . $limit
-            );
-            $stmt->execute([$conversationId]);
+            $sql = "
+                SELECT ch.id, ch.conversation_id, ch.sender_id, ch.message, ch.tanggal_dibuat,
+                       u.username AS sender_username,
+                       p.nama AS sender_nama_pengurus
+                FROM chat ch
+                LEFT JOIN users u ON u.id = ch.sender_id
+                LEFT JOIN pengurus p ON p.id_user = u.id
+                WHERE ch.conversation_id = ?
+            ";
+            $bind = [$conversationId];
+            if ($beforeId > 0) {
+                $sql .= " AND id < ? ";
+                $bind[] = $beforeId;
+            }
+            $sql .= " ORDER BY tanggal_dibuat DESC, id DESC LIMIT " . $limit;
+            $stmt = $db->prepare($sql);
+            $stmt->execute($bind);
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Peer display name (private = satu user lain; group = nama conversation)
@@ -475,6 +788,11 @@ class UserChatController
             $list = [];
             foreach (array_reverse($rows) as $r) {
                 $senderId = (int) $r['sender_id'];
+                $uName = trim((string) ($r['sender_username'] ?? ''));
+                $namaP = isset($r['sender_nama_pengurus']) && trim((string) $r['sender_nama_pengurus']) !== ''
+                    ? trim((string) $r['sender_nama_pengurus'])
+                    : null;
+                $senderDisplayName = $this->formatNamaUsername($namaP, $uName !== '' ? $uName : '', $senderId);
                 $list[] = [
                     'id' => (int) $r['id'],
                     'conversation_id' => (int) $r['conversation_id'],
@@ -483,6 +801,8 @@ class UserChatController
                     'tanggal_dibuat' => $r['tanggal_dibuat'],
                     'created_at' => $r['tanggal_dibuat'],
                     'is_own' => $senderId === $myUserId,
+                    'sender_username' => $uName !== '' ? $uName : null,
+                    'sender_display_name' => $senderDisplayName,
                 ];
             }
 
@@ -609,6 +929,102 @@ class UserChatController
             error_log('UserChatController::saveMessage ' . $e->getMessage());
             $response->getBody()->write(json_encode(['success' => false, 'message' => 'Server error'], JSON_UNESCAPED_UNICODE));
             return $response->withStatus(500)->withHeader('Content-Type', 'application/json; charset=utf-8');
+        }
+    }
+
+    /**
+     * POST /api/chat/send (auth user)
+     * Body: conversation_id + message (grup/private), atau to_user_id + message (private).
+     * sender_id dari token login (users.id), bukan trust penuh dari client.
+     */
+    public function sendMessageAuth(Request $request, Response $response): Response
+    {
+        $payload = $request->getAttribute('user');
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            $body = json_decode((string) $request->getBody(), true) ?? [];
+        }
+        $conversationId = isset($body['conversation_id']) ? (int) $body['conversation_id'] : 0;
+        $toId = isset($body['to_user_id']) ? (int) $body['to_user_id'] : 0;
+        $message = isset($body['message']) ? trim((string) $body['message']) : '';
+        if ($message === '') {
+            return $this->json($response, ['success' => false, 'message' => 'message wajib'], 400);
+        }
+
+        try {
+            $db = Database::getInstance()->getConnection();
+            $senderId = $this->getMyUserIdFromPayload($db, $payload);
+            if ($senderId === null || $senderId < 1) {
+                return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+
+            $recipientId = 0;
+            if ($conversationId > 0) {
+                $stmt = $db->prepare("SELECT 1 FROM chat___member WHERE conversation_id = ? AND user_id = ? LIMIT 1");
+                $stmt->execute([$conversationId, $senderId]);
+                if (!$stmt->fetch()) {
+                    return $this->json($response, ['success' => false, 'message' => 'Bukan anggota conversation'], 400);
+                }
+            } elseif ($toId > 0) {
+                $toResolved = $this->resolveToUsersId($db, $toId);
+                if ($toResolved === null) {
+                    return $this->json($response, ['success' => false, 'message' => 'to_user_id tidak valid'], 400);
+                }
+                $recipientId = (int) $toResolved;
+                $conversationId = $this->getOrCreatePrivateConversation($db, $senderId, $recipientId);
+            } else {
+                return $this->json($response, ['success' => false, 'message' => 'Berikan conversation_id atau to_user_id'], 400);
+            }
+
+            $stmt = $db->prepare("INSERT INTO chat (conversation_id, sender_id, message, tanggal_dibuat) VALUES (?, ?, ?, NOW())");
+            $stmt->execute([$conversationId, $senderId, $message]);
+            $id = (int) $db->lastInsertId();
+            $db->prepare("UPDATE chat___conversation SET updated_at = NOW() WHERE id = ?")->execute([$conversationId]);
+            $stmtDate = $db->prepare("SELECT tanggal_dibuat FROM chat WHERE id = ?");
+            $stmtDate->execute([$id]);
+            $row = $stmtDate->fetch(\PDO::FETCH_ASSOC);
+            $tanggalDibuat = $row ? ($row['tanggal_dibuat'] ?? date('Y-m-d H:i:s')) : date('Y-m-d H:i:s');
+
+            // Push private chat tetap jalan; grup tidak kirim push per-member di endpoint ini.
+            if ($recipientId > 0 && $recipientId !== $senderId) {
+                $sf = (int) $senderId;
+                $rf = (int) $recipientId;
+                $mf = $message;
+                $cf = (int) $conversationId;
+                register_shutdown_function(static function () use ($sf, $rf, $mf, $cf) {
+                    try {
+                        (new self())->runDeferredChatPush($sf, $rf, $mf, $cf);
+                    } catch (\Throwable $e) {
+                        error_log('UserChatController::deferredChatPushAuth ' . $e->getMessage());
+                    }
+                });
+            }
+
+            $out = [
+                'success' => true,
+                'id' => $id,
+                'conversation_id' => $conversationId,
+                'sender_id' => $senderId,
+                'created_at' => $tanggalDibuat,
+                'tanggal_dibuat' => $tanggalDibuat,
+            ];
+            $stmtType = $db->prepare("SELECT type FROM chat___conversation WHERE id = ? LIMIT 1");
+            $stmtType->execute([$conversationId]);
+            $convType = $stmtType->fetchColumn();
+            if ($convType === 'group') {
+                $stmtU = $db->prepare("SELECT u.username, p.nama AS nama_pengurus FROM users u LEFT JOIN pengurus p ON p.id_user = u.id WHERE u.id = ? LIMIT 1");
+                $stmtU->execute([$senderId]);
+                $uRow = $stmtU->fetch(\PDO::FETCH_ASSOC) ?: [];
+                $uName = trim((string) ($uRow['username'] ?? ''));
+                $namaP = isset($uRow['nama_pengurus']) && trim((string) $uRow['nama_pengurus']) !== '' ? trim((string) $uRow['nama_pengurus']) : null;
+                $out['sender_username'] = $uName !== '' ? $uName : null;
+                $out['sender_display_name'] = $this->formatNamaUsername($namaP, $uName !== '' ? $uName : '', $senderId);
+            }
+
+            return $this->json($response, $out);
+        } catch (\Throwable $e) {
+            error_log('UserChatController::sendMessageAuth ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'message' => 'Server error'], 500);
         }
     }
 

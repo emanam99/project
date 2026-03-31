@@ -1,6 +1,6 @@
 /**
  * Utility functions untuk cek nomor WhatsApp
- * Satu jalur lewat backend API (POST /api/wa/check). API mengikuti setting notifikasi (WatZap atau WA server).
+ * Satu jalur lewat backend API publik (POST /api/public/wa/check).
  */
 
 import { checkWhatsAppNumberViaAPI } from '../services/api'

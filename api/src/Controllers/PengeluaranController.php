@@ -7,6 +7,7 @@ use App\Helpers\PengurusHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\RoleHelper;
 use App\Helpers\UserAktivitasLogger;
+use App\Services\RencanaPengeluaranWaHelper;
 use App\Services\WhatsAppService;
 use App\Utils\PushNotificationService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -642,6 +643,8 @@ class PengeluaranController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Rencana tidak ditemukan'], 404);
             }
 
+            WhatsAppService::wakeWaServer(false);
+
             $user = $request->getAttribute('user');
             $idPengurusPengirim = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
 
@@ -666,7 +669,8 @@ class PengeluaranController
                     'sumber' => 'uwaba',
                 ];
                 $result = WhatsAppService::sendMessage($whatsapp, $message, null, $logContext);
-                if (!empty($result['success'])) {
+                $actuallySent = !empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result);
+                if ($actuallySent) {
                     $successCount++;
                 } else {
                     $failCount++;
@@ -742,6 +746,8 @@ class PengeluaranController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Pengeluaran tidak ditemukan'], 404);
             }
 
+            WhatsAppService::wakeWaServer(false);
+
             $user = $request->getAttribute('user');
             $idPengurusPengirim = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
 
@@ -766,7 +772,8 @@ class PengeluaranController
                     'sumber' => 'uwaba',
                 ];
                 $result = WhatsAppService::sendMessage($whatsapp, $message, null, $logContext);
-                if (!empty($result['success'])) {
+                $actuallySent = !empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result);
+                if ($actuallySent) {
                     $successCount++;
                 } else {
                     $failCount++;
@@ -1126,8 +1133,135 @@ class PengeluaranController
         }
     }
 
+    /** @return array<string, mixed> */
+    private function parseRequestJsonBody(Request $request): array
+    {
+        $input = $request->getParsedBody();
+
+        return is_array($input) ? $input : [];
+    }
+
+    private function sumRencanaDetailNominalNonRejected(int $idRencana): float
+    {
+        $sqlDetail = "SELECT d.nominal FROM pengeluaran___rencana_detail d
+                 WHERE d.id_pengeluaran_rencana = ?
+                 AND COALESCE(d.rejected, 0) = 0
+                 AND d.versi = (
+                     SELECT MAX(versi) FROM pengeluaran___rencana_detail
+                     WHERE id_pengeluaran_rencana = d.id_pengeluaran_rencana
+                     AND item = d.item
+                 )";
+        $stmtDetail = $this->db->prepare($sqlDetail);
+        $stmtDetail->execute([$idRencana]);
+        $rows = $stmtDetail->fetchAll(\PDO::FETCH_ASSOC);
+        $sum = 0.0;
+        foreach ($rows as $r) {
+            $sum += floatval($r['nominal'] ?? 0);
+        }
+
+        return $sum;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function fetchRencanaRowForWaAfterApprove(int $idRencana): ?array
+    {
+        $sql = "SELECT r.*, p.nama as admin_nama,
+            peng_approve.nama as admin_approve_nama
+            FROM pengeluaran___rencana r
+            LEFT JOIN pengurus p ON r.id_admin = p.id
+            LEFT JOIN pengeluaran peng ON peng.id_rencana = r.id
+            LEFT JOIN pengurus peng_approve ON peng.id_admin_approve = peng_approve.id
+            WHERE r.id = ? LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$idRencana]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return $row ?: null;
+    }
+
+    /**
+     * Kirim WA rencana (bangun koneksi WA dulu, lalu kirim per penerima — sama pola log dengan notif-wa).
+     *
+     * @param list<array<string, mixed>> $recipients
+     * @return array{success_count:int, fail_count:int}
+     */
+    private function deliverRencanaWaRecipients(
+        string $message,
+        array $recipients,
+        ?int $idPengurusPengirim,
+        Request $request,
+        int $rencanaId
+    ): array {
+        WhatsAppService::wakeWaServer(false);
+        $successCount = 0;
+        $failCount = 0;
+        $recipientIds = [];
+        foreach ($recipients as $r) {
+            if (!is_array($r)) {
+                continue;
+            }
+            $idPengurus = isset($r['id']) ? (int) $r['id'] : 0;
+            $whatsapp = isset($r['whatsapp']) ? trim((string) $r['whatsapp']) : '';
+            if ($whatsapp === '') {
+                $failCount++;
+                continue;
+            }
+            $recipientIds[] = $idPengurus;
+            $logContext = [
+                'id_santri' => null,
+                'id_pengurus' => $idPengurus > 0 ? $idPengurus : null,
+                'tujuan' => 'pengurus',
+                'id_pengurus_pengirim' => $idPengurusPengirim,
+                'kategori' => 'pengeluaran_rencana_notif',
+                'sumber' => 'uwaba',
+            ];
+            $result = WhatsAppService::sendMessage($whatsapp, $message, null, $logContext);
+            $actuallySent = !empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result);
+            if ($actuallySent) {
+                $successCount++;
+            } else {
+                $failCount++;
+            }
+        }
+        if ($successCount + $failCount > 0) {
+            UserAktivitasLogger::log(
+                null,
+                $idPengurusPengirim,
+                UserAktivitasLogger::ACTION_UPDATE,
+                'pengeluaran___rencana',
+                $rencanaId,
+                null,
+                [
+                    'notif_wa' => true,
+                    'success_count' => $successCount,
+                    'fail_count' => $failCount,
+                    'recipient_ids' => $recipientIds,
+                    'via' => 'rencana_approve_reject',
+                ],
+                $request
+            );
+        }
+
+        return ['success_count' => $successCount, 'fail_count' => $failCount];
+    }
+
+    /**
+     * GET /api/pengeluaran/rencana/wa-wake — bangunkan server WA (Node) seperti di pendaftaran, sebelum kirim notif.
+     * Akses: grup keuangan (sama route /api/pengeluaran).
+     */
+    public function getRencanaWaWake(Request $request, Response $response): Response
+    {
+        $result = WhatsAppService::wakeWaServer();
+
+        return $this->jsonResponse($response, [
+            'success' => $result['success'],
+            'message' => $result['message'],
+        ], 200);
+    }
+
     /**
      * POST /api/pengeluaran/rencana/{id}/approve - Approve rencana (admin lain, bukan yang membuat)
+     * Body opsional: { "recipients": [ { "id": pengurus_id, "whatsapp": "08..." } ] } — kirim WA dari backend (template + wake).
      */
     public function approveRencana(Request $request, Response $response, array $args): Response
     {
@@ -1136,6 +1270,8 @@ class PengeluaranController
             $user = $request->getAttribute('user');
             
             $idAdminApprove = $user['user_id'] ?? $user['id'] ?? null;
+            $input = $this->parseRequestJsonBody($request);
+            $waRecipients = isset($input['recipients']) && is_array($input['recipients']) ? $input['recipients'] : [];
 
             if (!$idRencana) {
                 return $this->jsonResponse($response, [
@@ -1245,10 +1381,20 @@ class PengeluaranController
 
                 $this->db->commit();
 
+                $data = ['id_pengeluaran' => $idPengeluaran];
+                if (!empty($waRecipients)) {
+                    $rowWa = $this->fetchRencanaRowForWaAfterApprove((int) $idRencana);
+                    if ($rowWa !== null) {
+                        $msg = RencanaPengeluaranWaHelper::buildApproveMessage($rowWa, $totalNominalApproved);
+                        $idPengirim = $idAdminApprove !== null ? (int) $idAdminApprove : null;
+                        $data['wa_notif'] = $this->deliverRencanaWaRecipients($msg, $waRecipients, $idPengirim, $request, (int) $idRencana);
+                    }
+                }
+
                 return $this->jsonResponse($response, [
                     'success' => true,
                     'message' => 'Rencana berhasil di-approve dan dipindahkan ke pengeluaran',
-                    'data' => ['id_pengeluaran' => $idPengeluaran]
+                    'data' => $data,
                 ], 200);
 
             } catch (\Exception $e) {
@@ -1267,11 +1413,16 @@ class PengeluaranController
 
     /**
      * POST /api/pengeluaran/rencana/{id}/reject - Reject rencana
+     * Body opsional: { "recipients": [ { "id": pengurus_id, "whatsapp": "08..." } ] } — kirim WA dari backend (template + wake).
      */
     public function rejectRencana(Request $request, Response $response, array $args): Response
     {
         try {
             $idRencana = $args['id'] ?? null;
+            $user = $request->getAttribute('user');
+            $idAdminReject = $user['user_id'] ?? $user['id'] ?? null;
+            $input = $this->parseRequestJsonBody($request);
+            $waRecipients = isset($input['recipients']) && is_array($input['recipients']) ? $input['recipients'] : [];
 
             if (!$idRencana) {
                 return $this->jsonResponse($response, [
@@ -1285,8 +1436,8 @@ class PengeluaranController
                 return $denyA;
             }
 
-            // Cek rencana
-            $sqlCheck = "SELECT ket, lembaga FROM pengeluaran___rencana WHERE id = ?";
+            $sqlCheck = "SELECT r.*, p.nama as admin_nama FROM pengeluaran___rencana r
+                         LEFT JOIN pengurus p ON r.id_admin = p.id WHERE r.id = ?";
             $stmtCheck = $this->db->prepare($sqlCheck);
             $stmtCheck->execute([$idRencana]);
             $rencana = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
@@ -1310,14 +1461,29 @@ class PengeluaranController
                 ], 400);
             }
 
-            // Update status
+            $totalNom = $this->sumRencanaDetailNominalNonRejected((int) $idRencana);
+            $namaReject = '';
+            if ($idAdminReject) {
+                $stmtN = $this->db->prepare('SELECT nama FROM pengurus WHERE id = ? LIMIT 1');
+                $stmtN->execute([(int) $idAdminReject]);
+                $namaReject = (string) ($stmtN->fetchColumn() ?: '');
+            }
+
             $sqlUpdate = "UPDATE pengeluaran___rencana SET ket = 'ditolak' WHERE id = ?";
             $stmtUpdate = $this->db->prepare($sqlUpdate);
             $stmtUpdate->execute([$idRencana]);
 
+            $payload = [];
+            if (!empty($waRecipients)) {
+                $msg = RencanaPengeluaranWaHelper::buildRejectMessage($rencana, $totalNom, $namaReject);
+                $idPengirim = $idAdminReject !== null ? (int) $idAdminReject : null;
+                $payload['wa_notif'] = $this->deliverRencanaWaRecipients($msg, $waRecipients, $idPengirim, $request, (int) $idRencana);
+            }
+
             return $this->jsonResponse($response, [
                 'success' => true,
-                'message' => 'Rencana berhasil ditolak'
+                'message' => 'Rencana berhasil ditolak',
+                'data' => $payload,
             ], 200);
 
         } catch (\Exception $e) {

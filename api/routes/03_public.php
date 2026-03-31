@@ -77,6 +77,8 @@ return function (\Slim\App $app): void {
     $app->get('/api/iclock/getrequest', [AbsenFingerprintController::class, 'getrequest']);
 
     // Webhook pesan masuk WA (tanpa auth). WA kirim ke sini, retry sampai 200. Simpan ke tabel whatsapp (arah=masuk).
+    // Cek nomor WA untuk halaman publik (daftar/lupa password), tanpa login.
+    $app->post('/api/public/wa/check', [WhatsAppController::class, 'check']);
     $app->post('/api/wa/incoming', [WhatsAppController::class, 'incoming']);
     // Update status pesan (sent/delivered/read) dari server WA. Header X-API-Key wajib (sama dengan WA_API_KEY).
     $app->post('/api/wa/message-status', [WhatsAppController::class, 'messageStatus']);

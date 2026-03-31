@@ -107,9 +107,14 @@ return function (\Slim\App $app): void {
     // Chat user-to-user: percakapan, daftar user, riwayat pesan — cukup login
     $app->group('/api', function ($group) {
         $group->get('/chat/me', [UserChatController::class, 'getMe']);
+        $group->get('/chat/conversations/{id}/photo', [UserChatController::class, 'getGroupPhoto']);
+        $group->delete('/chat/conversations/{id}', [UserChatController::class, 'deleteConversation']);
         $group->get('/chat/conversations', [UserChatController::class, 'getConversations']);
         $group->get('/chat/users', [UserChatController::class, 'getChatUsers']);
+        $group->get('/chat/users/{id}/photo', [UserChatController::class, 'getUserPhoto']);
         $group->get('/chat/messages', [UserChatController::class, 'getMessages']);
+        $group->post('/chat/send', [UserChatController::class, 'sendMessageAuth']);
+        $group->post('/chat/groups', [UserChatController::class, 'createGroup']);
     })->add(new AuthMiddleware());
 
     // User profil (sendiri) & subscription — cukup login; GET /user/{id} di controller harus cek: own id atau super_admin

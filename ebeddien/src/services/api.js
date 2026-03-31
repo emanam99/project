@@ -133,7 +133,7 @@ export const checkWhatsAppNumberViaAPI = (phoneNumber, sessionId = null) => {
   if (sessionId != null && String(sessionId).trim() !== '') {
     body.sessionId = String(sessionId).trim()
   }
-  return api.post('/wa/check', body).then((r) => r.data)
+  return api.post('/public/wa/check', body).then((r) => r.data)
 }
 
 // Batas umur token login: 5 jam dari terakhir digunakan (sliding). Lewat = hapus token dan wajib login lagi.
@@ -147,6 +147,8 @@ const AUTH_TOKEN_MAX_AGE_MS = 5 * 60 * 60 * 1000
 function isPublicV2AuthPath(config) {
   const u = config.url || ''
   return (
+    // Cek nomor WA di halaman daftar/lupa password harus tetap bisa dipakai tanpa sesi login aktif.
+    u.includes('/wa/check') ||
     u.includes('/v2/auth/setup-token') ||
     u.includes('/v2/auth/setup-akun') ||
     u.includes('/v2/auth/daftar-check') ||
@@ -214,8 +216,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    // Skip handling untuk endpoint login dan v2 auth (untuk menghindari redirect loop)
-    if (originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/v2/auth')) {
+    // Skip handling untuk endpoint publik (hindari redirect login saat flow publik seperti daftar).
+    if (
+      originalRequest?.url?.includes('/auth/login') ||
+      originalRequest?.url?.includes('/v2/auth') ||
+      originalRequest?.url?.includes('/wa/check')
+    ) {
       return Promise.reject(error)
     }
 
@@ -1967,15 +1973,49 @@ export const chatUserAPI = {
   getMe: () => api.get('/chat/me').then((r) => r.data),
   getConversations: () => api.get('/chat/conversations').then((r) => r.data),
   getUsers: () => api.get('/chat/users').then((r) => r.data),
-  /** Riwayat pesan. conversationId ATAU peerId (untuk private get-or-create), limit default 20. */
+  getUserPhotoBlob: (userId) => api.get(`/chat/users/${encodeURIComponent(userId)}/photo`, {
+    responseType: 'blob',
+    validateStatus: (status) => status === 200 || status === 204,
+  }).then((r) => {
+    if (r.status === 204) return null
+    const blob = r.data
+    if (!(blob instanceof Blob) || blob.size === 0) return null
+    return blob
+  }),
+  /** Foto grup (blob + cookie auth) — jangan pakai URL /uploads langsung di img. */
+  getGroupPhotoBlob: (conversationId) => api.get(`/chat/conversations/${encodeURIComponent(conversationId)}/photo`, {
+    responseType: 'blob',
+    validateStatus: (status) => status === 200 || status === 204,
+  }).then((r) => {
+    if (r.status === 204) return null
+    const blob = r.data
+    if (!(blob instanceof Blob) || blob.size === 0) return null
+    return blob
+  }),
+  /** Keluar dari percakapan / hapus dari daftar (hapus membership; grup lain tetap ada). */
+  deleteConversation: (conversationId) => api.delete(`/chat/conversations/${encodeURIComponent(conversationId)}`).then((r) => r.data),
+  createGroup: (body = {}) => {
+    const { name = '', member_user_ids = [], group_photo = null } = body || {}
+    const formData = new FormData()
+    formData.append('name', String(name || ''))
+    member_user_ids.forEach((id) => formData.append('member_user_ids[]', String(id)))
+    if (group_photo instanceof File) formData.append('group_photo', group_photo)
+    return api.post('/chat/groups', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data)
+  },
+  /** Riwayat pesan. conversationId ATAU peerId (untuk private get-or-create), limit default 20, opsional before_id untuk pagination lama. */
   getMessages: (params = {}) => {
-    const { conversation_id, peer_id, limit = 20 } = params
+    const { conversation_id, peer_id, before_id, limit = 20 } = params
     const q = {}
     if (conversation_id != null) q.conversation_id = conversation_id
     if (peer_id != null) q.peer_id = peer_id
+    if (before_id != null) q.before_id = before_id
     q.limit = limit
     return api.get('/chat/messages', { params: q }).then((r) => r.data)
   },
+  /** Simpan pesan: conversation_id + sender_id (grup/private) atau from_user_id + to_user_id (private). */
+  sendMessage: (body = {}) => api.post('/chat/send', body).then((r) => r.data),
 }
 
 /** Asisten eBeddien — login mode alternatif + proxy Node; chat utama lewat /deepseek/api-chat. */
@@ -2190,10 +2230,16 @@ export const profilAPI = {
     return response.data
   },
 
-  /** Ambil foto profil sebagai blob (untuk createObjectURL di img) */
+  /** Ambil foto profil sebagai blob (untuk createObjectURL di img). Tanpa foto = null (server 204). */
   getProfilFotoBlob: async () => {
-    const response = await api.get('/v2/profil/foto', { responseType: 'blob' })
-    return response.data
+    const response = await api.get('/v2/profil/foto', {
+      responseType: 'blob',
+      validateStatus: (status) => status === 200 || status === 204,
+    })
+    if (response.status === 204) return null
+    const blob = response.data
+    if (!(blob instanceof Blob) || blob.size === 0) return null
+    return blob
   },
 
   /** Upload foto profil (FormData dengan key 'foto', file gambar <500KB) */
@@ -2806,13 +2852,20 @@ export const pengeluaranAPI = {
     return response.data
   },
 
-  approveRencana: async (id) => {
-    const response = await api.post(`/pengeluaran/rencana/${id}/approve`)
+  /** Bangunkan server WA (Node) sebelum kirim notif — sama konsep dengan pendaftaran. */
+  wakeRencanaWa: async () => {
+    const response = await api.get('/pengeluaran/rencana/wa-wake')
     return response.data
   },
 
-  rejectRencana: async (id) => {
-    const response = await api.post(`/pengeluaran/rencana/${id}/reject`)
+  /** Body opsional: { recipients: [{ id, whatsapp }] } — backend kirim WA + template. */
+  approveRencana: async (id, body = {}) => {
+    const response = await api.post(`/pengeluaran/rencana/${id}/approve`, body)
+    return response.data
+  },
+
+  rejectRencana: async (id, body = {}) => {
+    const response = await api.post(`/pengeluaran/rencana/${id}/reject`, body)
     return response.data
   },
 

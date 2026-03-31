@@ -1508,7 +1508,7 @@ function EditRencana() {
                 >
                   Batal
                 </button>
-                {allowSaveAsDraft ? (
+                {allowSaveAsDraft && (isCreateMode || rencana?.ket === 'draft') ? (
                   <button
                     type="button"
                     onClick={(e) => handleSubmit(e, true)}

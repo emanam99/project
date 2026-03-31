@@ -57,6 +57,7 @@ class CsrfMiddleware implements MiddlewareInterface
         'api/payment-transaction/create',   // POST dilindungi Bearer (mybeddian/uwaba dari mybeddian2/uwaba2)
         'api/payment-transaction/',         // PUT/POST cancel, update dilindungi Bearer
         'api/wa/check',   // POST cek nomor WA — dilindungi Bearer (fetch di frontend tanpa CSRF)
+        'api/public/wa/check', // POST cek nomor WA untuk halaman publik (daftar/lupa password)
         'api/wa/send',    // POST kirim WA — dilindungi Bearer
         'api/wa/edit-message', // POST edit pesan WA — dilindungi Bearer
         'api/wa/incoming', // POST webhook pesan masuk dari server WA (tanpa session browser)
