@@ -587,13 +587,13 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
           >
             {/* Tabs — sticky seperti input cari di halaman Pengurus */}
             <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 mb-6">
-              <div className="border-b border-gray-200 dark:border-gray-700">
-                <nav className="flex -mb-px flex-wrap">
+              <div className="border-b border-gray-200 dark:border-gray-700 min-w-0">
+                <nav className="flex -mb-px w-full min-w-0 flex-nowrap items-stretch">
                   {pengeluaranFitur.tabRencana && (
                     <button
                       type="button"
                       onClick={() => setActiveTab('rencana')}
-                      className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      className={`flex-1 min-w-0 max-w-full px-2 sm:px-4 py-2.5 sm:py-3 text-center text-xs sm:text-sm font-medium border-b-2 transition-colors truncate ${
                         activeTab === 'rencana'
                           ? 'border-teal-500 text-teal-600 dark:text-teal-400'
                           : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
@@ -606,7 +606,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                     <button
                       type="button"
                       onClick={() => setActiveTab('pengeluaran')}
-                      className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      className={`flex-1 min-w-0 max-w-full px-2 sm:px-4 py-2.5 sm:py-3 text-center text-xs sm:text-sm font-medium border-b-2 transition-colors truncate ${
                         activeTab === 'pengeluaran'
                           ? 'border-teal-500 text-teal-600 dark:text-teal-400'
                           : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
@@ -615,12 +615,11 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                       Pengeluaran
                     </button>
                   )}
-                  <div className="flex-1 min-w-[1rem]" />
                   {pengeluaranFitur.tabDraft && (
                     <button
                       type="button"
                       onClick={() => setActiveTab('draft')}
-                      className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      className={`flex-1 min-w-0 max-w-full px-2 sm:px-4 py-2.5 sm:py-3 text-center text-xs sm:text-sm font-medium border-b-2 transition-colors truncate ${
                         activeTab === 'draft'
                           ? 'border-teal-500 text-teal-600 dark:text-teal-400'
                           : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'

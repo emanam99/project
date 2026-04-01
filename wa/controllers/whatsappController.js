@@ -12,6 +12,7 @@ import {
   waitForBaileysQrOrConnected,
   ensureBaileysReadyForSend,
   hasBaileysAuthFiles,
+  pingBaileysKeepAlive,
   humanizeLidSendError,
   sendMessageBaileys,
   getChatMessagesBaileys,
@@ -170,6 +171,101 @@ export function initWaOnStart() {
   if (started > 0) {
     console.log('[WA] Restore sesi Baileys dari disk (', started, 'slot):', ids.join(', '));
   }
+}
+
+/** Samakan store dengan socket (WebSocket tertutup / zombie) — dipanggil tiap polling status. */
+export function reconcileWaSessionsWithSockets() {
+  if (!waEngineEnabled) return;
+  for (const id of getSessionIdsFromDisk()) {
+    if (!hasBaileysAuthFolder(id)) continue;
+    isBaileysConnected(id);
+  }
+}
+
+const WA_WATCHDOG_INTERVAL_MS = Number(process.env.WA_WATCHDOG_INTERVAL_MS || 90000);
+const WA_STUCK_CONNECTING_MS = Number(process.env.WA_STUCK_CONNECTING_MS || 180000);
+const WA_AUTO_RECONNECT_COOLDOWN_MS = Number(process.env.WA_AUTO_RECONNECT_COOLDOWN_MS || 45000);
+const lastAutoReconnectAt = Object.create(null);
+const connectingSinceBySession = Object.create(null);
+
+function scheduleAutoReconnectSession(sessionId, reason) {
+  const id = sessionId || DEFAULT_SESSION;
+  const now = Date.now();
+  if (lastAutoReconnectAt[id] && now - lastAutoReconnectAt[id] < WA_AUTO_RECONNECT_COOLDOWN_MS) {
+    return;
+  }
+  lastAutoReconnectAt[id] = now;
+  connectingSinceBySession[id] = undefined;
+  console.warn('[WA] Watchdog: sambung ulang otomatis untuk', id, '-', reason);
+  disconnectBaileys(id).catch(() => {});
+  setWaStatus(id, {
+    status: 'connecting',
+    qrCode: null,
+    baileysStatus: 'connecting',
+    baileysQrCode: null,
+  });
+  initBaileys(id).catch((err) => {
+    console.error('[WA] Watchdog initBaileys error:', id, err?.message || err);
+    setWaStatus(id, {
+      status: 'disconnected',
+      qrCode: null,
+      baileysStatus: 'disconnected',
+      baileysQrCode: null,
+    });
+  });
+}
+
+/**
+ * Interval: keep-alive presence + deteksi macet / ping gagal → putus & init ulang (tanpa hapus auth).
+ * Nonaktif: WA_WATCHDOG_INTERVAL_MS=0
+ */
+export function startWaWatchdog() {
+  if (!Number.isFinite(WA_WATCHDOG_INTERVAL_MS) || WA_WATCHDOG_INTERVAL_MS < 0) return;
+  if (WA_WATCHDOG_INTERVAL_MS === 0) {
+    console.log('[WA] Watchdog dinonaktifkan (WA_WATCHDOG_INTERVAL_MS=0).');
+    return;
+  }
+  const intervalMs = Math.max(15000, WA_WATCHDOG_INTERVAL_MS);
+  console.log('[WA] Watchdog aktif: interval', intervalMs, 'ms, stuck connecting', WA_STUCK_CONNECTING_MS, 'ms');
+
+  const tick = async () => {
+    if (!waEngineEnabled) return;
+    const ids = getSessionIdsFromDisk();
+    for (const id of ids) {
+      if (!hasBaileysAuthFolder(id)) {
+        connectingSinceBySession[id] = undefined;
+        continue;
+      }
+      const st = getWaStatus(id);
+      const connecting = st.status === 'connecting' || st.baileysStatus === 'connecting';
+      if (connecting) {
+        if (connectingSinceBySession[id] == null) connectingSinceBySession[id] = Date.now();
+        else if (Date.now() - connectingSinceBySession[id] >= WA_STUCK_CONNECTING_MS) {
+          scheduleAutoReconnectSession(id, 'connecting terlalu lama');
+        }
+        continue;
+      }
+      connectingSinceBySession[id] = undefined;
+
+      const storeSaysConnected = st.baileysStatus === 'connected' || st.status === 'connected';
+      if (storeSaysConnected && !isBaileysConnected(id)) {
+        scheduleAutoReconnectSession(id, 'store connected tapi socket tidak hidup');
+        continue;
+      }
+
+      if (!isBaileysConnected(id)) continue;
+
+      const ping = await pingBaileysKeepAlive(id);
+      if (!ping.ok) {
+        console.warn('[WA] Watchdog keepalive gagal:', id, '-', ping.reason || 'unknown');
+        scheduleAutoReconnectSession(id, 'keepalive: ' + (ping.reason || 'unknown'));
+      }
+    }
+  };
+
+  setInterval(() => {
+    tick().catch((e) => console.error('[WA] Watchdog tick error:', e?.message || e));
+  }, intervalMs);
 }
 
 export const wakeWhatsApp = async (req, res) => {

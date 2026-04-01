@@ -12,12 +12,12 @@ return function (\Slim\App $app): void {
     $app->group('/api/v2/pengeluaran/rencana', function ($group) {
         $group->post('/{id}/file', [PengeluaranRencanaFileControllerV2::class, 'uploadFile']);
         $group->get('/{id}/file', [PengeluaranRencanaFileControllerV2::class, 'getFiles']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::financeMenus(), ['admin_uwaba', 'admin_lembaga', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::financeMenus(), ['admin_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin']))->add(new AuthMiddleware());
 
     $app->group('/api/v2/pengeluaran/rencana/file', function ($group) {
         $group->get('/{fileId}/download', [PengeluaranRencanaFileControllerV2::class, 'downloadFile']);
         $group->delete('/{fileId}', [PengeluaranRencanaFileControllerV2::class, 'deleteFile']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::financeMenus(), ['admin_uwaba', 'admin_lembaga', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::financeMenus(), ['admin_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin']))->add(new AuthMiddleware());
 
     $app->group('/api/pengeluaran', function ($group) {
         $group->post('/notif-wa', [PengeluaranController::class, 'sendPengeluaranNotifWa']);
@@ -43,5 +43,5 @@ return function (\Slim\App $app): void {
         $group->delete('/{id}', [PengeluaranController::class, 'deletePengeluaran']);
         $group->put('/{id}', [PengeluaranController::class, 'updatePengeluaran']);
         $group->get('/{id}', [PengeluaranController::class, 'getPengeluaranDetail']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::financeMenus(), ['admin_uwaba', 'admin_lembaga', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::financeMenus(), ['admin_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin']))->add(new AuthMiddleware());
 };

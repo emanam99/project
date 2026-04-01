@@ -53,7 +53,13 @@ import { getWaStatus } from './store/waStatus.js';
 import authRoutes from './routes/authRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import warmerRoutes from './routes/warmerRoutes.js';
-import { initWaOnStart, getSessionIdsFromDisk, isWaEngineEnabled } from './controllers/whatsappController.js';
+import {
+  initWaOnStart,
+  getSessionIdsFromDisk,
+  isWaEngineEnabled,
+  reconcileWaSessionsWithSockets,
+  startWaWatchdog,
+} from './controllers/whatsappController.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -107,6 +113,7 @@ app.use(express.json());
 app.get('/api/whatsapp/status', (req, res) => {
   res.setHeader('X-WA-Endpoint', 'status-public');
   try {
+    reconcileWaSessionsWithSockets();
     const includeQr = String(req.query?.includeQr || '').trim() === '1';
     const sessionId = req.query?.sessionId;
     const data = getWaStatus(sessionId || undefined);
@@ -148,6 +155,7 @@ app.get('/api/whatsapp/status', (req, res) => {
 app.get('/api/whatsapp/qr', (req, res) => {
   res.setHeader('X-WA-Endpoint', 'qr-public');
   try {
+    reconcileWaSessionsWithSockets();
     const sessionId = req.query?.sessionId;
     const data = getWaStatus(sessionId || undefined);
     if (sessionId) {
@@ -194,6 +202,7 @@ const server = app.listen(PORT, () => {
   console.log(`[WA] Webhook pesan masuk: POST ${incomingUrl}`);
   console.log('[WA] CORS: *.alutsmani.id + localhost');
   initWaOnStart();
+  startWaWatchdog();
 });
 
 server.on('error', (err) => {

@@ -14,7 +14,7 @@ return function (\Slim\App $app): void {
         $group->get('/months', [AktivitasController::class, 'getAvailableMonths']);
         $group->get('/hijriyah', [AktivitasController::class, 'getAktivitasListHijriyah']);
         $group->get('/hijriyah/months', [AktivitasController::class, 'getAvailableHijriyahMonths']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::aktivitasPemasukanAdminSelectors(), ['admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::aktivitasPemasukanAdminSelectors(), ['admin_uwaba', 'petugas_keuangan', 'super_admin']))->add(new AuthMiddleware());
 
     $app->group('/api/pemasukan', function ($group) {
         $group->post('', [PemasukanController::class, 'createPemasukan']);
@@ -26,5 +26,5 @@ return function (\Slim\App $app): void {
         $group->get('/{id}', [PemasukanController::class, 'getPemasukanDetail']);
         $group->put('/{id}', [PemasukanController::class, 'updatePemasukan']);
         $group->delete('/{id}', [PemasukanController::class, 'deletePemasukan']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::aktivitasPemasukanAdminSelectors(), ['admin_uwaba', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::aktivitasPemasukanAdminSelectors(), ['admin_uwaba', 'petugas_keuangan', 'super_admin']))->add(new AuthMiddleware());
 };

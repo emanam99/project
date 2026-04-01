@@ -14,7 +14,7 @@ Jika Anda pakai VPS yang sama dengan deploy ebeddien/uwaba (148.230.96.1) dan in
    - Name: `wa2` → Value: **IP VPS** (148.230.96.1)  
    Tunggu propagasi (beberapa menit).
 
-2. **Setup satu kali (folder wa/wa2, Nginx, HTTPS, PM2)**  
+2. **Setup satu kali (folder wa/wa2, Nginx, HTTPS)**  
    Dari folder **htdocs** di PowerShell:
    ```powershell
    .\deploy\setup-wa-vps.ps1
@@ -26,7 +26,7 @@ Jika Anda pakai VPS yang sama dengan deploy ebeddien/uwaba (148.230.96.1) dan in
    ```powershell
    .\deploy-wa-vps.ps1
    ```
-   Pilih **1) Staging** (wa2) atau **2) Production** (wa). Skrip akan: pack folder `wa`, upload ke VPS, `npm install`, `ensure-browser`, dan jalankan dengan PM2. Setelah itu atur `.env` di server (`/var/www/wa/.env` atau `/var/www/wa2/.env`) untuk `UWABA_API_BASE_URL` dan `WA_API_KEY`.
+   Pilih **1) Staging** (wa2) atau **2) Production** (wa). Skrip akan: pack folder `wa`, upload ke VPS, lalu **Docker Compose** (`build` + `up -d`). Agar proses tetap hidup setelah reboot, pakai **`restart: always`** di `wa/docker-compose.yml` (bukan PM2 di atas container — itu double layer dan bisa bentrok). Setelah deploy, pastikan `.env` di server (`/var/www/wa/.env` atau `/var/www/wa2/.env`) berisi `UWABA_API_BASE_URL` dan `WA_API_KEY`. VPS harus punya **Docker Engine + Compose**; skrip menghapus entri PM2 lama (`wa` / `wa2`) jika ada agar tidak dobel dengan Docker.
 
 4. **Cek**  
    - Production: https://wa.alutsmani.id/health  
@@ -145,7 +145,12 @@ Ganti URL dan `WA_API_KEY` sesuai lingkungan Anda.
 
 ---
 
-## 5. Jalankan dengan PM2 (agar jalan terus)
+## 5. PM2 vs Docker (pilih salah satu cara jalan)
+
+- **Docker (disarankan untuk `deploy-wa-vps.ps1`):** Satu service di `docker-compose.yml` dengan `restart: always`. Docker yang mengatur start ulang container. **Jangan** membungkus container yang sama dengan PM2.
+- **PM2:** Hanya untuk menjalankan **`node server.js` langsung di host** (tanpa Docker), misalnya setelah `npm install` manual di VPS. Lihat `wa/ecosystem.config.cjs`.
+
+### 5a. PM2 (Node langsung di host, tanpa Docker)
 
 ```bash
 sudo npm install -g pm2
@@ -156,6 +161,10 @@ pm2 startup
 ```
 
 Cek: `pm2 status` dan `pm2 logs wa-backend`.
+
+### 5b. Docker Compose (sudah dipakai skrip deploy)
+
+Di folder `wa` di VPS, setelah `docker compose up -d`, cek `docker compose ps`. Kebijakan restart ada di Compose (`restart: always`). Log: `docker compose logs -f app`.
 
 ---
 
@@ -220,7 +229,7 @@ sudo certbot --nginx -d wa.alutsmani.id
 | Yang saya tidak bisa lakukan | Yang Anda lakukan |
 |-----------------------------|-------------------|
 | Login ke Hostinger / buat subdomain | Buat A record `wa` → IP VPS di DNS |
-| SSH ke VPS Anda | Upload `wa` (zip/scp atau git), npm install, .env, PM2, Nginx |
+| SSH ke VPS Anda | Upload `wa`, `.env`, Docker Compose (atau npm + PM2 jika tanpa Docker), Nginx |
 | Upload file ke server Anda | Jalankan skrip deploy dari PC atau perintah di atas di VPS |
 
 Setelah subdomain dan VPS siap, Anda bisa pakai skrip deploy di folder `wa/scripts/` (jika ada) untuk mempermudah pack & perintah upload.

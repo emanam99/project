@@ -5,13 +5,13 @@ import { getGambarUrl } from '../config/images'
 
 /**
  * Custom hook untuk mengirim notifikasi PWA ketika ada komentar baru di rencana pengeluaran
- * Hanya mengirim ke super_admin dan admin_uwaba
+ * Mengirim ke pengurus dengan role admin_uwaba atau petugas_keuangan (endpoint list-super-admin-uwaba).
  */
 export const useRencanaKomentarNotification = () => {
   const { sendNotification, isGranted } = usePWANotification()
 
   /**
-   * Kirim notifikasi PWA ke super_admin dan admin_uwaba ketika ada komentar baru
+   * Kirim notifikasi PWA ke admin_uwaba & petugas_keuangan ketika ada komentar baru
    * @param {Object} options - Opsi notifikasi
    * @param {number} options.rencanaId - ID rencana pengeluaran
    * @param {string} options.rencanaKeterangan - Keterangan rencana
@@ -28,7 +28,7 @@ export const useRencanaKomentarNotification = () => {
     }
 
     try {
-      // Ambil list hanya super_admin dan admin_uwaba
+      // Daftar dari API: admin_uwaba + petugas_keuangan
       const response = await userAPI.getSuperAdminAndUwaba()
       if (!response.success) {
         console.error('Failed to get admin list for notification')

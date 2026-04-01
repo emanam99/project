@@ -27,7 +27,7 @@ export function usePengeluaranFiturAccess() {
 
   return useMemo(() => {
     const isSuper = userHasSuperAdminAccess(user)
-    const hasKeuangan = userMatchesAnyAllowedRole(user, ['admin_uwaba', 'admin_lembaga', 'super_admin'])
+    const hasKeuangan = userMatchesAnyAllowedRole(user, ['admin_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin'])
     const useApi = Array.isArray(fiturMenuCodes) && fiturMenuCodes.length > 0
     const apiHasPengeluaran =
       useApi && fiturMenuCodes.some((c) => String(c).startsWith('action.pengeluaran.'))

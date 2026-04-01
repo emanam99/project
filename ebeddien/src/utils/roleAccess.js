@@ -46,3 +46,17 @@ export function userHasAnyAdminCap(user) {
     ['admin', 'admin_uwaba', 'admin_psb', 'admin_lembaga'].includes(k)
   )
 }
+
+/**
+ * Hak kelola PSB (Data Pendaftar, scope formal/diniyah, dll.).
+ * Sumber utama: array `permissions` di JWT — gabungan per role dari tabel `role.permissions_json` atau RoleConfig API.
+ * Fallback: role key admin_psb / petugas_psb jika token lama tanpa permissions.
+ */
+export function userHasManagePsbPermission(user) {
+  if (!user) return false
+  const perms = user.permissions
+  if (Array.isArray(perms) && perms.length > 0) {
+    return perms.includes('manage_psb')
+  }
+  return userMatchesAnyAllowedRole(user, ['admin_psb', 'petugas_psb'])
+}

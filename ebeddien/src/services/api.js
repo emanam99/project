@@ -583,6 +583,25 @@ export const getWaBackendUrl = () => {
   return `${protocol}//${hostname}:${waPort}`
 }
 
+/**
+ * Stop/Start stack WA lewat API PHP (`docker compose down` / `up -d`), bukan hanya flag di Node.
+ * Aktifkan di build: VITE_WA_DOCKER_CONTROL=true — hanya untuk super_admin; api/.env butuh WA_DOCKER_CONTROL_ENABLED + WA_DOCKER_COMPOSE_DIR.
+ */
+export const isWaDockerHostControlEnabled = () => {
+  const v = import.meta.env.VITE_WA_DOCKER_CONTROL
+  return v === 'true' || v === '1'
+}
+
+export const postWaDockerStop = async () => {
+  const response = await api.post('/wa/docker/stop')
+  return response.data
+}
+
+export const postWaDockerStart = async () => {
+  const response = await api.post('/wa/docker/start')
+  return response.data
+}
+
 const WA_HTTP_TIMEOUT_MS = 10000
 /** Memulai sesi Puppeteer/Baileys di VPS bisa >10s — jangan timeout prematur. */
 const WA_CONNECT_TIMEOUT_MS = Number(import.meta.env.VITE_WA_CONNECT_TIMEOUT_MS || 120000)
@@ -1345,16 +1364,26 @@ export const pendaftaranAPI = {
   },
 
   getRegistrasi: async (idSantri, tahunHijriyah = null, tahunMasehi = null) => {
-    const params = new URLSearchParams()
-    params.append('id_santri', idSantri)
-    if (tahunHijriyah && tahunHijriyah !== '') {
-      params.append('tahun_hijriyah', tahunHijriyah)
+    const th = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+    const tm = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+    if (!th || !tm) {
+      return {
+        success: false,
+        data: null,
+        message: 'tahun_hijriyah dan tahun_masehi wajib diisi sebelum mengambil registrasi'
+      }
     }
-    if (tahunMasehi && tahunMasehi !== '') {
-      params.append('tahun_masehi', tahunMasehi)
+    try {
+      const params = new URLSearchParams()
+      params.append('id_santri', idSantri)
+      params.append('tahun_hijriyah', th)
+      params.append('tahun_masehi', tm)
+      const response = await api.get(`/pendaftaran/get-registrasi?${params.toString()}`)
+      return response.data
+    } catch (error) {
+      const msg = error.response?.data?.message || error.message || 'Gagal mengambil registrasi'
+      return { success: false, data: null, message: msg }
     }
-    const response = await api.get(`/pendaftaran/get-registrasi?${params.toString()}`)
-    return response.data
   },
 
   // Santri Berkas API (v2 - upload ke folder uploads di luar public)

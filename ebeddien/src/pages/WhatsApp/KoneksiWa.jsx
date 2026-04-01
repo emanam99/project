@@ -3,7 +3,16 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useAuthStore } from '../../store/authStore'
-import api, { waBackendAPI, whatsappTemplateAPI, warmerAPI, warmerNodeAPI } from '../../services/api'
+import api, {
+  waBackendAPI,
+  whatsappTemplateAPI,
+  warmerAPI,
+  warmerNodeAPI,
+  getWaBackendUrl,
+  isWaDockerHostControlEnabled,
+  postWaDockerStop,
+  postWaDockerStart
+} from '../../services/api'
 
 const POLL_INTERVAL_CONNECTING = 2000
 const POLL_INTERVAL_IDLE = 10000
@@ -107,6 +116,8 @@ export default function KoneksiWa() {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
   const isSuperAdmin = user?.is_real_super_admin === true
+  /** Super admin + env: stop/start memanggil PHP → docker compose (bukan hanya matikan engine di Node). */
+  const useDockerHostCtl = isWaDockerHostControlEnabled() && isSuperAdmin
 
   const [activeTab, setActiveTab] = useState('koneksi')
   const [data, setData] = useState({ sessions: {} })
@@ -1039,12 +1050,34 @@ export default function KoneksiWa() {
   }
 
   const handleStopWaServer = async () => {
-    if (!window.confirm('Stop server WA sementara? Semua sesi WA akan diputus.')) return
+    const confirmMsg = useDockerHostCtl
+      ? 'Hentikan stack Docker WA?\n\nDocker compose down: container mati dan dihapus; proses Node berhenti sepenuhnya. Folder sesi di host (whatsapp-sessions) tetap.\n\nLanjut?'
+      : 'Stop server WA sementara? Semua sesi WA akan diputus.'
+    if (!window.confirm(confirmMsg)) return
     setConnectDrawerSessionId(null)
     setConnectDrawerSuccess(false)
     setConnectDrawerError(null)
     setActionLoading('wa-server-stop')
     try {
+      if (useDockerHostCtl) {
+        try {
+          await Promise.race([
+            waBackendAPI.stopServer(),
+            new Promise((resolve) => setTimeout(resolve, 4500))
+          ])
+        } catch (_) {
+          /* Node mungkin sudah tidak merespons — lanjut down Docker */
+        }
+        const res = await postWaDockerStop()
+        if (res?.success) {
+          showNotification(res?.message || 'Stack Docker WA dihentikan.', 'success')
+          setWaEngineEnabled(false)
+          setBackendUnavailable(true)
+        } else {
+          showNotification(res?.message || 'Gagal menghentikan Docker WA', 'error')
+        }
+        return
+      }
       const res = await waBackendAPI.stopServer()
       if (res?.success) {
         showNotification(res?.message || 'Server WA dihentikan', 'success')
@@ -1054,7 +1087,8 @@ export default function KoneksiWa() {
         showNotification(res?.message || 'Gagal menghentikan server WA', 'error')
       }
     } catch (e) {
-      showNotification('Backend WA tidak terjangkau.', 'error')
+      const msg = e?.response?.data?.message || e?.message
+      showNotification(msg || (useDockerHostCtl ? 'Gagal memanggil API kontrol Docker.' : 'Backend WA tidak terjangkau.'), 'error')
     } finally {
       setActionLoading(null)
     }
@@ -1063,6 +1097,35 @@ export default function KoneksiWa() {
   const handleStartWaServer = async () => {
     setActionLoading('wa-server-start')
     try {
+      if (useDockerHostCtl) {
+        const res = await postWaDockerStart()
+        if (res?.success) {
+          showNotification(res?.message || 'Stack Docker WA dijalankan.', 'success')
+          setWaEngineEnabled(true)
+          setBackendUnavailable(true)
+          let up = false
+          for (let i = 0; i < 45; i++) {
+            await new Promise((r) => setTimeout(r, 2000))
+            try {
+              const h = await fetch(`${getWaBackendUrl()}/health`, { method: 'GET', credentials: 'omit' })
+              if (h.ok) {
+                up = true
+                break
+              }
+            } catch (_) {
+              /* masih boot */
+            }
+          }
+          if (!up) {
+            showNotification('Container sudah di-up; backend WA belum merespons /health. Cek server atau coba muat ulang halaman.', 'warning')
+          }
+          setBackendUnavailable(false)
+          await fetchStatus()
+        } else {
+          showNotification(res?.message || 'Gagal menjalankan Docker WA', 'error')
+        }
+        return
+      }
       const res = await waBackendAPI.startServer()
       if (res?.success) {
         showNotification(res?.message || 'Server WA dijalankan', 'success')
@@ -1072,7 +1135,8 @@ export default function KoneksiWa() {
         showNotification(res?.message || 'Gagal menjalankan server WA', 'error')
       }
     } catch (e) {
-      showNotification('Backend WA tidak terjangkau.', 'error')
+      const msg = e?.response?.data?.message || e?.message
+      showNotification(msg || (useDockerHostCtl ? 'Gagal memanggil API kontrol Docker.' : 'Backend WA tidak terjangkau.'), 'error')
     } finally {
       setActionLoading(null)
     }
@@ -1159,8 +1223,15 @@ export default function KoneksiWa() {
                   </div>
                 )}
                 <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Koneksi</span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Koneksi</span>
+                    {useDockerHostCtl && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        Mode Docker: stop/start = compose down/up lewat API (proses WA benar-benar mati/hidup lagi).
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     <span
                       className={`text-sm font-semibold px-2 py-0.5 rounded ${
                         !waEngineEnabled

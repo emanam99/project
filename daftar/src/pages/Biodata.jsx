@@ -477,7 +477,12 @@ function Biodata() {
         }
 
         const biodata = biodataResponse.data
-        const registrasiResponse = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+        const thAj = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+        const tmAj = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+        const registrasiResponse =
+          thAj && tmAj
+            ? await pendaftaranAPI.getRegistrasi(user.id, thAj, tmAj)
+            : { success: false, data: null }
         const regOk = !!(registrasiResponse.success && registrasiResponse.data)
         const registrasi = regOk ? registrasiResponse.data : null
         const nikFallback =

@@ -22,10 +22,10 @@ return function (\Slim\App $app): void {
         $group->get('/user/list', [UserController::class, 'getAllUsers']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
 
-    // List admin_uwaba (notifikasi WA rencana/pengeluaran) — selaras finance/pengeluaran: + admin_lembaga legacy
+    // List admin_uwaba + petugas_keuangan (notifikasi WA rencana/pengeluaran) — legacy admin_lembaga/super_admin tetap di middleware
     $app->group('/api', function ($group) {
         $group->get('/user/list-super-admin-uwaba', [UserController::class, 'getSuperAdminAndUwabaUsers']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::userListUwabaNotifySelectors(), ['admin_uwaba', 'admin_lembaga', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::userListUwabaNotifySelectors(), ['admin_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin']))->add(new AuthMiddleware());
 
     // Data santri — admin_psb, petugas_psb, super_admin
     $app->group('/api', function ($group) {
@@ -45,7 +45,7 @@ return function (\Slim\App $app): void {
     // Saldo pemasukan/pengeluaran (header Keuangan) — selaras financeMenus + UWABA
     $app->group('/api', function ($group) {
         $group->get('/profil/total-pemasukan-pengeluaran', [ProfilController::class, 'totalPemasukanPengeluaranHariIni']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::profilSaldoKeuanganSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::profilSaldoKeuanganSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin']))->add(new AuthMiddleware());
 
     // WhatsApp — cek nomor: semua user yang login (termasuk daftar/NIK = role santri), tanpa batasan role
     $app->group('/api', function ($group) {
@@ -84,6 +84,12 @@ return function (\Slim\App $app): void {
         $group->post('/whatsapp-template/create', [WhatsAppTemplateController::class, 'create']);
         $group->put('/whatsapp-template/update', [WhatsAppTemplateController::class, 'update']);
         $group->post('/whatsapp-template/delete', [WhatsAppTemplateController::class, 'delete']);
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
+
+    // Kontrol host Docker untuk stack WA (down/up) — hanya super_admin; PHP harus bisa `docker compose` di WA_DOCKER_COMPOSE_DIR
+    $app->group('/api', function ($group) {
+        $group->post('/wa/docker/stop', [WhatsAppController::class, 'dockerStop']);
+        $group->post('/wa/docker/start', [WhatsAppController::class, 'dockerStart']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
 
     // Warmer — list pairs & messages: role akses chat; create/update/delete: super_admin

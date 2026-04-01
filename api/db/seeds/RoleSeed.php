@@ -38,6 +38,7 @@ class RoleSeed extends AbstractSeed
         [25, 'admin_cashless', 'Admin Cashless'],
         [26, 'petugas_cashless', 'Petugas Cashless'],
         [27, 'tarbiyah', 'Tarbiyah'],
+        [28, 'petugas_keuangan', 'Petugas Keuangan'],
     ];
 
     public function run(): void

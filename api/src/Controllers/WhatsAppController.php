@@ -361,6 +361,202 @@ class WhatsAppController
         }
     }
 
+    /**
+     * Hentikan stack WA di host: docker compose down (container mati & dihapus; bind mount whatsapp-sessions tetap).
+     * Hanya jika WA_DOCKER_CONTROL_ENABLED + WA_DOCKER_COMPOSE_DIR di api/.env.
+     */
+    public function dockerStop(Request $request, Response $response): Response
+    {
+        try {
+            if (!$this->waDockerControlEnabled()) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Kontrol Docker WA tidak diaktifkan. Set WA_DOCKER_CONTROL_ENABLED=true dan WA_DOCKER_COMPOSE_DIR di api/.env.',
+                ], 503);
+            }
+            $dir = $this->resolveWaDockerComposeDir();
+            if ($dir === null) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'WA_DOCKER_COMPOSE_DIR tidak valid atau tidak berisi docker-compose.yml.',
+                ], 400);
+            }
+            $run = $this->runDockerCompose($dir, ['down', '--remove-orphans']);
+            if (!$run['ok']) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Gagal menghentikan stack Docker WA: ' . ($run['output'] !== '' ? $run['output'] : ('kode keluar ' . $run['code'])),
+                    'data' => ['exitCode' => $run['code']],
+                ], 502);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Stack Docker WA dihentikan (container off). Data sesi di volume host tetap; saat start, proses Node berjalan baru dari awal.',
+                'data' => ['waEngineEnabled' => false],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('WhatsAppController::dockerStop ' . $e->getMessage());
+
+            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan saat menghentikan Docker'], 500);
+        }
+    }
+
+    /**
+     * Jalankan ulang stack WA: docker compose up -d (container baru setelah down).
+     */
+    public function dockerStart(Request $request, Response $response): Response
+    {
+        try {
+            if (!$this->waDockerControlEnabled()) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Kontrol Docker WA tidak diaktifkan. Set WA_DOCKER_CONTROL_ENABLED=true dan WA_DOCKER_COMPOSE_DIR di api/.env.',
+                ], 503);
+            }
+            $dir = $this->resolveWaDockerComposeDir();
+            if ($dir === null) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'WA_DOCKER_COMPOSE_DIR tidak valid atau tidak berisi docker-compose.yml.',
+                ], 400);
+            }
+            $run = $this->runDockerCompose($dir, ['up', '-d', '--remove-orphans']);
+            if (!$run['ok']) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Gagal menjalankan stack Docker WA: ' . ($run['output'] !== '' ? $run['output'] : ('kode keluar ' . $run['code'])),
+                    'data' => ['exitCode' => $run['code']],
+                ], 502);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Stack Docker WA dijalankan kembali (container segar, sesi Baileys dari disk).',
+                'data' => ['waEngineEnabled' => true],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('WhatsAppController::dockerStart ' . $e->getMessage());
+
+            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan saat menjalankan Docker'], 500);
+        }
+    }
+
+    private function waDockerControlEnabled(): bool
+    {
+        $v = getenv('WA_DOCKER_CONTROL_ENABLED');
+
+        return $v === '1' || strcasecmp((string) $v, 'true') === 0;
+    }
+
+    /** @return non-falsy-string|null */
+    private function resolveWaDockerComposeDir(): ?string
+    {
+        $raw = trim((string) (getenv('WA_DOCKER_COMPOSE_DIR') ?: ''));
+        if ($raw === '') {
+            return null;
+        }
+        $real = realpath($raw);
+        if ($real === false || !is_dir($real)) {
+            return null;
+        }
+        $yml = $real . DIRECTORY_SEPARATOR . 'docker-compose.yml';
+        $yaml = $real . DIRECTORY_SEPARATOR . 'docker-compose.yaml';
+        if (!is_file($yml) && !is_file($yaml)) {
+            return null;
+        }
+
+        return $real;
+    }
+
+    /**
+     * @param list<string> $composeArgs contoh: ['down','--remove-orphans']
+     * @return array{ok: bool, code: int, output: string}
+     */
+    private function runDockerCompose(string $workDir, array $composeArgs): array
+    {
+        $timeout = (int) (getenv('WA_DOCKER_COMPOSE_TIMEOUT_SEC') ?: '180');
+        if ($timeout < 30) {
+            $timeout = 30;
+        }
+        if ($timeout > 600) {
+            $timeout = 600;
+        }
+
+        $escapedPieces = [];
+        foreach ($composeArgs as $a) {
+            $escapedPieces[] = escapeshellarg((string) $a);
+        }
+        $dockerLine = 'docker compose ' . implode(' ', $escapedPieces) . ' 2>&1';
+
+        $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+        if ($isWin) {
+            $inner = 'cd /d ' . escapeshellarg($workDir) . ' && ' . $dockerLine;
+            $command = 'cmd /C ' . escapeshellarg($inner);
+        } else {
+            $inner = 'cd ' . escapeshellarg($workDir) . ' && ' . $dockerLine;
+            $command = 'sh -c ' . escapeshellarg($inner);
+        }
+
+        return $this->runShellCommand($command, $timeout);
+    }
+
+    /**
+     * @return array{ok: bool, code: int, output: string}
+     */
+    private function runShellCommand(string $command, int $timeoutSec): array
+    {
+        $descriptorspec = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc = @proc_open($command, $descriptorspec, $pipes, null, null);
+        if (!is_resource($proc)) {
+            return ['ok' => false, 'code' => -1, 'output' => 'Tidak bisa menjalankan perintah shell'];
+        }
+        fclose($pipes[0]);
+        if (is_resource($pipes[1])) {
+            stream_set_blocking($pipes[1], false);
+        }
+        if (is_resource($pipes[2])) {
+            stream_set_blocking($pipes[2], false);
+        }
+        $output = '';
+        $start = time();
+        while (true) {
+            $out1 = is_resource($pipes[1]) ? (string) stream_get_contents($pipes[1]) : '';
+            $out2 = is_resource($pipes[2]) ? (string) stream_get_contents($pipes[2]) : '';
+            $output .= $out1 . $out2;
+            $st = proc_get_status($proc);
+            if (!$st['running']) {
+                break;
+            }
+            if (time() - $start > $timeoutSec) {
+                proc_terminate($proc);
+                if (is_resource($pipes[1])) {
+                    fclose($pipes[1]);
+                }
+                if (is_resource($pipes[2])) {
+                    fclose($pipes[2]);
+                }
+                proc_close($proc);
+
+                return ['ok' => false, 'code' => -2, 'output' => trim($output) . "\n[timeout {$timeoutSec}s]"];
+            }
+            usleep(150000);
+        }
+        if (is_resource($pipes[1])) {
+            fclose($pipes[1]);
+        }
+        if (is_resource($pipes[2])) {
+            fclose($pipes[2]);
+        }
+        $code = proc_close($proc);
+
+        return ['ok' => $code === 0, 'code' => $code, 'output' => trim($output)];
+    }
+
     private function json(Response $response, array $data, int $status): Response
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));

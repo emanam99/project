@@ -167,7 +167,7 @@ class RoleHelper
         'super_admin', 'admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'admin_psb', 'petugas_psb',
         'admin_ijin', 'petugas_ijin', 'admin_umroh', 'petugas_umroh', 'admin_ugt', 'koordinator_ugt',
         'admin_kalender', 'tarbiyah', 'wali_kelas', 'guru', 'waka_lembaga', 'ketua_lembaga',
-        'admin_cashless', 'petugas_cashless', 'toko',
+        'admin_cashless', 'petugas_cashless', 'petugas_keuangan', 'toko',
     ];
 
     /**
@@ -697,7 +697,7 @@ class RoleHelper
     }
 
     /**
-     * Daftar lembaga PSB untuk pengurus (role admin_psb / petugas_psb), dikelompokkan by kategori.
+     * Daftar lembaga PSB untuk pengurus (per baris role yang punya permission manage_psb), dikelompokkan by kategori.
      * Satu lembaga Formal → hanya akses daftar formal lembaga itu; satu Diniyah → hanya daftar diniyah.
      * Banyak lembaga → akses daftar formal (semua lembaga user yang Formal) + daftar diniyah (semua yang Diniyah).
      *
@@ -718,7 +718,7 @@ class RoleHelper
             $psbLembagaIds = [];
             foreach ($userRoles as $role) {
                 $roleKey = strtolower(trim($role['role_key'] ?? ''));
-                if (!in_array($roleKey, ['admin_psb', 'petugas_psb'], true)) {
+                if ($roleKey === '' || !RolePolicyResolver::hasPermission($roleKey, 'manage_psb')) {
                     continue;
                 }
                 $lid = $role['lembaga_id'] ?? null;

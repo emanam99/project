@@ -91,7 +91,7 @@ class MenuActionsFiturSeed extends AbstractSeed
         $actions = [
             ['action.beranda.widget.total_pendaftaran', 'Widget Total Pendaftaran', 10, 'My Workspace', '{"requiresRole":["admin_psb","petugas_psb","super_admin"]}'],
             ['action.beranda.widget.pembayaran_hari_ini', 'Widget Pembayaran Hari Ini', 20, 'My Workspace', '{"requiresRole":["admin_uwaba","petugas_uwaba","super_admin"]}'],
-            ['action.beranda.widget.ringkasan_keuangan', 'Widget Ringkasan Keuangan', 30, 'My Workspace', '{"requiresRole":["admin_uwaba","super_admin"]}'],
+            ['action.beranda.widget.ringkasan_keuangan', 'Widget Ringkasan Keuangan', 30, 'My Workspace', '{"requiresRole":["admin_uwaba","petugas_keuangan","super_admin"],"requiresPermission":"manage_finance"}'],
             ['action.beranda.widget.aktivitas_terbaru', 'Widget Aktivitas Terbaru', 40, 'My Workspace', null],
             ['action.beranda.widget.kalender_samping', 'Panel Kalender (desktop)', 50, 'My Workspace', null],
         ];
@@ -171,7 +171,7 @@ class MenuActionsFiturSeed extends AbstractSeed
         if ($parentId === null) {
             return;
         }
-        $meta = '{"requiresRole":["admin_uwaba","super_admin"]}';
+        $meta = '{"requiresRole":["admin_uwaba","petugas_keuangan","super_admin"]}';
         $actions = [
             ['action.pengeluaran.tab.rencana', 'Pengeluaran · Tab Rencana', 10],
             ['action.pengeluaran.tab.pengeluaran', 'Pengeluaran · Tab Pengeluaran', 20],

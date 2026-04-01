@@ -259,6 +259,7 @@ export default function Beranda() {
   const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
   const hasRoleUwaba = hasRole(['admin_uwaba', 'petugas_uwaba'])
   const hasRoleAdminUwaba = hasRole(['admin_uwaba', 'super_admin'])
+  const hasRoleRingkasanKeuangan = hasRole(['admin_uwaba', 'super_admin', 'petugas_keuangan'])
   const hasRolePsb = hasRole(['admin_psb', 'petugas_psb', 'super_admin'])
 
   const canBerandaWidget = useMemo(() => {
@@ -319,9 +320,9 @@ export default function Beranda() {
     }).catch(() => setPaymentHariIni(null)).finally(() => setPaymentHariIniLoading(false))
   }, [user?.id, hasRoleUwaba])
 
-  // Ringkasan keuangan (hanya admin_uwaba / super_admin)
+  // Ringkasan keuangan (admin_uwaba / super_admin / petugas_keuangan)
   useEffect(() => {
-    if (!hasRoleAdminUwaba) return
+    if (!hasRoleRingkasanKeuangan) return
     setRingkasanKeuanganLoading(true)
     profilAPI.getTotalPemasukanPengeluaran(tahunAjaran || null).then((response) => {
       if (response?.success) {
@@ -333,7 +334,7 @@ export default function Beranda() {
         })
       } else setRingkasanKeuangan(null)
     }).catch(() => setRingkasanKeuangan(null)).finally(() => setRingkasanKeuanganLoading(false))
-  }, [hasRoleAdminUwaba, tahunAjaran])
+  }, [hasRoleRingkasanKeuangan, tahunAjaran])
 
   // Dashboard Pendaftaran (total Pendaftar, Santri Baru, Formal, Diniyah) — hanya admin_psb / petugas_psb
   useEffect(() => {
@@ -945,8 +946,8 @@ export default function Beranda() {
         </motion.section>
       )}
 
-      {/* Ringkasan Keuangan — hanya admin_uwaba & super_admin */}
-      {canBerandaWidget(BERANDA_WIDGET_CODES.ringkasanKeuangan, hasRoleAdminUwaba) && (
+      {/* Ringkasan Keuangan — admin_uwaba, super_admin, petugas_keuangan */}
+      {canBerandaWidget(BERANDA_WIDGET_CODES.ringkasanKeuangan, hasRoleRingkasanKeuangan) && (
         <motion.section
           variants={paymentSectionVariants}
           initial="hidden"

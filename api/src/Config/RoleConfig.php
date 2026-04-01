@@ -50,6 +50,8 @@ class RoleConfig
         'admin_ugt' => ['uwaba'],
         'admin_kalender' => ['uwaba'],
         'koordinator_ugt' => ['uwaba'],
+        /** Hanya modul keuangan eBeddien; scope lembaga lewat pengurus___role. */
+        'petugas_keuangan' => [],
         'santri' => ['mybeddian']
     ];
 
@@ -157,6 +159,10 @@ class RoleConfig
         'koordinator_ugt' => [
             'view_reports'
         ],
+        'petugas_keuangan' => [
+            'manage_finance',
+            'view_reports',
+        ],
         'santri' => []
     ];
 
@@ -183,6 +189,7 @@ class RoleConfig
         'admin_ugt' => 'Admin UGT (Urusan Guru Tugas)',
         'admin_kalender' => 'Admin Kalender',
         'koordinator_ugt' => 'Koordinator UGT',
+        'petugas_keuangan' => 'Petugas Keuangan',
         'santri' => 'Santri',
         /** Token JWT saat pengurus punya lebih dari satu role (bukan baris di tabel role). */
         'multi_role' => 'Beberapa role',

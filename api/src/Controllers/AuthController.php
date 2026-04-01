@@ -260,10 +260,7 @@ class AuthController
                         $stmt->execute([$sid]);
                         $sr = $stmt->fetch(\PDO::FETCH_ASSOC);
                         $payload['nis'] = ($sr && isset($sr['nis']) && trim((string) $sr['nis']) !== '') ? (string) $sr['nis'] : null;
-                        $stmt2 = $this->getDb()->prepare('SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1');
-                        $stmt2->execute([$sid]);
-                        $rr = $stmt2->fetch(\PDO::FETCH_ASSOC);
-                        $payload['id_registrasi'] = ($rr && isset($rr['id'])) ? (int) $rr['id'] : null;
+                        $payload['id_registrasi'] = $this->findPsbRegistrasiIdForSantriTahunAktif($sid);
                     } catch (\Exception $e) {
                         error_log('AuthController::verify santri enrich: ' . $e->getMessage());
                     }
@@ -348,6 +345,52 @@ class AuthController
     }
 
     /**
+     * psb___registrasi.id untuk santri pada tahun ajaran aktif (psb___pengaturan), atau null.
+     * Pencocokan tahun = / LIKE prefix (selaras get-registrasi / login flow).
+     */
+    private function findPsbRegistrasiIdForSantriTahunAktif(int $idSantri): ?int
+    {
+        try {
+            $tahunHijriyah = null;
+            $tahunMasehi = null;
+            $stmtPeng = $this->getDb()->query("SELECT `key`, value FROM psb___pengaturan WHERE `key` IN ('tahun_hijriyah', 'tahun_masehi')");
+            if ($stmtPeng) {
+                while ($row = $stmtPeng->fetch(\PDO::FETCH_ASSOC)) {
+                    $val = isset($row['value']) ? trim((string) $row['value']) : '';
+                    if ($row['key'] === 'tahun_hijriyah' && $val !== '') {
+                        $tahunHijriyah = $val;
+                    }
+                    if ($row['key'] === 'tahun_masehi' && $val !== '') {
+                        $tahunMasehi = $val;
+                    }
+                }
+            }
+            if ($tahunHijriyah === null || $tahunHijriyah === '' || $tahunMasehi === null || $tahunMasehi === '') {
+                return null;
+            }
+            $normHijriyah = trim(explode('-', $tahunHijriyah)[0] ?? $tahunHijriyah);
+            $normMasehi = trim(explode('-', $tahunMasehi)[0] ?? $tahunMasehi);
+            if ($normHijriyah === '' || $normMasehi === '') {
+                return null;
+            }
+            $stmtReg = $this->getDb()->prepare(
+                'SELECT id FROM psb___registrasi WHERE id_santri = ? ' .
+                'AND (tahun_hijriyah = ? OR tahun_hijriyah LIKE ?) ' .
+                'AND (tahun_masehi = ? OR tahun_masehi LIKE ?) LIMIT 1'
+            );
+            $stmtReg->execute([$idSantri, $normHijriyah, $normHijriyah . '%', $normMasehi, $normMasehi . '%']);
+            $rowReg = $stmtReg->fetch(\PDO::FETCH_ASSOC);
+            if ($rowReg !== false && isset($rowReg['id'])) {
+                return (int) $rowReg['id'];
+            }
+        } catch (\Throwable $e) {
+            error_log('AuthController::findPsbRegistrasiIdForSantriTahunAktif: ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
      * Login dengan NIK untuk aplikasi pendaftaran
      * POST /api/auth/login-nik
      */
@@ -399,71 +442,21 @@ class AuthController
                 error_log("Login NIK successful for NIK: {$santri['nik']}, Name: {$santri['nama']}, ID: {$santri['id']}");
             }
 
-            // Tentukan apakah perlu tampilkan halaman pilihan status (Santri Baru / Santri Lama)
-            // Default: tampilkan flow. Hanya skip (ke dashboard) jika santri SUDAH punya registrasi tahun ini.
+            // Pilihan status / dashboard: sudah ada registrasi tahun ajaran aktif?
+            // id_registrasi di JWT = baris itu saja (bukan registrasi tahun lain).
             $showPilihanStatus = true;
+            $idRegistrasiLogin = null;
             if (!$isNewSantri && $santri['id'] !== null && $santri['id'] !== '') {
-                $idSantri = (int) $santri['id'];
-                $tahunHijriyah = null;
-                $tahunMasehi = null;
-                try {
-                    $stmtPeng = $this->getDb()->query("SELECT `key`, value FROM psb___pengaturan WHERE `key` IN ('tahun_hijriyah', 'tahun_masehi')");
-                    if ($stmtPeng) {
-                        while ($row = $stmtPeng->fetch(\PDO::FETCH_ASSOC)) {
-                            $val = isset($row['value']) ? trim((string)$row['value']) : '';
-                            if ($row['key'] === 'tahun_hijriyah' && $val !== '') $tahunHijriyah = $val;
-                            if ($row['key'] === 'tahun_masehi' && $val !== '') $tahunMasehi = $val;
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    $showPilihanStatus = true;
-                }
-                // Hanya anggap "sudah terdaftar" jika tahun ajaran ter-set DAN ada baris registrasi yang cocok.
-                // Normalisasi tahun: "1446-1447" / "2025-2026" di pengaturan bisa beda format dengan di registrasi ("1446" atau "1446-1447").
-                if ($tahunHijriyah !== null && $tahunHijriyah !== '' && $tahunMasehi !== null && $tahunMasehi !== '') {
-                    try {
-                        $normHijriyah = trim(explode('-', $tahunHijriyah)[0] ?? $tahunHijriyah);
-                        $normMasehi = trim(explode('-', $tahunMasehi)[0] ?? $tahunMasehi);
-                        if ($normHijriyah !== '' && $normMasehi !== '') {
-                            $stmtReg = $this->getDb()->prepare(
-                                "SELECT id FROM psb___registrasi WHERE id_santri = ? " .
-                                "AND (tahun_hijriyah = ? OR tahun_hijriyah LIKE ?) " .
-                                "AND (tahun_masehi = ? OR tahun_masehi LIKE ?) LIMIT 1"
-                            );
-                            $stmtReg->execute([
-                                $idSantri,
-                                $normHijriyah,
-                                $normHijriyah . '%',
-                                $normMasehi,
-                                $normMasehi . '%'
-                            ]);
-                            $rowReg = $stmtReg->fetch(\PDO::FETCH_ASSOC);
-                            if ($rowReg !== false && isset($rowReg['id'])) {
-                                $showPilihanStatus = false;
-                            }
-                        }
-                    } catch (\Throwable $e) {
-                        $showPilihanStatus = true;
-                    }
+                $idRegTahun = $this->findPsbRegistrasiIdForSantriTahunAktif((int) $santri['id']);
+                if ($idRegTahun !== null) {
+                    $showPilihanStatus = false;
+                    $idRegistrasiLogin = $idRegTahun;
                 }
             }
 
             $redirectUrl = $showPilihanStatus ? '/pilihan-status' : '/dashboard';
 
-            $idRegistrasiLogin = null;
             $nisLogin = isset($santri['nis']) && trim((string) $santri['nis']) !== '' ? trim((string) $santri['nis']) : null;
-            if (!$isNewSantri && !empty($santri['id'])) {
-                try {
-                    $stmtRegLogin = $this->getDb()->prepare('SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1');
-                    $stmtRegLogin->execute([(int) $santri['id']]);
-                    $rowRegLogin = $stmtRegLogin->fetch(\PDO::FETCH_ASSOC);
-                    if ($rowRegLogin && isset($rowRegLogin['id'])) {
-                        $idRegistrasiLogin = (int) $rowRegLogin['id'];
-                    }
-                } catch (\Throwable $e) {
-                    error_log('loginNik id_registrasi: ' . $e->getMessage());
-                }
-            }
 
             // Generate JWT token untuk santri (baik yang sudah ada maupun yang baru)
             // Untuk aplikasi pendaftaran, kita tidak perlu role seperti pengurus

@@ -23,8 +23,72 @@ const WA_FORWARD_TIMEOUT_MS = Number(process.env.WA_FORWARD_TIMEOUT_MS || 8000);
 const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
 /** Pesan type "append" (sering untuk offline) — batasi agar sync riwayat lama tidak membanjiri API. */
 const WA_APPEND_MAX_AGE_SEC = Number(process.env.WA_APPEND_MAX_AGE_SEC || 7200);
+/** Penundaan dasar sambung ulang setelah putus tak terduga (ms); backoff eksponensial hingga ~2 menit. */
+const WA_BAILEYS_RECONNECT_DELAY_MS = Number(process.env.WA_BAILEYS_RECONNECT_DELAY_MS || 4000);
+const WA_BAILEYS_KEEPALIVE_MS = Number(process.env.WA_BAILEYS_KEEPALIVE_MS || 25000);
+const WA_BAILEYS_CONNECT_TIMEOUT_MS = Number(process.env.WA_BAILEYS_CONNECT_TIMEOUT_MS || 30000);
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Debounce sambung ulang otomatis per session (setelah disconnect WA, bukan logout). */
+const reconnectTimerBySession = {};
+const reconnectAttemptsBySession = {};
+
+function clearBaileysReconnectTimer(sessionId) {
+  const id = sessionId || DEFAULT_SESSION;
+  const t = reconnectTimerBySession[id];
+  if (t) {
+    clearTimeout(t);
+    reconnectTimerBySession[id] = undefined;
+  }
+}
+
+function resetBaileysReconnectAttempts(sessionId) {
+  reconnectAttemptsBySession[sessionId || DEFAULT_SESSION] = 0;
+}
+
+/**
+ * Setelah close, apakah boleh init ulang dengan creds di disk (bukan scan QR).
+ * Hindari 440 (ganti perangkat), 401 logout, 403, 411 multidevice.
+ */
+function shouldAutoReconnectAfterDisconnect(statusCode) {
+  if (statusCode == null) return true;
+  if (statusCode === DisconnectReason.loggedOut) return false;
+  if (statusCode === DisconnectReason.restartRequired) return false;
+  if (statusCode === DisconnectReason.forbidden) return false;
+  if (statusCode === DisconnectReason.multideviceMismatch) return false;
+  if (statusCode === DisconnectReason.connectionReplaced) return false;
+  return true;
+}
+
+function scheduleBaileysReconnect(sessionId, reasonLabel) {
+  const id = sessionId || DEFAULT_SESSION;
+  if (!hasBaileysAuthFiles(id)) return;
+  clearBaileysReconnectTimer(id);
+  const prev = reconnectAttemptsBySession[id] || 0;
+  const attempt = prev + 1;
+  reconnectAttemptsBySession[id] = attempt;
+  const base = Number.isFinite(WA_BAILEYS_RECONNECT_DELAY_MS) && WA_BAILEYS_RECONNECT_DELAY_MS >= 2000
+    ? WA_BAILEYS_RECONNECT_DELAY_MS
+    : 4000;
+  const delayMs = Math.min(base * 2 ** Math.min(attempt - 1, 5), 120000);
+  console.warn('[WA Baileys]', id, 'Sambung ulang otomatis dalam', delayMs, 'ms (percobaan ke-' + attempt + ') —', reasonLabel);
+  reconnectTimerBySession[id] = setTimeout(() => {
+    reconnectTimerBySession[id] = undefined;
+    if (sockRefBySession[id]) {
+      try {
+        sockRefBySession[id].end(undefined);
+      } catch (_) {}
+      delete sockRefBySession[id];
+    }
+    const st = getBaileysStatusObj(id);
+    if (st.status === 'connected') return;
+    st.status = 'connecting';
+    st.qrCode = null;
+    syncBaileysToStore(id);
+    initBaileys(id).catch((e) => console.error('[WA Baileys] auto-reconnect init:', id, e?.message || e));
+  }, delayMs);
+}
 
 /** Pesan teknis LID → teks yang bisa ditampilkan ke pengguna (OTP, notifikasi). */
 export function humanizeLidSendError(raw) {
@@ -158,7 +222,14 @@ async function resolveSendJid(sock, phoneNumber) {
 
 export async function initBaileys(sessionId = DEFAULT_SESSION) {
   const id = sessionId || DEFAULT_SESSION;
-  if (sockRefBySession[id]) return sockRefBySession[id];
+  const existing = sockRefBySession[id];
+  if (existing) {
+    if (isBaileysConnected(id)) return existing;
+    try {
+      existing.end(undefined);
+    } catch (_) {}
+    delete sockRefBySession[id];
+  }
   const authPath = getBaileysAuthPath(id);
   if (!existsSync(authPath)) mkdirSync(authPath, { recursive: true });
 
@@ -186,6 +257,8 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
     printQRInTerminal: false,
     syncFullHistory: false,
     getMessage: async () => undefined,
+    connectTimeoutMs: Math.min(Math.max(WA_BAILEYS_CONNECT_TIMEOUT_MS, 10000), 120000),
+    keepAliveIntervalMs: Math.min(Math.max(WA_BAILEYS_KEEPALIVE_MS, 15000), 120000),
     /** Gabung ke fetchOpts getUrlInfo di Baileys (default 3000 ms sering kurang untuk HTTPS lambat). */
     options: linkPreviewFetchOpts,
   });
@@ -210,6 +283,8 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       const reason = lastDisconnect?.error?.output?.payload?.reason;
       const errMsg = lastDisconnect?.error?.message || '';
       if (statusCode === DisconnectReason.loggedOut) {
+        clearBaileysReconnectTimer(id);
+        resetBaileysReconnectAttempts(id);
         baileysStatus.status = 'disconnected';
         baileysStatus.qrCode = null;
         baileysStatus.phoneNumber = null;
@@ -219,6 +294,7 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       }
       /** Setelah scan QR, WA sering kirim 515 "restart required" — harus sambung ulang dengan creds yang sama (bukan logout). */
       if (statusCode === DisconnectReason.restartRequired) {
+        clearBaileysReconnectTimer(id);
         delete sockRefBySession[id];
         baileysStatus.status = 'connecting';
         baileysStatus.qrCode = null;
@@ -239,8 +315,15 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       } else {
         console.log('[WA Baileys]', id, 'Disconnected:', statusCode, reason || errMsg);
       }
+      if (shouldAutoReconnectAfterDisconnect(statusCode)) {
+        scheduleBaileysReconnect(id, String(statusCode || '?') + ' ' + (reason || errMsg || 'close'));
+      } else {
+        resetBaileysReconnectAttempts(id);
+      }
     }
     if (connection === 'open') {
+      clearBaileysReconnectTimer(id);
+      resetBaileysReconnectAttempts(id);
       baileysStatus.status = 'connected';
       baileysStatus.qrCode = null;
       try {
@@ -439,9 +522,11 @@ export function isBaileysConnected(sessionId = DEFAULT_SESSION) {
   try {
     const ws = sock.ws;
     if (ws && typeof ws.readyState === 'number' && ws.readyState !== 1) {
-      if (WA_VERBOSE_LOG) {
-        console.warn('[WA Baileys]', id, 'Koneksi tampak connected tapi WebSocket tidak aktif (readyState=' + ws.readyState + '). Reset state.');
-      }
+      console.warn(
+        '[WA Baileys]',
+        id,
+        'Store “connected” tapi WebSocket tidak aktif (readyState=' + ws.readyState + '). State diselaraskan.'
+      );
       delete sockRefBySession[id];
       st.status = 'disconnected';
       st.qrCode = null;
@@ -451,6 +536,43 @@ export function isBaileysConnected(sessionId = DEFAULT_SESSION) {
     }
   } catch (_) {}
   return true;
+}
+
+const WA_KEEPALIVE_PING_MS = Number(process.env.WA_KEEPALIVE_PING_MS || 10000);
+
+/**
+ * Cek socket masih hidup: presence “available” + batas waktu.
+ * Gagal → pemanggil bisa putus dan init ulang (obat koneksi setengah mati / diam lama).
+ */
+export async function pingBaileysKeepAlive(sessionId = DEFAULT_SESSION) {
+  const id = sessionId || DEFAULT_SESSION;
+  const sock = sockRefBySession[id];
+  const st = getBaileysStatusObj(id);
+  if (!sock || st.status !== 'connected') return { ok: false, reason: 'not_connected' };
+  try {
+    const ws = sock.ws;
+    if (ws && typeof ws.readyState === 'number' && ws.readyState !== 1) {
+      return { ok: false, reason: 'ws_not_open' };
+    }
+    const ping = async () => {
+      if (typeof sock.sendPresenceUpdate === 'function') {
+        await sock.sendPresenceUpdate('available');
+      }
+    };
+    const timeoutMs = Math.min(Math.max(WA_KEEPALIVE_PING_MS, 3000), 60000);
+    await Promise.race([
+      ping(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('keepalive_timeout')), timeoutMs)),
+    ]);
+    const ws2 = sock.ws;
+    if (ws2 && typeof ws2.readyState === 'number' && ws2.readyState !== 1) {
+      return { ok: false, reason: 'ws_closed_after_ping' };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = e?.message || String(e);
+    return { ok: false, reason: msg };
+  }
 }
 
 /** True jika folder auth Baileys punya file (pernah scan Langkah 2). */
@@ -692,6 +814,8 @@ export async function resolveJidsForPhone(sessionId, phoneNumber) {
 
 export async function disconnectBaileys(sessionId = DEFAULT_SESSION) {
   const id = sessionId || DEFAULT_SESSION;
+  clearBaileysReconnectTimer(id);
+  resetBaileysReconnectAttempts(id);
   if (sockRefBySession[id]) {
     try {
       sockRefBySession[id].end(undefined);

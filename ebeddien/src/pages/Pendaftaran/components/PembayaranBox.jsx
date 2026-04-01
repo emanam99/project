@@ -108,10 +108,18 @@ function PembayaranBox({ santriId, refreshKey }) {
       return
     }
 
+    const th = tahunAjaran != null ? String(tahunAjaran).trim() : ''
+    const tm = tahunAjaranMasehi != null ? String(tahunAjaranMasehi).trim() : ''
+    if (!th || !tm) {
+      setRegistrasi(null)
+      setRegistrasiDetail([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      // Tambahkan timestamp untuk cache busting
-      const result = await pendaftaranAPI.getRegistrasi(santriId, tahunAjaran, tahunAjaranMasehi)
+      const result = await pendaftaranAPI.getRegistrasi(santriId, th, tm)
       console.log('PembayaranBox: fetchRegistrasi result', result)
       if (result.success && result.data) {
         console.log('PembayaranBox: registrasi data received', {

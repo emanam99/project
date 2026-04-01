@@ -77,7 +77,9 @@ function Pembayaran() {
     pembayaranHydratedFromCacheRef.current = false
     const sessionNik =
       typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
-    if (!user?.id || !tahunHijriyah || !tahunMasehi) {
+    const th0 = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+    const tm0 = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+    if (!user?.id || !th0 || !tm0) {
       setRegistrasi(null)
       setRegistrasiDetail([])
       setBuktiPembayaranList([])
@@ -85,7 +87,7 @@ function Pembayaran() {
       setLoading(false)
       return
     }
-    const key = getPembayaranCacheKey(user?.nik || sessionNik, user.id, tahunHijriyah, tahunMasehi)
+    const key = getPembayaranCacheKey(user?.nik || sessionNik, user.id, th0, tm0)
     const pack = readPembayaranCache(key)
     if (pack && pembayaranCacheMatchesUser(pack.meta, user, sessionNik)) {
       setRegistrasi(pack.registrasi)
@@ -138,7 +140,9 @@ function Pembayaran() {
 
   const refreshPembayaran = useCallback(
     async (force = false) => {
-      if (!user?.id || !tahunHijriyah || !tahunMasehi) return
+      const thR = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+      const tmR = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+      if (!user?.id || !thR || !tmR) return
 
       if (force) {
         pembayaranHydratedFromCacheRef.current = false
@@ -149,16 +153,16 @@ function Pembayaran() {
 
       const sessionNik =
         typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
-      const cacheKey = getPembayaranCacheKey(user?.nik || sessionNik, user.id, tahunHijriyah, tahunMasehi)
+      const cacheKey = getPembayaranCacheKey(user?.nik || sessionNik, user.id, thR, tmR)
       const meta = {
         id_santri: String(user.id),
         nik_snapshot: String(user?.nik || sessionNik || '').trim(),
-        tahun_hijriyah: tahunHijriyah ?? '',
-        tahun_masehi: tahunMasehi ?? '',
+        tahun_hijriyah: thR,
+        tahun_masehi: tmR,
       }
 
       try {
-        const result = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+        const result = await pendaftaranAPI.getRegistrasi(user.id, thR, tmR)
         let reg = null
         let detail = []
 
@@ -206,12 +210,14 @@ function Pembayaran() {
   const invalidateAndRefreshPembayaran = useCallback(async () => {
     const sessionNik =
       typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('daftar_login_nik') || '' : ''
-    if (user?.id && tahunHijriyah && tahunMasehi) {
+    const thI = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+    const tmI = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+    if (user?.id && thI && tmI) {
       invalidatePembayaranAndDashboard(
         user?.nik || sessionNik,
         user.id,
-        tahunHijriyah,
-        tahunMasehi,
+        thI,
+        tmI,
         sessionNik
       )
     }
@@ -219,14 +225,18 @@ function Pembayaran() {
   }, [user?.id, user?.nik, tahunHijriyah, tahunMasehi, refreshPembayaran])
 
   useEffect(() => {
-    if (tahunHijriyah && tahunMasehi && user?.id) {
+    const thE = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+    const tmE = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+    if (thE && tmE && user?.id) {
       void refreshPembayaran(false)
     }
   }, [refreshPembayaran, tahunHijriyah, tahunMasehi, user?.id, search])
 
   // Setelah mengisi semua page flow: jika belum ada registrasi tapi ada data flow di localStorage, sync sekali agar pembayaran bisa dirender dan harga ketemu
   useEffect(() => {
-    if (!user?.id || !tahunHijriyah || !tahunMasehi || registrasi !== null || loading || hasAttemptedSyncFromFlow.current) return
+    const thS = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+    const tmS = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+    if (!user?.id || !thS || !tmS || registrasi !== null || loading || hasAttemptedSyncFromFlow.current) return
 
     const syncFromFlowConditions = async () => {
       hasAttemptedSyncFromFlow.current = true
@@ -241,8 +251,8 @@ function Pembayaran() {
 
         const result = await pendaftaranAPI.saveRegistrasi({
           id_santri: user.id,
-          tahun_hijriyah: tahunHijriyah,
-          tahun_masehi: tahunMasehi,
+          tahun_hijriyah: thS,
+          tahun_masehi: tmS,
           status_pendaftar: statusPendaftar || undefined,
           daftar_diniyah: daftarDiniyah || undefined,
           daftar_formal: daftarFormal || undefined,

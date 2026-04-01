@@ -2,6 +2,8 @@
 # Alur: buat tar dari folder wa → scp → ekstrak di /var/www/wa atau /var/www/wa2 → Docker Compose (build + up).
 # Nginx mem-proxy ke 127.0.0.1:3001 / :3003 — harus sama dengan WA_HOST_PORT di .env VPS.
 #
+# Lifecycle: pakai restart policy Docker (docker-compose.yml: restart: always). Jangan jalankan container lewat PM2.
+#
 # Prasyarat lokal: OpenSSH (ssh, scp), tar (Windows 10+).
 # Prasyarat VPS: Docker Engine + Compose (plugin: docker compose).
 #
@@ -27,6 +29,7 @@ param(
     [string] $VpsWa  = '/var/www/wa',
     [string] $VpsWa2 = '/var/www/wa2',
 
+    # Jangan lewati kecuali yakin tidak ada PM2 lama; PM2+Docker bersamaan tidak disarankan.
     [switch] $SkipPm2
 )
 
@@ -38,12 +41,12 @@ $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyI
 $candidateWa = Join-Path $scriptDir 'wa'
 $paths = $null
 if (Test-Path (Join-Path $candidateWa 'server.js')) {
-    $paths = @{ WaDir = $candidateWa; Htdocs = $scriptDir }
+    $paths = @{ WaDir = $candidateWa }
 } else {
     $parentOfScript = Split-Path -Parent $scriptDir
     if (Test-Path (Join-Path $parentOfScript 'server.js')) {
         # Skrip di wa/scripts/deploy-wa-vps.ps1 → kode di parent (wa)
-        $paths = @{ WaDir = $parentOfScript; Htdocs = Split-Path -Parent $parentOfScript }
+        $paths = @{ WaDir = $parentOfScript }
     }
 }
 
@@ -55,8 +58,7 @@ Tidak menemukan folder aplikasi wa.
 "@
 }
 
-$waDir  = $paths.WaDir
-$htdocs = $paths.Htdocs
+$waDir = $paths.WaDir
 
 if (-not (Test-Path (Join-Path $waDir 'Dockerfile'))) {
     Write-Error "Dockerfile tidak ada di $waDir"
@@ -97,7 +99,8 @@ if ($isStaging) {
     $WA_IMAGE_NAME     = 'wa-backend:local'
 }
 
-$composeService = 'wa'
+# Nama service di wa/docker-compose.yml (bukan PM2).
+$composeService = 'app'
 
 Write-Host ''
 Write-Host ("  Target: {0} -> {1} (WA_HOST_PORT={2}, container={3})" -f $envLabel, $REMOTE_PATH, $hostPort, $WA_CONTAINER_NAME) -ForegroundColor Cyan
@@ -106,11 +109,15 @@ Write-Host ''
 
 $sshArgs = @(
     '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'ConnectTimeout=45',
+    '-o', 'TCPKeepAlive=yes',
     '-o', 'ServerAliveInterval=30',
     '-o', 'ServerAliveCountMax=10'
 )
 $scpArgs = @(
     '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'ConnectTimeout=45',
+    '-o', 'TCPKeepAlive=yes',
     '-o', 'ServerAliveInterval=30',
     '-o', 'ServerAliveCountMax=10'
 )
@@ -119,6 +126,60 @@ if ($SshPort -ne 22) {
     $scpArgs = @('-P', $SshPort) + $scpArgs
 }
 $sshTarget = "${SshUser}@${SshHost}"
+
+# Banyak koneksi ssh berturut-turut (setelah scp) sering timeout di jaringan/firewall/fail2ban — retry + satu sesi jika memungkinkan.
+$SshRetryMax = 3
+$SshRetryDelaySec = 5
+function Invoke-WaSshWithRetry {
+    param(
+        [Parameter(Mandatory)][string]$RemoteCommand,
+        [int]$MaxAttempts = $SshRetryMax
+    )
+    $oldEa = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        for ($a = 0; $a -lt $MaxAttempts; $a++) {
+            if ($a -gt 0) {
+                Write-Host "[WA] Ulangi ssh (percobaan $($a + 1)/$MaxAttempts) setelah $SshRetryDelaySec detik..." -ForegroundColor Yellow
+                Start-Sleep -Seconds $SshRetryDelaySec
+            }
+            # Write-Host: keluaran tidak masuk pipeline fungsi (supaya `$x = Invoke-WaSshWithRetry` tetap skalar).
+            # Docker menulis progres ke stderr; 2>&1 + Out-Host memicu blok RemoteException di PowerShell 5.1.
+            & ssh @sshArgs $sshTarget $RemoteCommand 2>&1 | ForEach-Object {
+                if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                    Write-Host $_.Exception.Message
+                } else {
+                    Write-Host $_
+                }
+            }
+            if ($LASTEXITCODE -eq 0) { return 0 }
+        }
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldEa
+    }
+}
+function Invoke-WaSshCaptureWithRetry {
+    param(
+        [Parameter(Mandatory)][string]$RemoteCommand,
+        [int]$MaxAttempts = $SshRetryMax
+    )
+    $oldEa = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        for ($a = 0; $a -lt $MaxAttempts; $a++) {
+            if ($a -gt 0) {
+                Write-Host "[WA] Ulangi ssh (percobaan $($a + 1)/$MaxAttempts) setelah $SshRetryDelaySec detik..." -ForegroundColor Yellow
+                Start-Sleep -Seconds $SshRetryDelaySec
+            }
+            $captured = (& ssh @sshArgs $sshTarget $RemoteCommand 2>&1 | Out-String)
+            if ($LASTEXITCODE -eq 0) { return $captured }
+        }
+        return $null
+    } finally {
+        $ErrorActionPreference = $oldEa
+    }
+}
 
 # --- Arsip tar (GNU/BSD tar di Windows 10+) ---
 Write-Host '[WA] Membuat arsip tar dari folder wa...' -ForegroundColor Cyan
@@ -163,19 +224,20 @@ if (-not $scpOk) {
 }
 
 $tarRemote = ($REMOTE_PATH.TrimEnd('/') + '/' + $WA_TAR)
-$extractCmd = "cd '$REMOTE_PATH' && tar --warning=no-timestamp -xf '$tarRemote' && rm -f '$tarRemote'"
-& ssh @sshArgs $sshTarget $extractCmd
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[WA] Ekstrak di VPS gagal. Periksa $REMOTE_PATH" -ForegroundColor Red
-    exit $LASTEXITCODE
+# Satu sesi ssh: ekstrak + tandai ada/tidaknya .env (kurangi koneksi baru setelah scp).
+$extractAndProbe = "cd '$REMOTE_PATH' && tar --warning=no-timestamp -xf '$tarRemote' && rm -f '$tarRemote' && (test -f .env && echo __WA_ENV_YES__ || echo __WA_ENV_NO__)"
+$combinedOut = Invoke-WaSshCaptureWithRetry -RemoteCommand $extractAndProbe
+if ($null -eq $combinedOut) {
+    Write-Host "[WA] Ekstrak di VPS / SSH gagal setelah $SshRetryMax percobaan. Periksa $REMOTE_PATH, firewall VPS, fail2ban, atau jaringan." -ForegroundColor Red
+    Write-Host "[WA] Tes manual: ssh $sshTarget `"echo ok`"" -ForegroundColor Gray
+    exit 1
 }
 
 Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
 
 # --- .env di VPS: WA_HOST_PORT + Compose (Node di container = 3001) ---
-$envCheck = "test -f '$REMOTE_PATH/.env' && echo OK || echo MISSING"
-$envExists = (& ssh @sshArgs $sshTarget $envCheck 2>&1 | Out-String)
-if ($envExists -notmatch 'OK') {
+$hasEnv = ($combinedOut -match '__WA_ENV_YES__')
+if (-not $hasEnv) {
     Write-Host "[WA] Membuat .env minimal (WA_HOST_PORT=$hostPort)..." -ForegroundColor Yellow
     $lines = @(
         "WA_HOST_PORT=$hostPort",
@@ -201,12 +263,15 @@ if ($envExists -notmatch 'OK') {
         "grep -q '^WA_CONTAINER_NAME=' .env 2>/dev/null || echo WA_CONTAINER_NAME=$WA_CONTAINER_NAME >> .env",
         "grep -q '^WA_IMAGE_NAME=' .env 2>/dev/null || echo WA_IMAGE_NAME=$WA_IMAGE_NAME >> .env"
     ) -join ' && '
-    & ssh @sshArgs $sshTarget $ensureVars
+    if ((Invoke-WaSshWithRetry -RemoteCommand $ensureVars) -ne 0) {
+        Write-Host '[WA] Gagal memperbarui variabel Compose di .env di VPS.' -ForegroundColor Red
+        exit 1
+    }
 }
 
 if (-not $SkipPm2) {
-    Write-Host "[WA] Hapus PM2 lama ($PM2_NAME_OLD) jika ada..." -ForegroundColor Cyan
-    & ssh @sshArgs $sshTarget "pm2 delete $PM2_NAME_OLD 2>/dev/null; true"
+    Write-Host "[WA] Hapus entri PM2 lama ($PM2_NAME_OLD) jika ada (hindari double layer PM2+Docker)..." -ForegroundColor Cyan
+    $null = Invoke-WaSshWithRetry -RemoteCommand "pm2 delete $PM2_NAME_OLD 2>/dev/null; true"
 }
 
 # --- Docker: skrip bash di-upload (pipe ke ssh sering gagal di Windows) ---
@@ -219,11 +284,12 @@ command -v docker >/dev/null 2>&1 || { echo 'ERROR: Docker tidak terpasang.'; ex
 if docker compose version >/dev/null 2>&1; then
   docker compose build --pull
   docker compose up -d --remove-orphans
-  docker compose ps
+  # compose ps kadang exit != 0 (Compose v2 / state) meskipun up sukses — jangan gagalkan deploy
+  docker compose ps || true
 elif command -v docker-compose >/dev/null 2>&1; then
   docker-compose build --pull
   docker-compose up -d --remove-orphans
-  docker-compose ps
+  docker-compose ps || true
 else
   echo 'ERROR: Docker Compose tidak tersedia.'
   exit 1
@@ -238,8 +304,7 @@ try {
     [System.IO.File]::WriteAllText($tmpSh, ($bash -replace "`r`n", "`n"), $utf8NoBom)
     & scp @scpArgs $tmpSh "${sshTarget}:${remoteSh}"
     if ($LASTEXITCODE -ne 0) { throw 'scp skrip docker gagal' }
-    & ssh @sshArgs $sshTarget "bash '$remoteSh'; r=`$?; rm -f '$remoteSh'; exit `$r"
-    $dockerExit = $LASTEXITCODE
+    $dockerExit = Invoke-WaSshWithRetry -RemoteCommand "bash '$remoteSh'; r=`$?; rm -f '$remoteSh'; exit `$r"
 } finally {
     Remove-Item $tmpSh -Force -ErrorAction SilentlyContinue
 }

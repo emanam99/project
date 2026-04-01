@@ -1,6 +1,9 @@
 # Satu file per folder deploy: /var/www/wa (prod) atau /var/www/wa2 (staging).
 # Variabel PORT di .env (3001 / 3003) dipakai untuk mapping port & proses Node.
-# Deploy: docker-compose build && docker-compose up -d
+# Deploy: docker compose build && docker compose up -d
+#
+# Lifecycle & restart: biarkan Docker yang mengatur (restart: always). Jangan jalankan
+# container ini lewat PM2 — double layer bisa bentrok; PM2 hanya untuk `node server.js` di host tanpa Docker.
 
 services:
   app:
@@ -9,7 +12,7 @@ services:
       dockerfile: Dockerfile
     image: alutsmani-wa:local
     container_name: ${WA_CONTAINER_NAME:-wa-app}
-    restart: unless-stopped
+    restart: always
     ports:
       - "${PORT:-3001}:${PORT:-3001}"
     env_file:

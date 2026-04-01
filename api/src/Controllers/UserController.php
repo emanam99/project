@@ -385,14 +385,14 @@ class UserController
     public function getSuperAdminAndUwabaUsers(Request $request, Response $response): Response
     {
         try {
-            // Get only users with admin_uwaba role (bisa juga punya super_admin, tapi harus punya admin_uwaba)
+            // Admin UWABA + petugas keuangan (notifikasi WA rencana / komentar pengeluaran).
             $stmt = $this->db->prepare("
-                SELECT DISTINCT p.id, p.nama, COALESCE(u.no_wa, '') AS whatsapp, 'admin_uwaba' as role_key
+                SELECT DISTINCT p.id, p.nama, COALESCE(u.no_wa, '') AS whatsapp, r.`key` AS role_key
                 FROM pengurus p
                 LEFT JOIN users u ON u.id = p.id_user
                 INNER JOIN pengurus___role pr ON p.id = pr.pengurus_id
                 INNER JOIN role r ON pr.role_id = r.id
-                WHERE r.`key` = 'admin_uwaba'
+                WHERE r.`key` IN ('admin_uwaba', 'petugas_keuangan')
                 AND (
                     p.status IS NULL 
                     OR LOWER(TRIM(COALESCE(p.status, ''))) NOT IN ('tidak aktif', 'inactive')

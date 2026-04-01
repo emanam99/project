@@ -1760,8 +1760,57 @@ class PendaftaranController
     }
 
     /**
-     * Simpan / update psb___registrasi. Update memakai id_registrasi dari klien jika valid untuk id_santri ini,
-     * jika tidak ada / tidak valid pakai baris terakhir santri, atau INSERT.
+     * Cari id psb___registrasi untuk santri + tahun ajaran (segmen pertama + LIKE prefix), selaras getRegistrasi / loginNik.
+     */
+    private function findPsbRegistrasiIdBySantriAndTahunAjaran(int $idSantri, string $tahunHijriyahRaw, string $tahunMasehiRaw): ?int
+    {
+        $th = $this->registrasiDbStringOrNull($tahunHijriyahRaw);
+        $tm = $this->registrasiDbStringOrNull($tahunMasehiRaw);
+        if ($th === null || $tm === null) {
+            return null;
+        }
+        $normHijriyah = trim(explode('-', $th)[0] ?? $th);
+        $normMasehi = trim(explode('-', $tm)[0] ?? $tm);
+        if ($normHijriyah === '' || $normMasehi === '') {
+            return null;
+        }
+        $stmt = $this->db->prepare(
+            'SELECT id FROM psb___registrasi WHERE id_santri = ? '
+            . 'AND (tahun_hijriyah = ? OR tahun_hijriyah LIKE ?) '
+            . 'AND (tahun_masehi = ? OR tahun_masehi LIKE ?) LIMIT 1'
+        );
+        $stmt->execute([$idSantri, $normHijriyah, $normHijriyah . '%', $normMasehi, $normMasehi . '%']);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return ($row && isset($row['id'])) ? (int) $row['id'] : null;
+    }
+
+    /**
+     * Apakah kolom tahun di baris registrasi cocok dengan tahun ajaran dari input (bukan tahun lain).
+     */
+    private function psbRegistrasiRowMatchesTahunAjaran(array $row, ?string $tahunHijriyahInput, ?string $tahunMasehiInput): bool
+    {
+        $th = $this->registrasiDbStringOrNull($tahunHijriyahInput);
+        $tm = $this->registrasiDbStringOrNull($tahunMasehiInput);
+        if ($th === null || $tm === null) {
+            return true;
+        }
+        $normH = trim(explode('-', $th)[0] ?? $th);
+        $normM = trim(explode('-', $tm)[0] ?? $tm);
+        if ($normH === '' || $normM === '') {
+            return true;
+        }
+        $dbH = trim((string) ($row['tahun_hijriyah'] ?? ''));
+        $dbM = trim((string) ($row['tahun_masehi'] ?? ''));
+        $hOk = ($dbH === $normH || ($dbH !== '' && str_starts_with($dbH, $normH)));
+        $mOk = ($dbM === $normM || ($dbM !== '' && str_starts_with($dbM, $normM)));
+
+        return $hOk && $mOk;
+    }
+
+    /**
+     * Simpan / update psb___registrasi. Jika tahun ajaran (hijriyah+masehi) diisi: tidak menimpa baris tahun lain;
+     * id_registrasi dari klien diabaikan jika baris itu tahunnya beda → INSERT baris baru.
      *
      * @return int|null PK psb___registrasi, atau null jika tabel tidak ada
      */
@@ -1821,9 +1870,20 @@ class PendaftaranController
         $tahunMasehiNorm = $this->registrasiDbStringOrNull($tahunMasehi);
 
         $targetRegId = null;
+        $tahunLengkap = $tahunHijriyahNorm !== null && $tahunMasehiNorm !== null;
 
-        // 1) Utamakan baris yang sudah terikat tahun ajaran ini (hindari UPDATE baris "terbaru" lalu tabrak unique tahun)
-        if ($tahunHijriyahNorm !== null && $tahunMasehiNorm !== null) {
+        // 1a) Tahun ajaran lengkap: cari baris dengan prefix tahun (sama getRegistrasi), bukan exact saja
+        if ($tahunLengkap) {
+            $foundByYear = $this->findPsbRegistrasiIdBySantriAndTahunAjaran(
+                $idSantriInt,
+                (string) $tahunHijriyah,
+                (string) $tahunMasehi
+            );
+            if ($foundByYear !== null) {
+                $targetRegId = $foundByYear;
+            }
+        } else {
+            // Legacy: salah satu tahun kosong — exact match null-safe
             $stmtByYear = $this->db->prepare(
                 'SELECT id FROM psb___registrasi WHERE id_santri = ? AND tahun_hijriyah <=> ? AND tahun_masehi <=> ? LIMIT 1'
             );
@@ -1836,14 +1896,17 @@ class PendaftaranController
 
         $idRegInput = isset($input['id_registrasi']) ? (int) $input['id_registrasi'] : 0;
         if ($targetRegId === null && $idRegInput > 0) {
-            $stmtOwn = $this->db->prepare('SELECT id, id_santri FROM psb___registrasi WHERE id = ? LIMIT 1');
+            $stmtOwn = $this->db->prepare('SELECT id, id_santri, tahun_hijriyah, tahun_masehi FROM psb___registrasi WHERE id = ? LIMIT 1');
             $stmtOwn->execute([$idRegInput]);
             $own = $stmtOwn->fetch(\PDO::FETCH_ASSOC);
             if ($own && (int) $own['id_santri'] === $idSantriInt) {
-                $targetRegId = (int) $own['id'];
+                if ($this->psbRegistrasiRowMatchesTahunAjaran($own, $tahunHijriyah !== null ? (string) $tahunHijriyah : null, $tahunMasehi !== null ? (string) $tahunMasehi : null)) {
+                    $targetRegId = (int) $own['id'];
+                }
             }
         }
-        if ($targetRegId === null) {
+        // 1b) Fallback "baris terakhir" hanya jika tahun ajaran TIDAK lengkap (hindari menimpa tahun lain)
+        if ($targetRegId === null && !$tahunLengkap) {
             $stmtCheck = $this->db->prepare('SELECT id FROM psb___registrasi WHERE id_santri = ? ORDER BY id DESC LIMIT 1');
             $stmtCheck->execute([$idSantriInt]);
             $exists = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
@@ -2811,7 +2874,8 @@ class PendaftaranController
     /**
      * GET /api/pendaftaran/get-registrasi - Ambil data registrasi berdasarkan id_santri
      * Role santri: hanya data sendiri (id dari token). Admin/psb: boleh id_santri di query.
-     * Support filter: tahun_hijriyah, tahun_masehi
+     * Wajib: tahun_hijriyah + tahun_masehi (keduanya non-kosong). Tanpa itu → 400. Tidak ada fallback ke registrasi tahun lain.
+     * Pencocokan tahun: = atau LIKE prefix (segmen pertama), selaras loginNik.
      */
     public function getRegistrasi(Request $request, Response $response): Response
     {
@@ -2823,13 +2887,20 @@ class PendaftaranController
             if (!RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr)) {
                 $idSantri = SantriHelper::resolveSantriIdFromDaftarToken($this->db, $userArr);
             }
-            $tahunHijriyah = $queryParams['tahun_hijriyah'] ?? null;
-            $tahunMasehi = $queryParams['tahun_masehi'] ?? null;
+            $tahunHijriyahRaw = isset($queryParams['tahun_hijriyah']) ? trim((string) $queryParams['tahun_hijriyah']) : '';
+            $tahunMasehiRaw = isset($queryParams['tahun_masehi']) ? trim((string) $queryParams['tahun_masehi']) : '';
 
             if (!$idSantri) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Parameter id_santri wajib diisi'
+                ], 400);
+            }
+
+            if ($tahunHijriyahRaw === '' || $tahunMasehiRaw === '') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Parameter tahun_hijriyah dan tahun_masehi wajib diisi (tidak ada fallback registrasi lain)'
                 ], 400);
             }
 
@@ -2841,7 +2912,16 @@ class PendaftaranController
                 ], 404);
             }
 
-            // Build query dengan filter tahun dan JOIN dengan pengurus + santri (untuk nis tampilan)
+            // Cocokkan tahun seperti loginNik: nilai penuh di pengaturan vs awalan/range di DB (tanpa fallback ke tahun lain).
+            $normHijriyah = trim(explode('-', $tahunHijriyahRaw)[0] ?? $tahunHijriyahRaw);
+            $normMasehi = trim(explode('-', $tahunMasehiRaw)[0] ?? $tahunMasehiRaw);
+            if ($normHijriyah === '' || $normMasehi === '') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Format tahun_hijriyah atau tahun_masehi tidak valid'
+                ], 400);
+            }
+
             $sql = "SELECT r.id, r.id_santri, s.nis, r.tanggal_dibuat, r.tanggal_update, r.wajib, r.bayar, r.kurang, r.id_admin, r.tahun_hijriyah, r.tahun_masehi, 
                            r.status_pendaftar, r.keterangan_status, r.daftar_diniyah, r.daftar_formal, r.status_murid, r.prodi, r.gelombang,
                            r.status_santri, r.gender,
@@ -2852,42 +2932,21 @@ class PendaftaranController
                     FROM psb___registrasi r
                     LEFT JOIN pengurus p ON r.id_admin = p.id
                     LEFT JOIN santri s ON r.id_santri = s.id
-                    WHERE r.id_santri = ?";
-            $params = [$resolvedId];
-            
-            if ($tahunHijriyah && $tahunHijriyah !== '') {
-                $sql .= " AND r.tahun_hijriyah = ?";
-                $params[] = $tahunHijriyah;
-            }
-            
-            if ($tahunMasehi && $tahunMasehi !== '') {
-                $sql .= " AND r.tahun_masehi = ?";
-                $params[] = $tahunMasehi;
-            }
-            
-            $sql .= " LIMIT 1";
-            
+                    WHERE r.id_santri = ?
+                    AND (r.tahun_hijriyah = ? OR r.tahun_hijriyah LIKE ?)
+                    AND (r.tahun_masehi = ? OR r.tahun_masehi LIKE ?)
+                    LIMIT 1";
+            $params = [
+                $resolvedId,
+                $normHijriyah,
+                $normHijriyah . '%',
+                $normMasehi,
+                $normMasehi . '%',
+            ];
+
             $stmt = $this->db->prepare($sql);
             $stmt->execute($params);
             $data = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            // Selaras dengan save-biodata: jika filter tahun tidak cocok (format beda di DB), tetap kembalikan registrasi terakhir santri.
-            if (!$data && $resolvedId) {
-                $sqlFallback = "SELECT r.id, r.id_santri, s.nis, r.tanggal_dibuat, r.tanggal_update, r.wajib, r.bayar, r.kurang, r.id_admin, r.tahun_hijriyah, r.tahun_masehi, 
-                           r.status_pendaftar, r.keterangan_status, r.daftar_diniyah, r.daftar_formal, r.status_murid, r.prodi, r.gelombang,
-                           r.status_santri, r.gender,
-                           r.madrasah, r.nama_madrasah, r.alamat_madrasah, r.lulus_madrasah,
-                           r.sekolah, r.nama_sekolah, r.alamat_sekolah, r.lulus_sekolah,
-                           r.npsn, r.nsm, r.jurusan, r.program_sekolah,
-                           p.nama AS admin
-                    FROM psb___registrasi r
-                    LEFT JOIN pengurus p ON r.id_admin = p.id
-                    LEFT JOIN santri s ON r.id_santri = s.id
-                    WHERE r.id_santri = ? ORDER BY r.id DESC LIMIT 1";
-                $stmtFb = $this->db->prepare($sqlFallback);
-                $stmtFb->execute([$resolvedId]);
-                $data = $stmtFb->fetch(\PDO::FETCH_ASSOC);
-            }
 
             if ($data && isset($data['id'])) {
                 $data['id_registrasi'] = (int) $data['id'];

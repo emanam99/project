@@ -7,8 +7,13 @@ import { useAuthStore } from '../../store/authStore'
 import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import EditPengurusForm, { initialProfilForm, profilFormFromUser } from './EditPengurusForm'
 
-const offcanvasBottomTransition = { type: 'tween', duration: 0.25, ease: [0.4, 0, 0.2, 1] }
-const offcanvasBottomPanelClass = 'fixed bottom-0 left-0 right-0 z-[10211] flex flex-col max-h-[85vh] w-full sm:left-1/2 sm:right-auto sm:w-full sm:max-w-md sm:-translate-x-1/2 rounded-t-2xl bg-white dark:bg-gray-800 shadow-xl border-t border-gray-200 dark:border-gray-700'
+const offcanvasBottomTransition = { type: 'tween', duration: 0.25, ease: [0.2, 0, 0.2, 1] }
+/**
+ * Rata kanan di semua breakpoint (tanpa `sm:left-1/2` — itu yang membuat panel “ke tengah” di tablet & memotong kanan).
+ * `w-full max-w-md` + `right-0` (bukan `100vw`) agar lebar mengikuti area tampil.
+ */
+const offcanvasBottomPanelClass =
+  'fixed bottom-0 right-0 left-auto z-[10211] flex min-h-0 w-full max-w-md flex-col overflow-hidden max-h-[85vh] box-border rounded-t-2xl bg-white dark:bg-gray-800 shadow-xl border-t border-l border-gray-200 dark:border-gray-700 pr-[env(safe-area-inset-right,0px)]'
 
 function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = [], onPengurusPatch, showEditPanel = false, onOpenEdit, onCloseEdit }) {
   const { showNotification } = useNotification()
@@ -845,7 +850,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-6 sm:pb-4">
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 pb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Lembaga *</label>
                   <select
@@ -918,7 +923,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   </select>
                 </div>
               </div>
-              <div className="flex-shrink-0 p-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-white dark:bg-gray-800 rounded-b-2xl">
+              <div className="flex w-full min-w-0 flex-shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-200 bg-white p-3 pt-3 dark:border-gray-700 dark:bg-gray-800 sm:gap-3 sm:p-4 sm:pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] rounded-b-2xl">
                 <button
                   type="button"
                   onClick={() => {
@@ -926,14 +931,14 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                     setEditingJabatanId(null)
                     setNewJabatan({ jabatan_id: '', lembaga_id: '', tanggal_mulai: '', tanggal_selesai: '', status: 'aktif' })
                   }}
-                  className="px-4 py-2.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="min-w-0 shrink-0 px-4 py-2.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   Batal
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveJabatan}
-                  className="px-4 py-2.5 text-sm font-medium bg-teal-600 text-white rounded-xl hover:bg-teal-700"
+                  className="min-w-0 shrink-0 px-4 py-2.5 text-sm font-medium bg-teal-600 text-white rounded-xl hover:bg-teal-700"
                 >
                   {editingJabatanId != null ? 'Simpan' : 'Tambah'}
                 </button>
@@ -987,7 +992,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-6 sm:pb-4">
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 pb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Role *</label>
                   <select
@@ -1019,11 +1024,11 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   </select>
                 </div>
               </div>
-              <div className="flex-shrink-0 p-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-white dark:bg-gray-800 rounded-b-2xl">
+              <div className="flex w-full min-w-0 flex-shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-200 bg-white p-3 pt-3 dark:border-gray-700 dark:bg-gray-800 sm:gap-3 sm:p-4 sm:pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] rounded-b-2xl">
                 <button
                   type="button"
                   onClick={() => { setShowAddRoleModal(false); setNewRole({ role_id: '', lembaga_id: '' }) }}
-                  className="px-4 py-2.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="min-w-0 shrink-0 px-4 py-2.5 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   Batal
                 </button>
@@ -1031,7 +1036,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                   type="button"
                   onClick={handleAddRole}
                   disabled={roleSaving || !newRole.role_id}
-                  className="px-4 py-2.5 text-sm font-medium bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="min-w-0 shrink-0 px-4 py-2.5 text-sm font-medium bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {roleSaving ? 'Menambah...' : 'Tambah'}
                 </button>

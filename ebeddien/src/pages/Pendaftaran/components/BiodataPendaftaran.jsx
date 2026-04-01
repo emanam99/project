@@ -875,9 +875,13 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
             prodi: biodata.prodi || '',
           }
 
-          // Load data registrasi dari tabel psb___registrasi dengan tahun yang sesuai
-          // Jika ada data registrasi dengan tahun yang sesuai, gunakan data riwayat sekolah/madrasah dari registrasi
-          const registrasiResponse = await pendaftaranAPI.getRegistrasi(id, tahunAjaran, tahunAjaranMasehi)
+          // Load data registrasi dari tabel psb___registrasi dengan tahun yang sesuai (wajib hijriyah + masehi)
+          const thReg = String(tahunAjaran || '').trim()
+          const tmReg = String(tahunAjaranMasehi || '').trim()
+          const registrasiResponse =
+            thReg && tmReg
+              ? await pendaftaranAPI.getRegistrasi(id, thReg, tmReg)
+              : { success: false, data: null }
           if (registrasiResponse.success && registrasiResponse.data) {
             const registrasi = registrasiResponse.data
             // Update field status pendaftaran (prioritas: API, lalu data dari modal Tambah Santri Baru)

@@ -267,17 +267,22 @@ export const pendaftaranAPI = {
     }
   },
   
-  /** GET registrasi (auth). Tidak melempar axios error — return { success: false } agar UI daftar tetap stabil (403/4xx). */
+  /** GET registrasi (auth). Wajib tahun_hijriyah + tahun_masehi (backend 400 jika kosong; tanpa fallback tahun lain). */
   getRegistrasi: async (idSantri, tahunHijriyah = null, tahunMasehi = null) => {
+    const th = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+    const tm = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+    if (!th || !tm) {
+      return {
+        success: false,
+        data: null,
+        message: 'tahun_hijriyah dan tahun_masehi wajib diisi sebelum mengambil registrasi'
+      }
+    }
     try {
       const params = new URLSearchParams()
       params.append('id_santri', idSantri)
-      if (tahunHijriyah && tahunHijriyah !== '') {
-        params.append('tahun_hijriyah', tahunHijriyah)
-      }
-      if (tahunMasehi && tahunMasehi !== '') {
-        params.append('tahun_masehi', tahunMasehi)
-      }
+      params.append('tahun_hijriyah', th)
+      params.append('tahun_masehi', tm)
       params.append('_t', Date.now())
       const response = await api.get(`/pendaftaran/get-registrasi?${params.toString()}`)
       return response.data

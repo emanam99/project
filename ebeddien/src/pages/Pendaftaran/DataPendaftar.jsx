@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { pendaftaranAPI, lembagaAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useAuthStore } from '../../store/authStore'
-import { userHasSuperAdminAccess, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
+import { userHasSuperAdminAccess, userHasManagePsbPermission } from '../../utils/roleAccess'
 import { usePendaftaranFiturAccess } from '../../hooks/usePendaftaranFiturAccess'
 import { useNotification } from '../../contexts/NotificationContext'
 import ExportPendaftarOffcanvas from './components/ExportPendaftarOffcanvas'
@@ -132,41 +132,171 @@ function DataPendaftar() {
   // Cek apakah user adalah super_admin
   const isSuperAdmin = userHasSuperAdminAccess(user)
   
-  // Cek apakah user adalah admin_PSB atau petugas_PSB (aman untuk multi_role / all_roles)
-  const isPsbUser = userMatchesAnyAllowedRole(user, ['admin_psb', 'petugas_psb'])
-  
-  // Kategori Pesantren pada salah satu lembaga ter-scope → perilaku seperti akses penuh di UI filter
+  /** Permission manage_psb dari JWT (gabungan role di tabel `role` + RoleConfig), bukan nama role hardcoded. */
+  const isManagePsb = userHasManagePsbPermission(user)
+
+  // Kategori Pesantren pada salah satu lembaga ter-scope (data lembaga, bukan key role) → filter seperti akses luas
   const isPesantrenUser = userLembagas.some((l) => l?.kategori === 'Pesantren')
 
-  /** Akses penuh fitur filter di UI: super_admin, admin/petugas PSB, scope_all, atau lembaga Pesantren. */
-  const hasFullAccess = isSuperAdmin || isPsbUser || lembagaScopeAll || isPesantrenUser
+  /** Filter status pendaftar & UI terkait: super, scope semua lembaga, manage_psb, atau lembaga bertipe Pesantren. */
+  const hasFullAccess = isSuperAdmin || isManagePsb || lembagaScopeAll || isPesantrenUser
+
+  /** Id lembaga scope per kategori (Formal / Diniyah) — dipakai role dengan manage_psb agar tidak bocor lintas jalur. */
+  const formalScopeIds = useMemo(
+    () =>
+      userLembagas
+        .filter((l) => String(l?.kategori || '').trim().toLowerCase() === 'formal')
+        .map((l) => String(l.id)),
+    [userLembagas]
+  )
+  const diniyahScopeIds = useMemo(
+    () =>
+      userLembagas
+        .filter((l) => String(l?.kategori || '').trim().toLowerCase() === 'diniyah')
+        .map((l) => String(l.id)),
+    [userLembagas]
+  )
 
   const { dataPendaftarFilterFormalDiniyahSemuaLembaga } = usePendaftaranFiturAccess()
 
-  const applyScopedLembagaToRows = useCallback((rows) => {
-    if (hasFullAccess || scopedLembagaIds.length === 0) return rows
-    const idSet = new Set(scopedLembagaIds.map(String))
-    return rows.filter((p) => {
-      const f = registrasiFormalLembagaId(p)
-      const d = registrasiDiniyahLembagaId(p)
-      return idSet.has(f) || idSet.has(d)
-    })
-  }, [hasFullAccess, scopedLembagaIds])
+  /**
+   * Lewati pembatasan baris per lembaga (lihat semua baris dari API).
+   * PSB tidak ikut di sini — scope baris pakai Formal/Diniyah dari lembaga role (bukan OR semua id).
+   */
+  const bypassRowLebagaScope = useMemo(
+    () =>
+      isSuperAdmin ||
+      dataPendaftarFilterFormalDiniyahSemuaLembaga ||
+      lembagaScopeAll ||
+      (isPesantrenUser && !isManagePsb),
+    [
+      isSuperAdmin,
+      dataPendaftarFilterFormalDiniyahSemuaLembaga,
+      lembagaScopeAll,
+      isPesantrenUser,
+      isManagePsb
+    ]
+  )
+
+  const filterRowsByScopedLembaga = useCallback(
+    (rows) => {
+      if (bypassRowLebagaScope) return rows
+      if (scopedLembagaIds.length === 0) return []
+
+      if (isManagePsb) {
+        const unionSet = new Set(scopedLembagaIds.map(String))
+        const matchUnion = (p) => {
+          const f = registrasiFormalLembagaId(p)
+          const d = registrasiDiniyahLembagaId(p)
+          return unionSet.has(f) || unionSet.has(d)
+        }
+        const formalSet = new Set(formalScopeIds.map(String))
+        const diniyahSet = new Set(diniyahScopeIds.map(String))
+        if (loadingLembaga || userLembagas.length === 0) {
+          return rows.filter(matchUnion)
+        }
+        if (formalSet.size === 0 && diniyahSet.size === 0) {
+          return rows.filter(matchUnion)
+        }
+        return rows.filter((p) => {
+          const f = registrasiFormalLembagaId(p)
+          const d = registrasiDiniyahLembagaId(p)
+          return (f && formalSet.has(f)) || (d && diniyahSet.has(d))
+        })
+      }
+
+      const idSet = new Set(scopedLembagaIds.map(String))
+      return rows.filter((p) => {
+        const f = registrasiFormalLembagaId(p)
+        const d = registrasiDiniyahLembagaId(p)
+        return idSet.has(f) || idSet.has(d)
+      })
+    },
+    [
+      bypassRowLebagaScope,
+      scopedLembagaIds,
+      isManagePsb,
+      formalScopeIds,
+      diniyahScopeIds,
+      loadingLembaga,
+      userLembagas.length
+    ]
+  )
+
+  const applyScopedLembagaToRows = useCallback(
+    (rows) => filterRowsByScopedLembaga(rows),
+    [filterRowsByScopedLembaga]
+  )
 
   /**
-   * Opsi dropdown formal/diniyah: super_admin atau aksi fitur "semua lembaga" → dari seluruh data;
-   * selain itu → hanya lembaga yang termasuk scope role (jika ada id lembaga di akun).
+   * Opsi dropdown formal/diniyah: bypass scope atau aksi "semua lembaga" → dari seluruh data;
+   * manage_psb → baris yang cocok Formal/Diniyah scope role; lainnya → gabungan id di token.
    */
-  const scopeRowsForFormalDiniyahOptions = useCallback((rows) => {
-    if (isSuperAdmin || dataPendaftarFilterFormalDiniyahSemuaLembaga) return rows
-    if (scopedLembagaIds.length === 0) return rows
-    const idSet = new Set(scopedLembagaIds.map(String))
-    return rows.filter((p) => {
-      const f = registrasiFormalLembagaId(p)
-      const d = registrasiDiniyahLembagaId(p)
-      return idSet.has(f) || idSet.has(d)
-    })
-  }, [isSuperAdmin, dataPendaftarFilterFormalDiniyahSemuaLembaga, scopedLembagaIds])
+  const scopeRowsForFormalDiniyahOptions = useCallback(
+    (rows) => filterRowsByScopedLembaga(rows),
+    [filterRowsByScopedLembaga]
+  )
+
+  /**
+   * Selaras logika Pengeluaran: tanpa akses lembaga → filter nonaktif;
+   * scope hanya Formal → Diniyah nonaktif; scope hanya Diniyah → Formal nonaktif.
+   * PSB: tidak pakai "full access" di sini agar formal/diniyah mengikuti kategori lembaga role.
+   */
+  const formalDiniyahFilterState = useMemo(() => {
+    const noAccess =
+      scopedLembagaIds.length === 0 &&
+      !lembagaScopeAll &&
+      !isSuperAdmin &&
+      !dataPendaftarFilterFormalDiniyahSemuaLembaga
+
+    if (noAccess) {
+      return { noAccess: true, formalDisabled: true, diniyahDisabled: true }
+    }
+    if (bypassRowLebagaScope) {
+      return { noAccess: false, formalDisabled: false, diniyahDisabled: false }
+    }
+    if (loadingLembaga || userLembagas.length === 0) {
+      return { noAccess: false, formalDisabled: false, diniyahDisabled: false }
+    }
+    const norm = (k) => String(k || '').trim().toLowerCase()
+    const cats = userLembagas.map((l) => norm(l?.kategori))
+    const hasFormal = cats.some((c) => c === 'formal')
+    const hasDiniyah = cats.some((c) => c === 'diniyah')
+    const hasPesantren = cats.some((c) => c === 'pesantren')
+    if (hasPesantren) {
+      return { noAccess: false, formalDisabled: false, diniyahDisabled: false }
+    }
+    if (hasFormal && !hasDiniyah) {
+      return { noAccess: false, formalDisabled: false, diniyahDisabled: true }
+    }
+    if (hasDiniyah && !hasFormal) {
+      return { noAccess: false, formalDisabled: true, diniyahDisabled: false }
+    }
+    return { noAccess: false, formalDisabled: false, diniyahDisabled: false }
+  }, [
+    bypassRowLebagaScope,
+    dataPendaftarFilterFormalDiniyahSemuaLembaga,
+    scopedLembagaIds.length,
+    lembagaScopeAll,
+    isSuperAdmin,
+    loadingLembaga,
+    userLembagas
+  ])
+
+  useEffect(() => {
+    if (formalDiniyahFilterState.diniyahDisabled) setDiniyahFilter('')
+  }, [formalDiniyahFilterState.diniyahDisabled])
+
+  useEffect(() => {
+    if (formalDiniyahFilterState.formalDisabled) setFormalFilter('')
+  }, [formalDiniyahFilterState.formalDisabled])
+
+  useEffect(() => {
+    if (formalDiniyahFilterState.noAccess) {
+      setFormalFilter('')
+      setDiniyahFilter('')
+    }
+  }, [formalDiniyahFilterState.noAccess])
 
   // Load data lembaga untuk filter (satu atau beberapa id dari gabungan role)
   useEffect(() => {
@@ -202,9 +332,9 @@ function DataPendaftar() {
   }, [tahunAjaran, tahunAjaranMasehi])
 
   // Dynamic unique values untuk filter (dengan count)
-  // Filter berdasarkan role dan kategori lembaga
+  // hasFullAccess = super / scope semua lembaga / permission manage_psb / lembaga bertipe Pesantren
   const dynamicUniqueStatusPendaftar = useMemo(() => {
-    if (!hasFullAccess) return [] // Hanya super_admin atau kategori Pesantren yang bisa filter status pendaftar
+    if (!hasFullAccess) return []
     
     const values = [...new Set(pendaftarList.map(p => p.status_pendaftar).filter(Boolean))]
     const counts = values.map(val => ({
@@ -735,12 +865,20 @@ function DataPendaftar() {
                             </select>
                           )}
                           
-                          {/* Daftar Formal / Daftar Diniyah (dari psb___registrasi) — tampil untuk semua */}
+                          {/* Daftar Formal / Diniyah — dibatasi scope & kategori lembaga (seperti filter lembaga di Pengeluaran) */}
                           <>
                             <select
                               value={formalFilter}
                               onChange={(e) => setFormalFilter(e.target.value)}
-                              className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                              disabled={formalDiniyahFilterState.formalDisabled || formalDiniyahFilterState.noAccess}
+                              title={
+                                formalDiniyahFilterState.noAccess
+                                  ? 'Tidak ada lembaga di akses role — tidak dapat memfilter Daftar Formal'
+                                  : formalDiniyahFilterState.formalDisabled
+                                    ? 'Scope lembaga hanya Diniyah — filter Formal dinonaktifkan'
+                                    : undefined
+                              }
+                              className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <option value="">Daftar Formal</option>
                               {dynamicUniqueFormal.map(item => (
@@ -750,7 +888,15 @@ function DataPendaftar() {
                             <select
                               value={diniyahFilter}
                               onChange={(e) => setDiniyahFilter(e.target.value)}
-                              className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                              disabled={formalDiniyahFilterState.diniyahDisabled || formalDiniyahFilterState.noAccess}
+                              title={
+                                formalDiniyahFilterState.noAccess
+                                  ? 'Tidak ada lembaga di akses role — tidak dapat memfilter Daftar Diniyah'
+                                  : formalDiniyahFilterState.diniyahDisabled
+                                    ? 'Scope lembaga hanya Formal — filter Diniyah dinonaktifkan'
+                                    : undefined
+                              }
+                              className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <option value="">Daftar Diniyah</option>
                               {dynamicUniqueDiniyah.map(item => (

@@ -1,6 +1,9 @@
 /**
- * PM2 — contoh: pm2 start ecosystem.config.cjs --only wa
- * Sesuaikan cwd di VPS (/var/www/wa atau /var/www/wa2). Deploy script juga mengisi flag serupa via CLI.
+ * PM2 — hanya untuk menjalankan Node langsung di host (tanpa Docker).
+ * Contoh: pm2 start ecosystem.config.cjs --only wa
+ *
+ * Jangan pakai PM2 untuk mengawasi container Docker — pakai `restart: always` di docker-compose.yml.
+ * Sesuaikan cwd di VPS (/var/www/wa atau /var/www/wa2).
  */
 module.exports = {
   apps: [

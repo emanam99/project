@@ -364,13 +364,14 @@ function Dashboard() {
           // Pembayaran tersedia (in_progress) jika biodata + berkas sudah lengkap; completed jika sudah bayar >= 200000
           const biodataDone = updatedSteps[0].status === 'completed'
           const berkasDone = updatedSteps[1].status === 'completed'
+          const tahunHReady = tahunHijriyah != null && String(tahunHijriyah).trim() !== ''
+          const tahunMReady = tahunMasehi != null && String(tahunMasehi).trim() !== ''
           try {
-            const registrasiResult = await pendaftaranAPI.getRegistrasi(
-              user.id,
-              tahunHijriyah,
-              tahunMasehi
-            )
-            
+            const registrasiResult =
+              tahunHReady && tahunMReady
+                ? await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+                : { success: false, data: null }
+
             if (registrasiResult.success && registrasiResult.data) {
               const registrasi = registrasiResult.data
               const bayar = registrasi.bayar || 0
@@ -400,18 +401,20 @@ function Dashboard() {
           
           // Sinkronkan keterangan_status di backend (pengecekan bayar & berkas ada di backend)
           try {
-            if (tahunHijriyah && tahunMasehi) {
+            const thK = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+            const tmK = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+            if (thK && tmK) {
               const res = await pendaftaranAPI.syncKeteranganStatus({
                 id_santri: user.id,
-                tahun_hijriyah: tahunHijriyah,
-                tahun_masehi: tahunMasehi
+                tahun_hijriyah: thK,
+                tahun_masehi: tmK
               })
               if (res?.success && res?.data?.keterangan_status != null) {
                 keteranganTouched = true
                 keteranganForCache = res.data.keterangan_status
                 setKeteranganStatus(res.data.keterangan_status)
               } else {
-                const reg = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+                const reg = await pendaftaranAPI.getRegistrasi(user.id, thK, tmK)
                 if (reg?.success && reg?.data?.keterangan_status != null) {
                   keteranganTouched = true
                   keteranganForCache = reg.data.keterangan_status
@@ -524,10 +527,15 @@ function Dashboard() {
             
             const biodataDone = updated[0].status === 'completed'
             const berkasDone = updated[1].status === 'completed'
-            
+            const tahunHReadyVis = tahunHijriyah != null && String(tahunHijriyah).trim() !== ''
+            const tahunMReadyVis = tahunMasehi != null && String(tahunMasehi).trim() !== ''
+
             // Cek pembayaran (step 3): tersedia jika biodata + berkas lengkap
             try {
-              const registrasiResult = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+              const registrasiResult =
+                tahunHReadyVis && tahunMReadyVis
+                  ? await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+                  : { success: false, data: null }
               if (registrasiResult.success && registrasiResult.data) {
                 const registrasi = registrasiResult.data
                 const bayar = registrasi.bayar || 0
@@ -555,17 +563,19 @@ function Dashboard() {
             setSteps(updated)
             
             // Sinkronkan keterangan_status di backend (pengecekan bayar & berkas ada di backend)
-            if (tahunHijriyah && tahunMasehi) {
+            const thKv = tahunHijriyah != null ? String(tahunHijriyah).trim() : ''
+            const tmKv = tahunMasehi != null ? String(tahunMasehi).trim() : ''
+            if (thKv && tmKv) {
               try {
                 const res = await pendaftaranAPI.syncKeteranganStatus({
                   id_santri: user.id,
-                  tahun_hijriyah: tahunHijriyah,
-                  tahun_masehi: tahunMasehi
+                  tahun_hijriyah: thKv,
+                  tahun_masehi: tmKv
                 })
                 if (res?.success && res?.data?.keterangan_status != null) {
                   setKeteranganStatus(res.data.keterangan_status)
                 } else {
-                  const reg = await pendaftaranAPI.getRegistrasi(user.id, tahunHijriyah, tahunMasehi)
+                  const reg = await pendaftaranAPI.getRegistrasi(user.id, thKv, tmKv)
                   if (reg?.success && reg?.data?.keterangan_status != null) {
                     setKeteranganStatus(reg.data.keterangan_status)
                   }

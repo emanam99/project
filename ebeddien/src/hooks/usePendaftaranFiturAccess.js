@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAuthStore } from '../store/authStore'
-import { userHasSuperAdminAccess, userMatchesAnyAllowedRole } from '../utils/roleAccess'
+import { userHasSuperAdminAccess, userHasManagePsbPermission } from '../utils/roleAccess'
 import { PENDAFTARAN_ACTION_CODES } from '../config/pendaftaranFiturCodes'
 
 export function buildCanPendaftaranAction(user, fiturMenuCodes) {
@@ -26,7 +26,8 @@ export function usePendaftaranFiturAccess() {
   return useMemo(() => {
     const can = buildCanPendaftaranAction(user, fiturMenuCodes)
     const superFb = () => userHasSuperAdminAccess(user)
-    const hapusSantriFb = () => userMatchesAnyAllowedRole(user, ['super_admin', 'admin_psb'])
+    const hapusSantriFb = () =>
+      userHasSuperAdminAccess(user) || userHasManagePsbPermission(user)
     const noImplicitFilterFull = () => false
 
     return {

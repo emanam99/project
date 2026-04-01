@@ -1760,16 +1760,16 @@ export default function Chat() {
         </div>
       </motion.div>
 
-      {/* Offcanvas kanan: pilih user untuk chat baru — compact & modern, state di URL ?new=1 */}
+      {/* Offcanvas kanan: pilih user untuk chat baru — z di atas bottom nav (z-[100]) agar konten bawah tidak tertutup */}
       {(newChatOpen || offcanvasClosing) && (
         <>
           <div
-            className={`fixed inset-0 z-40 backdrop-blur-[2px] transition-opacity duration-200 ${offcanvasClosing ? 'bg-black/0' : 'bg-black/30'}`}
+            className={`fixed inset-0 z-[102] backdrop-blur-[2px] transition-opacity duration-200 ${offcanvasClosing ? 'bg-black/0' : 'bg-black/30'}`}
             onClick={closeOffcanvas}
             aria-hidden="true"
           />
           <div
-            className={`fixed top-0 right-0 bottom-0 w-full max-w-sm bg-white dark:bg-gray-800 shadow-2xl z-50 flex flex-col rounded-l-2xl border-l border-gray-200 dark:border-gray-700 overflow-hidden ${offcanvasClosing ? 'animate-[slideOutRight_0.22s_ease-in_forwards]' : 'animate-[slideInRight_0.22s_ease-out]'}`}
+            className={`fixed top-0 right-0 bottom-0 w-full max-w-sm bg-white dark:bg-gray-800 shadow-2xl z-[103] flex flex-col rounded-l-2xl border-l border-gray-200 dark:border-gray-700 overflow-hidden ${offcanvasClosing ? 'animate-[slideOutRight_0.22s_ease-in_forwards]' : 'animate-[slideInRight_0.22s_ease-out]'}`}
           >
             <style>{`
               @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
