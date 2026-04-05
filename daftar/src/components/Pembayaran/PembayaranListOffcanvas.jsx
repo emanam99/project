@@ -88,6 +88,7 @@ function PembayaranListOffcanvas({
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
+  const prevShowEditModalRef = useRef(showEditModal)
 
   // Fetch mode sandbox saat iPayMu view dibuka
   useEffect(() => {
@@ -417,32 +418,28 @@ function PembayaranListOffcanvas({
     }
   }, [vaInfo?.session_id, showIPaymuModal, idSantri, registrasi?.id, syncAfterPembayaranMutation])
 
-  // Isi form edit saat modal edit dibuka
+  // Isi form edit saat modal edit dibuka; reset field wizard hanya saat modal edit benar-benar ditutup (bukan setiap vaInfo berubah dari polling)
   useEffect(() => {
     if (showEditModal && vaInfo) {
-      // Set amount dari vaInfo jika ada
       if (vaInfo.amount) {
         const formattedAmount = new Intl.NumberFormat('id-ID').format(vaInfo.amount)
         setIpaymuAmount(formattedAmount)
       }
-      
-      // Set payment method dan channel
       if (vaInfo.payment_method) {
         setPaymentMethod(vaInfo.payment_method)
-        // Set accordion sesuai payment method
         if (vaInfo.payment_method === 'va' || vaInfo.payment_method === 'cstore') {
           setOpenAccordion(vaInfo.payment_method)
         } else if (vaInfo.payment_method === 'qris') {
           setOpenAccordion('qris')
         }
       }
-      
-      // Set payment channel jika ada
       if (vaInfo.payment_channel) {
         setPaymentChannel(vaInfo.payment_channel)
       }
-    } else if (!showEditModal) {
-      // Reset form saat modal edit ditutup
+    }
+    const wasOpen = prevShowEditModalRef.current
+    prevShowEditModalRef.current = showEditModal
+    if (wasOpen && !showEditModal) {
       setIpaymuAmount('')
       setPaymentMethod('')
       setPaymentChannel('')
@@ -981,15 +978,11 @@ function PembayaranListOffcanvas({
       console.error('Error creating iPayMu payment:', err)
       const errorMessage = err.response?.data?.message || err.message || 'Gagal membuat pembayaran iPayMu'
       showNotification(errorMessage, 'error')
-      // Jika error, kembali ke list
       setVaInfo(null)
       goToPaymentOpen()
+      setIpaymuAmount('')
     } finally {
       setProcessingIPaymu(false)
-      // Hanya reset amount jika tidak ada VA info (artinya gagal)
-      if (!vaInfo) {
-        setIpaymuAmount('')
-      }
     }
   }
 
@@ -1040,7 +1033,7 @@ function PembayaranListOffcanvas({
         setShowEditModal(false)
         setVaInfo(null)
         setTransactionStatus(null)
-        setIpaymuStep(1)
+        goToIPaymuStep(1)
         setPaymentMethod('')
         setPaymentChannel('')
         setOpenAccordion(null)

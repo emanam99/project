@@ -13,7 +13,6 @@ use App\Controllers\PaymentController;
 use App\Controllers\ChatController;
 use App\Controllers\SubscriptionController;
 use App\Controllers\WhatsAppTemplateController;
-use App\Controllers\WarmerController;
 use App\Controllers\UserChatController;
 
 return function (\Slim\App $app): void {
@@ -90,24 +89,6 @@ return function (\Slim\App $app): void {
     $app->group('/api', function ($group) {
         $group->post('/wa/docker/stop', [WhatsAppController::class, 'dockerStop']);
         $group->post('/wa/docker/start', [WhatsAppController::class, 'dockerStart']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
-
-    // Warmer — list pairs & messages: role akses chat; create/update/delete: super_admin
-    $app->group('/api', function ($group) {
-        $group->get('/warmer/pairs', [WarmerController::class, 'listPairs']);
-        $group->get('/warmer/categories', [WarmerController::class, 'listCategories']);
-        $group->get('/warmer/themes', [WarmerController::class, 'listThemes']);
-        $group->get('/warmer/messages', [WarmerController::class, 'listMessages']);
-        $group->get('/warmer/examples', [WarmerController::class, 'examples']);
-        $group->get('/warmer/pick-message', [WarmerController::class, 'pickMessage']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::chatStaffSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']))->add(new AuthMiddleware());
-    $app->group('/api', function ($group) {
-        $group->post('/warmer/pairs', [WarmerController::class, 'createPair']);
-        $group->put('/warmer/pairs', [WarmerController::class, 'updatePair']);
-        $group->post('/warmer/pairs/delete', [WarmerController::class, 'deletePair']);
-        $group->post('/warmer/themes/delete', [WarmerController::class, 'deleteTheme']);
-        $group->post('/warmer/messages/import', [WarmerController::class, 'importMessages']);
-        $group->post('/warmer/messages/delete', [WarmerController::class, 'deleteMessage']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
 
     // Chat user-to-user: percakapan, daftar user, riwayat pesan — cukup login

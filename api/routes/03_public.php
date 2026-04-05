@@ -16,7 +16,6 @@ use App\Controllers\KalenderController;
 use App\Controllers\HariPentingController;
 use App\Middleware\OptionalAuthMiddleware;
 use App\Controllers\WhatsAppController;
-use App\Controllers\WarmerController;
 use App\Controllers\WatzapController;
 use App\Controllers\UserChatController;
 use App\Controllers\AbsenFingerprintController;
@@ -87,8 +86,4 @@ return function (\Slim\App $app): void {
     $app->post('/api/live/chat/message', [UserChatController::class, 'saveMessage']);
     $app->post('/api/live/presence', [UserChatController::class, 'updatePresence']);
 
-    // Warmer runner — Node WA server (header X-API-Key wajib)
-    $app->get('/api/warmer/runner/pairs', [WarmerController::class, 'runnerPairs']);
-    $app->get('/api/warmer/runner/pick-message', [WarmerController::class, 'runnerPickMessage']);
-    $app->get('/api/warmer/runner/pick-conversation', [WarmerController::class, 'runnerPickConversation']);
 };

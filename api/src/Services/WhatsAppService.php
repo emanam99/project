@@ -167,8 +167,20 @@ class WhatsAppService
             if (!is_array($body) || !isset($body['data']) || !is_array($body['data'])) {
                 return [];
             }
-            $sessions = $body['data']['sessions'] ?? [];
-            return is_array($sessions) ? $sessions : [];
+            $data = $body['data'] ?? [];
+            if (!is_array($data)) {
+                return [];
+            }
+            $sessions = $data['sessions'] ?? null;
+            if (is_array($sessions) && $sessions !== []) {
+                return $sessions;
+            }
+            // Node WA satu koneksi: respons datar tanpa key sessions
+            if (isset($data['status']) || isset($data['baileysStatus'])) {
+                return ['default' => $data];
+            }
+
+            return [];
         } catch (\Throwable $e) {
             error_log('WhatsAppService::fetchAllNodeSessionsStatus ' . $e->getMessage());
             return [];

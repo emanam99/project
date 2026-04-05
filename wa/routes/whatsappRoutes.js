@@ -24,16 +24,22 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch((er
 
 const router = express.Router();
 
-// GET /status — tanpa auth. Query ?sessionId= untuk satu session; tanpa query = semua sessions.
+// GET /status — tanpa auth. Satu koneksi (respons datar).
 router.get('/status', (req, res) => {
   try {
-    const sessionId = req.query?.sessionId;
-    const data = getWaStatus(sessionId || undefined);
+    const data = getWaStatus();
     res.json({ success: true, data });
   } catch (e) {
     res.json({
       success: true,
-      data: { sessions: {}, status: 'disconnected', qrCode: null, phoneNumber: null },
+      data: {
+        status: 'disconnected',
+        qrCode: null,
+        phoneNumber: null,
+        baileysStatus: 'disconnected',
+        baileysQrCode: null,
+        baileysPhoneNumber: null,
+      },
     });
   }
 });

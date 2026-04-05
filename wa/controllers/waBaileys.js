@@ -1,5 +1,5 @@
 /**
- * Chat WhatsApp via Baileys — multi-session (sessionId).
+ * Chat WhatsApp via Baileys — parameter sessionId tetap ada; controller hanya memakai slot default.
  */
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -19,6 +19,8 @@ const SESSIONS_BASE = path.resolve(__dirname, '../whatsapp-sessions');
 const DEFAULT_SESSION = 'default';
 const sockRefBySession = {};
 const baileysStatusBySession = {};
+/** Satu init Baileys per session sekaligus — hindari dua socket paralel dengan auth sama (memicu Stream conflict / 440). */
+const initBaileysInFlightBySession = {};
 const WA_FORWARD_TIMEOUT_MS = Number(process.env.WA_FORWARD_TIMEOUT_MS || 8000);
 const WA_VERBOSE_LOG = process.env.WA_VERBOSE_LOG === 'true';
 /** Pesan type "append" (sering untuk offline) — batasi agar sync riwayat lama tidak membanjiri API. */
@@ -222,6 +224,10 @@ async function resolveSendJid(sock, phoneNumber) {
 
 export async function initBaileys(sessionId = DEFAULT_SESSION) {
   const id = sessionId || DEFAULT_SESSION;
+  const pending = initBaileysInFlightBySession[id];
+  if (pending) return pending;
+
+  const run = (async () => {
   const existing = sockRefBySession[id];
   if (existing) {
     if (isBaileysConnected(id)) return existing;
@@ -310,7 +316,16 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       baileysStatus.qrCode = null;
       baileysStatus.phoneNumber = null;
       syncBaileysToStore(id);
-      if (errMsg.includes('Connection Failure') || errMsg.includes('connection errored')) {
+      const isReplacedOrConflict =
+        statusCode === DisconnectReason.connectionReplaced ||
+        /conflict|replaced|stream errored/i.test(String(reason || errMsg));
+      if (isReplacedOrConflict) {
+        console.warn(
+          '[WA Baileys]',
+          id,
+          'Sesi diganti / conflict (biasanya 440): WhatsApp menutup karena kredensial slot ini dipakai di lebih dari satu koneksi sekaligus. Cek: tidak ada container/PM2/proses kedua dengan folder whatsapp-sessions yang sama; tidak ada staging + produksi pakai salinan session; tutup Linked Devices lama lalu hubungkan lagi dari satu server saja. Auto-reconnect untuk kasus ini dinonaktifkan — login ulang atau bersihkan auth slot jika perlu.'
+        );
+      } else if (errMsg.includes('Connection Failure') || errMsg.includes('connection errored')) {
         console.warn('[WA Baileys]', id, 'Koneksi gagal (Connection Failure). Coba klik Hubungkan lagi. Jika sering gagal: ganti jaringan/WiFi atau gunakan VPN.');
       } else {
         console.log('[WA Baileys]', id, 'Disconnected:', statusCode, reason || errMsg);
@@ -488,6 +503,16 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
   baileysStatus.status = 'connecting';
   syncBaileysToStore(id);
   return sock;
+  })();
+
+  initBaileysInFlightBySession[id] = run;
+  try {
+    return await run;
+  } finally {
+    if (initBaileysInFlightBySession[id] === run) {
+      delete initBaileysInFlightBySession[id];
+    }
+  }
 }
 
 export function getBaileysStatus(sessionId = DEFAULT_SESSION) {

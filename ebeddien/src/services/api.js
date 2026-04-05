@@ -666,7 +666,7 @@ export const waBackendAPI = {
     return data
   },
   /**
-   * @param {string} [sessionId] - default, wa2, wa3, ... (max 10)
+   * @param {string} [sessionId] - hanya default (satu koneksi per backend Node)
    * @param {{ refreshQr?: boolean }} [options] - refreshQr: paksa QR baru (backend tidak mengembalikan cache)
    */
   connect: async (sessionId = 'default', options = {}) => {
@@ -833,49 +833,6 @@ export const waBackendAPI = {
       },
       30000
     )
-    return data
-  }
-}
-
-/**
- * Warmer: data pairs & pesan dari API PHP (Slim). Hanya role chat+.
- */
-export const warmerAPI = {
-  getPairs: () => api.get('/warmer/pairs').then((r) => r.data),
-  getCategories: () => api.get('/warmer/categories').then((r) => r.data),
-  getThemes: () => api.get('/warmer/themes').then((r) => r.data),
-  deleteTheme: (theme) => api.post('/warmer/themes/delete', { theme }).then((r) => r.data),
-  createPair: (body) => api.post('/warmer/pairs', body).then((r) => r.data),
-  updatePair: (body) => api.put('/warmer/pairs', body).then((r) => r.data),
-  deletePair: (id) => api.post('/warmer/pairs/delete', { id }).then((r) => r.data),
-  getMessages: (params) => api.get('/warmer/messages', { params }).then((r) => r.data),
-  importMessages: (body) => api.post('/warmer/messages/import', body).then((r) => r.data),
-  deleteMessage: (id) => api.post('/warmer/messages/delete', { id }).then((r) => r.data),
-  getExamples: (format) => api.get('/warmer/examples', { params: { format: format || 'txt' } }).then((r) => r.data)
-}
-
-/**
- * Warmer: start/stop/status di backend Node (WA).
- */
-export const warmerNodeAPI = {
-  getStatus: async () => {
-    const base = getWaBackendUrl()
-    const token = localStorage.getItem('auth_token')
-    const { data } = await fetchJsonWithTimeout(`${base}/api/warmer/status`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
-    })
-    return data?.success ? data : { success: false, data: { running: false } }
-  },
-  start: async () => {
-    const base = getWaBackendUrl()
-    const token = localStorage.getItem('auth_token')
-    const { data } = await fetchJsonWithTimeout(`${base}/api/warmer/start`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
-    return data
-  },
-  stop: async () => {
-    const base = getWaBackendUrl()
-    const token = localStorage.getItem('auth_token')
-    const { data } = await fetchJsonWithTimeout(`${base}/api/warmer/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
     return data
   }
 }
