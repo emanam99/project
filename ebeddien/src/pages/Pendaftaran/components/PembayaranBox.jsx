@@ -42,10 +42,13 @@ function PembayaranBox({ santriId, refreshKey }) {
           setKondisiDisplayFields([])
           return
         }
-        setKondisiDisplayFields(result.data.map((f) => ({
-          field_name: f.field_name,
-          field_label: f.field_label || f.field_name
-        })))
+        // status_murid tetap di biodata/registrasi; tidak ditampilkan di kondisi penentu auto-assign/harga
+        setKondisiDisplayFields(result.data
+          .filter((f) => f.field_name !== 'status_murid')
+          .map((f) => ({
+            field_name: f.field_name,
+            field_label: f.field_label || f.field_name
+          })))
       } catch (e) {
         console.warn('Load kondisi display fields:', e)
         setKondisiDisplayFields([])
@@ -683,19 +686,38 @@ function PembayaranBox({ santriId, refreshKey }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-      {/* Summary Wajib, Bayar, Kurang - Horizontal seperti UWABA */}
-      <div className={`flex justify-between items-start pb-2 flex-shrink-0 ${isAccordionOpen ? 'mb-4' : 'mb-1'}`}>
-        <div className="text-center flex-1 flex flex-col">
+      {/* Summary Wajib | expand detail kondisi | Bayar | Kurang */}
+      <div className={`flex items-end justify-between gap-0.5 sm:gap-1 pb-2 flex-shrink-0 ${isAccordionOpen ? 'mb-4' : 'mb-1'}`}>
+        <div className="text-center flex-1 min-w-0 flex flex-col">
           <div className="text-gray-600 dark:text-gray-400 font-medium text-xs sm:text-sm mb-1">Wajib</div>
-          <div className="text-blue-600 dark:text-blue-400 font-semibold text-sm sm:text-base">Rp {wajib.toLocaleString('id-ID')}</div>
+          <div className="text-blue-600 dark:text-blue-400 font-semibold text-sm sm:text-base tabular-nums">Rp {wajib.toLocaleString('id-ID')}</div>
         </div>
-        <div className="text-center flex-1 flex flex-col">
+        <div className="flex flex-col items-center justify-center flex-shrink-0 px-0.5 sm:px-1 pb-px">
+          <button
+            type="button"
+            onClick={() => setIsAccordionOpen(!isAccordionOpen)}
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center transition-all duration-200"
+            title={isAccordionOpen ? 'Tutup detail kondisi' : 'Tampilkan detail kondisi'}
+            aria-expanded={isAccordionOpen}
+            aria-label={isAccordionOpen ? 'Tutup detail kondisi' : 'Buka detail kondisi'}
+          >
+            <svg
+              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600 dark:text-gray-400 transition-transform duration-200 ${isAccordionOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+        <div className="text-center flex-1 min-w-0 flex flex-col">
           <div className="text-gray-600 dark:text-gray-400 font-medium text-xs sm:text-sm mb-1">Bayar</div>
-          <div className="text-green-600 dark:text-green-400 font-semibold text-sm sm:text-base">Rp {bayar.toLocaleString('id-ID')}</div>
+          <div className="text-green-600 dark:text-green-400 font-semibold text-sm sm:text-base tabular-nums">Rp {bayar.toLocaleString('id-ID')}</div>
         </div>
-        <div className="text-center flex-1 flex flex-col">
+        <div className="text-center flex-1 min-w-0 flex flex-col">
           <div className="text-gray-600 dark:text-gray-400 font-medium text-xs sm:text-sm mb-1">Kurang</div>
-          <div className="text-red-600 dark:text-red-400 font-semibold text-sm sm:text-base">Rp {kurang.toLocaleString('id-ID')}</div>
+          <div className="text-red-600 dark:text-red-400 font-semibold text-sm sm:text-base tabular-nums">Rp {kurang.toLocaleString('id-ID')}</div>
         </div>
       </div>
 
@@ -801,21 +823,6 @@ function PembayaranBox({ santriId, refreshKey }) {
               </button>
             </div>
             <div className="flex items-center gap-2">
-              {/* Tombol toggle accordion */}
-              <button
-                onClick={() => setIsAccordionOpen(!isAccordionOpen)}
-                className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 flex items-center justify-center transition-all duration-200"
-                title={isAccordionOpen ? 'Tutup' : 'Buka'}
-              >
-                <svg 
-                  className={`w-3 h-3 text-gray-600 dark:text-gray-400 transition-transform duration-200 ${isAccordionOpen ? 'rotate-180' : ''}`}
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
               {/* Tombol Bayar */}
               <button
                 onClick={() => setIsOffcanvasOpen(true)}

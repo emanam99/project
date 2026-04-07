@@ -1007,6 +1007,55 @@ class PaymentTransactionController
     }
 
     /**
+     * Apakah transaksi pending sudah lewat batas waktu bayar (kolom expired_at atau ExpiredDate di response_data iPayMu).
+     */
+    private function transactionIsPastExpiryForDisplay(array $transaction): bool
+    {
+        $now = time();
+        $ea = $transaction['expired_at'] ?? null;
+        if ($ea !== null && $ea !== '' && (string) $ea !== '0000-00-00 00:00:00') {
+            $ts = strtotime((string) $ea);
+            if ($ts !== false) {
+                return $ts <= $now;
+            }
+        }
+        $responseData = $transaction['response_data'] ?? null;
+        if ($responseData === null || $responseData === '') {
+            return false;
+        }
+        $raw = is_string($responseData) ? json_decode($responseData, true) : $responseData;
+        if (!is_array($raw)) {
+            return false;
+        }
+        $payload = $raw;
+        if (isset($raw['Data']) && is_array($raw['Data'])) {
+            $payload = array_merge($payload, $raw['Data']);
+        }
+        if (isset($raw['data']) && is_array($raw['data'])) {
+            $payload = array_merge($payload, $raw['data']);
+        }
+        $d = $payload['ExpiredDate'] ?? $payload['expiredDate'] ?? $payload['expired_at'] ?? null;
+        if ($d === null || $d === '') {
+            return false;
+        }
+        $ts = strtotime((string) $d);
+
+        return $ts !== false && $ts <= $now;
+    }
+
+    private function markPendingTransactionExpiredInDb(int $id): void
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "UPDATE payment___transaction SET status = 'expired', tanggal_update = NOW() WHERE id = ? AND status = 'pending'"
+            );
+            $stmt->execute([$id]);
+        } catch (\Throwable $e) {
+            error_log('PaymentTransactionController::markPendingTransactionExpiredInDb: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * GET /api/payment-transaction/pending - Ambil transaksi pending berdasarkan id_registrasi atau id_santri
      */
     public function getPendingTransaction(Request $request, Response $response): Response
@@ -1085,6 +1134,14 @@ class PaymentTransactionController
 
             if ($transaction) {
                 $transaction = $this->enrichTransactionWithFeeFromResponse($transaction);
+                // Jangan kembalikan tagihan yang sudah lewat waktu — paksa buat order baru; samakan status di DB
+                if (($transaction['status'] ?? '') === 'pending' && $this->transactionIsPastExpiryForDisplay($transaction)) {
+                    $this->markPendingTransactionExpiredInDb((int) $transaction['id']);
+                    $transaction = null;
+                }
+            }
+
+            if ($transaction) {
                 return $this->jsonResponse($response, [
                     'success' => true,
                     'data' => $transaction

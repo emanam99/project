@@ -230,7 +230,7 @@ function Pembayaran() {
     if (thE && tmE && user?.id) {
       void refreshPembayaran(false)
     }
-  }, [refreshPembayaran, tahunHijriyah, tahunMasehi, user?.id, search])
+  }, [refreshPembayaran, tahunHijriyah, tahunMasehi, user?.id])
 
   // Setelah mengisi semua page flow: jika belum ada registrasi tapi ada data flow di localStorage, sync sekali agar pembayaran bisa dirender dan harga ketemu
   useEffect(() => {

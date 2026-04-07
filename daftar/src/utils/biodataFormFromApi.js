@@ -148,6 +148,14 @@ export function buildBiodataFormFromApis(
     no_wa_santri: biodata.no_wa_santri || '',
     status_santri: biodata.status_santri || '',
     kategori: biodata.kategori || '',
+    id_daerah:
+      biodata.id_daerah != null && String(biodata.id_daerah).trim() !== ''
+        ? String(biodata.id_daerah)
+        : '',
+    id_kamar:
+      biodata.id_kamar != null && String(biodata.id_kamar).trim() !== ''
+        ? String(biodata.id_kamar)
+        : '',
     daerah: biodata.daerah || '',
     kamar: biodata.kamar || '',
     diniyah: biodata.diniyah || '',

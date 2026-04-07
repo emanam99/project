@@ -30,6 +30,7 @@ import RiwayatChatOffcanvas from './RiwayatChatOffcanvas'
 import StatusPendaftaranSection from './sections/StatusPendaftaranSection'
 import KategoriPendidikanSection from './sections/KategoriPendidikanSection'
 import BerkasSection from './sections/BerkasSection'
+import { shouldShowStatusMuridForFormal } from '../constants/statusMuridByFormal'
 
 function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBiodataSaved, hideBerkasSection = false }) {
   const { showNotification } = useNotification()
@@ -191,9 +192,9 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   const [riwayatChatMeta, setRiwayatChatMeta] = useState({ nomor: '', idSantri: '', namaSantri: '' })
   const [kondisiValues, setKondisiValues] = useState({
     status_pendaftar: [],
+    status_santri: [],
     daftar_diniyah: [],
     daftar_formal: [],
-    status_murid: []
   })
   const [kategoriOptions, setKategoriOptions] = useState([])
   const [daerahOptions, setDaerahOptions] = useState([])
@@ -640,7 +641,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   useEffect(() => {
     const loadKondisiValues = async () => {
       try {
-        const fields = ['status_pendaftar', 'daftar_diniyah', 'daftar_formal', 'status_murid']
+        const fields = ['status_pendaftar', 'status_santri', 'daftar_diniyah', 'daftar_formal']
         const valuesMap = {}
         
         for (const fieldName of fields) {
@@ -669,9 +670,9 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
         console.warn('Error loading kondisi values:', error)
         setKondisiValues({
           status_pendaftar: [],
+          status_santri: [],
           daftar_diniyah: [],
           daftar_formal: [],
-          status_murid: []
         })
       }
     }
@@ -1409,6 +1410,14 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
     if (!emailRegex.test(email)) {
       showNotification('Format email tidak valid', 'error')
       return
+    }
+
+    if (shouldShowStatusMuridForFormal(formData.daftar_formal)) {
+      const sm = (formData.status_murid || '').trim()
+      if (!sm) {
+        showNotification('Status murid wajib diisi untuk formal yang dipilih', 'error')
+        return
+      }
     }
 
     setIsSaving(true)

@@ -12,6 +12,7 @@ import { formatFileSize, getFileTypeLabel } from '../utils/fileUtils'
 import { pendaftaranAPI, santriAPI } from '../services/api'
 import { useNotification } from '../contexts/NotificationContext'
 import { compressImage } from '../utils/imageCompression'
+import { shouldShowStatusMuridForFormal } from './PilihanStatusMurid'
 
 function Berkas() {
   const { user } = useAuthStore()
@@ -511,8 +512,7 @@ function Berkas() {
     if (!biodata.daftar_diniyah || biodata.daftar_diniyah.trim() === '') {
       missing.push({ field: 'daftar_diniyah', label: 'Daftar Diniyah' })
     }
-    const formalPerluStatusMurid = ['SMP', 'MTs', 'SMAI', 'STAI']
-    if (formalPerluStatusMurid.includes(biodata.daftar_formal)) {
+    if (shouldShowStatusMuridForFormal(biodata.daftar_formal)) {
       if (!biodata.status_murid || biodata.status_murid.trim() === '') {
         missing.push({ field: 'status_murid', label: 'Status Murid' })
       }

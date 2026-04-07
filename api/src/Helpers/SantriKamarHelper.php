@@ -6,20 +6,20 @@ use PDO;
 
 /**
  * Helper untuk riwayat kamar santri (tabel santri___kamar).
- * Setiap update santri yang mengubah id_kamar harus menulis riwayat
- * dengan id_pengurus wajib. Kolom status_santri dan kategori diisi dari santri (snapshot).
+ * Setiap update santri yang mengubah id_kamar menulis riwayat.
+ * id_pengurus: pengurus yang mencatatkan; NULL = santri sendiri (mis. aplikasi daftar).
  */
 class SantriKamarHelper
 {
     /**
-     * Sisipkan riwayat ke santri___kamar. id_pengurus wajib.
+     * Sisipkan riwayat ke santri___kamar. id_pengurus opsional (null = perubahan oleh santri).
      * Duplikat (id_santri, id_kamar, tahun_ajaran) diabaikan (INSERT IGNORE).
      *
      * @param PDO $db
      * @param int $id_santri santri.id
      * @param int $id_kamar daerah___kamar.id
      * @param string $tahun_ajaran harus ada di master tahun_ajaran
-     * @param int $id_pengurus pengurus.id — wajib
+     * @param int|null $id_pengurus pengurus.id, atau null jika perubahan oleh santri (self-service)
      * @param string|null $status_santri snapshot dari santri.status_santri
      * @param string|null $kategori snapshot dari santri.kategori
      */
@@ -28,12 +28,12 @@ class SantriKamarHelper
         int $id_santri,
         int $id_kamar,
         string $tahun_ajaran,
-        int $id_pengurus,
+        ?int $id_pengurus,
         ?string $status_santri = null,
         ?string $kategori = null
     ): void {
-        if ($id_pengurus <= 0) {
-            throw new \InvalidArgumentException('id_pengurus wajib diisi (siapa yang melakukan perubahan kamar).');
+        if ($id_pengurus !== null && $id_pengurus <= 0) {
+            throw new \InvalidArgumentException('id_pengurus tidak valid (harus positif atau dikosongkan untuk perubahan oleh santri).');
         }
         $tahun_ajaran = trim($tahun_ajaran);
         if ($tahun_ajaran === '') {

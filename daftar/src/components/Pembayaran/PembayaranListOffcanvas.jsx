@@ -25,6 +25,135 @@ function getQrImageSrc(qrCode) {
 /** Sementara disembunyikan: set true untuk menampilkan lagi tombol Upload TF. Saat false, user hanya pakai iPayMu. */
 const SHOW_UPLOAD_TF_BUTTON = false
 
+/** Snapshot session iPayMu agar setelah remount (Strict Mode / refresh) URL step=3 tidak kehilangan vaInfo */
+const IPAYMU_SESSION_STORAGE_KEY = 'daftar_ipaymu_session_v1'
+/** Abaikan status failed/expired dari API jika transaksi baru dibuat (iPayMu/DB belum konsisten) */
+const IPAYMU_FAIL_GRACE_MS = 50000
+
+function clearIpaymuSessionPersistence() {
+  try {
+    sessionStorage.removeItem(IPAYMU_SESSION_STORAGE_KEY)
+  } catch (_) {}
+}
+
+function writeIpaymuSessionPersistence(sessionId, idRegistrasi, idSantriUser) {
+  if (!sessionId || typeof sessionStorage === 'undefined') return
+  try {
+    sessionStorage.setItem(
+      IPAYMU_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        session_id: sessionId,
+        id_registrasi: idRegistrasi ?? null,
+        id_santri: idSantriUser ?? null,
+        savedAt: Date.now()
+      })
+    )
+  } catch (_) {}
+}
+
+function bankLabelFromChannels(paymentMethod, paymentChannel, vaChannels, cstoreChannels) {
+  if (paymentMethod === 'va' && paymentChannel) {
+    const channelData = vaChannels.find((c) => c.value === paymentChannel)
+    return channelData ? channelData.label : String(paymentChannel).toUpperCase()
+  }
+  if (paymentMethod === 'cstore' && paymentChannel) {
+    const channelData = cstoreChannels.find((c) => c.value === paymentChannel)
+    return channelData ? channelData.label : String(paymentChannel).toUpperCase()
+  }
+  if (paymentMethod === 'qris') return 'QRIS'
+  return 'iPayMu'
+}
+
+/** Bangun vaInfo dari baris payment___transaction (response checkStatus / pending) */
+function transactionRowToVaInfo(row, vaChannels, cstoreChannels, localCreatedAt) {
+  if (!row) return null
+  const expiredAt = row.expired_at
+    ? new Date(row.expired_at).getTime()
+    : row.tanggal_dibuat
+      ? new Date(row.tanggal_dibuat).getTime() + 24 * 60 * 60 * 1000
+      : Date.now() + 24 * 60 * 60 * 1000
+  const bankName = bankLabelFromChannels(row.payment_method, row.payment_channel, vaChannels, cstoreChannels)
+  const amt = row.amount ?? row.sub_total ?? 0
+  const fee = row.admin_fee ?? row.fee ?? 0
+  const num = (v) => (typeof v === 'number' ? v : parseFloat(v) || 0)
+  return {
+    va_number: row.va_number || null,
+    bank: bankName,
+    payment_method: row.payment_method || null,
+    payment_channel: row.payment_channel || null,
+    payment_url: row.payment_url || null,
+    qr_code: row.qr_code || null,
+    session_id: row.session_id || null,
+    transaction_id: row.id || row.trx_id || null,
+    ipaymu_transaction_id: row.trx_id || row.id || null,
+    amount: num(amt),
+    admin_fee: num(fee),
+    total: row.total != null ? num(row.total) : num(amt) + num(fee),
+    expired_at: expiredAt,
+    localCreatedAt: localCreatedAt ?? Date.now()
+  }
+}
+
+const IPAYMU_VA_CHANNELS = [
+  { value: 'bag', label: 'VA BAG' },
+  { value: 'bca', label: 'VA BCA' },
+  { value: 'bni', label: 'VA BNI' },
+  { value: 'bri', label: 'VA BRI' },
+  { value: 'bsi', label: 'VA BSI' },
+  { value: 'btn', label: 'VA BTN' },
+  { value: 'cimb', label: 'VA Cimb Niaga' },
+  { value: 'danamon', label: 'VA DANAMON' },
+  { value: 'mandiri', label: 'VA Mandiri' },
+  { value: 'muamalat', label: 'VA Muamalat' },
+  { value: 'permata', label: 'VA Permata' }
+]
+
+const IPAYMU_CSTORE_CHANNELS = [
+  { value: 'alfamart', label: 'Alfamart' },
+  { value: 'indomaret', label: 'Indomaret' }
+]
+
+/** Tagihan pending sudah lewat batas waktu bayar (selaras pengecekan backend getPendingTransaction) */
+function isPaymentPendingExpiredClient(tx) {
+  if (!tx) return true
+  const now = Date.now()
+  if (tx.expired_at) {
+    const end = new Date(tx.expired_at).getTime()
+    if (!Number.isNaN(end) && end <= now) return true
+  }
+  try {
+    const rd = tx.response_data
+    if (rd == null || rd === '') return false
+    const parsed = typeof rd === 'string' ? JSON.parse(rd) : rd
+    if (!parsed || typeof parsed !== 'object') return false
+    const merged = { ...parsed }
+    if (parsed.Data && typeof parsed.Data === 'object') Object.assign(merged, parsed.Data)
+    if (parsed.data && typeof parsed.data === 'object') Object.assign(merged, parsed.data)
+    const d = merged.ExpiredDate ?? merged.expiredDate ?? merged.expired_at
+    if (d) {
+      const end = new Date(d).getTime()
+      if (!Number.isNaN(end) && end <= now) return true
+    }
+  } catch (_) {
+    /* abaikan */
+  }
+  return false
+}
+
+function normalizeIpaymuStatusForList(status) {
+  const s = String(status || '').toLowerCase().trim()
+  if (!s) return 'pending'
+  if (s === 'success') return 'paid'
+  return s
+}
+
+/** Status tampilan baris iPayMu: jika DB masih pending tapi waktu bayar lewat → tampilkan expired */
+function effectiveIpaymuRowStatus(p) {
+  const base = normalizeIpaymuStatusForList(p?.transaction_status || p?.status || 'pending')
+  if (base === 'pending' && isPaymentPendingExpiredClient(p)) return 'expired'
+  return base
+}
+
 function PembayaranListOffcanvas({
   isOpen,
   onClose,
@@ -46,6 +175,9 @@ function PembayaranListOffcanvas({
   paymentDataLoading = false,
   onRefreshRegistrasi = null // Callback: invalidasi cache + refresh penuh di parent
 }) {
+  const onRefreshRegistrasiRef = useRef(onRefreshRegistrasi)
+  onRefreshRegistrasiRef.current = onRefreshRegistrasi
+
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = pathnameProp || location.pathname || '/pembayaran'
@@ -67,6 +199,8 @@ function PembayaranListOffcanvas({
   const [isSandboxMode, setIsSandboxMode] = useState(false) // Mode sandbox dari pengaturan - untuk tampilkan peringatan
   const cancelInProgressRef = useRef(false) // Blok multiple klik pembatalan
   const paymentResolvedRef = useRef(false) // True jika sudah dapat status akhir (paid/expired/failed/cancelled), hentikan polling
+  const countdownAutoExpiredRef = useRef(false) // Cegah ganda: setelah countdown 0 → sync expired sekali per session
+  const [ipaymuListTimeTick, setIpaymuListTimeTick] = useState(0)
 
   // Sinkron view dari URL: payment=open (list) | payment=ipaymu&step=1|2|3|4
   const searchParams = new URLSearchParams(location.search || '')
@@ -77,12 +211,20 @@ function PembayaranListOffcanvas({
     ? (stepParam === '4' ? 4 : stepParam === '3' ? 3 : stepParam === '2' ? 2 : 1)
     : 1
 
-  const goToPaymentOpen = () => {
+  const goToPaymentOpen = useCallback(() => {
+    clearIpaymuSessionPersistence()
     navigate(`${pathname}?payment=open`, { replace: false })
-  }
-  const goToIPaymuStep = (step) => {
-    navigate(`${pathname}?payment=ipaymu&step=${step || 1}`, { replace: false })
-  }
+  }, [pathname, navigate])
+
+  const goToIPaymuStep = useCallback(
+    (step) => {
+      navigate(`${pathname}?payment=ipaymu&step=${step || 1}`, { replace: false })
+    },
+    [pathname, navigate]
+  )
+
+  const vaChannels = IPAYMU_VA_CHANNELS
+  const cstoreChannels = IPAYMU_CSTORE_CHANNELS
 
   const [showEditModal, setShowEditModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
@@ -103,8 +245,19 @@ function PembayaranListOffcanvas({
     }
   }, [showIPaymuModal, isOpen])
 
+  // Agar label "Menunggu" di daftar iPayMu berubah ke Kadaluwarsa saat jam sistem lewat expired_at (tanpa tunggu refetch)
+  useEffect(() => {
+    if (!isOpen) return
+    const t = setInterval(() => setIpaymuListTimeTick((n) => n + 1), 5000)
+    return () => clearInterval(t)
+  }, [isOpen])
+
   // Hitungan mundur kadaluwarsa saat status Menunggu Pembayaran
   // 'cancelled' di app tidak menghentikan hitung mundur — QR unduhan mungkin masih bisa dibayar sampai expired_at iPayMu
+  useEffect(() => {
+    countdownAutoExpiredRef.current = false
+  }, [vaInfo?.session_id])
+
   useEffect(() => {
     const terminal = ['expired', 'failed', 'paid', 'success']
     const isPending = transactionStatus == null || !terminal.includes(String(transactionStatus || '').toLowerCase())
@@ -117,32 +270,30 @@ function PembayaranListOffcanvas({
       const end = vaInfo.expired_at
       const remaining = Math.max(0, Math.floor((end - now) / 1000))
       setCountdownRemaining(remaining)
+      if (
+        remaining <= 0 &&
+        vaInfo.session_id &&
+        !countdownAutoExpiredRef.current
+      ) {
+        const ts = String(transactionStatus || '').toLowerCase()
+        if (!terminal.includes(ts)) {
+          countdownAutoExpiredRef.current = true
+          setTransactionStatus('expired')
+          void (async () => {
+            try {
+              await paymentTransactionAPI.checkStatus(vaInfo.session_id)
+            } catch (_) {}
+            try {
+              if (onRefreshRegistrasiRef.current) await onRefreshRegistrasiRef.current()
+            } catch (_) {}
+          })()
+        }
+      }
     }
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [vaInfo?.expired_at, transactionStatus])
-
-  // Daftar payment channel untuk VA (sesuai opsi iPayMu)
-  const vaChannels = [
-    { value: 'bag', label: 'VA BAG' },
-    { value: 'bca', label: 'VA BCA' },
-    { value: 'bni', label: 'VA BNI' },
-    { value: 'bri', label: 'VA BRI' },
-    { value: 'bsi', label: 'VA BSI' },
-    { value: 'btn', label: 'VA BTN' },
-    { value: 'cimb', label: 'VA Cimb Niaga' },
-    { value: 'danamon', label: 'VA DANAMON' },
-    { value: 'mandiri', label: 'VA Mandiri' },
-    { value: 'muamalat', label: 'VA Muamalat' },
-    { value: 'permata', label: 'VA Permata' }
-  ]
-
-  // Daftar payment channel untuk CStore
-  const cstoreChannels = [
-    { value: 'alfamart', label: 'Alfamart' },
-    { value: 'indomaret', label: 'Indomaret' }
-  ]
+  }, [vaInfo?.expired_at, vaInfo?.session_id, transactionStatus])
 
   const normalizeIpaymuStatus = (status) => {
     const s = String(status || '').toLowerCase().trim()
@@ -273,7 +424,7 @@ function PembayaranListOffcanvas({
     return rows
       .map((p) => ({
         ...p,
-        txStatus: normalizeIpaymuStatus(p?.transaction_status || p?.status || 'pending'),
+        txStatus: effectiveIpaymuRowStatus(p),
         txId: p?.id_payment_transaction || p?.session_id || p?.ipaymu_transaction_id || p?.id,
       }))
       .sort((a, b) => {
@@ -281,7 +432,7 @@ function PembayaranListOffcanvas({
         const db = new Date(b?.created_at || b?.tanggal_dibuat || 0).getTime()
         return db - da
       })
-  }, [paymentHistory])
+  }, [paymentHistory, ipaymuListTimeTick])
 
   const handleOpenIpaymuHistory = async (tx) => {
     if (!tx?.txId) return
@@ -301,6 +452,9 @@ function PembayaranListOffcanvas({
           ? new Date(tx.created_at || tx.tanggal_dibuat).getTime() + 24 * 60 * 60 * 1000
           : Date.now() + 24 * 60 * 60 * 1000)
 
+      const histCreatedMs = (tx?.created_at || tx?.tanggal_dibuat)
+        ? new Date(tx.created_at || tx.tanggal_dibuat).getTime()
+        : Date.now()
       setVaInfo({
         va_number: txData?.va_number || tx?.va_number || null,
         bank: bankName,
@@ -314,7 +468,8 @@ function PembayaranListOffcanvas({
         amount: txData?.amount || tx?.nominal || null,
         admin_fee: txData?.admin_fee ?? tx?.admin_fee ?? 0,
         total: txData?.total ?? tx?.total ?? txData?.amount ?? tx?.nominal ?? 0,
-        expired_at: expiredAt
+        expired_at: expiredAt,
+        localCreatedAt: histCreatedMs
       })
       setTransactionStatus(rawStatus)
       setStepDirection(1)
@@ -336,35 +491,121 @@ function PembayaranListOffcanvas({
     if (onRefreshRegistrasi) await onRefreshRegistrasi()
   }, [onRefreshRegistrasi])
 
+  const latestVaInfoRef = useRef(null)
+  latestVaInfoRef.current = vaInfo
+  const syncAfterPembayaranMutationRef = useRef(syncAfterPembayaranMutation)
+  syncAfterPembayaranMutationRef.current = syncAfterPembayaranMutation
+
+  // Pulihkan vaInfo jika remount/Strict Mode: URL masih ipaymu step≥3 tapi state React hilang. Pakai useEffect (bukan layout) agar jalan setelah batch setState dari klik Bayar.
+  useEffect(() => {
+    if (!isOpen || !showIPaymuModal || ipaymuStep < 3 || vaInfo || processingIPaymu) return
+
+    let raw = null
+    try {
+      raw = sessionStorage.getItem(IPAYMU_SESSION_STORAGE_KEY)
+    } catch (_) {
+      return
+    }
+    if (!raw) return
+
+    let snap
+    try {
+      snap = JSON.parse(raw)
+    } catch {
+      return
+    }
+    if (!snap?.session_id || String(snap.id_santri) !== String(idSantri ?? '')) return
+    if (
+      registrasi?.id != null &&
+      snap.id_registrasi != null &&
+      String(snap.id_registrasi) !== String(registrasi.id)
+    ) {
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const statusResult = await paymentTransactionAPI.checkStatus(snap.session_id)
+        if (cancelled) return
+        if (!statusResult?.success || !statusResult.data) return
+        const row = statusResult.data
+        const normalizedStatus = row.status ? String(row.status).toLowerCase().trim() : null
+
+        if (
+          normalizedStatus === 'expired' ||
+          normalizedStatus === 'failed' ||
+          isPaymentPendingExpiredClient(row)
+        ) {
+          clearIpaymuSessionPersistence()
+          goToIPaymuStep(1)
+          return
+        }
+
+        const createdMs = row.tanggal_dibuat ? new Date(row.tanggal_dibuat).getTime() : snap.savedAt
+        const mapped = transactionRowToVaInfo(row, IPAYMU_VA_CHANNELS, IPAYMU_CSTORE_CHANNELS, createdMs)
+        if (!mapped) return
+
+        if (normalizedStatus === 'paid' || normalizedStatus === 'success') {
+          clearIpaymuSessionPersistence()
+          setVaInfo(mapped)
+          setTransactionStatus(row.status)
+          goToIPaymuStep(4)
+          void syncAfterPembayaranMutationRef.current()
+          return
+        }
+
+        setVaInfo(mapped)
+        setTransactionStatus(row.status || 'pending')
+      } catch (_) {
+        /* biarkan user di wizard; polling/klik Bayar mengisi lagi */
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, showIPaymuModal, ipaymuStep, vaInfo, processingIPaymu, idSantri, registrasi?.id, goToIPaymuStep])
+
   // Auto-check status pembayaran untuk transaksi pending (polling)
+  // Hanya bergantung pada session_id + mode ipaymu — jangan sertakan registrasi/sync callback agar effect tidak di-reset saat refresh parent (penyebab race / flash kembali ke konfirmasi)
   useEffect(() => {
     if (!vaInfo?.session_id || !showIPaymuModal) return
 
+    const sessionId = vaInfo.session_id
     paymentResolvedRef.current = false
     let isMounted = true
 
     const checkPaymentStatus = async () => {
       if (!isMounted || paymentResolvedRef.current) return
       try {
-        const statusResult = await paymentTransactionAPI.checkStatus(vaInfo.session_id)
+        const statusResult = await paymentTransactionAPI.checkStatus(sessionId)
         if (!isMounted || paymentResolvedRef.current) return
         if (!statusResult?.success || !statusResult.data) return
 
         const rawStatus = statusResult.data.status
         const normalizedStatus = rawStatus ? String(rawStatus).toLowerCase().trim() : null
+        const vSnap = latestVaInfoRef.current
+        const endMs = vSnap?.expired_at != null ? Number(vSnap.expired_at) : NaN
+        const pastLocalExpiry = Number.isFinite(endMs) && Date.now() >= endMs
+        const displayStatus =
+          pastLocalExpiry && (normalizedStatus === 'pending' || normalizedStatus === 'cancelled')
+            ? 'expired'
+            : rawStatus
 
-        setTransactionStatus(rawStatus)
+        setTransactionStatus(displayStatus)
 
         if (normalizedStatus === 'paid' || normalizedStatus === 'success') {
           paymentResolvedRef.current = true
+          clearIpaymuSessionPersistence()
           showNotification('Pembayaran berhasil! Data diperbarui.', 'success')
           const txData = statusResult.data
           let bankName = 'iPayMu'
           if (txData.payment_method === 'va' && txData.payment_channel) {
-            const channelData = vaChannels.find(c => c.value === txData.payment_channel)
+            const channelData = IPAYMU_VA_CHANNELS.find(c => c.value === txData.payment_channel)
             bankName = channelData ? channelData.label : (txData.payment_channel || '').toUpperCase()
           } else if (txData.payment_method === 'cstore' && txData.payment_channel) {
-            const channelData = cstoreChannels.find(c => c.value === txData.payment_channel)
+            const channelData = IPAYMU_CSTORE_CHANNELS.find(c => c.value === txData.payment_channel)
             bankName = channelData ? channelData.label : (txData.payment_channel || '').toUpperCase()
           } else if (txData.payment_method === 'qris') bankName = 'QRIS'
           setVaInfo(prev => ({
@@ -382,24 +623,28 @@ function PembayaranListOffcanvas({
           }))
           setStepDirection(1)
           goToIPaymuStep(4)
-          await syncAfterPembayaranMutation()
+          await syncAfterPembayaranMutationRef.current()
           return
         }
 
-        // Batal lokal: tetap polling — pembayaran dengan QR/VA yang sama bisa sukses (callback/checkStatus)
-        if (normalizedStatus === 'cancelled') {
-          setTransactionStatus(rawStatus)
+        if (normalizedStatus === 'cancelled' && !pastLocalExpiry) {
           return
         }
 
         if (normalizedStatus === 'expired' || normalizedStatus === 'failed') {
+          const v = latestVaInfoRef.current
+          const t0 = v?.localCreatedAt
+          if (t0 && Date.now() - t0 < IPAYMU_FAIL_GRACE_MS) {
+            return
+          }
           paymentResolvedRef.current = true
           if (isMounted) {
+            clearIpaymuSessionPersistence()
             setVaInfo(null)
             setTransactionStatus(null)
             if (showIPaymuModal) goToPaymentOpen()
           }
-          await syncAfterPembayaranMutation()
+          await syncAfterPembayaranMutationRef.current()
         }
       } catch (err) {
         if (isMounted && !paymentResolvedRef.current) {
@@ -416,7 +661,7 @@ function PembayaranListOffcanvas({
       clearTimeout(initialTimeout)
       clearInterval(intervalId)
     }
-  }, [vaInfo?.session_id, showIPaymuModal, idSantri, registrasi?.id, syncAfterPembayaranMutation])
+  }, [vaInfo?.session_id, showIPaymuModal, goToIPaymuStep, goToPaymentOpen])
 
   // Isi form edit saat modal edit dibuka; reset field wizard hanya saat modal edit benar-benar ditutup (bukan setiap vaInfo berubah dari polling)
   useEffect(() => {
@@ -466,8 +711,20 @@ function PembayaranListOffcanvas({
       console.log('Pending transaction result:', pendingResult)
       
       if (pendingResult && pendingResult.success === true && pendingResult.data) {
-        // Ada transaksi pending, tampilkan informasi transaksi yang sudah ada
         const pendingTransaction = pendingResult.data
+        if (isPaymentPendingExpiredClient(pendingTransaction)) {
+          clearIpaymuSessionPersistence()
+          setIpaymuAmount('')
+          setPaymentMethod('')
+          setPaymentChannel('')
+          setVaInfo(null)
+          setOpenAccordion(null)
+          goToIPaymuStep(1)
+          setProcessingIPaymu(false)
+          showNotification('Tagihan sebelumnya sudah kedaluwarsa. Silakan buat pembayaran baru.', 'info')
+          return
+        }
+        // Ada transaksi pending, tampilkan informasi transaksi yang sudah ada
         console.log('Found pending transaction:', pendingTransaction)
         
         // Tentukan bank name berdasarkan payment method dan channel
@@ -528,6 +785,9 @@ function PembayaranListOffcanvas({
         const amt = pendingTransaction.amount ?? 0
         const fee = pendingTransaction.admin_fee ?? 0
         // Set VA info dari transaksi pending
+        const pendingCreatedMs = pendingTransaction.tanggal_dibuat || pendingTransaction.created_at
+          ? new Date(pendingTransaction.tanggal_dibuat || pendingTransaction.created_at).getTime()
+          : Date.now()
         const vaInfoData = {
           va_number: pendingTransaction.va_number || null,
           bank: bankName,
@@ -541,7 +801,8 @@ function PembayaranListOffcanvas({
           amount: amt,
           admin_fee: fee,
           total: (pendingTransaction.total ?? (amt + fee)),
-          expired_at: expiredAt
+          expired_at: expiredAt,
+          localCreatedAt: pendingCreatedMs
         }
         
         console.log('Setting vaInfo with:', {
@@ -550,6 +811,9 @@ function PembayaranListOffcanvas({
         })
         
         setVaInfo(vaInfoData)
+        if (vaInfoData.session_id) {
+          writeIpaymuSessionPersistence(vaInfoData.session_id, registrasi?.id, idSantri)
+        }
         
         // Clear transactionStatus terlebih dahulu untuk menghindari sisa status
         setTransactionStatus(pendingTransaction.status || 'pending')
@@ -561,22 +825,23 @@ function PembayaranListOffcanvas({
       } else {
         // Tidak ada transaksi pending, buka modal untuk membuat transaksi baru
         console.log('No pending transaction found, opening new transaction modal')
-    setIpaymuAmount('')
-    setPaymentMethod('') // Reset
-    setPaymentChannel('') // Reset channel
-    setVaInfo(null) // Reset VA info
-    setOpenAccordion(null) // Reset accordion
+        clearIpaymuSessionPersistence()
+        setIpaymuAmount('')
+        setPaymentMethod('')
+        setPaymentChannel('')
+        setVaInfo(null)
+        setOpenAccordion(null)
         goToIPaymuStep(1)
         setProcessingIPaymu(false)
       }
     } catch (err) {
       console.error('Error checking pending transaction:', err)
-      // Jika error, tetap buka modal untuk membuat transaksi baru
+      clearIpaymuSessionPersistence()
       setIpaymuAmount('')
-      setPaymentMethod('') // Reset
-      setPaymentChannel('') // Reset channel
-      setVaInfo(null) // Reset VA info
-      setOpenAccordion(null) // Reset accordion
+      setPaymentMethod('')
+      setPaymentChannel('')
+      setVaInfo(null)
+      setOpenAccordion(null)
       goToIPaymuStep(1)
       setProcessingIPaymu(false)
     }
@@ -860,7 +1125,8 @@ function PembayaranListOffcanvas({
         // Simpan informasi VA untuk ditampilkan di modal
         // Prioritas: VA number > QR code > payment URL
         const amount = parseFloat(ipaymuAmount.replace(/\./g, '')) || 0
-        
+        const localCreatedAt = Date.now()
+
         if (finalVaNumberWithFallback) {
           setVaInfo({
             va_number: finalVaNumberWithFallback,
@@ -875,7 +1141,8 @@ function PembayaranListOffcanvas({
             session_id,
             transaction_id,
             ipaymu_transaction_id: ipaymu_transaction_id || transaction_id,
-            expired_at: expiredAtTs
+            expired_at: expiredAtTs,
+            localCreatedAt
           })
           
           // Pindah ke step 3 (status pending)
@@ -900,7 +1167,8 @@ function PembayaranListOffcanvas({
             session_id,
             transaction_id,
             ipaymu_transaction_id: ipaymu_transaction_id || transaction_id,
-            expired_at: expiredAtTs
+            expired_at: expiredAtTs,
+            localCreatedAt
           })
           
           // Pindah ke step 3 (status pending)
@@ -919,7 +1187,8 @@ function PembayaranListOffcanvas({
             qr_code: null,
             session_id,
             transaction_id,
-            expired_at: expiredAtTs
+            expired_at: expiredAtTs,
+            localCreatedAt
           })
           
           // Pindah ke step 3 (status pending)
@@ -940,12 +1209,17 @@ function PembayaranListOffcanvas({
             qr_code: null,
             session_id,
             transaction_id,
-            expired_at: expiredAtTs
+            expired_at: expiredAtTs,
+            localCreatedAt
           })
           
           // Pindah ke step 3 (status pending)
           setStepDirection(1) // Maju ke kanan
           goToIPaymuStep(3)
+        }
+
+        if (session_id) {
+          writeIpaymuSessionPersistence(session_id, registrasi?.id, idSantri)
         }
 
         setTransactionStatus('pending')
@@ -978,6 +1252,7 @@ function PembayaranListOffcanvas({
       console.error('Error creating iPayMu payment:', err)
       const errorMessage = err.response?.data?.message || err.message || 'Gagal membuat pembayaran iPayMu'
       showNotification(errorMessage, 'error')
+      clearIpaymuSessionPersistence()
       setVaInfo(null)
       goToPaymentOpen()
       setIpaymuAmount('')
@@ -1031,6 +1306,7 @@ function PembayaranListOffcanvas({
       if (ok) {
         showNotification('Pesanan dibatalkan. Silakan buat pesanan baru.', 'success')
         setShowEditModal(false)
+        clearIpaymuSessionPersistence()
         setVaInfo(null)
         setTransactionStatus(null)
         goToIPaymuStep(1)
@@ -1120,9 +1396,15 @@ function PembayaranListOffcanvas({
             const pendingResult = await paymentTransactionAPI.getPendingTransaction(registrasi?.id, idSantri)
             
             if (pendingResult && pendingResult.success === true && pendingResult.data) {
-              // Ada transaksi pending baru, tampilkan
               const pendingTransaction = pendingResult.data
-              
+              if (isPaymentPendingExpiredClient(pendingTransaction)) {
+                clearIpaymuSessionPersistence()
+                goToIPaymuStep(1)
+                showNotification('Tagihan sudah kedaluwarsa. Silakan buat pembayaran baru.', 'info')
+                void syncAfterPembayaranMutation()
+                return
+              }
+              // Ada transaksi pending baru, tampilkan
               // Tentukan bank name
               let bankName = 'Bank'
               if (pendingTransaction.payment_method === 'va' && pendingTransaction.payment_channel) {
@@ -1705,6 +1987,17 @@ function PembayaranListOffcanvas({
                       // TF dengan bukti: preview bukti
                       // iPayMu: tampilkan modal status sukses
                       const isIPayMu = via && (via.toLowerCase() === 'ipaymu' || via.toLowerCase() === 'ipay mu')
+                      const ipaymuRowEff = isIPayMu ? effectiveIpaymuRowStatus(payment) : null
+                      const ipaymuStatusShort =
+                        ipaymuRowEff === 'paid'
+                          ? 'Lunas'
+                          : ipaymuRowEff === 'expired'
+                            ? 'Kadaluwarsa'
+                            : ipaymuRowEff === 'cancelled'
+                              ? 'Dibatalkan'
+                              : ipaymuRowEff === 'failed'
+                                ? 'Gagal'
+                                : 'Menunggu'
                       // Untuk iPayMu: label metode (VA BCA, Indomaret, QRIS, dll) dan tipe untuk icon
                       const ipaymuMethodLabel = isIPayMu ? (
                         payment.payment_method === 'qris' ? 'QRIS'
@@ -1929,11 +2222,22 @@ function PembayaranListOffcanvas({
                               </button>
                             </div>
                           ) : isIPayMu ? (
-                            <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 mt-1">
-                              {payment.payment_method === 'va' && <BankIcon bank={payment.payment_channel || 'bca'} className="h-4 w-4 flex-shrink-0" />}
-                              {payment.payment_method === 'cstore' && <CStoreIcon store={payment.payment_channel || 'alfamart'} className="h-4 w-4 flex-shrink-0" />}
-                              {payment.payment_method === 'qris' && <QRISIcon className="h-4 w-4 flex-shrink-0" />}
-                              <span>Metode: <span className="font-medium">{ipaymuMethodLabel || 'iPayMu'}</span></span>
+                            <div className="mt-1 space-y-0.5">
+                              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                                {payment.payment_method === 'va' && <BankIcon bank={payment.payment_channel || 'bca'} className="h-4 w-4 flex-shrink-0" />}
+                                {payment.payment_method === 'cstore' && <CStoreIcon store={payment.payment_channel || 'alfamart'} className="h-4 w-4 flex-shrink-0" />}
+                                {payment.payment_method === 'qris' && <QRISIcon className="h-4 w-4 flex-shrink-0" />}
+                                <span>Metode: <span className="font-medium">{ipaymuMethodLabel || 'iPayMu'}</span></span>
+                              </div>
+                              <div className="text-[10px] font-medium">
+                                {ipaymuRowEff === 'expired' || ipaymuRowEff === 'failed' ? (
+                                  <span className="text-red-600 dark:text-red-400">Status: {ipaymuStatusShort}</span>
+                                ) : ipaymuRowEff === 'paid' ? (
+                                  <span className="text-emerald-600 dark:text-emerald-400">Status: {ipaymuStatusShort}</span>
+                                ) : (
+                                  <span className="text-amber-600 dark:text-amber-400">Status: {ipaymuStatusShort}</span>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <div className="text-gray-600 dark:text-gray-400 mt-1">

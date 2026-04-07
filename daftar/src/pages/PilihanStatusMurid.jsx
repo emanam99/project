@@ -23,13 +23,32 @@ const OPSI_BY_FORMAL = {
     { value: 'Pindahan kelas 11', label: 'Pindahan kelas 11' },
     { value: 'Pindahan kelas 12', label: 'Pindahan kelas 12' }
   ],
+  // Alias jenjang SMA (sama opsi dengan SMAI)
+  SMA: [
+    { value: 'Murid Baru', label: 'Murid Baru' },
+    { value: 'Pindahan kelas 10', label: 'Pindahan kelas 10' },
+    { value: 'Pindahan kelas 11', label: 'Pindahan kelas 11' },
+    { value: 'Pindahan kelas 12', label: 'Pindahan kelas 12' }
+  ],
   STAI: [
     { value: 'Mahasiswa Baru', label: 'Mahasiswa Baru' },
     { value: 'Mahasiswa Pindahan', label: 'Mahasiswa Pindahan' }
   ]
 }
 
-const FORMAL_SHOW_STATUS_MURID = ['SMP', 'MTs', 'SMAI', 'STAI']
+const FORMAL_SHOW_STATUS_MURID = ['SMP', 'MTs', 'SMAI', 'SMA', 'STAI']
+
+/** Opsi status murid sesuai daftar formal (hardcode; tidak dari DB kondisi). */
+export function getOpsiStatusMuridForFormal(formal) {
+  const f = String(formal || '').trim()
+  if (!f) return []
+  return OPSI_BY_FORMAL[f] || []
+}
+
+/** Tampilkan & wajibkan field status murid hanya untuk jenjang ini. */
+export function shouldShowStatusMuridForFormal(formal) {
+  return FORMAL_SHOW_STATUS_MURID.includes(String(formal || '').trim())
+}
 
 // Halaman ini hanya muncul jika daftar formal SMP, MTs, SMAI, atau STAI
 function PilihanStatusMurid() {

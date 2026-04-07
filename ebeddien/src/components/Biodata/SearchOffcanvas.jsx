@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { santriAPI, pendaftaranAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
+import { getCachedSantriList, saveCachedSantriList } from '../../services/offcanvasSearchCache'
 
 function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -29,6 +30,9 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     lttq: '',
     gender: ''
   })
+
+  const santriListRef = useRef(santriList)
+  santriListRef.current = santriList
 
   // Prevent body scroll saat offcanvas terbuka
   useEffect(() => {
@@ -90,21 +94,22 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     }
   }
 
-  // Ambil data santri dari API
-  const fetchSantriList = async () => {
+  // Ambil data santri dari API + simpan IndexedDB (untuk buka offcanvas berikutnya tanpa hit server)
+  const fetchSantriList = useCallback(async () => {
     setLoading(true)
     try {
       const result = await santriAPI.getAll()
       if (result.success && result.data) {
         setSantriList(result.data)
         setFilteredList(result.data.slice(0, 50))
+        await saveCachedSantriList(result.data)
       }
     } catch (error) {
       console.error('Error fetching santri list:', error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   // Sinkronisasi data dari server
   const handleSync = async () => {
@@ -181,16 +186,27 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     onClose()
   }
 
-  // Load data saat offcanvas dibuka
+  // Load data saat offcanvas dibuka: pakai IndexedDB jika ada; baru fetch dari server jika belum ada (tombol sync tetap memaksa refresh)
   useEffect(() => {
-    if (isOpen) {
-      if (santriList.length === 0) {
-        fetchSantriList()
+    if (!isOpen) return
+    fetchTahunAjaranList()
+    if (santriListRef.current.length > 0) return
+
+    let cancelled = false
+    ;(async () => {
+      const cached = await getCachedSantriList()
+      if (cancelled) return
+      if (cached && cached.length > 0) {
+        setSantriList(cached)
+        setFilteredList(cached.slice(0, 50))
+        return
       }
-      // Fetch daftar tahun ajaran dari database
-      fetchTahunAjaranList()
+      await fetchSantriList()
+    })()
+    return () => {
+      cancelled = true
     }
-  }, [isOpen])
+  }, [isOpen, fetchSantriList])
 
   // Fetch pendaftar IDs saat checkbox dicentang atau tahun ajaran berubah
   useEffect(() => {
@@ -369,7 +385,7 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
                     onClick={handleSync}
                     disabled={syncing}
                     className="bg-teal-500 hover:bg-teal-600 text-white p-1.5 rounded text-xs flex items-center gap-1 transition-colors disabled:opacity-50 pointer-events-auto"
-                    title="Sinkronisasi Data"
+                    title="Perbarui dari server (simpan ke cache lokal)"
                   >
                     {syncing ? (
                       <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

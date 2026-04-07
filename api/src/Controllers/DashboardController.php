@@ -822,7 +822,7 @@ class DashboardController
                     s.ibu,
                     s.gender,
                     s.status_santri,
-                    s.kategori,
+                    COALESCE(d.kategori, s.kategori) AS kategori,
                     s.id_diniyah,
                     ld.nama AS diniyah,
                     rd.kelas AS kelas_diniyah,
@@ -859,7 +859,7 @@ class DashboardController
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
                 LEFT JOIN uwaba sy ON s.id = sy.id_santri AND sy.tahun_ajaran = ?
-                GROUP BY s.id, s.nis, s.nama, s.ayah, s.ibu, s.gender, s.status_santri, s.kategori, s.id_diniyah, ld.nama, rd.kelas, rd.kel, s.id_formal, lf.nama, rf.kelas, rf.kel, s.lttq, s.kelas_lttq, s.kel_lttq, s.hijriyah, s.masehi, s.saudara_di_pesantren, s.id_kamar, d.id, d.daerah, dk.kamar, s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten
+                GROUP BY s.id, s.nis, s.nama, s.ayah, s.ibu, s.gender, s.status_santri, COALESCE(d.kategori, s.kategori), s.id_diniyah, ld.nama, rd.kelas, rd.kel, s.id_formal, lf.nama, rf.kelas, rf.kel, s.lttq, s.kelas_lttq, s.kel_lttq, s.hijriyah, s.masehi, s.saudara_di_pesantren, s.id_kamar, d.id, d.daerah, dk.kamar, s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten
                 ORDER BY s.id ASC
             ");
             $stmt->execute([$tahunAjaran]);

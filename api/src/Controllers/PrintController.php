@@ -77,18 +77,22 @@ class PrintController
                 $idKolomReferensi = 'id_tunggakan';
             }
 
-            // Ambil biodata santri (diniyah/formal dari lembaga___rombel)
+            // Ambil biodata santri (diniyah/formal dari rombel; mode pendaftaran menimpa dari psb___registrasi.daftar_*)
             $stmt = $this->db->prepare("SELECT s.*, 
-                COALESCE(s.status_santri, '') as status_santri,
-                COALESCE(s.kategori, '') as kategori,
-                COALESCE(rd.lembaga_id, '') as diniyah,
-                COALESCE(rf.lembaga_id, '') as formal,
-                COALESCE(s.lttq, '') as lttq,
-                COALESCE(s.saudara_di_pesantren, '') as saudara,
-                COALESCE(s.no_telpon, '') as no_telpon
+                COALESCE(s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, s.kategori, '') AS kategori,
+                COALESCE(rd.lembaga_id, '') AS diniyah,
+                COALESCE(rf.lembaga_id, '') AS formal,
+                COALESCE(s.lttq, '') AS lttq,
+                COALESCE(s.saudara_di_pesantren, '') AS saudara,
+                COALESCE(s.no_telpon, '') AS no_telpon,
+                d.daerah AS daerah,
+                dk.kamar AS kamar
                 FROM santri s
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
+                LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                LEFT JOIN daerah d ON d.id = dk.id_daerah
                 WHERE s.id = ? LIMIT 1");
             $stmt->execute([$idSantri]);
             $biodata = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -107,7 +111,7 @@ class PrintController
                 if ($tahunHijriyah && $tahunHijriyah !== '' && $tahunMasehi && $tahunMasehi !== '') {
                     $stmt = $this->db->prepare(
                         "SELECT r.id, r.id_santri, r.wajib, r.bayar, r.kurang, r.id_admin, 
-                                r.tahun_hijriyah, r.tahun_masehi, p.nama AS admin 
+                                r.tahun_hijriyah, r.tahun_masehi, r.daftar_diniyah, r.daftar_formal, p.nama AS admin 
                          FROM psb___registrasi r 
                          LEFT JOIN pengurus p ON r.id_admin = p.id 
                          WHERE r.id_santri = ? 
@@ -120,7 +124,7 @@ class PrintController
                 } elseif ($tahunHijriyah && $tahunHijriyah !== '') {
                     $stmt = $this->db->prepare(
                         "SELECT r.id, r.id_santri, r.wajib, r.bayar, r.kurang, r.id_admin, 
-                                r.tahun_hijriyah, r.tahun_masehi, p.nama AS admin 
+                                r.tahun_hijriyah, r.tahun_masehi, r.daftar_diniyah, r.daftar_formal, p.nama AS admin 
                          FROM psb___registrasi r 
                          LEFT JOIN pengurus p ON r.id_admin = p.id 
                          WHERE r.id_santri = ? 
@@ -132,7 +136,7 @@ class PrintController
                 } elseif ($tahunMasehi && $tahunMasehi !== '') {
                     $stmt = $this->db->prepare(
                         "SELECT r.id, r.id_santri, r.wajib, r.bayar, r.kurang, r.id_admin, 
-                                r.tahun_hijriyah, r.tahun_masehi, p.nama AS admin 
+                                r.tahun_hijriyah, r.tahun_masehi, r.daftar_diniyah, r.daftar_formal, p.nama AS admin 
                          FROM psb___registrasi r 
                          LEFT JOIN pengurus p ON r.id_admin = p.id 
                          WHERE r.id_santri = ? 
@@ -145,7 +149,7 @@ class PrintController
                     // Fallback: ambil registrasi terbaru jika tahun tidak diberikan
                     $stmt = $this->db->prepare(
                         "SELECT r.id, r.id_santri, r.wajib, r.bayar, r.kurang, r.id_admin, 
-                                r.tahun_hijriyah, r.tahun_masehi, p.nama AS admin 
+                                r.tahun_hijriyah, r.tahun_masehi, r.daftar_diniyah, r.daftar_formal, p.nama AS admin 
                          FROM psb___registrasi r 
                          LEFT JOIN pengurus p ON r.id_admin = p.id 
                          WHERE r.id_santri = ? 
@@ -163,10 +167,18 @@ class PrintController
                     ], 404);
                 }
 
+                // Kwitansi PSB: Diniyah/Formal dari pilihan registrasi (bukan rombel santri)
+                $daftarDin = trim((string) ($registrasi['daftar_diniyah'] ?? ''));
+                $daftarFor = trim((string) ($registrasi['daftar_formal'] ?? ''));
+                $biodata['diniyah'] = $daftarDin !== '' ? $daftarDin : '-';
+                $biodata['formal'] = $daftarFor !== '' ? $daftarFor : '-';
+
                 $registrasiPayload = [
                     'id' => isset($registrasi['id']) ? (int) $registrasi['id'] : null,
                     'tahun_hijriyah' => $registrasi['tahun_hijriyah'] ?? null,
                     'tahun_masehi' => $registrasi['tahun_masehi'] ?? null,
+                    'daftar_diniyah' => $daftarDin !== '' ? $daftarDin : null,
+                    'daftar_formal' => $daftarFor !== '' ? $daftarFor : null,
                 ];
                 
                 // Ambil detail item dari registrasi

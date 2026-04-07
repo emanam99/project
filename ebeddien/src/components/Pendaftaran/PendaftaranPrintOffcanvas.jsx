@@ -9,12 +9,52 @@ import { getSlimApiUrl, waAPI, chatAPI } from '../../services/api'
 import PrintPendaftaran from '../../pages/Pendaftaran/print/PrintPendaftaran'
 import '../Payment/PrintOffcanvas.css'
 
+const PENDAFTARAN_PRINT_SECTIONS_KEY = 'ebeddien_pendaftaran_print_sections_v1'
+
+const defaultPrintSections = () => ({
+  printKwitansi: true,
+  printBiodataForm: true,
+  printRaporTes: false,
+  printSuratKapdar: false,
+  printPaktaIntegritas: false,
+})
+
+function loadPrintSectionsFromStorage() {
+  const base = defaultPrintSections()
+  try {
+    const raw = localStorage.getItem(PENDAFTARAN_PRINT_SECTIONS_KEY)
+    if (!raw) return base
+    const o = JSON.parse(raw)
+    if (!o || typeof o !== 'object') return base
+    return {
+      printKwitansi: typeof o.printKwitansi === 'boolean' ? o.printKwitansi : base.printKwitansi,
+      printBiodataForm: typeof o.printBiodataForm === 'boolean' ? o.printBiodataForm : base.printBiodataForm,
+      printRaporTes: typeof o.printRaporTes === 'boolean' ? o.printRaporTes : base.printRaporTes,
+      printSuratKapdar: typeof o.printSuratKapdar === 'boolean' ? o.printSuratKapdar : base.printSuratKapdar,
+      printPaktaIntegritas: typeof o.printPaktaIntegritas === 'boolean' ? o.printPaktaIntegritas : base.printPaktaIntegritas,
+    }
+  } catch {
+    return base
+  }
+}
+
+function savePrintSectionsToStorage(prefs) {
+  try {
+    localStorage.setItem(PENDAFTARAN_PRINT_SECTIONS_KEY, JSON.stringify(prefs))
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 function PendaftaranPrintOffcanvas({ isOpen, onClose, santriId }) {
-  const [printKwitansi, setPrintKwitansi] = useState(true)
-  const [printBiodataForm, setPrintBiodataForm] = useState(true)
-  const [printRaporTes, setPrintRaporTes] = useState(false)
-  const [printSuratKapdar, setPrintSuratKapdar] = useState(false)
-  const [printPaktaIntegritas, setPrintPaktaIntegritas] = useState(false)
+  const [printSections, setPrintSections] = useState(loadPrintSectionsFromStorage)
+  const {
+    printKwitansi,
+    printBiodataForm,
+    printRaporTes,
+    printSuratKapdar,
+    printPaktaIntegritas,
+  } = printSections
   const [printUrl, setPrintUrl] = useState('')
   const [waNumber, setWaNumber] = useState('')
   const [waStatus, setWaStatus] = useState({ text: '', type: '', visible: false }) // type: 'success', 'error', 'checking'
@@ -61,14 +101,8 @@ function PendaftaranPrintOffcanvas({ isOpen, onClose, santriId }) {
   }, [isOpen, santriId, user, tahunAjaran, tahunAjaranMasehi])
 
   useEffect(() => {
-    if (isOpen) {
-      setPrintKwitansi(true)
-      setPrintBiodataForm(true)
-      setPrintRaporTes(false)
-      setPrintSuratKapdar(false)
-      setPrintPaktaIntegritas(false)
-    }
-  }, [isOpen, santriId])
+    savePrintSectionsToStorage(printSections)
+  }, [printSections])
 
   // Tambahkan class ke body ketika offcanvas terbuka untuk deteksi print
   useEffect(() => {
@@ -424,7 +458,7 @@ Barakallahu fiikum.`
                   type="checkbox"
                   className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                   checked={printKwitansi}
-                  onChange={(e) => setPrintKwitansi(e.target.checked)}
+                  onChange={(e) => setPrintSections((p) => ({ ...p, printKwitansi: e.target.checked }))}
                 />
                 Kwitansi
               </label>
@@ -433,7 +467,7 @@ Barakallahu fiikum.`
                   type="checkbox"
                   className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                   checked={printBiodataForm}
-                  onChange={(e) => setPrintBiodataForm(e.target.checked)}
+                  onChange={(e) => setPrintSections((p) => ({ ...p, printBiodataForm: e.target.checked }))}
                 />
                 Formulir
               </label>
@@ -442,7 +476,7 @@ Barakallahu fiikum.`
                   type="checkbox"
                   className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                   checked={printRaporTes}
-                  onChange={(e) => setPrintRaporTes(e.target.checked)}
+                  onChange={(e) => setPrintSections((p) => ({ ...p, printRaporTes: e.target.checked }))}
                 />
                 Tes
               </label>
@@ -451,7 +485,7 @@ Barakallahu fiikum.`
                   type="checkbox"
                   className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                   checked={printSuratKapdar}
-                  onChange={(e) => setPrintSuratKapdar(e.target.checked)}
+                  onChange={(e) => setPrintSections((p) => ({ ...p, printSuratKapdar: e.target.checked }))}
                 />
                 Kapdar
               </label>
@@ -460,7 +494,7 @@ Barakallahu fiikum.`
                   type="checkbox"
                   className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                   checked={printPaktaIntegritas}
-                  onChange={(e) => setPrintPaktaIntegritas(e.target.checked)}
+                  onChange={(e) => setPrintSections((p) => ({ ...p, printPaktaIntegritas: e.target.checked }))}
                 />
                 Pakta
               </label>

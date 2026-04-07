@@ -64,9 +64,9 @@ function PrintPendaftaran({
   useEffect(() => {
     const loggedIn = isLoggedIn()
     if (loggedIn) {
-      // Jika sudah login: default 2 kolom, berwarna
+      // Jika sudah login: default 1 kolom kwitansi, berwarna
       setLayoutMode('portrait')
-      setColumnCount('2')
+      setColumnCount('1')
       setUseColor(true)
     } else {
       // Default untuk akses dari QR (tanpa login): 1 kolom, tidak berwarna, hanya bisa print
@@ -518,26 +518,23 @@ function ReceiptContent({ data, formatRupiah, formatTanggal, getCurrentUrlWithPa
                   <td className="biodata-label">Status</td>
                   <td>: {biodata.status_santri || '-'}</td>
                   <td style={{width: '20px'}}></td>
-                  <td className="biodata-label">Diniyah</td>
-                  <td>: {biodata.diniyah || '-'}</td>
-                </tr>
-                <tr>
                   <td className="biodata-label">Kategori</td>
                   <td>: {biodata.kategori || '-'}</td>
-                  <td></td>
-                  <td className="biodata-label">Formal</td>
-                  <td>: {biodata.formal || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="biodata-label">Domisili</td>
-                  <td>: {domisili || '-'}</td>
-                  <td></td>
-                  <td className="biodata-label">LTTQ</td>
-                  <td>: {biodata.lttq || '-'}</td>
                 </tr>
                 <tr>
                   <td className="biodata-label">Saudara</td>
-                  <td colSpan={4}>: {biodata.saudara_di_pesantren || '-'}</td>
+                  <td>: {biodata.saudara_di_pesantren || '-'}</td>
+                  <td style={{width: '20px'}}></td>
+                  <td className="biodata-label">Domisili</td>
+                  <td>: {domisili || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="biodata-label">Diniyah</td>
+                  <td colSpan={4}>: {biodata.diniyah || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="biodata-label">Formal</td>
+                  <td colSpan={4}>: {biodata.formal || '-'}</td>
                 </tr>
               </tbody>
             </table>
@@ -797,26 +794,23 @@ function ReceiptContentTwoColumns({ data, formatRupiah, formatTanggal, getCurren
                   <td className="biodata-label">Status</td>
                   <td>: {biodata.status_santri || '-'}</td>
                   <td style={{width: '20px'}}></td>
-                  <td className="biodata-label">Diniyah</td>
-                  <td>: {biodata.diniyah || '-'}</td>
-                </tr>
-                <tr>
                   <td className="biodata-label">Kategori</td>
                   <td>: {biodata.kategori || '-'}</td>
-                  <td></td>
-                  <td className="biodata-label">Formal</td>
-                  <td>: {biodata.formal || '-'}</td>
-                </tr>
-                <tr>
-                  <td className="biodata-label">Domisili</td>
-                  <td>: {domisili || '-'}</td>
-                  <td></td>
-                  <td className="biodata-label">LTTQ</td>
-                  <td>: {biodata.lttq || '-'}</td>
                 </tr>
                 <tr>
                   <td className="biodata-label">Saudara</td>
-                  <td colSpan={4}>: {biodata.saudara_di_pesantren || '-'}</td>
+                  <td>: {biodata.saudara_di_pesantren || '-'}</td>
+                  <td style={{width: '20px'}}></td>
+                  <td className="biodata-label">Domisili</td>
+                  <td>: {domisili || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="biodata-label">Diniyah</td>
+                  <td colSpan={4}>: {biodata.diniyah || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="biodata-label">Formal</td>
+                  <td colSpan={4}>: {biodata.formal || '-'}</td>
                 </tr>
               </tbody>
             </table>

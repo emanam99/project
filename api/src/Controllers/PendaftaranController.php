@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Database;
 use App\Helpers\SantriHelper;
 use App\Helpers\SantriKamarHelper;
+use App\Helpers\SantriDomisiliHelper;
 use App\Helpers\SantriRombelHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -77,17 +78,16 @@ class PendaftaranController
     {
         try {
             $params = $request->getQueryParams();
-            $kategori = isset($params['kategori']) ? trim((string) $params['kategori']) : null;
+            $kategori = isset($params['kategori']) ? trim((string) $params['kategori']) : '';
             if ($kategori === '') {
-                $kategori = null;
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'data' => []
+                ], 200);
             }
 
-            $sql = "SELECT id, kategori, daerah, keterangan, status FROM daerah WHERE 1=1";
-            $bind = [];
-            if ($kategori !== null) {
-                $sql .= " AND kategori = ?";
-                $bind[] = $kategori;
-            }
+            $sql = "SELECT id, kategori, daerah, keterangan, status FROM daerah WHERE kategori = ?";
+            $bind = [$kategori];
             $sql .= " AND (status IS NULL OR status = 'aktif') ORDER BY kategori, daerah";
 
             $stmt = $this->db->prepare($sql);
@@ -1239,6 +1239,8 @@ class PendaftaranController
             $stmtCheck->execute([$id]);
             $exists = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
 
+            SantriDomisiliHelper::applyKategoriFromKamar($input, $this->db);
+
             $this->db->beginTransaction();
 
             try {
@@ -1685,15 +1687,17 @@ class PendaftaranController
                 }
             }
         }
-        if (!$idPengurus || $idPengurus <= 0) {
-            throw new \InvalidArgumentException('id_pengurus wajib diisi saat mengisi kamar (siapa yang melakukan perubahan). Sertakan di body atau login sebagai pengurus.');
+        // Tanpa id_pengurus (token santri / aplikasi daftar): riwayat tetap tercatat, kolom id_pengurus NULL.
+        if ($idPengurus !== null && $idPengurus <= 0) {
+            $idPengurus = null;
         }
         $tahunKamar = isset($input['tahun_ajaran_kamar']) && trim((string) $input['tahun_ajaran_kamar']) !== '' ? trim((string) $input['tahun_ajaran_kamar']) : SantriRombelHelper::getDefaultTahunAjaran($this->db, 'hijriyah');
         if (!$tahunKamar) {
             return;
         }
         $statusSantri = isset($input['status_santri']) ? trim((string) $input['status_santri']) : ($oldSantri !== null ? ($oldSantri['status_santri'] ?? null) : null);
-        $kategori = isset($input['kategori']) ? trim((string) $input['kategori']) : ($oldSantri !== null ? ($oldSantri['kategori'] ?? null) : null);
+        $kategori = SantriDomisiliHelper::kategoriForKamarId($this->db, $newKamar)
+            ?: (isset($input['kategori']) ? trim((string) $input['kategori']) : ($oldSantri !== null ? ($oldSantri['kategori'] ?? null) : null));
         try {
             SantriKamarHelper::appendKamarRiwayat($this->db, $idSantri, $newKamar, $tahunKamar, $idPengurus, $statusSantri ?: null, $kategori ?: null);
         } catch (\InvalidArgumentException $e) {
@@ -2831,7 +2835,7 @@ class PendaftaranController
                 s.no_telpon, s.email, s.riwayat_sakit, s.ukuran_baju, s.kip, s.pkh, s.kks,
                 s.status_nikah, s.pekerjaan, s.no_wa_santri,
                 s.status_pendaftar, s.status_murid, s.status_santri,
-                s.kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
+                COALESCE(d.kategori, s.kategori) AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
                 s.id_diniyah, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
                 s.id_formal, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
                 s.lttq, s.kelas_lttq, s.kel_lttq
@@ -4527,7 +4531,8 @@ class PendaftaranController
     /**
      * Mencari item set yang match dengan kondisi registrasi
      * 
-     * @param array $registrasiData Data registrasi (status_pendaftar, daftar_formal, status_santri, dll)
+     * @param array $registrasiData Data registrasi (status_pendaftar, daftar_formal, status_santri, dll).
+     *                             Kolom status_murid boleh ada di data tetapi tidak dipakai untuk matching harga/item set.
      * @return array Array of item set IDs yang match
      */
     private function findMatchingItemSets(array $registrasiData): array
@@ -4569,6 +4574,12 @@ class PendaftaranController
                         $kondisiByField[$fieldName] = [];
                     }
                     $kondisiByField[$fieldName][] = $k['value'];
+                }
+
+                // Status murid tetap di form/registrasi; tidak ikut menentukan item set / nominal
+                unset($kondisiByField['status_murid']);
+                if (empty($kondisiByField)) {
+                    continue;
                 }
 
                 // Cek apakah semua field match dengan data registrasi
@@ -4620,7 +4631,7 @@ class PendaftaranController
      * Dipakai oleh frontend daftar dan uwaba agar satu logika di backend.
      *
      * POST /api/pendaftaran/items-by-kondisi
-     * Body: { status_pendaftar?, daftar_formal?, daftar_diniyah?, status_murid?, status_santri?, gender?, gelombang?, ... }
+     * Body: { status_pendaftar?, daftar_formal?, daftar_diniyah?, status_murid? (diabaikan untuk matching), status_santri?, gender?, gelombang?, ... }
      * Response: { success, data: { items: [{ id, id_item, nama_item, harga, kategori, urutan }], total_wajib, matching_set_ids } }
      */
     public function getItemsByKondisi(Request $request, Response $response): Response
@@ -6804,7 +6815,7 @@ class PendaftaranController
                         s.status_nikah,
                         s.pekerjaan,
                         s.no_wa_santri,
-                        s.kategori,
+                        COALESCE(d.kategori, s.kategori) AS kategori,
                         s.id_kamar,
                         dk.id_daerah,
                         d.daerah,

@@ -179,7 +179,8 @@ class MybeddianProfilController
                 rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,
                 rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal,
                 s.lttq, s.kelas_lttq, s.kel_lttq,
-                d.daerah, dk.kamar, s.id_kamar, s.status_santri, s.kategori, s.saudara_di_pesantren
+                d.daerah, dk.kamar, s.id_kamar, s.status_santri,
+                COALESCE(d.kategori, s.kategori) AS kategori, s.saudara_di_pesantren
                 FROM santri s
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal

@@ -1,7 +1,11 @@
-import { useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useRef, useMemo } from 'react'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
-import { OPSI_BY_FORMAL, FORMAL_SHOW_STATUS_MURID } from '../../../pages/PilihanStatusMurid'
+import KategoriDomisiliFields from './KategoriDomisiliFields'
+import {
+  getOpsiStatusMuridForFormal,
+  shouldShowStatusMuridForFormal,
+} from '../../../pages/PilihanStatusMurid'
+import { getOrderedKondisiFieldsForPendaftaran } from '../../../utils/statusPendaftaranFieldOrder'
 
 /**
  * Gelombang Select Component
@@ -93,7 +97,10 @@ function StatusPendaftaranSection({
   onFocus,
   onBlur,
   getLabelClassName,
-  kondisiFields = [] // [{ field_name, field_label, values: [{ value, label }] }, ...]
+  kondisiFields = [], // [{ field_name, field_label, values: [{ value, label }] }, ...]
+  kategoriSelectOptions = [],
+  daerahOptions = [],
+  kamarOptions = []
 }) {
   // Reset prodi hanya ketika daftar_formal berubah (bukan setiap kali user mengetik di prodi)
   const prevFormalRef = useRef(formData.daftar_formal)
@@ -106,33 +113,36 @@ function StatusPendaftaranSection({
     }
   }, [formData.daftar_formal, onFieldChange])
 
-  // Reset status_murid hanya ketika daftar_formal berubah
-  const prevFormalMuridRef = useRef(formData.daftar_formal)
+  // Selain SMP/MTs/SMAI/SMA/STAI: kosongkan status_murid (field disembunyikan, tidak wajib)
   useEffect(() => {
-    const prev = prevFormalMuridRef.current
-    prevFormalMuridRef.current = formData.daftar_formal
-    if (prev === formData.daftar_formal) return
     const formal = formData.daftar_formal
-    if (!FORMAL_SHOW_STATUS_MURID.includes(formal)) {
-      onFieldChange('status_murid', '')
+    if (!shouldShowStatusMuridForFormal(formal)) {
+      if (formData.status_murid) onFieldChange('status_murid', '')
       return
     }
-    const opts = OPSI_BY_FORMAL[formal] || []
-    const validValues = opts.map(o => o.value)
+    const validValues = getOpsiStatusMuridForFormal(formal).map((o) => o.value)
+    if (validValues.length === 0) return
     if (formData.status_murid && !validValues.includes(formData.status_murid)) {
       onFieldChange('status_murid', '')
     }
-  }, [formData.daftar_formal, onFieldChange])
+  }, [formData.daftar_formal, formData.status_murid, onFieldChange])
 
-  // Ambil opsi untuk satu field: status_murid di-filter menurut daftar_formal, field lain pakai values dari API
   const getOptionsForField = (field) => {
     if (field.field_name === 'status_murid') {
-      const formal = formData.daftar_formal
-      if (!FORMAL_SHOW_STATUS_MURID.includes(formal)) return []
-      return OPSI_BY_FORMAL[formal] || []
+      return getOpsiStatusMuridForFormal(formData.daftar_formal)
     }
     return field.values || []
   }
+
+  const statusMuridWajib = shouldShowStatusMuridForFormal(formData.daftar_formal)
+
+  const orderedKondisiFields = useMemo(
+    () => getOrderedKondisiFieldsForPendaftaran(kondisiFields),
+    [kondisiFields]
+  )
+
+  const isWajibKondisi = (fieldName) =>
+    ['status_pendaftar', 'status_santri', 'daftar_formal', 'daftar_diniyah'].includes(fieldName)
 
   return (
     <div ref={sectionRef} className="mt-16 pt-8 border-t-4 border-teal-600 dark:border-teal-400">
@@ -140,19 +150,21 @@ function StatusPendaftaranSection({
         Status Pendaftaran
       </h3>
 
-      {/* Kondisi dinamis: satu select per field dari database. Status murid hanya opsi sesuai daftar formal. */}
-      {kondisiFields.map((field) => {
-        // Status murid: hanya tampilkan jika daftar formal SMP, MTs, SMAI, atau STAI
-        if (field.field_name === 'status_murid') {
-          const formal = formData.daftar_formal
-          if (!FORMAL_SHOW_STATUS_MURID.includes(formal)) return null
+      {/* Urutan: status pendaftar → status santri → diniyah → formal → status murid (lalu prodi, gelombang). */}
+      {orderedKondisiFields.map((field) => {
+        if (field.field_name === 'status_murid' && !shouldShowStatusMuridForFormal(formData.daftar_formal)) {
+          return null
         }
         const options = getOptionsForField(field)
+        const wajib =
+          field.field_name === 'status_murid'
+            ? statusMuridWajib
+            : isWajibKondisi(field.field_name)
         return (
           <div key={field.field_name} className="mb-4">
             <label className={getLabelClassName(field.field_name)}>
               {field.field_label}
-              {['status_pendaftar', 'daftar_formal', 'daftar_diniyah', 'status_murid'].includes(field.field_name) && (
+              {wajib && (
                 <span className="text-red-500 dark:text-red-400 ml-0.5" title="Wajib diisi"> *</span>
               )}
             </label>
@@ -161,7 +173,7 @@ function StatusPendaftaranSection({
               onChange={(e) => onFieldChange(field.field_name, e.target.value)}
               onFocus={() => onFocus(field.field_name)}
               onBlur={onBlur}
-              required={['status_pendaftar', 'daftar_formal', 'daftar_diniyah', 'status_murid'].includes(field.field_name)}
+              required={wajib}
               className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
             >
               <option value="">Pilih {field.field_label}</option>
@@ -205,56 +217,16 @@ function StatusPendaftaranSection({
         getLabelClassName={getLabelClassName}
       />
 
-      {/* Daerah & Kamar - hanya tampil jika status santri Mukim */}
-      <AnimatePresence mode="wait">
-        {formData.status_santri === 'Mukim' && (
-          <motion.div
-            key="daerah-kamar"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-            className="overflow-hidden"
-          >
-            <div className="flex gap-4 mb-4 pt-1">
-              <div className="flex-1">
-                <label className={getLabelClassName('daerah')}>
-                  Daerah
-                </label>
-                <select
-                  value={formData.daerah || ''}
-                  onChange={(e) => onFieldChange('daerah', e.target.value)}
-                  onFocus={() => onFocus('daerah')}
-                  onBlur={onBlur}
-                  className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
-                >
-                  <option value="">Pilih Daerah</option>
-                  {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1">
-                <label className={getLabelClassName('kamar')}>
-                  Kamar
-                </label>
-                <select
-                  value={formData.kamar || ''}
-                  onChange={(e) => onFieldChange('kamar', e.target.value)}
-                  onFocus={() => onFocus('kamar')}
-                  onBlur={onBlur}
-                  className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
-                >
-                  <option value="">Pilih Kamar</option>
-                  {Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, '0')).map(k => (
-                    <option key={k} value={k}>{k}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <KategoriDomisiliFields
+        formData={formData}
+        onFieldChange={onFieldChange}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        getLabelClassName={getLabelClassName}
+        kategoriSelectOptions={kategoriSelectOptions}
+        daerahOptions={daerahOptions}
+        kamarOptions={kamarOptions}
+      />
     </div>
   )
 }

@@ -87,9 +87,9 @@ function HeaderSection({
       allFields.push('prodi')
     }
 
-    // Daerah & Kamar hanya tampil jika status_santri Mukim
+    // Domisili (kategori → daerah/kamar via id_kamar) hanya jika Mukim
     if (formData.status_santri === 'Mukim') {
-      allFields.push('daerah', 'kamar')
+      allFields.push('id_kamar')
     }
 
     // Hitung field yang terisi (value ada dan tidak kosong)

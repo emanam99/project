@@ -1,7 +1,12 @@
+import { useMemo } from 'react'
 import { CheckCircleIcon } from '@heroicons/react/24/solid'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
-import { OPSI_BY_FORMAL, FORMAL_SHOW_STATUS_MURID } from '../../pages/PilihanStatusMurid'
+import {
+  getOpsiStatusMuridForFormal,
+  shouldShowStatusMuridForFormal,
+} from '../../pages/PilihanStatusMurid'
 import { parseServerTimestamp } from '../../utils/biodataLocalCache'
+import { getOrderedKondisiFieldsForPendaftaran } from '../../utils/statusPendaftaranFieldOrder'
 
 function displayVal(v) {
   if (v == null) return '—'
@@ -103,9 +108,8 @@ const PRODI_LABELS = {
 function resolveKondisiDisplay(field, formData) {
   const raw = formData[field.field_name]
   if (field.field_name === 'status_murid') {
-    const formal = formData.daftar_formal
-    if (!FORMAL_SHOW_STATUS_MURID.includes(formal)) return null
-    const opts = OPSI_BY_FORMAL[formal] || []
+    if (!shouldShowStatusMuridForFormal(formData.daftar_formal)) return null
+    const opts = getOpsiStatusMuridForFormal(formData.daftar_formal)
     const hit = opts.find((o) => o.value === raw)
     return hit ? hit.label : displayVal(raw)
   }
@@ -174,6 +178,10 @@ function BiodataReadOnlyView({
   tanggalUpdateSantri = null,
   tanggalUpdateRegistrasi = null,
 }) {
+  const orderedKondisiFields = useMemo(
+    () => getOrderedKondisiFieldsForPendaftaran(kondisiFields),
+    [kondisiFields]
+  )
   const showMadrasahDetail = formData.madrasah === 'Iya'
   const showSekolahDetail = formData.sekolah && formData.sekolah !== 'Tidak Pernah Sekolah'
 
@@ -268,11 +276,7 @@ function BiodataReadOnlyView({
 
       <div ref={sectionRefs.statusPendaftaran} className="mt-16 pt-8 border-t-4 border-teal-600 dark:border-teal-400">
         <h3 className="text-lg font-semibold text-teal-600 dark:text-teal-400 mb-4">Status Pendaftaran</h3>
-        {kondisiFields.map((field) => {
-          if (field.field_name === 'status_murid') {
-            const formal = formData.daftar_formal
-            if (!FORMAL_SHOW_STATUS_MURID.includes(formal)) return null
-          }
+        {orderedKondisiFields.map((field) => {
           const text = resolveKondisiDisplay(field, formData)
           if (text === null) return null
           return <ReadRow key={field.field_name} label={field.field_label} value={text} />

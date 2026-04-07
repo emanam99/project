@@ -16,6 +16,8 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
   const [daerahOptions, setDaerahOptions] = useState([])
   const [kamarOptions, setKamarOptions] = useState([])
   const [idDaerahForKamar, setIdDaerahForKamar] = useState('')
+  const [bulkKategoriForKamar, setBulkKategoriForKamar] = useState('')
+  const [kategoriOptionsBulk, setKategoriOptionsBulk] = useState([])
   const [rombelOptionsLoading, setRombelOptionsLoading] = useState(false)
 
   // Mapping field name ke field database (diniyah/formal -> id_diniyah/id_formal, kamar -> id_kamar)
@@ -49,35 +51,37 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
       setSelectedValue('')
       setUseManualInput(false)
       setIdDaerahForKamar('')
+      setBulkKategoriForKamar('')
+      setKategoriOptionsBulk([])
       setKamarOptions([])
       setProgress({ current: 0, total: 0, currentSantri: null })
     }
   }, [isOpen])
 
-  // Load rombel + daerah options saat offcanvas dibuka
+  // Load rombel (+ opsi kategori untuk alur domisili bulk) saat offcanvas dibuka
   useEffect(() => {
     if (!isOpen) return
     let cancelled = false
     const load = async () => {
       setRombelOptionsLoading(true)
       try {
-        const [dRes, fRes, daerahRes] = await Promise.all([
+        const [dRes, fRes, katRes] = await Promise.all([
           pendaftaranAPI.getRombelOptions('Diniyah'),
           pendaftaranAPI.getRombelOptions('Formal'),
-          pendaftaranAPI.getDaerahOptions()
+          pendaftaranAPI.getKategoriOptions()
         ])
         if (cancelled) return
         const dList = (dRes?.success && Array.isArray(dRes.data)) ? dRes.data : []
         const fList = (fRes?.success && Array.isArray(fRes.data)) ? fRes.data : []
-        const daerahList = (daerahRes?.success && Array.isArray(daerahRes.data)) ? daerahRes.data : []
+        const katList = (katRes?.success && Array.isArray(katRes.data)) ? katRes.data : []
         setRombelDiniyahOptions(dList)
         setRombelFormalOptions(fList)
-        setDaerahOptions(daerahList)
+        setKategoriOptionsBulk(katList)
       } catch (e) {
         if (!cancelled) {
           setRombelDiniyahOptions([])
           setRombelFormalOptions([])
-          setDaerahOptions([])
+          setKategoriOptionsBulk([])
         }
       } finally {
         if (!cancelled) setRombelOptionsLoading(false)
@@ -86,6 +90,22 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
     load()
     return () => { cancelled = true }
   }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen || selectedField !== 'kamar' || !bulkKategoriForKamar) {
+      if (selectedField !== 'kamar') setDaerahOptions([])
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI.getDaerahOptions(bulkKategoriForKamar).then((res) => {
+      if (cancelled) return
+      const list = (res?.success && Array.isArray(res.data)) ? res.data : []
+      setDaerahOptions(list)
+    }).catch(() => {
+      if (!cancelled) setDaerahOptions([])
+    })
+    return () => { cancelled = true }
+  }, [isOpen, selectedField, bulkKategoriForKamar])
 
   useEffect(() => {
     if (!idDaerahForKamar || !isOpen) {
@@ -281,6 +301,8 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
                       setSelectedValue('')
                       setUseManualInput(false)
                       setIdDaerahForKamar('')
+                      setBulkKategoriForKamar('')
+                      setDaerahOptions([])
                       setKamarOptions([])
                     }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
@@ -306,6 +328,25 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
                     {isKamarField ? (
                       <div className="space-y-3">
                         <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Kategori</label>
+                          <select
+                            value={bulkKategoriForKamar}
+                            onChange={(e) => {
+                              setBulkKategoriForKamar(e.target.value)
+                              setIdDaerahForKamar('')
+                              setSelectedValue('')
+                              setKamarOptions([])
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                            disabled={loading}
+                          >
+                            <option value="">-- Pilih Kategori --</option>
+                            {(kategoriOptionsBulk || []).map((k) => (
+                              <option key={k} value={k}>{k}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Daerah</label>
                           <select
                             value={idDaerahForKamar}
@@ -314,7 +355,7 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
                               setSelectedValue('')
                             }}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                            disabled={loading}
+                            disabled={loading || !bulkKategoriForKamar}
                           >
                             <option value="">-- Pilih Daerah --</option>
                             {(daerahOptions || []).map((d) => (

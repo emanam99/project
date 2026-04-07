@@ -1,7 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { pengurusAPI } from '../services/api'
+import {
+  buildPengurusCacheKey,
+  getCachedPengurusList,
+  saveCachedPengurusList,
+} from '../services/offcanvasSearchCache'
 
 /**
  * Offcanvas Cari Pengurus (umum) — bisa dipakai dari mana saja.
@@ -36,6 +41,7 @@ export default function CariPengurusOffcanvas({ isOpen, onClose, onSelect, title
   const [pengurusList, setPengurusList] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [filters, setFilters] = useState({
@@ -48,28 +54,56 @@ export default function CariPengurusOffcanvas({ isOpen, onClose, onSelect, title
   })
   const [displayCount, setDisplayCount] = useState(RESULT_LIMIT)
 
-  const loadList = async () => {
-    setLoading(true)
-    try {
-      const params = {}
-      if (roleKeys) params.role_keys = roleKeys
-      if (lembagaId) params.lembaga_id = lembagaId
-      const res = await pengurusAPI.getList(params)
-      setPengurusList(Array.isArray(res?.data) ? res.data : [])
-    } catch {
-      setPengurusList([])
-    } finally {
-      setLoading(false)
-    }
-  }
+  const cacheKey = useMemo(
+    () => buildPengurusCacheKey(roleKeys, lembagaId),
+    [roleKeys, lembagaId]
+  )
+
+  const loadListFromServer = useCallback(
+    async (opts = {}) => {
+      const { syncUi } = opts
+      if (syncUi) setSyncing(true)
+      else setLoading(true)
+      try {
+        const params = {}
+        if (roleKeys) params.role_keys = roleKeys
+        if (lembagaId) params.lembaga_id = lembagaId
+        const res = await pengurusAPI.getList(params)
+        const list = Array.isArray(res?.data) ? res.data : []
+        setPengurusList(list)
+        await saveCachedPengurusList(cacheKey, list)
+      } catch {
+        setPengurusList([])
+      } finally {
+        if (syncUi) setSyncing(false)
+        else setLoading(false)
+      }
+    },
+    [cacheKey, roleKeys, lembagaId]
+  )
+
+  const handleSyncFromServer = () => loadListFromServer({ syncUi: true })
 
   useEffect(() => {
-    if (isOpen) {
-      setSearchQuery('')
-      setFilters({ provinsi: '', kabupaten: '', kecamatan: '', desa: '', lembaga_id: '', jabatan_id: '' })
-      loadList()
+    if (!isOpen) return
+    setSearchQuery('')
+    setFilters({ provinsi: '', kabupaten: '', kecamatan: '', desa: '', lembaga_id: '', jabatan_id: '' })
+
+    let cancelled = false
+    ;(async () => {
+      const cached = await getCachedPengurusList(cacheKey)
+      if (cancelled) return
+      if (cached && cached.length > 0) {
+        setPengurusList(cached)
+        setLoading(false)
+        return
+      }
+      await loadListFromServer()
+    })()
+    return () => {
+      cancelled = true
     }
-  }, [isOpen, roleKeys, lembagaId])
+  }, [isOpen, cacheKey, loadListFromServer])
 
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden'
@@ -261,6 +295,23 @@ export default function CariPengurusOffcanvas({ isOpen, onClose, onSelect, title
                       </svg>
                     )}
                     Filter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncFromServer}
+                    disabled={syncing}
+                    className="pointer-events-auto bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white px-1.5 py-1 rounded-md text-[11px] flex items-center gap-0.5 transition-colors"
+                    title="Ambil ulang dari server (perbarui cache lokal)"
+                  >
+                    {syncing ? (
+                      <svg className="animate-spin w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    )}
                   </button>
                 </div>
                 <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-300 dark:bg-gray-600" />

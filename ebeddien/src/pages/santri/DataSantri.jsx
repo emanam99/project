@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { santriAPI } from '../../services/api'
+import { santriAPI, pendaftaranAPI } from '../../services/api'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import ExportSantriOffcanvas from './components/ExportSantriOffcanvas'
 import DetailSantriOffcanvas from './components/DetailSantriOffcanvas'
@@ -27,6 +27,7 @@ function DataSantri() {
   const [tidakDiniyahFilter, setTidakDiniyahFilter] = useState(false)
   const [tidakFormalFilter, setTidakFormalFilter] = useState(false)
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' })
+  const [apiDaerahFilterOptions, setApiDaerahFilterOptions] = useState([])
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [menuOpen, setMenuOpen] = useState(false)
@@ -83,21 +84,41 @@ function DataSantri() {
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
   }, [santriList, lembagaFilter, statusSantriFilter, daerahFilter, kamarFilter])
 
-  const dynamicUniqueDaerah = useMemo(() => {
-    let filtered = santriList
-    if (lembagaFilter) filtered = filtered.filter(s => sameLembaga(s.diniyah, lembagaFilter) || sameLembaga(s.formal, lembagaFilter))
-    if (statusSantriFilter) filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
-    if (kategoriFilter) filtered = filtered.filter(s => (s.kategori || '') === kategoriFilter)
-    if (kamarFilter) filtered = filtered.filter(s => (s.kamar || '') === kamarFilter)
-    const values = [...new Set(filtered.map(s => (s.daerah != null && s.daerah !== '') ? String(s.daerah) : null).filter(Boolean))]
-    const counts = values.map(val => ({
-      value: val,
-      count: filtered.filter(s => (s.daerah || '') === val).length
-    }))
-    return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [santriList, lembagaFilter, statusSantriFilter, kategoriFilter, kamarFilter])
+  useEffect(() => {
+    if (!kategoriFilter) {
+      setApiDaerahFilterOptions([])
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI.getDaerahOptions(kategoriFilter).then((res) => {
+      if (cancelled) return
+      const list = res?.success && Array.isArray(res.data) ? res.data : []
+      setApiDaerahFilterOptions(list)
+    }).catch(() => {
+      if (!cancelled) setApiDaerahFilterOptions([])
+    })
+    return () => { cancelled = true }
+  }, [kategoriFilter])
+
+  useEffect(() => {
+    if (!daerahFilter || !kategoriFilter) return
+    const ok = apiDaerahFilterOptions.some((d) => String(d.daerah) === String(daerahFilter))
+    if (!ok) setDaerahFilter('')
+  }, [apiDaerahFilterOptions, daerahFilter, kategoriFilter])
+
+  const daerahFilterDropdown = useMemo(() => {
+    if (!kategoriFilter) return []
+    return apiDaerahFilterOptions.map((d) => {
+      const label = String(d.daerah ?? '')
+      const count = santriList.filter(
+        (s) => (s.kategori || '') === kategoriFilter && String(s.daerah || '') === label
+      ).length
+      return { value: label, count }
+    })
+  }, [kategoriFilter, apiDaerahFilterOptions, santriList])
 
   const dynamicUniqueKamar = useMemo(() => {
+    if (!kategoriFilter) return []
     let filtered = santriList
     if (lembagaFilter) filtered = filtered.filter(s => sameLembaga(s.diniyah, lembagaFilter) || sameLembaga(s.formal, lembagaFilter))
     if (statusSantriFilter) filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
@@ -478,7 +499,11 @@ function DataSantri() {
                           </select>
                           <select
                             value={kategoriFilter}
-                            onChange={(e) => setKategoriFilter(e.target.value)}
+                            onChange={(e) => {
+                              setKategoriFilter(e.target.value)
+                              setDaerahFilter('')
+                              setKamarFilter('')
+                            }}
                             className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                           >
                             <option value="">Kategori</option>
@@ -491,8 +516,8 @@ function DataSantri() {
                             onChange={(e) => { setDaerahFilter(e.target.value); setKamarFilter('') }}
                             className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                           >
-                            <option value="">Daerah</option>
-                            {dynamicUniqueDaerah.map(item => (
+                            <option value="">{kategoriFilter ? 'Daerah' : 'Pilih kategori'}</option>
+                            {daerahFilterDropdown.map(item => (
                               <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
                             ))}
                           </select>

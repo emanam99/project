@@ -1602,7 +1602,7 @@ export const pendaftaranAPI = {
 
   /**
    * Item + harga sesuai kondisi (satu logika backend untuk daftar & uwaba).
-   * Body: { status_pendaftar?, daftar_formal?, daftar_diniyah?, status_murid?, status_santri?, gender?, gelombang? }
+   * Body: { status_pendaftar?, daftar_formal?, daftar_diniyah?, status_murid? (tidak mempengaruhi matching harga), status_santri?, gender?, gelombang? }
    * Returns: { success, data: { items: [...], total_wajib, matching_set_ids } }
    */
   getItemsByKondisi: async (kondisi = {}) => {

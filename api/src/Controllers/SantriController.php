@@ -6,6 +6,7 @@ use App\Database;
 use App\Helpers\SantriHelper;
 use App\Helpers\SantriRombelHelper;
 use App\Helpers\SantriKamarHelper;
+use App\Helpers\SantriDomisiliHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -36,7 +37,8 @@ class SantriController
                 s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kode_pos, s.kabupaten, s.provinsi,
                 s.id_diniyah, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
                 s.id_formal, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
-                s.lttq, s.kelas_lttq, s.kel_lttq, d.daerah, dk.kamar, s.id_kamar, s.status_santri, s.kategori, s.saudara_di_pesantren
+                s.lttq, s.kelas_lttq, s.kel_lttq, d.daerah, dk.kamar, s.id_kamar, s.status_santri,
+                COALESCE(d.kategori, s.kategori) AS kategori, s.saudara_di_pesantren
                 FROM santri s
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
@@ -97,7 +99,7 @@ class SantriController
                 s.no_telpon, s.email, s.riwayat_sakit, s.ukuran_baju, s.kip, s.pkh, s.kks,
                 s.status_nikah, s.pekerjaan, s.no_wa_santri,
                 s.status_pendaftar, s.status_murid, s.status_santri,
-                s.kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
+                COALESCE(d.kategori, s.kategori) AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
                 s.id_diniyah, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
                 s.id_formal, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
                 s.lttq, s.kelas_lttq, s.kel_lttq
@@ -232,6 +234,7 @@ class SantriController
                 ], 404);
             }
             $id = $resolvedId;
+            SantriDomisiliHelper::applyKategoriFromKamar($data, $this->db);
             // Simpan kamar hanya via id_kamar (daerah/kamar legacy tidak lagi diupdate)
             $fields = [
                 'nama', 'nik', 'tempat_lahir', 'tanggal_lahir', 'gender', 'ayah', 'ibu', 'no_telpon', 'no_wa_santri', 'dusun', 'rt', 'rw', 'desa', 'kecamatan', 'kode_pos', 'kabupaten', 'provinsi',
@@ -276,6 +279,7 @@ class SantriController
             $newKamar = array_key_exists('id_kamar', $data) ? ($data['id_kamar'] === '' || $data['id_kamar'] === null ? null : (int) $data['id_kamar']) : null;
             $needKamarRiwayat = $newKamar !== null && $newKamar != $oldKamar && $newKamar > 0;
 
+            $idPengurus = null;
             if ($needRiwayat || $needKamarRiwayat) {
                 $idPengurus = isset($data['id_pengurus']) && $data['id_pengurus'] !== '' && $data['id_pengurus'] !== null ? (int) $data['id_pengurus'] : null;
                 if (!$idPengurus) {
@@ -286,7 +290,6 @@ class SantriController
                     $user = $request->getAttribute('user');
                     $uid = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
                     if ($uid) {
-                        // Token pengurus bisa kirim user_id = pengurus.id (backward compat); cek dulu sebagai pengurus.id
                         $st = $this->db->prepare("SELECT id FROM pengurus WHERE id = ? LIMIT 1");
                         $st->execute([$uid]);
                         $row = $st->fetch(\PDO::FETCH_ASSOC);
@@ -299,10 +302,14 @@ class SantriController
                         }
                     }
                 }
-                if (!$idPengurus || $idPengurus <= 0) {
+                if ($idPengurus !== null && $idPengurus <= 0) {
+                    $idPengurus = null;
+                }
+                // Rombel: wajib ada pengurus; kamar saja boleh NULL (santri / daftar).
+                if ($needRiwayat && (!$idPengurus || $idPengurus <= 0)) {
                     return $this->jsonResponse($response, [
                         'success' => false,
-                        'message' => 'id_pengurus wajib diisi saat mengubah rombel diniyah/formal atau kamar (siapa yang melakukan perubahan)'
+                        'message' => 'id_pengurus wajib diisi saat mengubah rombel diniyah/formal (siapa yang melakukan perubahan). Sertakan di body atau login sebagai pengurus.'
                     ], 400);
                 }
             }
@@ -330,7 +337,8 @@ class SantriController
                 if ($needKamarRiwayat) {
                     $tahunKamar = isset($data['tahun_ajaran_kamar']) && trim((string) $data['tahun_ajaran_kamar']) !== '' ? trim((string) $data['tahun_ajaran_kamar']) : SantriRombelHelper::getDefaultTahunAjaran($this->db, 'hijriyah');
                     $statusSantri = array_key_exists('status_santri', $data) ? ($data['status_santri'] ?? $oldSantri['status_santri'] ?? null) : ($oldSantri['status_santri'] ?? null);
-                    $kategori = array_key_exists('kategori', $data) ? ($data['kategori'] ?? $oldSantri['kategori'] ?? null) : ($oldSantri['kategori'] ?? null);
+                    $kategori = SantriDomisiliHelper::kategoriForKamarId($this->db, $newKamar)
+                        ?? (array_key_exists('kategori', $data) ? ($data['kategori'] ?? $oldSantri['kategori'] ?? null) : ($oldSantri['kategori'] ?? null));
                     if ($tahunKamar) {
                         try {
                             SantriKamarHelper::appendKamarRiwayat($this->db, $id, $newKamar, $tahunKamar, $idPengurus, $statusSantri, $kategori);
@@ -407,7 +415,8 @@ class SantriController
                 rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,
                 rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal,
                 s.lttq, s.kelas_lttq, s.kel_lttq,
-                d.daerah, dk.kamar, s.id_kamar, s.status_santri, s.kategori, s.saudara_di_pesantren
+                d.daerah, dk.kamar, s.id_kamar, s.status_santri,
+                COALESCE(d.kategori, s.kategori) AS kategori, s.saudara_di_pesantren
                 FROM santri s
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal

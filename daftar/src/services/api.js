@@ -367,6 +367,24 @@ export const pendaftaranAPI = {
     return response.data
   },
   
+  /** Distinct kategori dari tabel daerah (dropdown biodata). */
+  getKategoriOptions: async () => {
+    const response = await api.get('/pendaftaran/kategori-options')
+    return response.data
+  },
+
+  /** Daerah aktif untuk kategori terpilih (kategori wajib; tanpa kategori = []). */
+  getDaerahOptions: async (kategori) => {
+    const params = kategori ? `?kategori=${encodeURIComponent(kategori)}` : ''
+    const response = await api.get(`/pendaftaran/daerah-options${params}`)
+    return response.data
+  },
+
+  getKamarOptions: async (idDaerah) => {
+    const response = await api.get(`/pendaftaran/kamar-options?id_daerah=${encodeURIComponent(idDaerah)}`)
+    return response.data
+  },
+
   getKondisiValues: async (idField = null, fieldName = null) => {
     const params = new URLSearchParams()
     if (idField) {
@@ -389,7 +407,7 @@ export const pendaftaranAPI = {
 
   /**
    * Item + harga sesuai kondisi (satu logika backend untuk daftar & uwaba).
-   * Body: { status_pendaftar?, daftar_formal?, daftar_diniyah?, status_murid?, status_santri?, gender?, gelombang? }
+   * Body: { status_pendaftar?, daftar_formal?, daftar_diniyah?, status_murid? (tidak mempengaruhi matching harga), status_santri?, gender?, gelombang? }
    * Returns: { success, data: { items: [{ id_item, nama_item, harga, kategori, urutan }], total_wajib, matching_set_ids } }
    */
   getItemsByKondisi: async (kondisi = {}) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { flushSync } from 'react-dom'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
@@ -38,6 +38,7 @@ import {
   mergeSantriSlice,
 } from '../utils/biodataFormFromApi'
 import { invalidateAfterBiodataSave } from '../utils/daftarPagesLocalCache'
+import { shouldShowStatusMuridForFormal } from './PilihanStatusMurid'
 
 const NOMOR_DAFTAR_NOTIF = '6285123123399'
 
@@ -182,6 +183,8 @@ function Biodata() {
 
     // Kategori & Pendidikan
     kategori: '',
+    id_daerah: '',
+    id_kamar: '',
     daerah: '',
     kamar: '',
     diniyah: '',
@@ -224,6 +227,9 @@ function Biodata() {
   const waCheck = useWhatsAppCheck(showNotification)
   // Daftar kondisi: dari API (semua field yang punya value di DB), di-filter ke field yang disimpan di registrasi
   const [kondisiFields, setKondisiFields] = useState([]) // [{ field_name, field_label, values: [{ value, label }] }, ...]
+  const [kategoriOptionsFromApi, setKategoriOptionsFromApi] = useState([])
+  const [daerahOptions, setDaerahOptions] = useState([])
+  const [kamarOptions, setKamarOptions] = useState([])
 
   const formRef = useRef(null)
   /** Meta sinkron server: id_santri, id_registrasi, nis, tanggal_update_*, nik_snapshot */
@@ -318,15 +324,79 @@ function Biodata() {
     return `${baseClass} text-gray-500 dark:text-gray-400`
   }
 
-  // Update kategori options berdasarkan status santri
-  const getKategoriOptions = (status) => {
+  // Opsi kategori yang valid menurut status santri (disilangkan dengan daftar dari API).
+  const getKategoriOptions = useCallback((status) => {
     if (status === 'Khoriji') {
       return ['PAUD', 'SD', 'Banin', 'Banat', 'Kuliah']
-    } else if (status) {
+    }
+    if (status) {
       return ['Banin', 'Banat']
     }
     return []
-  }
+  }, [])
+
+  const kategoriSelectOptions = useMemo(() => {
+    const allowed = getKategoriOptions(formData.status_santri)
+    if (!allowed.length) return []
+    return kategoriOptionsFromApi.filter((k) => allowed.includes(k))
+  }, [formData.status_santri, kategoriOptionsFromApi, getKategoriOptions])
+
+  useEffect(() => {
+    let cancelled = false
+    pendaftaranAPI
+      .getKategoriOptions()
+      .then((res) => {
+        if (cancelled) return
+        if (res?.success && Array.isArray(res.data)) setKategoriOptionsFromApi(res.data)
+      })
+      .catch(() => {
+        if (!cancelled) setKategoriOptionsFromApi([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!formData.kategori) {
+      setDaerahOptions([])
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI
+      .getDaerahOptions(formData.kategori)
+      .then((res) => {
+        if (cancelled) return
+        setDaerahOptions(res?.success && Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setDaerahOptions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [formData.kategori])
+
+  useEffect(() => {
+    const idDaerah = formData.id_daerah
+    if (!idDaerah) {
+      setKamarOptions([])
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI
+      .getKamarOptions(idDaerah)
+      .then((res) => {
+        if (cancelled) return
+        setKamarOptions(res?.success && Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setKamarOptions([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [formData.id_daerah])
 
   // Santri tanpa id server: tidak ada fetch biodata — form langsung "siap", Simpan mengikuti hasChanges saja.
   useEffect(() => {
@@ -397,7 +467,22 @@ function Biodata() {
           }
         }
         // Hanya tampilkan field yang ada di registrasi (supaya bisa disimpan)
-        const allowed = ordered.filter(f => REGISTRASI_CONDITION_FIELDS.includes(f.field_name))
+        let allowed = ordered.filter(f => REGISTRASI_CONDITION_FIELDS.includes(f.field_name))
+        // Status murid tetap ditampilkan di biodata meski tidak ada baris di API kondisi
+        const muridOrder = REGISTRASI_CONDITION_FIELDS.indexOf('status_murid')
+        if (muridOrder >= 0 && !allowed.some((f) => f.field_name === 'status_murid')) {
+          const insertAt = allowed.findIndex((f) => {
+            const i = REGISTRASI_CONDITION_FIELDS.indexOf(f.field_name)
+            return i > muridOrder
+          })
+          const synthetic = {
+            field_name: 'status_murid',
+            field_label: 'Status Murid',
+            values: [],
+          }
+          if (insertAt === -1) allowed.push(synthetic)
+          else allowed.splice(insertAt, 0, synthetic)
+        }
         setKondisiFields(allowed)
       } catch (error) {
         console.warn('Error loading kondisi fields:', error)
@@ -717,11 +802,15 @@ function Biodata() {
               const kategoriOptions = getKategoriOptions(updated.status_santri)
               if (kategoriOptions.includes('Banin')) {
                 updated.kategori = 'Banin'
+                updated.id_daerah = ''
+                updated.id_kamar = ''
               }
             } else if (gender === 'Perempuan') {
               const kategoriOptions = getKategoriOptions(updated.status_santri)
               if (kategoriOptions.includes('Banat')) {
                 updated.kategori = 'Banat'
+                updated.id_daerah = ''
+                updated.id_kamar = ''
               }
             }
           }
@@ -826,14 +915,38 @@ function Biodata() {
           const kategoriOptions = getKategoriOptions(updated.status_santri)
           if (kategoriOptions.includes('Banin')) {
             updated.kategori = 'Banin'
+            updated.id_daerah = ''
+            updated.id_kamar = ''
           }
         } else if (value === 'Perempuan') {
           // Cek apakah kategori "Banat" valid berdasarkan status_santri
           const kategoriOptions = getKategoriOptions(updated.status_santri)
           if (kategoriOptions.includes('Banat')) {
             updated.kategori = 'Banat'
+            updated.id_daerah = ''
+            updated.id_kamar = ''
           }
         }
+      }
+
+      if (field === 'status_santri') {
+        if (value !== 'Mukim') {
+          updated.id_daerah = ''
+          updated.id_kamar = ''
+        }
+        const opts = getKategoriOptions(value)
+        if (updated.kategori && !opts.includes(updated.kategori)) {
+          updated.kategori = ''
+          updated.id_daerah = ''
+          updated.id_kamar = ''
+        }
+      }
+      if (field === 'kategori') {
+        updated.id_daerah = ''
+        updated.id_kamar = ''
+      }
+      if (field === 'id_daerah') {
+        updated.id_kamar = ''
       }
 
       return updated
@@ -901,9 +1014,7 @@ function Biodata() {
     if (!formData.daftar_diniyah || formData.daftar_diniyah.trim() === '') {
       missing.push({ field: 'daftar_diniyah', label: 'Daftar Diniyah' })
     }
-    // Status Murid wajib diisi jika Daftar Formal SMP, MTs, SMAI, atau STAI
-    const formalPerluStatusMurid = ['SMP', 'MTs', 'SMAI', 'STAI']
-    if (formalPerluStatusMurid.includes(formData.daftar_formal)) {
+    if (shouldShowStatusMuridForFormal(formData.daftar_formal)) {
       if (!formData.status_murid || formData.status_murid.trim() === '') {
         missing.push({ field: 'status_murid', label: 'Status Murid' })
       }
@@ -964,6 +1075,11 @@ function Biodata() {
       const santriIdForSave = user?.id != null && user?.id !== '' ? String(user.id) : null
       // Field psb___registrasi: pakai ?? '' agar kunci selalu ada di JSON (JSON.stringify membuang undefined).
       // Tanpa ini backend anggap kunci hilang dan mempertahankan nilai lama — atau meng-null kolom lain (prodi/gelombang).
+      const idKamarNum =
+        formData.id_kamar !== '' && formData.id_kamar != null && !Number.isNaN(Number(formData.id_kamar))
+          ? Number(formData.id_kamar)
+          : null
+
       const biodataPayload = {
         ...formData,
         email: emailToSave, // Gunakan email yang diisi atau default
@@ -980,6 +1096,8 @@ function Biodata() {
         prodi: formData.prodi ?? '',
         gelombang: formData.gelombang ?? '',
         status_santri: formData.status_santri ?? '',
+        kategori: formData.kategori ?? '',
+        id_kamar: idKamarNum,
         id_registrasi: user?.id_registrasi != null && user.id_registrasi !== ''
           ? String(user.id_registrasi)
           : ''
@@ -1398,6 +1516,9 @@ function Biodata() {
               onBlur={() => setFocusedField(null)}
               getLabelClassName={getLabelClassName}
               kondisiFields={kondisiFields}
+              kategoriSelectOptions={kategoriSelectOptions}
+              daerahOptions={daerahOptions}
+              kamarOptions={kamarOptions}
             />
           </form>
         )}
