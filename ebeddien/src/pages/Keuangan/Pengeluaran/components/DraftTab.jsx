@@ -10,7 +10,6 @@ function DraftTab({
   setDraftPage,
   itemsPerPage,
   setItemsPerPage,
-  onDraftClick,
   canEditDraft = true,
   canDeleteDraft = false,
   onDeleteDraft = null
@@ -43,11 +42,7 @@ function DraftTab({
                 className={`${getBackgroundColor()} rounded-lg shadow-md p-3 sm:p-4 border`}
               >
                 <div className="flex items-stretch justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => onDraftClick(draft)}
-                    className="flex-1 min-w-0 text-left cursor-pointer hover:opacity-90 transition-opacity"
-                  >
+                  <div className="flex-1 min-w-0 text-left">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="text-sm sm:text-base font-semibold text-gray-700 dark:text-gray-300 truncate">
                         {draft.keterangan || 'Tanpa Keterangan'}
@@ -80,7 +75,7 @@ function DraftTab({
                         </span>
                       </div>
                     )}
-                  </button>
+                  </div>
                   <div className="flex flex-col items-end justify-between gap-2 flex-shrink-0">
                     <div className="text-right">
                       <p className="text-base sm:text-lg font-bold text-gray-600 dark:text-gray-400 whitespace-nowrap">

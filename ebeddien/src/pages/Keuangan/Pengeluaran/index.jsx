@@ -28,7 +28,7 @@ function Pengeluaran() {
   const { user } = useAuthStore()
   const { showNotification } = useNotification()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const pengeluaranFitur = usePengeluaranFiturAccess()
   const [lembagaRows, setLembagaRows] = useState([])
 
@@ -198,9 +198,9 @@ function Pengeluaran() {
   const pengeluaranDetailHook = usePengeluaranDetail()
   
   // Use custom hooks for admin list management
-  const confirmAdminList = useAdminList(true) // Hanya super admin dan admin uwaba untuk approve/reject rencana pengeluaran
-  const rencanaAdminList = useAdminList(true) // Hanya super admin dan admin uwaba untuk rencana pengeluaran
-  const pengeluaranAdminList = useAdminList(true) // Hanya super admin dan admin uwaba (endpoint list-super-admin-uwaba; getAll hanya super_admin)
+  const confirmAdminList = useAdminList(true) // Daftar penerima WA (aksi fitur notif + lembaga_id)
+  const rencanaAdminList = useAdminList(true)
+  const pengeluaranAdminList = useAdminList(true)
   
   const closePengeluaranDetailOffcanvas = useOffcanvasBackClose(pengeluaranDetailHook.showPengeluaranOffcanvas, () => {
     const pengeluaranId = searchParams.get('pengeluaran')
@@ -256,9 +256,9 @@ function Pengeluaran() {
   // Combine loading states
   const isLoading = rencanaModals.loading || rencanaLoading || pengeluaranLoading || draftLoading
   
-  // Handle tab change from URL query param (hanya tab yang diizinkan fitur)
+  // Sinkron tab dari URL hanya saat query `tab` berubah — jangan pakai seluruh searchParams
+  // (jika tidak, setiap tambah `rencana`/`pengeluaran` memicu ulang dan mengembalikan tab dari URL lama, mis. draft).
   useEffect(() => {
-    const tabFromUrl = searchParams.get('tab')
     const allowedUrl = {
       rencana: pengeluaranFitur.tabRencana,
       pengeluaran: pengeluaranFitur.tabPengeluaran,
@@ -271,17 +271,39 @@ function Pengeluaran() {
       }
     }
   }, [
-    searchParams,
+    tabFromUrl,
     loadAllDraft,
     pengeluaranFitur.tabRencana,
     pengeluaranFitur.tabPengeluaran,
     pengeluaranFitur.tabDraft
   ])
-  
-  // Handler untuk draft click (sama seperti rencana)
-  const handleDraftClick = async (draft) => {
-    await rencanaDetailHook.handleRencanaClick(draft, false, rencanaAdminList.loadAdmins)
-  }
+
+  /** Klik tab navigasi: samakan state dengan query `tab` di URL (hindari URL masih draft saat user sudah pindah ke Rencana). */
+  const goToTab = useCallback(
+    (tab) => {
+      const allowed = {
+        rencana: pengeluaranFitur.tabRencana,
+        pengeluaran: pengeluaranFitur.tabPengeluaran,
+        draft: pengeluaranFitur.tabDraft
+      }
+      if (!allowed[tab]) return
+      setActiveTab(tab)
+      const next = new URLSearchParams(searchParams)
+      next.set('tab', tab)
+      setSearchParams(next, { replace: true })
+      if (tab === 'draft') {
+        loadAllDraft()
+      }
+    },
+    [
+      searchParams,
+      setSearchParams,
+      pengeluaranFitur.tabRencana,
+      pengeluaranFitur.tabPengeluaran,
+      pengeluaranFitur.tabDraft,
+      loadAllDraft
+    ]
+  )
   
   // Handler untuk draft search input
   const handleDraftSearchInputChange = (e) => {
@@ -307,6 +329,15 @@ function Pengeluaran() {
   useEffect(() => {
     const rencanaId = searchParams.get('rencana')
     const pengeluaranId = searchParams.get('pengeluaran')
+    const tabFromUrl = searchParams.get('tab')
+
+    // Tab draft: jangan buka offcanvas detail rencana (bukan untuk approve/tolak); bersihkan query rencana dari notif/link lama
+    if (tabFromUrl === 'draft' && rencanaId) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('rencana')
+      setSearchParams(next, { replace: true })
+      return
+    }
 
     // Skip if we've already processed this ID
     if (rencanaId && processedRencanaIdRef.current === rencanaId && rencanaDetailHook.showRencanaOffcanvas) {
@@ -390,7 +421,7 @@ function Pengeluaran() {
       processedRencanaIdRef.current = null
       processedPengeluaranIdRef.current = null
     }
-  }, [searchParams, allRencana, allPengeluaran])
+  }, [searchParams, setSearchParams, allRencana, allPengeluaran])
 
   // Handle browser back button - tutup offcanvas jika query param dihapus
   useEffect(() => {
@@ -411,13 +442,15 @@ function Pengeluaran() {
   }, [searchParams, rencanaDetailHook, pengeluaranDetailHook])
 
   const handleApprove = (id) => {
+    const r = allRencana.find((x) => x.id === id || String(x.id) === String(id))
     rencanaModals.openConfirmModal('approve', id)
-    confirmAdminList.loadAdmins()
+    confirmAdminList.loadAdmins(r?.lembaga ?? null)
   }
 
   const handleReject = (id) => {
+    const r = allRencana.find((x) => x.id === id || String(x.id) === String(id))
     rencanaModals.openConfirmModal('reject', id)
-    confirmAdminList.loadAdmins()
+    confirmAdminList.loadAdmins(r?.lembaga ?? null)
   }
 
   // Generate preview pesan untuk modal konfirmasi
@@ -450,13 +483,15 @@ function Pengeluaran() {
   const handleRencanaApprove = () => {
     if (!rencanaDetailHook.selectedRencana) return
     rencanaModals.openConfirmModal('approve', rencanaDetailHook.selectedRencana.id)
-    confirmAdminList.loadAdmins()
+    const lem = rencanaDetailHook.rencanaDetail?.lembaga ?? rencanaDetailHook.selectedRencana?.lembaga ?? null
+    confirmAdminList.loadAdmins(lem)
   }
 
   const handleRencanaReject = () => {
     if (!rencanaDetailHook.selectedRencana) return
     rencanaModals.openConfirmModal('reject', rencanaDetailHook.selectedRencana.id)
-    confirmAdminList.loadAdmins()
+    const lem = rencanaDetailHook.rencanaDetail?.lembaga ?? rencanaDetailHook.selectedRencana?.lembaga ?? null
+    confirmAdminList.loadAdmins(lem)
   }
 
   const handleViewDetail = async (id) => {
@@ -501,7 +536,9 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         [{ id: admin.id, whatsapp: admin.whatsapp }]
       )
       if (result.success) {
-        showNotification(result.message || 'Pesan WhatsApp berhasil dikirim!', 'success')
+        if (!result.data?.queued) {
+          showNotification(result.message || 'Pesan WhatsApp berhasil dikirim!', 'success')
+        }
       } else {
         showNotification(result.message || 'Gagal mengirim pesan', 'error')
       }
@@ -553,7 +590,9 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         adminsWithWhatsapp.map(a => ({ id: a.id, whatsapp: a.whatsapp }))
       )
       if (result.success) {
-        showNotification(result.message || `Pesan berhasil dikirim ke ${result.data?.success_count ?? 0} admin`, 'success')
+        if (!result.data?.queued) {
+          showNotification(result.message || `Pesan berhasil dikirim ke ${result.data?.success_count ?? 0} admin`, 'success')
+        }
       } else {
         showNotification(result.message || 'Gagal mengirim pesan', 'error')
       }
@@ -592,7 +631,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                   {pengeluaranFitur.tabRencana && (
                     <button
                       type="button"
-                      onClick={() => setActiveTab('rencana')}
+                      onClick={() => goToTab('rencana')}
                       className={`flex-1 min-w-0 max-w-full px-2 sm:px-4 py-2.5 sm:py-3 text-center text-xs sm:text-sm font-medium border-b-2 transition-colors truncate ${
                         activeTab === 'rencana'
                           ? 'border-teal-500 text-teal-600 dark:text-teal-400'
@@ -605,7 +644,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                   {pengeluaranFitur.tabPengeluaran && (
                     <button
                       type="button"
-                      onClick={() => setActiveTab('pengeluaran')}
+                      onClick={() => goToTab('pengeluaran')}
                       className={`flex-1 min-w-0 max-w-full px-2 sm:px-4 py-2.5 sm:py-3 text-center text-xs sm:text-sm font-medium border-b-2 transition-colors truncate ${
                         activeTab === 'pengeluaran'
                           ? 'border-teal-500 text-teal-600 dark:text-teal-400'
@@ -618,7 +657,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                   {pengeluaranFitur.tabDraft && (
                     <button
                       type="button"
-                      onClick={() => setActiveTab('draft')}
+                      onClick={() => goToTab('draft')}
                       className={`flex-1 min-w-0 max-w-full px-2 sm:px-4 py-2.5 sm:py-3 text-center text-xs sm:text-sm font-medium border-b-2 transition-colors truncate ${
                         activeTab === 'draft'
                           ? 'border-teal-500 text-teal-600 dark:text-teal-400'
@@ -892,7 +931,6 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                   setDraftPage={setDraftPage}
                   itemsPerPage={itemsPerPage}
                   setItemsPerPage={setItemsPerPage}
-                  onDraftClick={handleDraftClick}
                   canEditDraft={pengeluaranFitur.draftEdit}
                   canDeleteDraft={pengeluaranFitur.draftHapus}
                   onDeleteDraft={handleDeleteDraft}
@@ -1120,6 +1158,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         activeTab="masehi"
         canEditPengeluaran={pengeluaranFitur.itemEdit}
         canDeletePengeluaran={pengeluaranFitur.itemHapus}
+        canUbahPenerimaUang={pengeluaranFitur.pengeluaranUbahPenerimaUang}
       />
 
       {/* Detail Offcanvas - Rencana */}
@@ -1143,6 +1182,8 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         onEdit={(id) => rencanaActions.handleEdit(id ?? rencanaDetailHook.selectedRencana?.id)}
         onApprove={handleRencanaApprove}
         onReject={handleRencanaReject}
+        canHapusKomentar={pengeluaranFitur.rencanaHapusKomentar}
+        canKelolaPenerimaNotifWa={pengeluaranFitur.rencanaKelolaPenerimaNotif}
         listAdmins={rencanaAdminList.listAdmins}
         selectedAdmins={rencanaAdminList.selectedAdmins}
         onToggleAdmin={rencanaAdminList.toggleAdmin}
@@ -1162,7 +1203,7 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
               action = 'pending'
             }
             
-            await sendRencanaNotifications(rencanaDetailHook.rencanaDetail, action, rencanaAdminList.selectedAdmins, rencanaAdminList.listAdmins)
+            sendRencanaNotifications(rencanaDetailHook.rencanaDetail, action, rencanaAdminList.selectedAdmins, rencanaAdminList.listAdmins)
           }
         }}
       />
@@ -1247,49 +1288,55 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
             <>
               {/* List Admin untuk Notifikasi - Dipindah ke atas */}
               <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-                Kirim Notifikasi ke Admin
-              </h3>
-            </div>
-            
-            {confirmAdminList.loading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-              </div>
-            ) : confirmAdminList.listAdmins.length > 0 ? (
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {confirmAdminList.listAdmins.map((admin) => (
-                    <div
-                      key={admin.id}
-                      className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={confirmAdminList.selectedAdmins.includes(admin.id)}
-                        onChange={() => confirmAdminList.toggleAdmin(admin.id)}
-                        className="w-4 h-4 text-teal-600 border-gray-300 dark:border-gray-600 rounded focus:ring-teal-500 dark:bg-gray-700"
-                      />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                          {admin.nama || 'Unknown'}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {admin.whatsapp}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                    Kirim Notifikasi ke Admin
+                  </h3>
                 </div>
-              </div>
-            ) : (
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Tidak ada admin tersedia
-                </p>
-              </div>
-              )}
+                {!pengeluaranFitur.rencanaKelolaPenerimaNotif && (
+                  <p className="text-xs text-amber-800 dark:text-amber-200/90 bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
+                    Anda tidak memiliki akses mengubah daftar penerima WA. Notifikasi akan dikirim ke semua admin yang memenuhi syarat bawaan.
+                  </p>
+                )}
+                {confirmAdminList.loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                  </div>
+                ) : confirmAdminList.listAdmins.length > 0 ? (
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {confirmAdminList.listAdmins.map((admin) => (
+                        <div
+                          key={admin.id}
+                          className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          {pengeluaranFitur.rencanaKelolaPenerimaNotif ? (
+                            <input
+                              type="checkbox"
+                              checked={confirmAdminList.selectedAdmins.includes(admin.id)}
+                              onChange={() => confirmAdminList.toggleAdmin(admin.id)}
+                              className="w-4 h-4 text-teal-600 border-gray-300 dark:border-gray-600 rounded focus:ring-teal-500 dark:bg-gray-700"
+                            />
+                          ) : null}
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                              {admin.nama || 'Unknown'}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {admin.whatsapp}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Tidak ada admin tersedia
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Preview Pesan dengan Accordion - Dipindah ke atas */}
@@ -1465,6 +1512,11 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
                           Pilih Admin untuk Dikirimi Notifikasi:
                         </h3>
+                        {!pengeluaranFitur.rencanaKelolaPenerimaNotif && (
+                          <p className="text-xs text-amber-800 dark:text-amber-200/90 bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
+                            Anda tidak memiliki akses mengubah daftar penerima WA. Notifikasi akan dikirim ke semua admin yang memenuhi syarat bawaan.
+                          </p>
+                        )}
                         {rencanaAdminList.loading ? (
                           <div className="flex items-center justify-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
@@ -1481,13 +1533,15 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                                       : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
                                   }`}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={rencanaAdminList.selectedAdmins.includes(admin.id)}
-                                    onChange={() => rencanaAdminList.toggleAdmin(admin.id)}
-                                    disabled={!admin.whatsapp}
-                                    className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 disabled:opacity-50"
-                                  />
+                                  {pengeluaranFitur.rencanaKelolaPenerimaNotif ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={rencanaAdminList.selectedAdmins.includes(admin.id)}
+                                      onChange={() => rencanaAdminList.toggleAdmin(admin.id)}
+                                      disabled={!admin.whatsapp}
+                                      className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 disabled:opacity-50"
+                                    />
+                                  ) : null}
                                   <div className="flex-1">
                                     <p className={`text-sm font-medium ${
                                       rencanaAdminList.selectedAdmins.includes(admin.id)

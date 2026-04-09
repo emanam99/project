@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { aktivitasAPI, pemasukanAPI, pengeluaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
+import { usePengeluaranFiturAccess } from '../../../hooks/usePengeluaranFiturAccess'
 import DetailOffcanvas from '../../../components/DetailOffcanvas/DetailOffcanvas'
 import PrintLaporanAktivitasOffcanvas from './components/PrintLaporanAktivitasOffcanvas'
 
 function Aktivitas() {
   const { showNotification } = useNotification()
+  const pengeluaranFitur = usePengeluaranFiturAccess()
   const [loading, setLoading] = useState(false)
   const [aktivitas, setAktivitas] = useState([])
   const [saldo, setSaldo] = useState({
@@ -888,6 +890,8 @@ function Aktivitas() {
           formatDate={formatDateShort}
           formatHijriyahDate={formatHijriyahDate}
           activeTab={activeTab}
+          canUbahPenerimaUang={pengeluaranFitur.pengeluaranUbahPenerimaUang}
+          canHapusKomentar={pengeluaranFitur.rencanaHapusKomentar}
         />
 
         {/* Print Laporan Aktivitas Bulanan - Offcanvas bawah */}

@@ -4,7 +4,16 @@ import { useAuthStore } from '../../store/authStore'
 import { useRef, useEffect, useState, useMemo } from 'react'
 import { getNavFavorites, getNavFavoritesSyncId, setNavFavorites, toggleNavFavorite } from '../../utils/navFavorites'
 import api, { authAPI } from '../../services/api'
-import { userHasSuperAdminAccess, userHasAnyAdminCap, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
+import {
+  userHasSuperAdminAccess,
+  userHasAnyAdminCap,
+  userMatchesAllowedRolesOrPermissions,
+  userHasUwabaPaymentNavAccess,
+  userHasPsbNavAccess,
+  userHasUmrohNavAccess,
+  userHasIjinNavAccess,
+  userHasIjinBoyongNavAccess
+} from '../../utils/roleAccess'
 import { buildUnifiedExpandedMenuFromFitur } from '../../utils/sidebarNavFromFiturApi'
 
 const navItems = [
@@ -126,14 +135,14 @@ function Navigation() {
     return user.permissions.includes(permission)
   }
   
-  // Gabungan all_roles + role_key utama + normalisasi spasi → underscore (aman untuk multi_role)
-  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
-  
-  // Tentukan role utama user dengan prioritas: UWABA > PSB > Umroh > Ijin
-  const hasUwabaRole = hasRole(['admin_uwaba', 'petugas_uwaba', 'super_admin'])
-  const hasPsbRole = hasRole(['admin_psb', 'petugas_psb', 'super_admin'])
-  const hasUmrohRole = hasRole(['petugas_umroh', 'super_admin'])
-  const hasIjinRole = hasRole(['admin_ijin', 'petugas_ijin', 'super_admin'])
+  // Role + permission JWT (manage_*) — selaras RoleRoute / backend
+  const hasRole = (roles) => userMatchesAllowedRolesOrPermissions(user, roles)
+
+  // Tentukan cabang nav dengan prioritas: UWABA > PSB > Umroh > Ijin
+  const hasUwabaRole = userHasUwabaPaymentNavAccess(user)
+  const hasPsbRole = userHasPsbNavAccess(user)
+  const hasUmrohRole = userHasUmrohNavAccess(user)
+  const hasIjinRole = userHasIjinNavAccess(user)
   
   // Grup My Workspace (Beranda + Profil) — ditampilkan untuk semua user di nav bawah
   const profilGroupItems = [
@@ -174,7 +183,7 @@ function Navigation() {
         { path: '/ijin/data-ijin', label: 'Data Ijin', icon: 'ijin' },
         null
       ]
-      if (hasRole(['admin_ijin', 'super_admin'])) {
+      if (userHasIjinBoyongNavAccess(user)) {
         items.splice(2, 0, { path: '/ijin/data-boyong', label: 'Data Boyong', icon: 'boyong' })
       }
       roleItems = items

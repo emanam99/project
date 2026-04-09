@@ -21,6 +21,15 @@ class iPaymuService
     private $apiBaseUrl;
 
     /**
+     * Verbose log dimatikan default agar error.log tidak penuh.
+     * Aktifkan hanya saat investigasi gateway: IPAYMU_VERBOSE_LOG=true
+     */
+    private function isVerboseLogEnabled(): bool
+    {
+        return filter_var((string)(getenv('IPAYMU_VERBOSE_LOG') ?: 'false'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
      * @param array|null $configOverride Jika diberikan, pakai config ini (untuk force production/sandbox). Jika null, pakai konfigurasi aktif dari DB.
      */
     public function __construct(?array $configOverride = null)
@@ -133,7 +142,7 @@ class iPaymuService
                 $expectedSandboxApiKey = 'SANDBOX4DAB4D9D-CDC3-4E17-AA87-6FECF01E5C13';
                 $expectedSandboxVA = '0000002232999921';
                 
-                if ($this->apiKey !== $expectedSandboxApiKey || $va !== $expectedSandboxVA) {
+                if (($this->apiKey !== $expectedSandboxApiKey || $va !== $expectedSandboxVA) && $this->isVerboseLogEnabled()) {
                     error_log("WARNING: API Key atau VA tidak sesuai dengan sandbox default!");
                     error_log("Current API Key: " . substr($this->apiKey, 0, 20) . "...");
                     error_log("Current VA: {$va}");
@@ -143,7 +152,7 @@ class iPaymuService
             }
             
             // Log request detail untuk debugging (hanya di sandbox mode)
-            if (!($this->config['production_mode'] ?? false)) {
+            if (!($this->config['production_mode'] ?? false) && $this->isVerboseLogEnabled()) {
                 error_log("=== iPaymuService::makeRequest DEBUG ===");
                 error_log("URL: {$url}");
                 error_log("Method: {$method}");
@@ -271,7 +280,7 @@ class iPaymuService
         $signature = hash_hmac('sha256', $stringToSign, $apiKey);
         
         // Log untuk debugging (hanya di sandbox mode)
-        if (!($this->config['production_mode'] ?? false)) {
+        if (!($this->config['production_mode'] ?? false) && $this->isVerboseLogEnabled()) {
             error_log("=== iPaymuService::generateSignatureFromJson DEBUG ===");
             error_log("Method: {$method}");
             error_log("VA: '{$va}' (length: " . strlen($va) . ")");
@@ -408,6 +417,7 @@ class iPaymuService
         // Prepare data sesuai format iPaymu API v2
         // Pastikan semua field yang wajib terisi
         $amount = (float)($paymentData['amount'] ?? 0);
+        // Tidak memaksa minimal Rp 100.000 di sini — nominal kecil (sisa tagihan PAUD/dll.) diteruskan ke API iPayMu.
         if ($amount <= 0) {
             return [
                 'success' => false,
@@ -668,7 +678,7 @@ class iPaymuService
         ksort($requestData, SORT_STRING);
         
         // Log untuk debugging (hanya di sandbox mode)
-        if (!($this->config['production_mode'] ?? false)) {
+        if (!($this->config['production_mode'] ?? false) && $this->isVerboseLogEnabled()) {
             error_log("=== iPaymuService::createPayment DEBUG ===");
             error_log("Payment Method: {$paymentMethod}");
             error_log("Payment Channel Input: " . ($paymentChannel ?: '(kosong)'));

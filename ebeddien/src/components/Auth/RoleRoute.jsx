@@ -1,7 +1,12 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useEffect, useState } from 'react'
-import { getUserRoleKeysLower, userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../utils/roleAccess'
+import {
+  userMatchesAllowedRolesOrPermissions,
+  userHasSuperAdminAccess,
+  userHasPsbNavAccess,
+  userHasUwabaPaymentNavAccess
+} from '../../utils/roleAccess'
 
 /**
  * RoleRoute - Route guard yang memastikan user memiliki salah satu role yang diizinkan
@@ -41,19 +46,16 @@ function RoleRoute({ allowedRoles = [], allowIfRealSuperAdmin = false, children 
 
   const isSuperAdminUser = userHasSuperAdminAccess(user)
   const hasAllowedRole =
-    userMatchesAnyAllowedRole(user, allowedRoles) || (allowIfRealSuperAdmin && isSuperAdminUser)
+    userMatchesAllowedRolesOrPermissions(user, allowedRoles) ||
+    (allowIfRealSuperAdmin && isSuperAdminUser)
 
   // Check if user has one of the allowed roles
   if (!user || !hasAllowedRole) {
-    const keys = getUserRoleKeysLower(user)
-    const hasAny = (candidates) => candidates.some((r) => keys.includes(r))
-    if (keys.length > 0 && allowedRoles.length > 0) {
-      if (hasAny(['admin_psb', 'petugas_psb', 'super_admin'])) {
-        return <Navigate to="/pendaftaran" replace />
-      }
-      if (hasAny(['petugas_uwaba', 'admin_uwaba', 'super_admin'])) {
-        return <Navigate to="/uwaba" replace />
-      }
+    if (userHasPsbNavAccess(user)) {
+      return <Navigate to="/pendaftaran" replace />
+    }
+    if (userHasUwabaPaymentNavAccess(user)) {
+      return <Navigate to="/uwaba" replace />
     }
 
     return <Navigate to="/profil" replace />

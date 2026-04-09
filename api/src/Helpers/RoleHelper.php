@@ -12,6 +12,13 @@ use App\Config\RolePolicyResolver;
 class RoleHelper
 {
     private static $db = null;
+    /** @var ?list<string> */
+    private static ?array $staffRoleKeysCache = null;
+
+    private static function isVerboseRoleLogEnabled(): bool
+    {
+        return filter_var((string) (getenv('API_VERBOSE_ROLE_LOG') ?: 'false'), FILTER_VALIDATE_BOOLEAN);
+    }
 
     /**
      * Gabungan scope lembaga (semua role setara; ambil yang paling luas).
@@ -162,13 +169,45 @@ class RoleHelper
         return false;
     }
 
-    /** Role pengurus/staff (bukan konteks hanya-santri di app daftar). */
-    private const TOKEN_STAFF_ROLE_KEYS = [
-        'super_admin', 'admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'admin_psb', 'petugas_psb',
-        'admin_ijin', 'petugas_ijin', 'admin_umroh', 'petugas_umroh', 'admin_ugt', 'koordinator_ugt',
-        'admin_kalender', 'tarbiyah', 'wali_kelas', 'guru', 'waka_lembaga', 'ketua_lembaga',
-        'admin_cashless', 'petugas_cashless', 'petugas_keuangan', 'toko',
-    ];
+    /** @return list<string> */
+    private static function getTokenStaffRoleKeys(): array
+    {
+        if (self::$staffRoleKeysCache !== null) {
+            return self::$staffRoleKeysCache;
+        }
+        // Fallback aman jika query gagal / tabel role kosong.
+        $fallback = [
+            'super_admin', 'admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'admin_psb', 'petugas_psb',
+            'admin_ijin', 'petugas_ijin', 'admin_umroh', 'petugas_umroh', 'admin_ugt', 'koordinator_ugt',
+            'admin_kalender', 'tarbiyah', 'wali_kelas', 'guru', 'waka_lembaga', 'ketua_lembaga',
+            'admin_cashless', 'petugas_cashless', 'petugas_keuangan', 'toko',
+        ];
+        try {
+            $db = self::getDb();
+            $rows = $db->query('SELECT `key` FROM `role` ORDER BY `key` ASC')->fetchAll(\PDO::FETCH_ASSOC);
+            $keys = [];
+            foreach ($rows as $row) {
+                $k = str_replace(' ', '_', strtolower(trim((string) ($row['key'] ?? ''))));
+                if ($k === '' || in_array($k, ['santri', 'wali_santri', 'user_umroh'], true)) {
+                    continue;
+                }
+                $keys[$k] = true;
+            }
+            // Role token non-pengurus (cashless lama).
+            $keys['toko'] = true;
+            if ($keys !== []) {
+                self::$staffRoleKeysCache = array_keys($keys);
+                sort(self::$staffRoleKeysCache);
+
+                return self::$staffRoleKeysCache;
+            }
+        } catch (\Throwable $e) {
+            error_log('RoleHelper::getTokenStaffRoleKeys ' . $e->getMessage());
+        }
+        self::$staffRoleKeysCache = $fallback;
+
+        return self::$staffRoleKeysCache;
+    }
 
     /**
      * True jika token layaknya login aplikasi daftar (santri): user_id bukan pengurus.id.
@@ -177,8 +216,9 @@ class RoleHelper
     public static function tokenIsSantriDaftarContext(array $user): bool
     {
         $union = self::normalizeTokenRoleKeysUnion($user);
+        $staffKeys = self::getTokenStaffRoleKeys();
         foreach ($union as $k) {
-            if (in_array($k, self::TOKEN_STAFF_ROLE_KEYS, true)) {
+            if (in_array($k, $staffKeys, true)) {
                 return false;
             }
         }
@@ -464,7 +504,9 @@ class RoleHelper
     {
         $all = self::getUserRoles($pengurusId);
         if ($all === []) {
-            error_log("RoleHelper: Tidak ada role ditemukan untuk pengurus_id: $pengurusId");
+            if (self::isVerboseRoleLogEnabled()) {
+                error_log("RoleHelper: Tidak ada role ditemukan untuk pengurus_id: $pengurusId");
+            }
             return null;
         }
         usort($all, function (array $a, array $b): int {
@@ -472,7 +514,9 @@ class RoleHelper
         });
         $result = $all[0];
         $roleKey = trim(strtolower((string)($result['role_key'] ?? '')));
-        error_log("RoleHelper::getUserRole - First alphabetical role for pengurus_id $pengurusId: role_key='$roleKey'");
+        if (self::isVerboseRoleLogEnabled()) {
+            error_log("RoleHelper::getUserRole - First alphabetical role for pengurus_id $pengurusId: role_key='$roleKey'");
+        }
         if ($roleKey === '') {
             error_log("RoleHelper::getUserRole - WARNING: role_key is empty after normalization for user ID: $pengurusId");
         }
@@ -629,7 +673,9 @@ class RoleHelper
             $lembagaIdSingle = $lembagaIds[0];
         }
 
-        error_log('RoleHelper::getRoleInfoForToken - pengurus_id=' . $pengurusId . ' keys=' . json_encode($keyList) . ' scope_all=' . ($scope['lembaga_scope_all'] ? '1' : '0'));
+        if (self::isVerboseRoleLogEnabled()) {
+            error_log('RoleHelper::getRoleInfoForToken - pengurus_id=' . $pengurusId . ' keys=' . json_encode($keyList) . ' scope_all=' . ($scope['lembaga_scope_all'] ? '1' : '0'));
+        }
 
         return [
             'role_key' => $roleKey,

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Config\EbeddienFiturAccess;
+use App\Config\LegacyRouteRoleKeys;
+use App\Config\LegacyRouteRoles;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\UmrohJamaahController;
@@ -29,5 +31,5 @@ return function (\Slim\App $app): void {
         $group->post('/pengeluaran/{id}/approve', [UmrohPengeluaranController::class, 'approvePengeluaran']);
         $group->post('/pengeluaran/{id}/reject', [UmrohPengeluaranController::class, 'rejectPengeluaran']);
         $group->delete('/pengeluaran/{id}', [UmrohPengeluaranController::class, 'deletePengeluaran']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::umrohModuleSelectors(), ['admin_uwaba', 'petugas_uwaba', 'admin_umroh', 'petugas_umroh', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::umrohModuleSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::UMROH_MODULE_SELECTORS)))->add(new AuthMiddleware());
 };

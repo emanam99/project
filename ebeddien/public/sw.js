@@ -146,45 +146,85 @@ registerRoute(
 // PWA NOTIFICATION HANDLERS
 // ============================================
 
+function resolveNotificationTargetUrl(raw) {
+  const fallback = new URL('/', self.location.origin).href
+  if (!raw || raw === '/') {
+    return fallback
+  }
+  if (/^https?:\/\//i.test(String(raw))) {
+    return String(raw)
+  }
+  try {
+    return new URL(String(raw), self.location.origin).href
+  } catch {
+    return fallback
+  }
+}
+
+function navigateClientsToUrl(urlToOpenResolved) {
+  const targetOrigin = (() => {
+    try {
+      return new URL(urlToOpenResolved).origin
+    } catch {
+      return self.location.origin
+    }
+  })()
+
+  return clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  }).then((clientList) => {
+    for (let i = 0; i < clientList.length; i++) {
+      const client = clientList[i]
+      let clientOrigin = ''
+      try {
+        clientOrigin = new URL(client.url).origin
+      } catch {
+        continue
+      }
+      if (clientOrigin === targetOrigin && 'focus' in client) {
+        return client.focus().then((c) => {
+          if (c && 'navigate' in c && typeof c.navigate === 'function') {
+            return c.navigate(urlToOpenResolved)
+          }
+          return c
+        })
+      }
+    }
+    if (clients.openWindow) {
+      return clients.openWindow(urlToOpenResolved)
+    }
+  })
+}
+
 // Event listener untuk notifikasi klik
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
   const notificationData = event.notification.data || {}
-  const action = event.action
+  const action = event.action || ''
 
-  // Handle action buttons jika ada
-  if (action && notificationData.actions) {
-    const actionData = notificationData.actions.find(a => a.action === action)
+  let rawUrl = notificationData.url || '/'
+
+  // Tombol "Balas" pada notifikasi chat (data dari push / showNotification)
+  if (
+    action === 'reply' &&
+    notificationData.type === 'chat_message' &&
+    notificationData.from_user_id != null
+  ) {
+    const uid = Number(notificationData.from_user_id)
+    if (uid > 0) {
+      rawUrl = `/chat?u=${uid}&reply=1`
+    }
+  } else if (action && Array.isArray(notificationData.actions)) {
+    const actionData = notificationData.actions.find((a) => a.action === action)
     if (actionData && actionData.url) {
-      event.waitUntil(
-        clients.openWindow(actionData.url)
-      )
-      return
+      rawUrl = actionData.url
     }
   }
 
-  // Default: buka URL dari data atau root
-  const urlToOpen = notificationData.url || '/'
-  
-  event.waitUntil(
-    clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    }).then((clientList) => {
-      // Cek apakah ada window yang sudah terbuka
-      for (let i = 0; i < clientList.length; i++) {
-        const client = clientList[i]
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus()
-        }
-      }
-      // Jika tidak ada, buka window baru
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen)
-      }
-    })
-  )
+  const urlToOpen = resolveNotificationTargetUrl(rawUrl)
+  event.waitUntil(navigateClientsToUrl(urlToOpen))
 })
 
 // Event listener untuk notifikasi close
@@ -205,14 +245,25 @@ self.addEventListener('push', (event) => {
     }
   }
 
+  const topUrl = typeof data.url === 'string' && data.url !== '' ? data.url : '/'
+  const mergedData =
+    typeof data.data === 'object' && data.data !== null && !Array.isArray(data.data)
+      ? { ...data.data }
+      : {}
+  if (mergedData.url == null || mergedData.url === '') {
+    mergedData.url = topUrl
+  }
+
+  const topActions = Array.isArray(data.actions) ? data.actions : []
+
   const options = {
     body: data.body || 'Anda memiliki notifikasi baru',
     icon: data.icon || 'https://alutsmani.id/gambar/icon/notif.png',
     badge: data.badge || 'https://alutsmani.id/gambar/icon/notif.png',
     tag: data.tag,
-    data: data.data || {},
+    data: mergedData,
     requireInteraction: data.requireInteraction || false,
-    actions: data.actions || [],
+    actions: topActions,
     image: data.image,
     vibrate: data.vibrate,
     silent: data.silent || false

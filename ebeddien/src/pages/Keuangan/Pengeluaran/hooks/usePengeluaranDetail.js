@@ -30,7 +30,7 @@ export const usePengeluaranDetail = () => {
         setShowPengeluaranOffcanvas(true)
         // Load list admins when offcanvas opens
         if (onLoadAdmins) {
-          onLoadAdmins()
+          onLoadAdmins(response.data?.lembaga ?? null)
         }
       } else {
         showNotification(response.message || 'Gagal memuat detail pengeluaran', 'error')
@@ -75,7 +75,7 @@ export const usePengeluaranDetail = () => {
         setShowPengeluaranOffcanvas(true)
         
         if (onLoadAdmins) {
-          onLoadAdmins()
+          onLoadAdmins(response.data?.lembaga ?? null)
         }
       } else {
         showNotification(response.message || 'Gagal memuat detail pengeluaran', 'error')

@@ -22,6 +22,11 @@ class AuthMiddleware implements MiddlewareInterface
         $this->db = Database::getInstance()->getConnection();
     }
 
+    private function isVerboseAuthLogEnabled(): bool
+    {
+        return filter_var((string) (getenv('API_VERBOSE_AUTH_LOG') ?: 'false'), FILTER_VALIDATE_BOOLEAN);
+    }
+
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $authHeader = $request->getHeaderLine('Authorization');
@@ -90,7 +95,7 @@ class AuthMiddleware implements MiddlewareInterface
         }
 
         // Jangan log full payload (berisi role, user_id, dll). Cukup user_id jika perlu debug.
-        if (getenv('APP_ENV') !== 'production') {
+        if (getenv('APP_ENV') !== 'production' && $this->isVerboseAuthLogEnabled()) {
             $uid = $payload['user_id'] ?? '?';
             error_log("AuthMiddleware: token valid user_id=" . $uid);
         }

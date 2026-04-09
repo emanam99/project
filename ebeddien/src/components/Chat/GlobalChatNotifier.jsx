@@ -215,7 +215,14 @@ export default function GlobalChatNotifier() {
             body: normalized.message.length > 220 ? `${normalized.message.slice(0, 217)}…` : normalized.message,
             tag: `ebeddien-chat-${normalized.fromUserId}`,
             renotify: true,
-            data: { url: `/chat?u=${normalized.fromUserId}` },
+            data: {
+              url: `/chat?u=${normalized.fromUserId}`,
+              type: 'chat_message',
+              from_user_id: normalized.fromUserId,
+              to_user_id: myUsersId,
+              conversation_id: normalized.conversationId,
+            },
+            actions: [{ action: 'reply', title: 'Balas' }],
           }
           if (senderPhoto) {
             notifOptions.icon = senderPhoto

@@ -116,6 +116,10 @@ class DaftarNotifFlow
             return null;
         }
 
+        if (stripos($message, 'Daftar Notifikasi Pengeluaran') !== false) {
+            return null;
+        }
+
         if (stripos($message, 'Daftar Notifikasi') === false) {
             error_log('DaftarNotifFlow: no pending for nomor=' . $nomor . ($fromJid ? ' from_jid=' . $fromJid : '') . ', message does not contain "Daftar Notifikasi". preview=' . substr($message, 0, 80));
             return null;

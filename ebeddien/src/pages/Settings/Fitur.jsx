@@ -6,6 +6,10 @@ import { GROUP_ORDER } from '../../config/menuConfig'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import FiturMenuRoleOffcanvas from '../../components/FiturMenuRoleOffcanvas'
 import EbeddienFiturSelectorsPanel from '../../components/EbeddienFiturSelectorsPanel'
+import PengeluaranFiturTabAccordions from '../../components/PengeluaranFiturTabAccordions'
+import KalenderPengaturanFiturTabAccordions from '../../components/KalenderPengaturanFiturTabAccordions'
+import { PENGELUARAN_MENU_CODE } from '../../config/pengeluaranFiturCodes'
+import { KALENDER_PENGATURAN_MENU_CODE } from '../../config/kalenderFiturCodes'
 
 /** Hanya grup yang tidak ada di GROUP_ORDER (urutan akhir). Jangan duplikat nama grup yang sudah di GROUP_ORDER. */
 const EXTRA_GROUP_ORDER = ['Lainnya']
@@ -337,6 +341,12 @@ export default function Fitur() {
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [selectedFiturId, setSelectedFiturId] = useState(null)
   const [expandedIds, setExpandedIds] = useState(() => new Set())
+  const [pengeluaranAccordionOpen, setPengeluaranAccordionOpen] = useState(
+    () => new Set(['rencana', 'pengeluaran', 'draft'])
+  )
+  const [kalenderPengaturanAccordionOpen, setKalenderPengaturanAccordionOpen] = useState(
+    () => new Set(['bulan', 'hari_penting'])
+  )
 
   const closeOffcanvas = useOffcanvasBackClose(selectedFiturId != null, () => setSelectedFiturId(null))
 
@@ -390,6 +400,8 @@ export default function Fitur() {
       })
       return next
     })
+    setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft']))
+    setKalenderPengaturanAccordionOpen(new Set(['bulan', 'hari_penting']))
   }, [searchQuery, filteredForest])
 
   const toggleExpand = useCallback((id) => {
@@ -481,7 +493,9 @@ export default function Fitur() {
               <p className="font-medium">Menu, aksi &amp; akses role</p>
               <p className="mt-1 text-teal-800/90 dark:text-teal-200/90 text-xs leading-relaxed">
                 Ketuk baris untuk membuka panel kanan: ubah label, icon key, grup sidebar, urutan (kolom di database), dan
-                centang role. Menu yang punya sub-fitur (aksi) bisa dibentangkan lewat tombol di kiri jumlah role.
+                centang role. Menu yang punya sub-fitur (aksi) bisa dibentangkan lewat tombol di kiri jumlah role. Untuk menu
+                Pengeluaran, aksi dikelompokkan dalam tiga accordion (tab Rencana, Pengeluaran, Draft); untuk Pengaturan
+                Kalender, dua accordion (tab Bulan dan Hari penting). Setiap baris tetap satu aksi di database.
               </p>
             </div>
 
@@ -560,21 +574,75 @@ export default function Fitur() {
                                   transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
                                   className="overflow-hidden border-t border-gray-100 dark:border-gray-700/60 bg-white dark:bg-gray-800"
                                 >
-                                  <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                                    {kids.map((child, cidx) => (
-                                      <FiturTreeRow
-                                        key={child.id}
-                                        node={child}
-                                        index={cidx}
-                                        depth={1}
-                                        expanded={false}
-                                        onToggleExpand={toggleExpand}
-                                        onSelect={(id) => setSelectedFiturId(id)}
-                                        showGroupLabel={false}
-                                        hasChildRows={false}
-                                      />
-                                    ))}
-                                  </div>
+                                  {node.code === PENGELUARAN_MENU_CODE ? (
+                                    <PengeluaranFiturTabAccordions
+                                      children={kids}
+                                      openKeys={pengeluaranAccordionOpen}
+                                      onToggleKey={(key) => {
+                                        setPengeluaranAccordionOpen((prev) => {
+                                          const next = new Set(prev)
+                                          if (next.has(key)) next.delete(key)
+                                          else next.add(key)
+                                          return next
+                                        })
+                                      }}
+                                      renderRow={(child, _tabKey, rowIdx) => (
+                                        <FiturTreeRow
+                                          key={child.id}
+                                          node={child}
+                                          index={rowIdx ?? 0}
+                                          depth={1}
+                                          expanded={false}
+                                          onToggleExpand={toggleExpand}
+                                          onSelect={(id) => setSelectedFiturId(id)}
+                                          showGroupLabel={false}
+                                          hasChildRows={false}
+                                        />
+                                      )}
+                                    />
+                                  ) : node.code === KALENDER_PENGATURAN_MENU_CODE ? (
+                                    <KalenderPengaturanFiturTabAccordions
+                                      children={kids}
+                                      openKeys={kalenderPengaturanAccordionOpen}
+                                      onToggleKey={(key) => {
+                                        setKalenderPengaturanAccordionOpen((prev) => {
+                                          const next = new Set(prev)
+                                          if (next.has(key)) next.delete(key)
+                                          else next.add(key)
+                                          return next
+                                        })
+                                      }}
+                                      renderRow={(child, _tabKey, rowIdx) => (
+                                        <FiturTreeRow
+                                          key={child.id}
+                                          node={child}
+                                          index={rowIdx ?? 0}
+                                          depth={1}
+                                          expanded={false}
+                                          onToggleExpand={toggleExpand}
+                                          onSelect={(id) => setSelectedFiturId(id)}
+                                          showGroupLabel={false}
+                                          hasChildRows={false}
+                                        />
+                                      )}
+                                    />
+                                  ) : (
+                                    <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                                      {kids.map((child, cidx) => (
+                                        <FiturTreeRow
+                                          key={child.id}
+                                          node={child}
+                                          index={cidx}
+                                          depth={1}
+                                          expanded={false}
+                                          onToggleExpand={toggleExpand}
+                                          onSelect={(id) => setSelectedFiturId(id)}
+                                          showGroupLabel={false}
+                                          hasChildRows={false}
+                                        />
+                                      ))}
+                                    </div>
+                                  )}
                                 </motion.div>
                               )}
                             </AnimatePresence>

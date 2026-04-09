@@ -7,6 +7,11 @@ import { getBulanName } from './utils/bulanHijri'
 import { INDONESIAN_MONTHS } from './utils/dateRange'
 import { apiTimeToTimeInput, formatJamRangeLabel } from './utils/hariPentingJam'
 import './Kalender.css'
+import {
+  KALENDER_PENGATURAN_MENU_CODE as FITUR_MENU_KAL_PENGATURAN,
+  KALENDER_PENGATURAN_TAB_BULAN as FITUR_TAB_BULAN,
+  KALENDER_PENGATURAN_TAB_HARI_PENTING as FITUR_TAB_HARI_PENTING
+} from '../../config/kalenderFiturCodes'
 
 const TIPE_OPTIONS = [
   { value: 'per_hari', label: 'Per Hari' },
@@ -58,9 +63,6 @@ const WARNA_LABEL_OPTIONS = [
   '#0ea5e9', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#db2777'
 ]
 
-const FITUR_TAB_BULAN = 'action.kalender.pengaturan.tab_bulan'
-const FITUR_TAB_HARI_PENTING = 'action.kalender.pengaturan.tab_hari_penting'
-const FITUR_MENU_KAL_PENGATURAN = 'menu.kalender.pengaturan'
 const HP_TARGET_GLOBAL = 'action.hari_penting.target.global'
 const HP_TARGET_LEMBAGA = 'action.hari_penting.target.lembaga'
 const HP_TARGET_USER_SAMES = 'action.hari_penting.target.user_selembaga'

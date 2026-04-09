@@ -6,6 +6,8 @@ use Phinx\Seed\AbstractSeed;
 
 /**
  * Menyisipkan baris app___fitur type=action (eBeddien) setelah menu ada.
+ * Hanya definisi aksi (kode, label, grup); meta_json akses tidak diisi — penugasan role lewat role___fitur
+ * (Pengaturan → Fitur) dan RoleFiturMenuSeed (bootstrap super_admin saja).
  *
  * Masalah: migrasi *fitur_actions mencari parent menu lalu return jika belum ada;
  * urutan deploy umumnya migrate → seed, jadi di staging migrasi "kosong" tetap sukses
@@ -38,7 +40,7 @@ class MenuActionsFiturSeed extends AbstractSeed
         $pidStmt = $conn->prepare('SELECT `id` FROM `app___fitur` WHERE `id_app` = 1 AND `code` = ? LIMIT 1');
         $ins = $conn->prepare(
             'INSERT IGNORE INTO `app___fitur` (`id_app`, `parent_id`, `type`, `code`, `label`, `path`, `icon_key`, `group_label`, `sort_order`, `meta_json`) '
-            . 'VALUES (1, ?, \'action\', ?, ?, NULL, NULL, ?, ?, ?)'
+            . 'VALUES (1, ?, \'action\', ?, ?, NULL, NULL, ?, ?, NULL)'
         );
 
         $this->seedBeranda($conn, $pidStmt, $ins);
@@ -59,7 +61,6 @@ class MenuActionsFiturSeed extends AbstractSeed
         if ($parentId === null) {
             return;
         }
-        $meta = '{"requiresRole":["admin_kalender","super_admin"]}';
         $actions = [
             ['action.kalender.pengaturan.tab_bulan', 'Pengaturan kalender · Tab bulan (matriks)', 10],
             ['action.kalender.pengaturan.tab_hari_penting', 'Pengaturan kalender · Tab hari penting', 20],
@@ -69,8 +70,7 @@ class MenuActionsFiturSeed extends AbstractSeed
             ['action.hari_penting.target.self', 'Hari penting · Target hanya diri sendiri', 60],
         ];
         foreach ($actions as $a) {
-            // Urutan placeholder: parent_id, code, label, group_label, sort_order, meta_json
-            $ins->execute([$parentId, $a[0], $a[1], 'Kalender', $a[2], $meta]);
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'Kalender']);
         }
     }
 
@@ -89,14 +89,14 @@ class MenuActionsFiturSeed extends AbstractSeed
             return;
         }
         $actions = [
-            ['action.beranda.widget.total_pendaftaran', 'Widget Total Pendaftaran', 10, 'My Workspace', '{"requiresRole":["admin_psb","petugas_psb","super_admin"]}'],
-            ['action.beranda.widget.pembayaran_hari_ini', 'Widget Pembayaran Hari Ini', 20, 'My Workspace', '{"requiresRole":["admin_uwaba","petugas_uwaba","super_admin"]}'],
-            ['action.beranda.widget.ringkasan_keuangan', 'Widget Ringkasan Keuangan', 30, 'My Workspace', '{"requiresRole":["admin_uwaba","petugas_keuangan","super_admin"],"requiresPermission":"manage_finance"}'],
-            ['action.beranda.widget.aktivitas_terbaru', 'Widget Aktivitas Terbaru', 40, 'My Workspace', null],
-            ['action.beranda.widget.kalender_samping', 'Panel Kalender (desktop)', 50, 'My Workspace', null],
+            ['action.beranda.widget.total_pendaftaran', 'Widget Total Pendaftaran', 10, 'My Workspace'],
+            ['action.beranda.widget.pembayaran_hari_ini', 'Widget Pembayaran Hari Ini', 20, 'My Workspace'],
+            ['action.beranda.widget.ringkasan_keuangan', 'Widget Ringkasan Keuangan', 30, 'My Workspace'],
+            ['action.beranda.widget.aktivitas_terbaru', 'Widget Aktivitas Terbaru', 40, 'My Workspace'],
+            ['action.beranda.widget.kalender_samping', 'Panel Kalender (desktop)', 50, 'My Workspace'],
         ];
         foreach ($actions as $a) {
-            $ins->execute([$parentId, $a[0], $a[1], $a[2], $a[3], $a[4]]);
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], $a[3]]);
         }
     }
 
@@ -106,7 +106,6 @@ class MenuActionsFiturSeed extends AbstractSeed
         if ($parentId === null) {
             return;
         }
-        $meta = '{"requiresSuperAdmin":true}';
         $actions = [
             ['action.chat_ai.page.training_bank', 'Chat AI · Bank Q&A', 10],
             ['action.chat_ai.page.training_chat', 'Chat AI · Training Chat', 20],
@@ -116,40 +115,37 @@ class MenuActionsFiturSeed extends AbstractSeed
             ['action.chat_ai.ui.mode_alternatif', 'Chat AI · Mode alternatif (proxy)', 60],
         ];
         foreach ($actions as $a) {
-            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'My Workspace', $meta]);
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'My Workspace']);
         }
     }
 
     private function seedPendaftaran(\PDO $conn, \PDOStatement $pidStmt, \PDOStatement $ins): void
     {
-        $metaPsb = '{"requiresRole":["admin_psb","petugas_psb","super_admin"]}';
-        $metaSuperOnly = '{"requiresSuperAdmin":true}';
-
         $groups = [
             [
                 'parent_code' => 'menu.pendaftaran.data_pendaftar',
                 'group_label' => 'Pendaftaran',
                 'rows' => [
-                    ['action.pendaftaran.data_pendaftar.filter_formal_diniyah_semua_lembaga', 'Data Pendaftar · Filter formal/diniyah semua lembaga', 10, $metaPsb],
+                    ['action.pendaftaran.data_pendaftar.filter_formal_diniyah_semua_lembaga', 'Data Pendaftar · Filter formal/diniyah semua lembaga', 10],
                 ],
             ],
             [
                 'parent_code' => 'menu.pendaftaran',
                 'group_label' => 'Pendaftaran',
                 'rows' => [
-                    ['action.pendaftaran.biodata.hapus_santri', 'Pendaftaran · Hapus registrasi / santri (biodata)', 95, $metaPsb],
+                    ['action.pendaftaran.biodata.hapus_santri', 'Pendaftaran · Hapus registrasi / santri (biodata)', 95],
                 ],
             ],
             [
                 'parent_code' => 'menu.pendaftaran.item',
                 'group_label' => 'Pendaftaran',
                 'rows' => [
-                    ['action.pendaftaran.route.item', 'Item · Daftar item', 100, $metaSuperOnly],
-                    ['action.pendaftaran.route.manage_item_set', 'Item · Item Set', 110, $metaSuperOnly],
-                    ['action.pendaftaran.route.manage_kondisi', 'Item · Kondisi', 120, $metaSuperOnly],
-                    ['action.pendaftaran.route.kondisi_registrasi', 'Item · Registrasi', 130, $metaSuperOnly],
-                    ['action.pendaftaran.route.assign_item', 'Item · Assign item', 140, $metaSuperOnly],
-                    ['action.pendaftaran.route.simulasi', 'Item · Simulasi', 150, $metaSuperOnly],
+                    ['action.pendaftaran.route.item', 'Item · Daftar item', 100],
+                    ['action.pendaftaran.route.manage_item_set', 'Item · Item Set', 110],
+                    ['action.pendaftaran.route.manage_kondisi', 'Item · Kondisi', 120],
+                    ['action.pendaftaran.route.kondisi_registrasi', 'Item · Registrasi', 130],
+                    ['action.pendaftaran.route.assign_item', 'Item · Assign item', 140],
+                    ['action.pendaftaran.route.simulasi', 'Item · Simulasi', 150],
                 ],
             ],
         ];
@@ -160,7 +156,7 @@ class MenuActionsFiturSeed extends AbstractSeed
                 continue;
             }
             foreach ($g['rows'] as $r) {
-                $ins->execute([$parentId, $r[0], $r[1], $r[2], $g['group_label'], $r[3]]);
+                $ins->execute([$parentId, $r[0], $r[1], $r[2], $g['group_label']]);
             }
         }
     }
@@ -171,7 +167,6 @@ class MenuActionsFiturSeed extends AbstractSeed
         if ($parentId === null) {
             return;
         }
-        $meta = '{"requiresRole":["admin_uwaba","petugas_keuangan","super_admin"]}';
         $actions = [
             ['action.pengeluaran.tab.rencana', 'Pengeluaran · Tab Rencana', 10],
             ['action.pengeluaran.tab.pengeluaran', 'Pengeluaran · Tab Pengeluaran', 20],
@@ -185,14 +180,20 @@ class MenuActionsFiturSeed extends AbstractSeed
             ['action.pengeluaran.rencana.edit', 'Rencana · Edit', 100],
             ['action.pengeluaran.rencana.approve', 'Rencana · Approve', 110],
             ['action.pengeluaran.rencana.tolak', 'Rencana · Tolak', 120],
+            ['action.pengeluaran.rencana.hapus_komentar', 'Rencana · Hapus komentar (moderasi)', 121],
+            ['action.pengeluaran.draft.notif.lembaga_sesuai_role', 'Draft · Notif WA lembaga sesuai role', 122],
+            ['action.pengeluaran.notif.semua_lembaga', 'Pengeluaran · Notif WA semua lembaga', 123],
+            ['action.pengeluaran.notif.lembaga_sesuai_role', 'Pengeluaran · Notif WA lembaga sesuai role', 124],
+            ['action.pengeluaran.rencana.kelola_penerima_notif', 'Rencana · Kelola daftar penerima notifikasi WA', 125],
             ['action.pengeluaran.item.edit', 'Pengeluaran · Edit di offcanvas', 130],
+            ['action.pengeluaran.item.kelola_penerima', 'Pengeluaran · Ubah penerima uang (offcanvas)', 132],
             ['action.pengeluaran.item.hapus', 'Pengeluaran · Hapus', 140],
             ['action.pengeluaran.draft.buat', 'Draft · Tombol buat (baru)', 150],
             ['action.pengeluaran.draft.edit', 'Draft · Edit', 160],
             ['action.pengeluaran.draft.hapus', 'Draft · Hapus draft', 170],
         ];
         foreach ($actions as $a) {
-            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'Keuangan', $meta]);
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'Keuangan']);
         }
     }
 
@@ -202,16 +203,14 @@ class MenuActionsFiturSeed extends AbstractSeed
         if ($parentId === null) {
             return;
         }
-        $metaUwaba = '{"requiresRole":["admin_uwaba","petugas_uwaba","super_admin"]}';
-        $metaPsb = '{"requiresRole":["admin_psb","petugas_psb","super_admin"]}';
         $actions = [
-            ['action.laporan.tab.tunggakan', 'Laporan · Tab Tunggakan', 10, $metaUwaba],
-            ['action.laporan.tab.khusus', 'Laporan · Tab Khusus', 20, $metaUwaba],
-            ['action.laporan.tab.uwaba', 'Laporan · Tab UWABA', 30, $metaUwaba],
-            ['action.laporan.tab.pendaftaran', 'Laporan · Tab Pendaftaran', 40, $metaPsb],
+            ['action.laporan.tab.tunggakan', 'Laporan · Tab Tunggakan', 10],
+            ['action.laporan.tab.khusus', 'Laporan · Tab Khusus', 20],
+            ['action.laporan.tab.uwaba', 'Laporan · Tab UWABA', 30],
+            ['action.laporan.tab.pendaftaran', 'Laporan · Tab Pendaftaran', 40],
         ];
         foreach ($actions as $a) {
-            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'UWABA', $a[3]]);
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'UWABA']);
         }
     }
 
@@ -221,14 +220,12 @@ class MenuActionsFiturSeed extends AbstractSeed
         if ($parentId === null) {
             return;
         }
-        $meta = '{"requiresRole":["admin_ugt","super_admin"]}';
         $ins->execute([
             $parentId,
             'action.ugt.data_madrasah.scope_all',
             'Data Madrasah · Lihat semua madrasah',
             10,
             'UGT',
-            $meta,
         ]);
     }
 
@@ -238,16 +235,14 @@ class MenuActionsFiturSeed extends AbstractSeed
         if ($parentId === null) {
             return;
         }
-        $metaTabs = '{"requiresRole":["admin_ugt","koordinator_ugt","super_admin"]}';
-        $metaFilter = '{"requiresRole":["admin_ugt","super_admin"]}';
         $actions = [
-            ['action.ugt.laporan.tab.koordinator', 'Laporan UGT · Tab Koordinator', 10, $metaTabs],
-            ['action.ugt.laporan.tab.gt', 'Laporan UGT · Tab GT', 20, $metaTabs],
-            ['action.ugt.laporan.tab.pjgt', 'Laporan UGT · Tab PJGT', 30, $metaTabs],
-            ['action.ugt.laporan.filter_koordinator_semua', 'Laporan UGT · Filter semua koordinator', 40, $metaFilter],
+            ['action.ugt.laporan.tab.koordinator', 'Laporan UGT · Tab Koordinator', 10],
+            ['action.ugt.laporan.tab.gt', 'Laporan UGT · Tab GT', 20],
+            ['action.ugt.laporan.tab.pjgt', 'Laporan UGT · Tab PJGT', 30],
+            ['action.ugt.laporan.filter_koordinator_semua', 'Laporan UGT · Filter semua koordinator', 40],
         ];
         foreach ($actions as $a) {
-            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'UGT', $a[3]]);
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'UGT']);
         }
     }
 

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Config\EbeddienFiturAccess;
+use App\Config\LegacyRouteRoleKeys;
+use App\Config\LegacyRouteRoles;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\PendaftaranController;
@@ -55,7 +57,7 @@ return function (\Slim\App $app): void {
         $group->post('/merge-santri', [PendaftaranController::class, 'mergeSantri']);
         $group->get('/dashboard', [PendaftaranController::class, 'getDashboard']);
         $group->get('/pendapatan-hari-ini', [PendaftaranController::class, 'getPendapatanHariIni']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbStaffSuperSelectors(), ['admin_psb', 'petugas_psb', 'super_admin', 'santri']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbStaffSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::PSB_STAFF_SUPER_SELECTORS)))->add(new AuthMiddleware());
 
     $app->group('/api/pendaftaran', function ($group) {
         $group->post('/create-item', [PendaftaranController::class, 'createItem']);
@@ -76,5 +78,5 @@ return function (\Slim\App $app): void {
         $group->post('/kondisi-value', [PendaftaranController::class, 'createKondisiValue']);
         $group->put('/kondisi-value/{id}', [PendaftaranController::class, 'updateKondisiValue']);
         $group->delete('/kondisi-value/{id}', [PendaftaranController::class, 'deleteKondisiValue']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbAdminSuperSelectors(), ['admin_psb', 'super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbAdminSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::PSB_ADMIN_SUPER_SELECTORS)))->add(new AuthMiddleware());
 };

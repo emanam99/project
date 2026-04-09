@@ -14,7 +14,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Akses endpoint staff eBeddien: utama lewat role___fitur + app___fitur (selector kode menu/aksi).
- * Tanpa assignment fitur → fallback daftar role legacy route (kompatibel migrasi).
+ * Tanpa assignment fitur → fallback daftar role dari tabel ebeddien_legacy_route_role (LegacyRouteRoles).
  * Punya assignment tapi tidak cocok selector → fallback legacy yang sama (mis. santri daftar punya fitur lain saja).
  * Santri/toko (tanpa union role staff) tetap memakai legacy bila termasuk daftar.
  */
@@ -28,7 +28,7 @@ class EbeddienFiturMiddleware implements MiddlewareInterface
 
     /**
      * @param list<string> $selectors Kode persis atau PREFIX:awalan (lihat RoleHelper::tokenMatchesAnyEbeddienFiturSelector)
-     * @param list<string> $legacyRoles Fallback jika belum ada baris role___fitur ebeddien untuk role di token
+     * @param list<string> $legacyRoles Fallback dari LegacyRouteRoles::forKey(...) / tabel ebeddien_legacy_route_role
      */
     public function __construct(array $selectors, array $legacyRoles)
     {

@@ -103,6 +103,11 @@ export const showNotification = async (options) => {
   // Cek service worker
   const registration = await getServiceWorkerRegistration()
 
+  const dataWithUrl =
+    data && typeof data === 'object' && !Array.isArray(data)
+      ? { ...data, url: data.url != null && data.url !== '' ? data.url : '/' }
+      : { url: '/' }
+
   // Kirim notifikasi via service worker
   const notificationOptions = {
     body,
@@ -113,7 +118,7 @@ export const showNotification = async (options) => {
     requireInteraction,
     renotify,
     silent,
-    data,
+    data: dataWithUrl,
     actions,
     dir,
     lang,

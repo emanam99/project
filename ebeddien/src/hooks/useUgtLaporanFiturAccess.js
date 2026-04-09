@@ -13,7 +13,7 @@ export function buildCanUgtLaporanAction(user, fiturMenuCodes) {
     useApi && fiturMenuCodes.some((c) => String(c).startsWith('action.ugt.laporan.tab.'))
   return (code, fallback) => {
     if (isSuper) return true
-    if (!useApi) return fallback()
+    if (!useApi) return typeof fallback === 'function' ? fallback() : false
     if (apiHasTabs && String(code).startsWith('action.ugt.laporan.tab.')) {
       return fiturMenuCodes.includes(code)
     }

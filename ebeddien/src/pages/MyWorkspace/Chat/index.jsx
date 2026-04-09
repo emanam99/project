@@ -399,6 +399,36 @@ export default function Chat() {
     else if (!offcanvasClosing) setNewChatOpen(false)
   }, [searchParams, offcanvasClosing])
 
+  // Notifikasi PWA: /chat?u=…&reply=1 → buka room lalu fokus kolom ketik
+  const hasSelectedRoomForReply = Boolean(selectedConversationId || selectedUserId)
+  useEffect(() => {
+    if (searchParams.get('reply') !== '1') return
+    if (!hasSelectedRoomForReply || !myUsersId) return
+    if (historyLoading) return
+
+    const t = window.setTimeout(() => {
+      const el = messageTextareaRef.current
+      if (el) {
+        el.focus()
+        try {
+          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        } catch {
+          /* ignore */
+        }
+      }
+      const next = new URLSearchParams(searchParams)
+      next.delete('reply')
+      setSearchParams(next, { replace: true })
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [
+    searchParams,
+    setSearchParams,
+    hasSelectedRoomForReply,
+    myUsersId,
+    historyLoading,
+  ])
+
   // Update URL ketika user memilih room. Pakai push (bukan replace) agar di HP tombol Back = kembali ke list chat.
   const preloadRoomFromDexie = useCallback(async (conversationId, peerId) => {
     if (!myUsersId) return

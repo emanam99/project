@@ -109,20 +109,10 @@ function BerkasSection({
       <h3 className="text-lg font-semibold text-teal-600 dark:text-teal-400 mb-4">
         Berkas
       </h3>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4">
         <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200">
           Daftar Berkas
         </h4>
-        <button
-          onClick={() => setIsBerkasOffcanvasOpen(true)}
-          className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
-          title="Upload Berkas"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-          </svg>
-          Upload
-        </button>
       </div>
       {loadingBerkas ? (
         <div className="flex items-center justify-center py-8">

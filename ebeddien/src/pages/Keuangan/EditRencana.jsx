@@ -41,7 +41,6 @@ function EditRencana() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [fileToDelete, setFileToDelete] = useState(null)
   const [deletingFile, setDeletingFile] = useState(false)
-  
   const [formData, setFormData] = useState({
     keterangan: '',
     kategori: '',
@@ -96,6 +95,12 @@ function EditRencana() {
     rencana?.ket
   ])
 
+  const submitPrimaryLabel = useMemo(() => {
+    if (isCreateMode) return 'Ajukan'
+    if (rencana?.ket === 'draft') return 'Ajukan'
+    return 'Update'
+  }, [isCreateMode, rencana?.ket])
+
   useEffect(() => {
     if (!isCreateMode || !lembagaOptions.length) return
     if (lembagaSelectLocked) {
@@ -140,8 +145,6 @@ function EditRencana() {
       // Auto-fill hijriyah dan tahun_ajaran saat create
       loadHijriyahAndTahunAjaran()
     }
-    // Load list admins
-    loadListAdmins()
     // Load list lembaga
     loadListLembaga()
   }, [id])
@@ -159,28 +162,26 @@ function EditRencana() {
     }
   }
 
-  const loadListAdmins = async () => {
+  const loadListAdmins = async (lembagaId = null) => {
     try {
       setLoadingAdmins(true)
-      // Hanya load super admin dan admin uwaba untuk notifikasi rencana pengeluaran
-      const response = await userAPI.getSuperAdminAndUwaba()
+      const lem =
+        lembagaId != null && String(lembagaId).trim() !== '' ? String(lembagaId).trim() : null
+      const notifDraft = rencana?.ket === 'draft'
+      const response = await userAPI.getSuperAdminAndUwaba(
+        lem,
+        notifDraft ? { notifContext: 'draft' } : {}
+      )
       if (response.success) {
-        // Filter hanya admin yang punya role admin_uwaba (termasuk yang juga punya super_admin)
-        // Backend sudah filter, tapi untuk memastikan, kita filter lagi di frontend
-        // Deduplicate berdasarkan id untuk menghindari duplikasi
+        // Backend sudah menentukan policy; frontend hanya dedupe.
         const adminUwabaMap = new Map()
-        ;(response.data || []).forEach(admin => {
-          // Hanya ambil yang punya role admin_uwaba
-          if (admin.role_key === 'admin_uwaba' || !admin.role_key) {
-            // Jika belum ada di map, tambahkan
-            if (!adminUwabaMap.has(admin.id)) {
-              adminUwabaMap.set(admin.id, admin)
-            }
+        ;(response.data || []).forEach((admin) => {
+          if (!adminUwabaMap.has(admin.id)) {
+            adminUwabaMap.set(admin.id, admin)
           }
         })
-        
         const adminUwabaList = Array.from(adminUwabaMap.values())
-        
+
         // Hanya tampilkan admin yang memiliki nomor WhatsApp
         const adminsWithWhatsapp = adminUwabaList.filter(admin => 
           admin.whatsapp && admin.whatsapp.trim() !== ''
@@ -198,6 +199,15 @@ function EditRencana() {
       setLoadingAdmins(false)
     }
   }
+
+  useEffect(() => {
+    const lem =
+      formData.lembaga != null && String(formData.lembaga).trim() !== ''
+        ? String(formData.lembaga).trim()
+        : null
+    loadListAdmins(lem)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- muat ulang daftar penerima saat lembaga/id berubah
+  }, [formData.lembaga, id, rencana?.ket])
 
   const loadListLembaga = async () => {
     try {
@@ -227,11 +237,14 @@ function EditRencana() {
   }
 
   const sendNotificationsToSelectedAdmins = async (rencanaId = null) => {
-    if (selectedAdmins.length === 0) {
-      return // Tidak ada admin terpilih, skip
+    const adminIds = pengeluaranFitur.rencanaKelolaPenerimaNotif
+      ? selectedAdmins
+      : listAdmins.map((a) => a.id)
+    if (adminIds.length === 0) {
+      return
     }
 
-    const selectedAdminData = listAdmins.filter(admin => selectedAdmins.includes(admin.id))
+    const selectedAdminData = listAdmins.filter((admin) => adminIds.includes(admin.id))
     const adminsWithWhatsapp = selectedAdminData.filter(admin => admin.whatsapp)
     
     if (adminsWithWhatsapp.length === 0) {
@@ -284,6 +297,9 @@ function EditRencana() {
         adminsWithWhatsapp.map(a => ({ id: a.id, whatsapp: a.whatsapp }))
       )
       if (result.success) {
+        if (result.data?.queued) {
+          return
+        }
         const successCount = result.data?.success_count ?? 0
         const failCount = result.data?.fail_count ?? 0
         showNotification(result.message || `Notifikasi berhasil dikirim ke ${successCount} admin${failCount > 0 ? `, ${failCount} gagal` : ''}`, failCount > 0 ? 'warning' : 'success')
@@ -295,8 +311,6 @@ function EditRencana() {
       showNotification(error.response?.data?.message || error.message || 'Gagal mengirim notifikasi', 'error')
     }
   }
-
-
 
   const loadRencanaDetail = async () => {
     try {
@@ -816,14 +830,11 @@ function EditRencana() {
             await uploadPendingFiles(rencanaId)
           }
           
-          // Kirim notifikasi ke admin terpilih setelah simpan berhasil (hanya jika bukan draft)
-          if (!isDraft && selectedAdmins.length > 0) {
-            await sendNotificationsToSelectedAdmins(rencanaId)
+          // Notifikasi WA/PWA di backend & tanpa menahan navigasi
+          if (!isDraft) {
+            void sendNotificationsToSelectedAdmins(rencanaId).catch(() => {})
           }
-          setTimeout(() => {
-            // Jika draft, navigate ke tab draft
-            navigate(isDraft ? '/pengeluaran?tab=draft' : '/pengeluaran')
-          }, 1500)
+          navigate(isDraft ? '/pengeluaran?tab=draft' : '/pengeluaran')
         } else {
           showNotification(response.message || 'Gagal membuat rencana', 'error')
         }
@@ -834,14 +845,10 @@ function EditRencana() {
           showNotification(isDraft ? 'Draft berhasil disimpan' : 'Rencana berhasil diupdate', 'success')
           // Reload files setelah update
           await loadFiles()
-          // Kirim notifikasi ke admin terpilih setelah simpan berhasil (hanya jika bukan draft)
-          if (!isDraft && selectedAdmins.length > 0) {
-            await sendNotificationsToSelectedAdmins(rencanaId)
+          if (!isDraft) {
+            void sendNotificationsToSelectedAdmins(rencanaId).catch(() => {})
           }
-          setTimeout(() => {
-            // Jika draft, navigate ke tab draft
-            navigate(isDraft ? '/pengeluaran?tab=draft' : '/pengeluaran')
-          }, 1500)
+          navigate(isDraft ? '/pengeluaran?tab=draft' : '/pengeluaran')
         } else {
           showNotification(response.message || 'Gagal mengupdate rencana', 'error')
         }
@@ -1499,6 +1506,54 @@ function EditRencana() {
               )}
             </div>
 
+            {pengeluaranFitur.rencanaKelolaPenerimaNotif ? (
+              <details className="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-600 overflow-hidden group">
+                <summary className="px-6 py-4 cursor-pointer list-none flex items-center justify-between text-sm font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/80">
+                  <span>Kelola penerima notifikasi WA (admin)</span>
+                  <span className="text-gray-400 text-xs group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div className="px-6 pb-6 pt-0 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 mb-4">
+                    Daftar penerima mengikuti Pengaturan → Fitur: aksi &quot;Notif WA semua lembaga&quot; atau &quot;Notif WA lembaga sesuai role&quot;
+                    untuk role terkait, serta lembaga rencana ini. Buka bagian ini hanya jika perlu membatasi centang penerima di antara mereka yang memenuhi syarat.
+                  </p>
+                  {loadingAdmins ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                    </div>
+                  ) : listAdmins.length > 0 ? (
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {listAdmins.map((admin) => (
+                          <div
+                            key={admin.id}
+                            className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedAdmins.includes(admin.id)}
+                              onChange={() => handleToggleAdmin(admin.id)}
+                              className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                            />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                {admin.nama || 'Unknown'}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{admin.whatsapp}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Tidak ada admin tersedia</p>
+                    </div>
+                  )}
+                </div>
+              </details>
+            ) : null}
+
               {/* Actions — tombol hanya ditampilkan jika ada hak (bukan hanya disabled) */}
               <div className="flex gap-2 justify-end mt-6 flex-wrap">
                 <button
@@ -1535,64 +1590,14 @@ function EditRencana() {
                     {saving ? (
                       <>
                         <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                        {isCreateMode ? 'Menyimpan...' : 'Mengupdate...'}
+                        {isCreateMode || rencana?.ket === 'draft' ? 'Menyimpan...' : 'Mengupdate...'}
                       </>
                     ) : (
-                      isCreateMode ? 'Simpan' : 'Update'
+                      submitPrimaryLabel
                     )}
                   </button>
                 ) : null}
               </div>
-
-            {/* List Admin untuk Notifikasi */}
-            <div className="mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-1">
-                  Kirim Notifikasi ke Admin
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Pilih admin yang akan menerima notifikasi saat rencana disimpan
-                </p>
-              </div>
-              
-              {loadingAdmins ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                </div>
-              ) : listAdmins.length > 0 ? (
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {listAdmins.map((admin) => (
-                      <div
-                        key={admin.id}
-                        className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedAdmins.includes(admin.id)}
-                          onChange={() => handleToggleAdmin(admin.id)}
-                          className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
-                        />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                            {admin.nama || 'Unknown'}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {admin.whatsapp}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Tidak ada admin tersedia
-                  </p>
-                </div>
-              )}
-            </div>
           </motion.div>
         </div>
       </div>

@@ -174,3 +174,24 @@ export function buildFlatNavMenusFromFitur(p) {
   }
   return { menus: catalogMenusToNavFlat(menusOnly), source }
 }
+
+/**
+ * Cari route header yang cocok untuk path saat ini.
+ * @param {string} pathname
+ * @param {Array<{name: string, routes: Array<{path: string, label: string, prefix?: boolean}>}>} headerGroups
+ * @returns {{group: string, label: string}|null}
+ */
+export function matchHeaderRoute(pathname, headerGroups) {
+  const rawPath = pathname || '/'
+  const path = rawPath === '/' || rawPath === '/dashboard' ? '/dashboard-pembayaran' : rawPath
+  if (!Array.isArray(headerGroups)) return null
+  for (const group of headerGroups) {
+    for (const route of group.routes || []) {
+      const match = route.prefix
+        ? (path === route.path || path.startsWith(route.path + '/'))
+        : path === route.path
+      if (match) return { group: group.name, label: route.label }
+    }
+  }
+  return null
+}

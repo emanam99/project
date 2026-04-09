@@ -271,20 +271,21 @@ class WhatsAppController
             $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $jid);
             $isDaftarNotif = $reply !== null && $reply !== '';
             $replySource = $isDaftarNotif ? 'daftar_notif' : null;
-            if (!$isDaftarNotif) {
+            $skipOtherIncomingFlows = $isDaftarNotif;
+            if (!$skipOtherIncomingFlows) {
                 $reply = EbeddienDaftarWaFlow::handle($nomorTujuan, $message, $jid);
                 if ($reply !== null && $reply !== '') {
                     $replySource = 'ebeddien_daftar_wa';
                 }
             }
-            if (!$isDaftarNotif && ($reply === null || $reply === '')) {
+            if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
                 // Pengguna dengan "Akses AI dari WA" aktif: AI dulu, baru menu interaktif.
                 $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $jid);
                 if ($reply !== null && $reply !== '') {
                     $replySource = 'ai_whatsapp';
                 }
             }
-            if (!$isDaftarNotif && ($reply === null || $reply === '')) {
+            if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
                 $reply = WaInteractiveMenuService::handle($nomorTujuan, $message, $jid);
                 if ($reply !== null && $reply !== '') {
                     $replySource = 'wa_interactive_menu';
@@ -304,7 +305,7 @@ class WhatsAppController
                 error_log('WhatsAppController::incoming sendMessage result: success=' . ($sendResult['success'] ? '1' : '0') . ' msg=' . ($sendResult['message'] ?? ''));
             } else {
                 error_log('WhatsAppController::incoming: no auto reply. from=' . $nomorTujuan . ' message_preview=' . substr($message, 0, 60));
-                if (!$isDaftarNotif) {
+                if (!$skipOtherIncomingFlows) {
                     error_log(
                         'WhatsAppController::incoming hint: Menu interaktif tidak mengembalikan teks (mati/tidak cocok). '
                         . 'AI WA butuh baris di atas dari AiWhatsappBridgeService jika penyebabnya bukan nomor/profil.'

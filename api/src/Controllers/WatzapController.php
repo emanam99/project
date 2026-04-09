@@ -464,13 +464,14 @@ class WatzapController
                 $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $fromJidFlow);
                 $isDaftarNotif = $reply !== null && $reply !== '';
                 $replyKind = $isDaftarNotif ? 'daftar_notif' : null;
-                if (!$isDaftarNotif) {
+                $skipOtherIncomingFlows = $isDaftarNotif;
+                if (!$skipOtherIncomingFlows) {
                     $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $fromJidFlow);
                     if ($reply !== null && $reply !== '') {
                         $replyKind = 'ai_whatsapp';
                     }
                 }
-                if (!$isDaftarNotif && ($reply === null || $reply === '')) {
+                if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
                     $reply = WaInteractiveMenuService::handle($nomorTujuan, $message, $fromJidFlow);
                     if ($reply !== null && $reply !== '') {
                         $replyKind = 'wa_interactive_menu';

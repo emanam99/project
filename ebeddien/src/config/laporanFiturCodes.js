@@ -5,3 +5,10 @@ export const LAPORAN_ACTION_CODES = {
   tabUwaba: 'action.laporan.tab.uwaba',
   tabPendaftaran: 'action.laporan.tab.pendaftaran'
 }
+
+/** Tab UWABA (bukan PSB) — untuk deteksi grup laporan tanpa daftar role statis */
+export const LAPORAN_UWABA_TAB_CODES = [
+  LAPORAN_ACTION_CODES.tabTunggakan,
+  LAPORAN_ACTION_CODES.tabKhusus,
+  LAPORAN_ACTION_CODES.tabUwaba
+]

@@ -29,7 +29,7 @@ function SuperAdminRoute({ children }) {
   const canSuperAdminRoutes = userHasSuperAdminAccess(user)
 
   if (!user || !canSuperAdminRoutes) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/beranda" replace />
   }
 
   return children || <Outlet />

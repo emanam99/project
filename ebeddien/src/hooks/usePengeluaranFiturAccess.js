@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAuthStore } from '../store/authStore'
-import { userHasSuperAdminAccess, userMatchesAnyAllowedRole } from '../utils/roleAccess'
+import { userHasSuperAdminAccess } from '../utils/roleAccess'
 import { PENGELUARAN_ACTION_CODES as C } from '../config/pengeluaranFiturCodes'
 
 function collectLembagaIds(user) {
@@ -19,7 +19,7 @@ function collectLembagaIds(user) {
 
 /**
  * Hak halaman Pengeluaran: tab, lembaga per tab, tombol rencana/draft/pengeluaran.
- * Jika token belum punya action.pengeluaran.* (belum migrasi/seed): perilaku lama untuk admin_uwaba/super_admin.
+ * Sumber kebenaran: kode di /me/fitur-menu; fallback tanpa action.pengeluaran.* = punya menu Pengeluaran.
  */
 export function usePengeluaranFiturAccess() {
   const user = useAuthStore((s) => s.user)
@@ -27,10 +27,10 @@ export function usePengeluaranFiturAccess() {
 
   return useMemo(() => {
     const isSuper = userHasSuperAdminAccess(user)
-    const hasKeuangan = userMatchesAnyAllowedRole(user, ['admin_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin'])
-    const useApi = Array.isArray(fiturMenuCodes) && fiturMenuCodes.length > 0
-    const apiHasPengeluaran =
-      useApi && fiturMenuCodes.some((c) => String(c).startsWith('action.pengeluaran.'))
+    const codes = Array.isArray(fiturMenuCodes) ? fiturMenuCodes : []
+    const useApi = codes.length > 0
+    const apiHasPengeluaran = useApi && codes.some((c) => String(c).startsWith('action.pengeluaran.'))
+    const hasMenuPengeluaran = codes.includes('menu.pengeluaran')
 
     const lembagaIds = collectLembagaIds(user)
 
@@ -38,7 +38,7 @@ export function usePengeluaranFiturAccess() {
       if (isSuper) return true
       if (lembagaIds.length === 0) return true
       if (!apiHasPengeluaran) return fallbackSemua()
-      return fiturMenuCodes.includes(code)
+      return codes.includes(code)
     }
 
     const rencanaLembagaSemua = lembagaSemua(C.rencanaLembagaSemua, () => true)
@@ -59,30 +59,48 @@ export function usePengeluaranFiturAccess() {
 
     const can = (code, fb) => {
       if (isSuper) return true
-      if (!apiHasPengeluaran) return fb()
-      return fiturMenuCodes.includes(code)
+      if (!apiHasPengeluaran) return typeof fb === 'function' ? fb() : false
+      return codes.includes(code)
     }
 
-    const tabRencana = can(C.tabRencana, () => hasKeuangan)
-    const tabPengeluaran = can(C.tabPengeluaran, () => hasKeuangan)
-    const tabDraft = can(C.tabDraft, () => hasKeuangan)
+    const tabRencana = can(C.tabRencana, () => hasMenuPengeluaran)
+    const tabPengeluaran = can(C.tabPengeluaran, () => hasMenuPengeluaran)
+    const tabDraft = can(C.tabDraft, () => hasMenuPengeluaran)
 
     const noTabAccess =
-      apiHasPengeluaran && hasKeuangan && !tabRencana && !tabPengeluaran && !tabDraft
+      apiHasPengeluaran && !tabRencana && !tabPengeluaran && !tabDraft
 
-    const rencanaBuat = can(C.rencanaBuat, () => hasKeuangan)
-    const rencanaSimpan = can(C.rencanaSimpan, () => hasKeuangan)
-    const rencanaSimpanDraft = can(C.rencanaSimpanDraft, () => hasKeuangan)
-    const rencanaEdit = can(C.rencanaEdit, () => hasKeuangan)
-    const rencanaApprove = can(C.rencanaApprove, () => hasKeuangan)
-    const rencanaTolak = can(C.rencanaTolak, () => hasKeuangan)
+    const rencanaBuat = can(C.rencanaBuat, () => hasMenuPengeluaran)
+    const rencanaSimpan = can(C.rencanaSimpan, () => hasMenuPengeluaran)
+    const rencanaSimpanDraft = can(C.rencanaSimpanDraft, () => hasMenuPengeluaran)
+    const rencanaEdit = can(C.rencanaEdit, () => hasMenuPengeluaran)
+    const rencanaApprove = can(C.rencanaApprove, () => hasMenuPengeluaran)
+    const rencanaTolak = can(C.rencanaTolak, () => hasMenuPengeluaran)
+    const rencanaHapusKomentar = can(C.rencanaHapusKomentar, () => false)
 
-    const itemEdit = can(C.itemEdit, () => hasKeuangan)
+    /**
+     * Centang penerima WA (rencana) + modal approve/tolak — action.pengeluaran.rencana.kelola_penerima_notif.
+     * Tanpa daftar aksi pengeluaran di token: perilaku lama (boleh).
+     */
+    const rencanaKelolaPenerimaNotif = isSuper || !apiHasPengeluaran || codes.includes(C.rencanaKelolaPenerimaNotif)
+
+    const itemEdit = can(C.itemEdit, () => hasMenuPengeluaran)
+    const itemKelolaPenerima = can(C.itemKelolaPenerima, () => hasMenuPengeluaran)
     const itemHapus = can(C.itemHapus, () => isSuper)
 
-    const draftBuat = can(C.draftBuat, () => hasKeuangan)
-    const draftEdit = can(C.draftEdit, () => hasKeuangan)
-    const draftHapus = can(C.draftHapus, () => hasKeuangan)
+    /**
+     * Dropdown penerima uang (offcanvas tab pengeluaran, Aktivitas, Aktivitas TA):
+     * action.pengeluaran.item.kelola_penerima ATAU aksi lama rencana.kelola_penerima_notif.
+     */
+    const pengeluaranUbahPenerimaUang =
+      isSuper ||
+      !apiHasPengeluaran ||
+      codes.includes(C.itemKelolaPenerima) ||
+      codes.includes(C.rencanaKelolaPenerimaNotif)
+
+    const draftBuat = can(C.draftBuat, () => hasMenuPengeluaran)
+    const draftEdit = can(C.draftEdit, () => hasMenuPengeluaran)
+    const draftHapus = can(C.draftHapus, () => hasMenuPengeluaran)
 
     return {
       apiHasPengeluaran,
@@ -105,6 +123,12 @@ export function usePengeluaranFiturAccess() {
       rencanaEdit,
       rencanaApprove,
       rencanaTolak,
+      rencanaHapusKomentar,
+      rencanaKelolaPenerimaNotif,
+      /** Alias rencanaKelolaPenerimaNotif (notifikasi WA rencana). */
+      kelolaPenerimaNotifWa: rencanaKelolaPenerimaNotif,
+      itemKelolaPenerima,
+      pengeluaranUbahPenerimaUang,
       itemEdit,
       itemHapus,
       draftBuat,

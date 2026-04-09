@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { kalenderAPI } from '../../services/api'
@@ -172,22 +172,70 @@ export default function PickDateHijri({
 
   const [popoverStyle, setPopoverStyle] = useState({})
 
-  useEffect(() => {
+  /** Popover di portal: pastikan panel tidak melampaui viewport (atas/bawah); scroll internal bila perlu */
+  useLayoutEffect(() => {
     if (!open || !triggerRef.current) return
-    const el = triggerRef.current
-    const rect = el.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom
-    const showAbove = spaceBelow < 340
-    const top = showAbove ? Math.max(8, rect.top - 8 - 320) : rect.bottom + 8
-    const left = Math.min(Math.max(8, rect.left), window.innerWidth - 8 - 320)
-    setPopoverStyle({
-      position: 'fixed',
-      left,
-      top: showAbove ? undefined : top,
-      bottom: showAbove ? window.innerHeight - rect.top + 8 : undefined,
-      zIndex: 100020,
-      width: 'min(100vw - 16px, 320px)'
-    })
+
+    const margin = 8
+    const gap = 8
+    const maxPanelH = 440
+    const minPanelH = 160
+
+    const updatePosition = () => {
+      const el = triggerRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const vh = window.innerHeight
+      const vw = window.innerWidth
+      const width = Math.min(vw - 2 * margin, 320)
+      const left = Math.min(Math.max(margin, rect.left), vw - margin - width)
+
+      const spaceBelow = vh - rect.bottom - margin
+      const spaceAbove = rect.top - margin
+
+      const placeBelow = () => {
+        const t = rect.bottom + gap
+        const mh = Math.min(maxPanelH, vh - t - margin)
+        return { top: t, bottom: undefined, maxHeight: Math.max(minPanelH, mh) }
+      }
+
+      const placeAbove = () => {
+        const cap = Math.max(0, rect.top - margin - gap)
+        const mh = Math.min(maxPanelH, Math.max(120, cap))
+        return { top: undefined, bottom: vh - rect.top + gap, maxHeight: mh }
+      }
+
+      let pos
+      if (spaceBelow >= 260 || spaceBelow >= spaceAbove) {
+        pos = placeBelow()
+        if (pos.maxHeight < minPanelH + 40 && spaceAbove > spaceBelow) {
+          pos = placeAbove()
+        }
+      } else {
+        pos = placeAbove()
+      }
+
+      setPopoverStyle({
+        position: 'fixed',
+        left,
+        top: pos.top,
+        bottom: pos.bottom,
+        width,
+        maxHeight: pos.maxHeight,
+        overflowY: 'auto',
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        zIndex: 100020
+      })
+    }
+
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
   }, [open, viewYear, viewMonth])
 
   const goTodayHijri = useCallback(async () => {
@@ -292,9 +340,9 @@ export default function PickDateHijri({
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.15 }}
           style={popoverStyle}
-          className="pickdate-hijri-popover rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-2xl p-3"
+          className="pickdate-hijri-popover rounded-2xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-2xl p-3 flex flex-col min-h-0"
         >
-        <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="sticky top-0 z-[1] -mx-0.5 px-0.5 pt-0.5 pb-2 mb-1 bg-white dark:bg-gray-800 flex items-center justify-between gap-2 shrink-0 border-b border-gray-100 dark:border-gray-700/80">
           <button
             type="button"
             disabled={!canPrevMonth}

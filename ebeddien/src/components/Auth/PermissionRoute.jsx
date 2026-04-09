@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useEffect, useState } from 'react'
+import { userHasPermission } from '../../utils/roleAccess'
 
 // Factory function untuk membuat PermissionRoute dengan permission tertentu
 export function createPermissionRoute(requiredPermission) {
@@ -26,13 +27,8 @@ export function createPermissionRoute(requiredPermission) {
       return <Navigate to="/login" state={{ from: location }} replace />
     }
 
-    if (!user || !user.permissions || !Array.isArray(user.permissions)) {
-      return <Navigate to="/" replace />
-    }
-
-    const hasPermission = user.permissions.includes(requiredPermission)
-    if (!hasPermission) {
-      return <Navigate to="/" replace />
+    if (!user || !userHasPermission(user, requiredPermission)) {
+      return <Navigate to="/beranda" replace />
     }
 
     return <Outlet />

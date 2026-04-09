@@ -47,6 +47,27 @@ export function userHasAnyAdminCap(user) {
   )
 }
 
+/** Route admin umum: role admin/super_admin atau permission manage_users. */
+export function userHasAdminRouteAccess(user) {
+  if (!user) return false
+  if (userHasSuperAdminAccess(user)) return true
+  const perms = user.permissions
+  if (Array.isArray(perms) && perms.length > 0 && perms.includes('manage_users')) {
+    return true
+  }
+  return userMatchesAnyAllowedRole(user, ['admin'])
+}
+
+/** Cek permission tunggal dari JWT, dengan bypass super_admin secara default. */
+export function userHasPermission(user, permission, opts = {}) {
+  if (!user || !permission) return false
+  const { allowSuperAdmin = true } = opts
+  if (allowSuperAdmin && userHasSuperAdminAccess(user)) return true
+  const perms = user.permissions
+  if (!Array.isArray(perms) || perms.length === 0) return false
+  return perms.includes(permission)
+}
+
 /**
  * Hak kelola PSB (Data Pendaftar, scope formal/diniyah, dll.).
  * Sumber utama: array `permissions` di JWT — gabungan per role dari tabel `role.permissions_json` atau RoleConfig API.
@@ -59,4 +80,83 @@ export function userHasManagePsbPermission(user) {
     return perms.includes('manage_psb')
   }
   return userMatchesAnyAllowedRole(user, ['admin_psb', 'petugas_psb'])
+}
+
+/** Area pembayaran UWABA (nav utama / redirect) — permission manage_uwaba atau role staff UWABA. */
+export function userHasUwabaPaymentNavAccess(user) {
+  if (!user) return false
+  if (userHasSuperAdminAccess(user)) return true
+  const perms = user.permissions
+  if (Array.isArray(perms) && perms.length > 0 && perms.includes('manage_uwaba')) {
+    return true
+  }
+  return userMatchesAnyAllowedRole(user, ['admin_uwaba', 'petugas_uwaba'])
+}
+
+/** Area PSB (nav utama / redirect) — permission manage_psb atau role PSB. */
+export function userHasPsbNavAccess(user) {
+  if (!user) return false
+  if (userHasSuperAdminAccess(user)) return true
+  const perms = user.permissions
+  if (Array.isArray(perms) && perms.length > 0 && perms.includes('manage_psb')) {
+    return true
+  }
+  return userMatchesAnyAllowedRole(user, ['admin_psb', 'petugas_psb'])
+}
+
+/** Area Umroh — permission manage_umroh atau role umroh. */
+export function userHasUmrohNavAccess(user) {
+  if (!user) return false
+  if (userHasSuperAdminAccess(user)) return true
+  const perms = user.permissions
+  if (Array.isArray(perms) && perms.length > 0 && perms.includes('manage_umroh')) {
+    return true
+  }
+  return userMatchesAnyAllowedRole(user, ['admin_umroh', 'petugas_umroh'])
+}
+
+/** Area Ijin — permission manage_ijin atau role ijin. */
+export function userHasIjinNavAccess(user) {
+  if (!user) return false
+  if (userHasSuperAdminAccess(user)) return true
+  const perms = user.permissions
+  if (Array.isArray(perms) && perms.length > 0 && perms.includes('manage_ijin')) {
+    return true
+  }
+  return userMatchesAnyAllowedRole(user, ['admin_ijin', 'petugas_ijin'])
+}
+
+/** Menu Data Boyong: hanya super_admin atau admin_ijin (bukan petugas_ijin). */
+export function userHasIjinBoyongNavAccess(user) {
+  if (!user) return false
+  return userHasSuperAdminAccess(user) || userMatchesAnyAllowedRole(user, ['admin_ijin'])
+}
+
+/**
+ * Cocok untuk daftar role route + fallback permission (JWT.permissions dari DB/RoleConfig).
+ * Dipakai RoleRoute guard & menu expanded requiresRole.
+ */
+export function userMatchesAllowedRolesOrPermissions(user, allowedRoles) {
+  if (!user || !allowedRoles?.length) return false
+  if (userHasSuperAdminAccess(user)) return true
+  if (userMatchesAnyAllowedRole(user, allowedRoles)) return true
+  const perms = user.permissions
+  if (!Array.isArray(perms) || perms.length === 0) return false
+  const norm = allowedRoles.map((r) => normalizeRoleKey(r))
+  if (norm.some((r) => ['admin_uwaba', 'petugas_uwaba'].includes(r)) && perms.includes('manage_uwaba')) {
+    return true
+  }
+  if (norm.some((r) => ['admin_psb', 'petugas_psb'].includes(r)) && perms.includes('manage_psb')) {
+    return true
+  }
+  if (norm.some((r) => ['admin_ijin', 'petugas_ijin'].includes(r)) && perms.includes('manage_ijin')) {
+    return true
+  }
+  if (norm.some((r) => ['admin_umroh', 'petugas_umroh'].includes(r)) && perms.includes('manage_umroh')) {
+    return true
+  }
+  if (norm.includes('admin_cashless') && perms.includes('manage_users')) {
+    return true
+  }
+  return false
 }

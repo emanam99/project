@@ -6,7 +6,11 @@ import { useSidebarStore } from '../../store/sidebarStore'
 import api from '../../services/api'
 import { getGambarUrl } from '../../config/images'
 import { GROUP_ORDER } from '../../config/menuConfig'
-import { userMatchesAnyAllowedRole, userHasSuperAdminAccess, userHasAnyAdminCap } from '../../utils/roleAccess'
+import {
+  userMatchesAllowedRolesOrPermissions,
+  userHasSuperAdminAccess,
+  userHasAnyAdminCap
+} from '../../utils/roleAccess'
 import { buildUnifiedSidebarNavFromFitur } from '../../utils/sidebarNavFromFiturApi'
 
 const GROUP_LABELS = GROUP_ORDER
@@ -67,7 +71,7 @@ function Sidebar() {
 
   // Filter menu: gabungan all_roles (role_key bisa "multi_role")
   const filteredNavItems = useMemo(() => {
-    const matchRoles = (roles) => userMatchesAnyAllowedRole(user, roles)
+    const matchRoles = (roles) => userMatchesAllowedRolesOrPermissions(user, roles)
     const permOk = (permission) => {
       if (!user || !user.permissions) return false
       return user.permissions.includes(permission)

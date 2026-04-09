@@ -6,8 +6,12 @@ use App\Database;
 use App\Utils\VapidHelper;
 
 /**
- * Service untuk mengirim Push Notifications ke subscribers
- * Menggunakan web-push library (perlu diinstall via Composer)
+ * Service untuk mengirim Push Notifications ke subscribers (Web Push).
+ * Menggunakan web-push library (perlu diinstall via Composer).
+ *
+ * Pengiriman memakai endpoint subscription di DB (pengurus___subscription), bukan JWT/session:
+ * penerima tetap bisa mendapat notifikasi meskipun token login di aplikasi sudah kadaluarsa,
+ * selama subscription push perangkatnya masih valid.
  */
 class PushNotificationService
 {
@@ -66,6 +70,19 @@ class PushNotificationService
         
         error_log("VAPID keys configured, proceeding with push notification");
 
+        // Siapkan payload; `url` juga disalin ke `data` agar SW (notification.data.url) bisa navigasi setelah klik
+        $customData = $options['data'] ?? [];
+        if (!\is_array($customData)) {
+            $customData = [];
+        }
+        $navUrl = isset($options['url']) && \is_string($options['url']) && $options['url'] !== ''
+            ? $options['url']
+            : '/';
+        $customData['url'] = $navUrl;
+
+        $actionsOpt = $options['actions'] ?? [];
+        $actionsJson = \is_array($actionsOpt) ? array_values(array_filter($actionsOpt, static fn ($a): bool => \is_array($a))) : [];
+
         // Prepare payload
         $payload = json_encode([
             'title' => $title,
@@ -73,8 +90,9 @@ class PushNotificationService
             'icon' => $options['icon'] ?? '/gambar/icon/icon192.png',
             'badge' => $options['badge'] ?? '/gambar/icon/icon128.png',
             'tag' => $options['tag'] ?? 'uwaba-notification',
-            'data' => $options['data'] ?? [],
-            'url' => $options['url'] ?? '/',
+            'data' => $customData,
+            'url' => $navUrl,
+            'actions' => $actionsJson,
             'requireInteraction' => $options['requireInteraction'] ?? false,
             'vibrate' => $options['vibrate'] ?? [200, 100, 200],
             'silent' => $options['silent'] ?? false

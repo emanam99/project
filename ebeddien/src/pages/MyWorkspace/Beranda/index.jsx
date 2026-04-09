@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
 import { BERANDA_WIDGET_CODES } from '../../../config/berandaFiturCodes'
-import { userMatchesAnyAllowedRole, userHasSuperAdminAccess } from '../../../utils/roleAccess'
+import { userHasSuperAdminAccess } from '../../../utils/roleAccess'
 
 const KalenderPage = lazy(() => import('../../Kalender/index.jsx'))
 
@@ -256,27 +256,27 @@ export default function Beranda() {
   const [dashboardPendaftaranLoading, setDashboardPendaftaranLoading] = useState(false)
   const [waktuSekarang, setWaktuSekarang] = useState(() => new Date())
 
-  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
-  const hasRoleUwaba = hasRole(['admin_uwaba', 'petugas_uwaba'])
-  const hasRoleAdminUwaba = hasRole(['admin_uwaba', 'super_admin'])
-  const hasRoleRingkasanKeuangan = hasRole(['admin_uwaba', 'super_admin', 'petugas_keuangan'])
-  const hasRolePsb = hasRole(['admin_psb', 'petugas_psb', 'super_admin'])
-
-  const canBerandaWidget = useMemo(() => {
+  /** Widget Beranda: izin dari kode action di /me/fitur-menu (Pengaturan → Fitur), bukan daftar role statis */
+  const widgetAllowed = useMemo(() => {
     const isSuper = userHasSuperAdminAccess(user)
-    const useApi = Array.isArray(fiturMenuCodes) && fiturMenuCodes.length > 0
+    const codes = Array.isArray(fiturMenuCodes) ? fiturMenuCodes : []
+    const useApi = codes.length > 0
     const apiHasBerandaActions =
-      useApi && fiturMenuCodes.some((c) => String(c).startsWith('action.beranda.widget.'))
-    return (code, fallback) => {
+      useApi && codes.some((c) => String(c).startsWith('action.beranda.widget.'))
+    return (code) => {
       if (isSuper) return true
-      if (!useApi) return fallback
-      if (apiHasBerandaActions && String(code).startsWith('action.beranda.widget.')) {
-        return fiturMenuCodes.includes(code)
+      if (!useApi) return false
+      const c = String(code)
+      if (apiHasBerandaActions && c.startsWith('action.beranda.widget.')) {
+        return codes.includes(code)
       }
-      if (fiturMenuCodes.includes(code)) return true
-      return fallback
+      return codes.includes(code)
     }
   }, [user, fiturMenuCodes])
+
+  const showWidgetPembayaranHariIni = widgetAllowed(BERANDA_WIDGET_CODES.pembayaranHariIni)
+  const showWidgetRingkasanKeuangan = widgetAllowed(BERANDA_WIDGET_CODES.ringkasanKeuangan)
+  const showWidgetTotalPendaftaran = widgetAllowed(BERANDA_WIDGET_CODES.totalPendaftaran)
   const { tahunAjaran, setTahunAjaran, tahunAjaranMasehi, setTahunAjaranMasehi, options: optionsTA, optionsMasehi: optionsMasehiTA } = useTahunAjaranStore()
 
   // Jam hidup (update tiap detik)
@@ -297,9 +297,9 @@ export default function Beranda() {
     return () => { cancelled = true }
   }, [])
 
-  // Rincian pembayaran hari ini (hanya untuk admin_uwaba / petugas_uwaba)
+  // Rincian pembayaran hari ini — jika aksi widget diizinkan di matriks fitur
   useEffect(() => {
-    if (!user?.id || !hasRoleUwaba) return
+    if (!user?.id || !showWidgetPembayaranHariIni) return
     setPaymentHariIniLoading(true)
     profilAPI.getTotalPembayaran(user.id).then((response) => {
       if (response.success) {
@@ -318,11 +318,11 @@ export default function Beranda() {
         })
       } else setPaymentHariIni(null)
     }).catch(() => setPaymentHariIni(null)).finally(() => setPaymentHariIniLoading(false))
-  }, [user?.id, hasRoleUwaba])
+  }, [user?.id, showWidgetPembayaranHariIni])
 
-  // Ringkasan keuangan (admin_uwaba / super_admin / petugas_keuangan)
+  // Ringkasan keuangan
   useEffect(() => {
-    if (!hasRoleRingkasanKeuangan) return
+    if (!showWidgetRingkasanKeuangan) return
     setRingkasanKeuanganLoading(true)
     profilAPI.getTotalPemasukanPengeluaran(tahunAjaran || null).then((response) => {
       if (response?.success) {
@@ -334,18 +334,18 @@ export default function Beranda() {
         })
       } else setRingkasanKeuangan(null)
     }).catch(() => setRingkasanKeuangan(null)).finally(() => setRingkasanKeuanganLoading(false))
-  }, [hasRoleRingkasanKeuangan, tahunAjaran])
+  }, [showWidgetRingkasanKeuangan, tahunAjaran])
 
-  // Dashboard Pendaftaran (total Pendaftar, Santri Baru, Formal, Diniyah) — hanya admin_psb / petugas_psb
+  // Dashboard Pendaftaran (total Pendaftar, Santri Baru, Formal, Diniyah)
   useEffect(() => {
-    if (!hasRolePsb) return
+    if (!showWidgetTotalPendaftaran) return
     setDashboardPendaftaranLoading(true)
     pendaftaranAPI.getDashboard(tahunAjaran || null, tahunAjaranMasehi || null).then((response) => {
       if (response?.success && response?.data) {
         setDashboardPendaftaran(response.data)
       } else setDashboardPendaftaran(null)
     }).catch(() => setDashboardPendaftaran(null)).finally(() => setDashboardPendaftaranLoading(false))
-  }, [hasRolePsb, tahunAjaran, tahunAjaranMasehi])
+  }, [showWidgetTotalPendaftaran, tahunAjaran, tahunAjaranMasehi])
 
   // Foto profil (hanya fetch blob jika API user menyebut ada foto — hindari request sia-sia)
   useEffect(() => {
@@ -768,7 +768,7 @@ export default function Beranda() {
       </motion.section>
 
       {/* Total Pendaftaran — hanya admin_psb / petugas_psb (Pendaftar, Santri Baru, Formal, Diniyah) */}
-      {canBerandaWidget(BERANDA_WIDGET_CODES.totalPendaftaran, hasRolePsb) && (
+      {widgetAllowed(BERANDA_WIDGET_CODES.totalPendaftaran) && (
         <motion.section
           variants={paymentSectionVariants}
           initial="hidden"
@@ -860,7 +860,7 @@ export default function Beranda() {
       )}
 
       {/* Rincian pembayaran hari ini — hanya untuk admin_uwaba / petugas_uwaba; animasi section + stagger isi */}
-      {canBerandaWidget(BERANDA_WIDGET_CODES.pembayaranHariIni, hasRoleUwaba) && (
+      {widgetAllowed(BERANDA_WIDGET_CODES.pembayaranHariIni) && (
         <motion.section
           variants={paymentSectionVariants}
           initial="hidden"
@@ -947,7 +947,7 @@ export default function Beranda() {
       )}
 
       {/* Ringkasan Keuangan — admin_uwaba, super_admin, petugas_keuangan */}
-      {canBerandaWidget(BERANDA_WIDGET_CODES.ringkasanKeuangan, hasRoleRingkasanKeuangan) && (
+      {widgetAllowed(BERANDA_WIDGET_CODES.ringkasanKeuangan) && (
         <motion.section
           variants={paymentSectionVariants}
           initial="hidden"
@@ -1018,7 +1018,7 @@ export default function Beranda() {
       )}
 
       {/* Aktivitas terbaru — list rapi per baris */}
-      {canBerandaWidget(BERANDA_WIDGET_CODES.aktivitasTerbaru, true) && (
+      {widgetAllowed(BERANDA_WIDGET_CODES.aktivitasTerbaru) && (
       <motion.section
         variants={blockVariants}
         custom={3}
@@ -1120,7 +1120,7 @@ export default function Beranda() {
               {berandaContent}
             </div>
           </div>
-          {canBerandaWidget(BERANDA_WIDGET_CODES.kalenderSamping, true) && (
+          {widgetAllowed(BERANDA_WIDGET_CODES.kalenderSamping) && (
           <motion.aside
             className="h-full shrink-0 w-[28rem] max-w-[32rem] xl:max-w-[36rem] border-l border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 flex flex-col min-h-0 overflow-hidden"
             initial={{ x: '100%' }}

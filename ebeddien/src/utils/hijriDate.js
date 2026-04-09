@@ -1,4 +1,4 @@
-import { getSlimApiUrl } from '../services/api'
+import { getSlimApiUrl, kalenderAPI } from '../services/api'
 
 /**
  * Mengambil tanggal Masehi dan Hijriyah dari API aplikasi (backend yang sama dengan kalender).
@@ -31,3 +31,30 @@ export async function getTanggalFromAPI(baseUrl) {
   }
 }
 
+/**
+ * Hijriyah Y-m-d → Masehi Y-m-d (sesuai `psa___kalender`; untuk simpan ke kolom DATE).
+ */
+export async function hijriYmdToMasehiYmd(hijriYmd) {
+  if (!hijriYmd || !/^\d{4}-\d{2}-\d{2}$/.test(String(hijriYmd))) return null
+  try {
+    const res = await kalenderAPI.get({ action: 'to_masehi', tanggal: String(hijriYmd).slice(0, 10) })
+    const m = res?.masehi
+    if (m && /^\d{4}-\d{2}-\d{2}/.test(m)) return m.slice(0, 10)
+  } catch (_) {}
+  return null
+}
+
+/**
+ * Masehi Y-m-d → Hijriyah Y-m-d (untuk tampilan PickDateHijri saat edit / switch kategori).
+ */
+export async function masehiYmdToHijriYmd(masehiYmd, waktu = '12:00:00') {
+  if (!masehiYmd) return null
+  const tanggal = String(masehiYmd).slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) return null
+  try {
+    const res = await kalenderAPI.get({ action: 'convert', tanggal, waktu })
+    const h = res?.hijriyah
+    if (h && /^\d{4}-\d{2}-\d{2}/.test(h) && h.slice(0, 10) !== '0000-00-00') return h.slice(0, 10)
+  } catch (_) {}
+  return null
+}

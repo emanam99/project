@@ -165,7 +165,11 @@ function isPublicV2AuthPath(config) {
   )
 }
 
-/** Hapus token login & redirect. Refresh token tetap disimpan agar kalender tetap bisa diakses (tanpa auto-login). */
+/**
+ * Hapus token login & redirect. Refresh token tetap disimpan agar kalender tetap bisa diakses (tanpa auto-login).
+ * Subscription Web Push (PWA) sengaja tidak di-unregister di sini — server tetap bisa mengirim push ke endpoint
+ * yang sudah tersimpan walau sesi Bearer habis; pengguna tetap melihat notifikasi sistem.
+ */
 function clearAuthAndRedirectToLogin() {
   localStorage.removeItem('auth_token')
   localStorage.removeItem('user_data')
@@ -2266,8 +2270,19 @@ export const userAPI = {
     const response = await api.get('/user/list')
     return response.data
   },
-  getSuperAdminAndUwaba: async () => {
-    const response = await api.get('/user/list-super-admin-uwaba')
+  /**
+   * @param {string|null|undefined} lembagaId - id lembaga rencana/pengeluaran (opsional)
+   * @param {{ notifContext?: 'draft' }} [options] - draft = penerima aksi draft.notif (satu lembaga sesuai role)
+   */
+  getSuperAdminAndUwaba: async (lembagaId = null, options = {}) => {
+    const params = {}
+    if (lembagaId != null && String(lembagaId).trim() !== '') {
+      params.lembaga_id = String(lembagaId).trim()
+    }
+    if (options.notifContext === 'draft') {
+      params.notif_context = 'draft'
+    }
+    const response = await api.get('/user/list-super-admin-uwaba', { params })
     return response.data
   },
   getById: async (id) => {
@@ -2420,6 +2435,12 @@ export const manageUsersAPI = {
     return response.data
   },
 
+  /** Buat baris baru di tabel role (key snake_case, label tampilan). */
+  createRole: async (key, label) => {
+    const response = await api.post('/manage-users/roles', { key, label })
+    return response.data
+  },
+
   addUserRole: async (userId, roleData) => {
     const response = await api.post(`/manage-users/${userId}/roles`, roleData)
     return response.data
@@ -2493,8 +2514,24 @@ export const settingsAPI = {
     )
     return response.data
   },
+  getEbeddienLegacyRouteRoles: async () => {
+    const response = await api.get('/settings/ebeddien-legacy-route-roles')
+    return response.data
+  },
+  putEbeddienLegacyRouteRoles: async (legacyKey, body) => {
+    const response = await api.put(
+      `/settings/ebeddien-legacy-route-roles/${encodeURIComponent(legacyKey)}`,
+      body
+    )
+    return response.data
+  },
   patchRolePolicy: async (roleKey, body) => {
     const response = await api.patch(`/settings/role-policy/${encodeURIComponent(roleKey)}`, body)
+    return response.data
+  },
+  /** Katalog app + permission (RoleConfig) untuk form centang Role & Akses. */
+  getRolePolicyCatalog: async () => {
+    const response = await api.get('/settings/role-policy/catalog')
     return response.data
   },
   postRolePolicySyncFromPhp: async () => {
@@ -2526,6 +2563,10 @@ export const notificationConfigAPI = {
     const response = await api.get('/settings/notification-messages', {
       params: { kategori, page, limit }
     })
+    return response.data
+  },
+  testErrorAlert: async (data = {}) => {
+    const response = await api.post('/settings/error-alert/test', data)
     return response.data
   }
 }

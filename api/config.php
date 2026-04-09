@@ -79,7 +79,7 @@ if (strlen($jwtSecret) < 32 && (env('APP_ENV') === 'production')) {
 
 return [
     // Versi backend (API) saat ini — dipakai endpoint GET /api/version dan tampilan frontend (uwaba BACKEND_VERSION)
-    'api_version' => '2.6.6',
+    'api_version' => '2.6.8',
     'database' => [
         // Baca dari environment variables, fallback ke default untuk development
         'host' => env('DB_HOST', 'localhost'),

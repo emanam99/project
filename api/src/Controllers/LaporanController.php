@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\ViaPembayaranHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -137,9 +138,9 @@ class LaporanController
             // Format data untuk tampilan
             foreach ($data as &$row) {
                 $row['nominal'] = 'Rp ' . number_format($row['nominal'], 0, ',', '.');
-                if (empty($row['via'])) {
-                    $row['via'] = '-';
-                }
+                $row['via'] = ViaPembayaranHelper::normalizeForDisplay(
+                    isset($row['via']) && $row['via'] !== '' ? (string) $row['via'] : null
+                );
                 if (empty($row['keterangan_1'])) {
                     $row['keterangan_1'] = '-';
                 }

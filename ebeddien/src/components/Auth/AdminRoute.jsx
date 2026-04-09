@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { userMatchesAnyAllowedRole } from '../../utils/roleAccess'
+import { userHasAdminRouteAccess } from '../../utils/roleAccess'
 import { useEffect, useState } from 'react'
 
 function AdminRoute() {
@@ -29,12 +29,12 @@ function AdminRoute() {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  const isAdmin = userMatchesAnyAllowedRole(user, ['admin', 'super_admin'])
+  const isAdmin = userHasAdminRouteAccess(user)
   
   if (!user || !isAdmin) {
     // Don't redirect, just show nothing or error message
     // The route won't be accessible anyway
-    return <Navigate to="/" replace />
+    return <Navigate to="/beranda" replace />
   }
 
   return <Outlet />

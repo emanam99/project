@@ -3,9 +3,13 @@
 namespace App\Controllers;
 
 use App\Config\EbeddienFiturSelectorRepository;
+use App\Config\LegacyRouteRoleDefinitions;
+use App\Config\LegacyRouteRolesRepository;
 use App\Config\RoleConfig;
 use App\Config\RolePolicyResolver;
 use App\Database;
+use App\Services\WhatsAppService;
+use App\Services\WatzapService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -182,6 +186,190 @@ class SettingsController
     }
 
     /**
+     * GET /api/settings/ebeddien-legacy-route-roles — fallback role per legacy_key (DB + fallback PHP).
+     */
+    public function getEbeddienLegacyRouteRoles(Request $request, Response $response): Response
+    {
+        try {
+            $defs = LegacyRouteRoleDefinitions::allGroups();
+            $items = [];
+            foreach ($defs as $legacyKey => $defaultRoles) {
+                $dbRoles = LegacyRouteRolesRepository::rolesForKey((string) $legacyKey);
+                $isDb = $dbRoles !== [] && $dbRoles !== $defaultRoles;
+                $items[] = [
+                    'legacy_key' => (string) $legacyKey,
+                    'roles' => $isDb ? array_values($dbRoles) : array_values($defaultRoles),
+                    'source' => $isDb ? 'database' : 'php',
+                    'default_roles' => array_values($defaultRoles),
+                ];
+            }
+            usort($items, static function (array $a, array $b): int {
+                return strcmp((string) ($a['legacy_key'] ?? ''), (string) ($b['legacy_key'] ?? ''));
+            });
+
+            $roleRows = $this->db->query('SELECT `key`, `label` FROM `role` ORDER BY `key` ASC')->fetchAll(\PDO::FETCH_ASSOC);
+            $roleCatalog = [];
+            foreach ($roleRows as $r) {
+                $k = str_replace(' ', '_', strtolower(trim((string) ($r['key'] ?? ''))));
+                if ($k === '') {
+                    continue;
+                }
+                $roleCatalog[] = [
+                    'key' => $k,
+                    'label' => (string) ($r['label'] ?? $k),
+                ];
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'items' => $items,
+                    'role_catalog' => $roleCatalog,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getEbeddienLegacyRouteRoles ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil fallback role route',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/settings/ebeddien-legacy-route-roles/{legacyKey} — body: { "roles": string[] }.
+     */
+    public function putEbeddienLegacyRouteRoles(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $legacyKey = trim((string) ($args['legacyKey'] ?? ''));
+            $defs = LegacyRouteRoleDefinitions::allGroups();
+            if (!isset($defs[$legacyKey])) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'legacy_key tidak dikenal',
+                ], 404);
+            }
+            $body = (array) $request->getParsedBody();
+            $roles = $body['roles'] ?? null;
+            if (!is_array($roles)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Body wajib berisi "roles" (array string)',
+                ], 400);
+            }
+            $clean = [];
+            foreach ($roles as $rk) {
+                $k = str_replace(' ', '_', strtolower(trim((string) $rk)));
+                if ($k === '' || !preg_match('/^[a-z0-9_]+$/', $k)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Setiap role harus string valid (a-z, 0-9, underscore)',
+                    ], 400);
+                }
+                $clean[$k] = true;
+            }
+            $rolesFinal = array_keys($clean);
+
+            $this->db->beginTransaction();
+            $del = $this->db->prepare('DELETE FROM `ebeddien_legacy_route_role` WHERE `legacy_key` = ?');
+            $del->execute([$legacyKey]);
+            if ($rolesFinal !== []) {
+                $ins = $this->db->prepare(
+                    'INSERT INTO `ebeddien_legacy_route_role` (`legacy_key`, `role_key`, `sort_order`) VALUES (?, ?, ?)'
+                );
+                foreach ($rolesFinal as $i => $k) {
+                    $ins->execute([$legacyKey, $k, (int) $i]);
+                }
+            }
+            $this->db->commit();
+            LegacyRouteRolesRepository::clearCache();
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Fallback role route diperbarui.',
+                'data' => [
+                    'legacy_key' => $legacyKey,
+                    'roles' => $rolesFinal,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log('SettingsController::putEbeddienLegacyRouteRoles ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan fallback role route',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/settings/role-policy/catalog — daftar aplikasi & permission (RoleConfig) untuk UI centang tanpa JSON.
+     */
+    public function getRolePolicyCatalog(Request $request, Response $response): Response
+    {
+        try {
+            $apps = [];
+            foreach (RoleConfig::APPS as $key => $label) {
+                $apps[] = ['key' => (string) $key, 'label' => (string) $label];
+            }
+
+            $permSeen = [];
+            foreach (RoleConfig::ROLE_PERMISSIONS as $perms) {
+                foreach ($perms as $p) {
+                    $pk = strtolower(trim((string) $p));
+                    if ($pk !== '') {
+                        $permSeen[$pk] = true;
+                    }
+                }
+            }
+            $permLabels = [
+                'manage_users' => 'Kelola pengguna',
+                'manage_santri' => 'Kelola data santri',
+                'manage_uwaba' => 'Kelola pembayaran UWABA',
+                'manage_umroh' => 'Kelola data Umroh',
+                'manage_psb' => 'Kelola pendaftaran PSB',
+                'manage_ijin' => 'Kelola data Ijin',
+                'view_reports' => 'Melihat laporan',
+                'manage_finance' => 'Kelola keuangan',
+                'manage_settings' => 'Kelola pengaturan',
+            ];
+            $permissions = [];
+            foreach (array_keys($permSeen) as $pk) {
+                $permissions[] = [
+                    'key' => $pk,
+                    'label' => $permLabels[$pk] ?? $pk,
+                ];
+            }
+            usort($permissions, static function (array $a, array $b): int {
+                return strcasecmp((string) ($a['label'] ?? ''), (string) ($b['label'] ?? ''));
+            });
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'apps' => $apps,
+                    'permissions' => $permissions,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getRolePolicyCatalog ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil katalog kebijakan role',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * PATCH /api/settings/role-policy/{roleKey} — body opsional: permissions (array|null), allowed_apps (array|null); null = hapus override (pakai PHP).
      */
     public function patchRolePolicy(Request $request, Response $response, array $args): Response
@@ -346,6 +534,7 @@ class SettingsController
     public function postRolePolicyClearCache(Request $request, Response $response): Response
     {
         RolePolicyResolver::clearCache();
+        LegacyRouteRolesRepository::clearCache();
 
         return $this->jsonResponse($response, [
             'success' => true,
@@ -945,6 +1134,109 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil pesan notifikasi',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/settings/error-alert/test
+     * Body opsional: { "phone": "0822...", "message": "..." }
+     * Kirim tes alert error WA dengan prioritas WA server sendiri.
+     */
+    public function postErrorAlertTest(Request $request, Response $response): Response
+    {
+        try {
+            $enabled = filter_var((string) (getenv('ERROR_ALERT_ENABLED') ?: 'true'), FILTER_VALIDATE_BOOLEAN);
+            if (!$enabled) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'ERROR_ALERT_ENABLED=false. Aktifkan dulu untuk tes.',
+                ], 400);
+            }
+
+            $body = (array) $request->getParsedBody();
+            $phoneRaw = isset($body['phone']) ? (string) $body['phone'] : (string) (getenv('ERROR_ALERT_WA_NUMBER') ?: '082232999921');
+            $phone = preg_replace('/\D/', '', $phoneRaw) ?: '';
+            if ($phone === '') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Nomor tujuan tidak valid.',
+                ], 400);
+            }
+
+            $customMessage = isset($body['message']) ? trim((string) $body['message']) : '';
+            $text = $customMessage !== '' ? $customMessage : (
+                "*TEST ALERT API ERROR*\n"
+                . "Env: " . (string) (getenv('APP_ENV') ?: 'local') . "\n"
+                . "Waktu: " . date('Y-m-d H:i:s') . " WIB\n"
+                . "Sumber: /api/settings/error-alert/test\n"
+                . "Status: Ini pesan tes, bukan error asli."
+            );
+
+            $preferOwnWa = ((string) (getenv('ERROR_ALERT_PROVIDER') ?: 'wa_sendiri')) !== 'watzap';
+            $usedProvider = 'watzap';
+            $sent = false;
+            $resultMessage = '';
+            $waHealth = null;
+
+            if ($preferOwnWa) {
+                $waStatus = WhatsAppService::fetchNodeSessionStatus(WhatsAppService::getPrimaryWaSessionId());
+                $waHealth = [
+                    'reachable' => is_array($waStatus),
+                    'baileys_status' => is_array($waStatus) ? (string) ($waStatus['baileysStatus'] ?? $waStatus['status'] ?? '-') : 'unreachable',
+                ];
+                $res = WhatsAppService::sendMessage($phone, $text, null, [
+                    'tujuan' => 'pengurus',
+                    'kategori' => 'error_alert_test',
+                    'sumber' => 'settings',
+                ]);
+                if (!empty($res['success'])) {
+                    $sent = true;
+                    $usedProvider = 'wa_sendiri';
+                    $resultMessage = (string) ($res['message'] ?? 'OK');
+                }
+            }
+
+            if (!$sent) {
+                $res = WatzapService::sendMessage($phone, $text);
+                if (!empty($res['success'])) {
+                    $sent = true;
+                    $usedProvider = 'watzap';
+                    $resultMessage = (string) ($res['message'] ?? 'OK');
+                } else {
+                    $resultMessage = (string) ($res['message'] ?? 'Gagal kirim notifikasi tes');
+                }
+            }
+
+            if (!$sent) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tes alert gagal dikirim.',
+                    'data' => [
+                        'provider' => $usedProvider,
+                        'phone' => $phone,
+                        'provider_message' => $resultMessage,
+                    'wa_health' => $waHealth,
+                    ],
+                ], 500);
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Tes alert berhasil dikirim.',
+                'data' => [
+                    'provider' => $usedProvider,
+                    'phone' => $phone,
+                    'provider_message' => $resultMessage,
+                    'wa_health' => $waHealth,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::postErrorAlertTest ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menjalankan tes alert error',
                 'error' => $e->getMessage(),
             ], 500);
         }

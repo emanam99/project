@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Config\EbeddienFiturAccess;
+use App\Config\LegacyRouteRoleKeys;
+use App\Config\LegacyRouteRoles;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\UploadsManagerController;
@@ -17,7 +19,7 @@ return function (\Slim\App $app): void {
         $group->post('/migrate-santri', [UploadsManagerController::class, 'migrateSantriFromLegacy']);
         $group->get('/check-legacy-rencana', [UploadsManagerController::class, 'checkLegacyRencanaPengeluaran']);
         $group->post('/migrate-rencana', [UploadsManagerController::class, 'migrateRencanaPengeluaranFromLegacy']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::SUPER_ADMIN_MENUS)))->add(new AuthMiddleware());
 
     $app->group('/api/santri-juara', function ($group) {
         $group->get('', [SantriJuaraController::class, 'getAll']);
@@ -25,5 +27,5 @@ return function (\Slim\App $app): void {
         $group->post('', [SantriJuaraController::class, 'create']);
         $group->put('/{id}', [SantriJuaraController::class, 'update']);
         $group->delete('/{id}', [SantriJuaraController::class, 'delete']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), ['super_admin']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::SUPER_ADMIN_MENUS)))->add(new AuthMiddleware());
 };

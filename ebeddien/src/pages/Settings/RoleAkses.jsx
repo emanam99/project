@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { settingsAPI } from '../../services/api'
+import { settingsAPI, manageUsersAPI } from '../../services/api'
+import RoleAccessOffcanvas from '../../components/RoleAccessOffcanvas'
 
 const PERMISSION_LABELS = {
   manage_users: 'Kelola pengguna',
@@ -35,32 +36,61 @@ export default function RoleAkses() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [data, setData] = useState({ apps: {}, roles: [] })
+  const [legacyRoleData, setLegacyRoleData] = useState({ items: [], role_catalog: [] })
+  const [legacyDraft, setLegacyDraft] = useState({})
+  const [savingLegacyKey, setSavingLegacyKey] = useState(null)
   const [syncLoading, setSyncLoading] = useState(false)
-  const [policyRole, setPolicyRole] = useState(null)
-  const [policyAppsJson, setPolicyAppsJson] = useState('')
-  const [policyPermJson, setPolicyPermJson] = useState('')
-  const [policyModalErr, setPolicyModalErr] = useState(null)
-  const [policySaving, setPolicySaving] = useState(false)
+  const [showCreateRole, setShowCreateRole] = useState(false)
+  const [newRoleKey, setNewRoleKey] = useState('')
+  const [newRoleLabel, setNewRoleLabel] = useState('')
+  const [createRoleLoading, setCreateRoleLoading] = useState(false)
+  const [createRoleErr, setCreateRoleErr] = useState(null)
+  const [accessRoleKey, setAccessRoleKey] = useState(null)
 
-  const load = useCallback(() => {
-    setLoading(true)
-    setError(null)
-    return settingsAPI
-      .getRolesConfig()
-      .then((rolesRes) => {
+  const accessRole = useMemo(
+    () => (accessRoleKey ? data.roles.find((r) => r.key === accessRoleKey) : null),
+    [data.roles, accessRoleKey]
+  )
+
+  const load = useCallback((options = {}) => {
+    const silent = options.silent === true
+    if (!silent) {
+      setLoading(true)
+      setError(null)
+    }
+    return Promise.all([settingsAPI.getRolesConfig(), settingsAPI.getEbeddienLegacyRouteRoles()])
+      .then(([rolesRes, legacyRes]) => {
         if (rolesRes?.success) {
           setData({
             apps: rolesRes.data?.apps ?? {},
             roles: rolesRes.data?.roles ?? []
           })
-        } else {
+        } else if (!silent) {
           setError(rolesRes?.message || 'Gagal memuat data role')
+        }
+        if (legacyRes?.success) {
+          const payload = {
+            items: legacyRes.data?.items ?? [],
+            role_catalog: legacyRes.data?.role_catalog ?? []
+          }
+          setLegacyRoleData(payload)
+          const draft = {}
+          payload.items.forEach((it) => {
+            draft[it.legacy_key] = (it.roles || []).join(', ')
+          })
+          setLegacyDraft(draft)
+        } else if (!silent) {
+          setError((prev) => prev || legacyRes?.message || 'Gagal memuat fallback role route')
         }
       })
       .catch((err) => {
-        setError(err.response?.data?.message || 'Gagal memuat data role dan akses')
+        if (!silent) {
+          setError(err.response?.data?.message || 'Gagal memuat data role dan akses')
+        }
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!silent) setLoading(false)
+      })
   }, [])
 
   useEffect(() => {
@@ -97,74 +127,55 @@ export default function RoleAkses() {
     }
   }
 
-  const openPolicyModal = (role) => {
-    setPolicyModalErr(null)
-    setPolicyRole(role)
-    setPolicyAppsJson(JSON.stringify(role.allowed_apps ?? [], null, 2))
-    setPolicyPermJson(JSON.stringify(role.permissions ?? [], null, 2))
+  const openCreateRole = () => {
+    setCreateRoleErr(null)
+    setNewRoleKey('')
+    setNewRoleLabel('')
+    setShowCreateRole(true)
   }
 
-  const closePolicyModal = () => {
-    setPolicyRole(null)
-    setPolicyAppsJson('')
-    setPolicyPermJson('')
-    setPolicyModalErr(null)
-  }
-
-  const savePolicyModal = async () => {
-    if (!policyRole?.key) return
-    let allowed_apps
-    let permissions
-    try {
-      allowed_apps = JSON.parse(policyAppsJson)
-      permissions = JSON.parse(policyPermJson)
-    } catch {
-      setPolicyModalErr('JSON tidak valid untuk aplikasi atau permission.')
+  const submitCreateRole = async () => {
+    const key = String(newRoleKey || '').trim().toLowerCase()
+    const label = String(newRoleLabel || '').trim()
+    if (!key || !label) {
+      setCreateRoleErr('Key dan label wajib diisi.')
       return
     }
-    if (!Array.isArray(allowed_apps) || !Array.isArray(permissions)) {
-      setPolicyModalErr('Kedua field harus berupa array JSON.')
-      return
-    }
-    setPolicySaving(true)
-    setPolicyModalErr(null)
+    setCreateRoleLoading(true)
+    setCreateRoleErr(null)
     try {
-      const res = await settingsAPI.patchRolePolicy(policyRole.key, { allowed_apps, permissions })
+      const res = await manageUsersAPI.createRole(key, label)
       if (!res?.success) {
-        setPolicyModalErr(res?.message || 'Gagal menyimpan')
+        setCreateRoleErr(res?.message || 'Gagal membuat role')
         return
       }
-      closePolicyModal()
+      setShowCreateRole(false)
       await load()
     } catch (err) {
-      setPolicyModalErr(err.response?.data?.message || err.message || 'Gagal menyimpan')
+      setCreateRoleErr(err.response?.data?.message || err.message || 'Gagal membuat role')
     } finally {
-      setPolicySaving(false)
+      setCreateRoleLoading(false)
     }
   }
 
-  const revertPolicyToPhp = async () => {
-    if (!policyRole?.key) return
-    if (!window.confirm('Hapus override di DB untuk role ini? Permission & aplikasi kembali mengikuti RoleConfig.php.')) {
-      return
-    }
-    setPolicySaving(true)
-    setPolicyModalErr(null)
+  const saveLegacyRoles = async (legacyKey) => {
+    const raw = String(legacyDraft[legacyKey] || '')
+    const roles = raw
+      .split(',')
+      .map((x) => x.trim().toLowerCase())
+      .filter((x) => x.length > 0)
+    setSavingLegacyKey(legacyKey)
     try {
-      const res = await settingsAPI.patchRolePolicy(policyRole.key, {
-        permissions: null,
-        allowed_apps: null
-      })
+      const res = await settingsAPI.putEbeddienLegacyRouteRoles(legacyKey, { roles })
       if (!res?.success) {
-        setPolicyModalErr(res?.message || 'Gagal')
+        setError(res?.message || `Gagal menyimpan ${legacyKey}`)
         return
       }
-      closePolicyModal()
-      await load()
+      await load({ silent: true })
     } catch (err) {
-      setPolicyModalErr(err.response?.data?.message || err.message || 'Gagal')
+      setError(err.response?.data?.message || err.message || `Gagal menyimpan ${legacyKey}`)
     } finally {
-      setPolicySaving(false)
+      setSavingLegacyKey(null)
     }
   }
 
@@ -232,23 +243,23 @@ export default function RoleAkses() {
               </div>
               <div className="flex flex-wrap gap-1.5 mt-2">
                 <PolicySourceBadge source={appsSrc} label="App" />
-                <PolicySourceBadge source={permSrc} label="Perm" />
+                <PolicySourceBadge source={permSrc} label="API" />
               </div>
               <div className="mt-2">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Aplikasi</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Aplikasi (UWABA)</p>
                 {renderTags(role.allowed_apps_labels ?? [], '—')}
               </div>
               <div className="mt-2">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Permission</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Izin modul (API)</p>
                 {renderTags(role.permissions ?? [], '—')}
               </div>
             </div>
             <button
               type="button"
-              onClick={() => openPolicyModal(role)}
-              className="shrink-0 text-xs font-medium text-teal-700 dark:text-teal-300 px-2 py-1 rounded-lg border border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+              onClick={() => setAccessRoleKey(role.key)}
+              className="shrink-0 text-xs font-medium text-teal-700 dark:text-teal-300 px-2 py-1.5 rounded-lg border border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-900/20"
             >
-              Edit kebijakan
+              Kelola akses
             </button>
           </div>
         </div>
@@ -264,17 +275,26 @@ export default function RoleAkses() {
             <div>
               <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Role & Akses</h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Daftar role UWABA: permission &amp; aplikasi efektif (DB menggantikan RoleConfig jika di-set).
+                Ringkasan efektif di bawah; pengaturan lengkap (modul API + menu eBeddien) dalam satu panel lewat Kelola akses.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={syncLoading}
-              onClick={handleSyncFromPhp}
-              className="shrink-0 inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50 dark:bg-slate-600 dark:hover:bg-slate-500"
-            >
-              {syncLoading ? 'Menyinkronkan…' : 'Salin RoleConfig → DB'}
-            </button>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={openCreateRole}
+                className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-lg border border-teal-600 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+              >
+                Tambah role
+              </button>
+              <button
+                type="button"
+                disabled={syncLoading}
+                onClick={handleSyncFromPhp}
+                className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50 dark:bg-slate-600 dark:hover:bg-slate-500"
+              >
+                {syncLoading ? 'Menyinkronkan…' : 'Salin RoleConfig → DB'}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -305,9 +325,9 @@ export default function RoleAkses() {
                       Aplikasi
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[160px]">
-                      Permission
+                      Izin modul
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-44">
                       Aksi
                     </th>
                   </tr>
@@ -331,7 +351,7 @@ export default function RoleAkses() {
                         <td className="px-4 py-3">
                           <div className="flex flex-col gap-1">
                             <PolicySourceBadge source={appsSrc} label="App" />
-                            <PolicySourceBadge source={permSrc} label="Perm" />
+                            <PolicySourceBadge source={permSrc} label="API" />
                           </div>
                         </td>
                         <td className="px-4 py-3">{renderTags(role.allowed_apps_labels ?? [], '—')}</td>
@@ -339,10 +359,10 @@ export default function RoleAkses() {
                         <td className="px-4 py-3 text-right">
                           <button
                             type="button"
-                            onClick={() => openPolicyModal(role)}
+                            onClick={() => setAccessRoleKey(role.key)}
                             className="text-xs font-medium text-teal-700 dark:text-teal-300 hover:underline"
                           >
-                            Edit
+                            Kelola akses
                           </button>
                         </td>
                       </tr>
@@ -352,67 +372,115 @@ export default function RoleAkses() {
               </table>
             </div>
           </div>
+
+          <div className="mt-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Fallback Role Route (Legacy)</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Sumber utama di DB tabel <span className="font-mono">ebeddien_legacy_route_role</span>. Format: pisahkan role dengan koma.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {legacyRoleData.items.map((it) => (
+                <div key={it.legacy_key} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="font-mono text-xs text-gray-700 dark:text-gray-200">{it.legacy_key}</span>
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                        it.source === 'database'
+                          ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200'
+                          : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {it.source === 'database' ? 'DB' : 'PHP'}
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={legacyDraft[it.legacy_key] ?? ''}
+                    onChange={(e) =>
+                      setLegacyDraft((prev) => ({ ...prev, [it.legacy_key]: e.target.value }))
+                    }
+                    className="w-full text-sm px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono"
+                    placeholder="contoh: super_admin, admin_uwaba"
+                  />
+                  <div className="mt-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => saveLegacyRoles(it.legacy_key)}
+                      disabled={savingLegacyKey === it.legacy_key}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      {savingLegacyKey === it.legacy_key ? 'Menyimpan…' : 'Simpan'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
-      {policyRole != null &&
+      <RoleAccessOffcanvas
+        isOpen={accessRoleKey != null}
+        roleKey={accessRoleKey}
+        role={accessRole}
+        onClose={() => setAccessRoleKey(null)}
+        onReload={() => load({ silent: true })}
+      />
+
+      {showCreateRole &&
         createPortal(
           <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40">
-            <div className="bg-white dark:bg-gray-800 w-full sm:max-w-lg sm:rounded-xl shadow-xl border border-gray-200 dark:border-gray-600 max-h-[92vh] flex flex-col">
+            <div className="bg-white dark:bg-gray-800 w-full sm:max-w-md sm:rounded-xl shadow-xl border border-gray-200 dark:border-gray-600 max-h-[92vh] flex flex-col">
               <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-600">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Kebijakan: {policyRole.label}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">{policyRole.key}</p>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tambah role</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Key unik (huruf kecil, angka, underscore). Setelah dibuat, atur akses lewat tombol Kelola akses pada baris role tersebut.
+                </p>
               </div>
-              <div className="p-4 flex-1 min-h-0 overflow-y-auto space-y-3">
+              <div className="p-4 space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                    allowed_apps (array string)
-                  </label>
-                  <textarea
-                    value={policyAppsJson}
-                    onChange={(e) => setPolicyAppsJson(e.target.value)}
-                    className="w-full min-h-[100px] font-mono text-xs p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-                    spellCheck={false}
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Key</label>
+                  <input
+                    type="text"
+                    value={newRoleKey}
+                    onChange={(e) => setNewRoleKey(e.target.value)}
+                    placeholder="mis. auditor_keuangan"
+                    className="w-full text-sm px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono"
+                    autoComplete="off"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">
-                    permissions (array string)
-                  </label>
-                  <textarea
-                    value={policyPermJson}
-                    onChange={(e) => setPolicyPermJson(e.target.value)}
-                    className="w-full min-h-[140px] font-mono text-xs p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-                    spellCheck={false}
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Label</label>
+                  <input
+                    type="text"
+                    value={newRoleLabel}
+                    onChange={(e) => setNewRoleLabel(e.target.value)}
+                    placeholder="Nama tampilan"
+                    className="w-full text-sm px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                    autoComplete="off"
                   />
                 </div>
-                {policyModalErr && (
-                  <p className="text-sm text-red-600 dark:text-red-400">{policyModalErr}</p>
-                )}
+                {createRoleErr && <p className="text-sm text-red-600 dark:text-red-400">{createRoleErr}</p>}
               </div>
-              <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-600 flex flex-col sm:flex-row flex-wrap gap-2 justify-end">
+              <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-600 flex flex-wrap gap-2 justify-end">
                 <button
                   type="button"
-                  onClick={revertPolicyToPhp}
-                  disabled={policySaving}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 order-3 sm:order-1 sm:mr-auto"
-                >
-                  Kembalikan ke PHP
-                </button>
-                <button
-                  type="button"
-                  onClick={closePolicyModal}
+                  onClick={() => setShowCreateRole(false)}
                   className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200"
                 >
                   Batal
                 </button>
                 <button
                   type="button"
-                  disabled={policySaving}
-                  onClick={savePolicyModal}
+                  disabled={createRoleLoading}
+                  onClick={submitCreateRole}
                   className="px-3 py-1.5 text-sm rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
                 >
-                  {policySaving ? 'Menyimpan…' : 'Simpan ke DB'}
+                  {createRoleLoading ? 'Menyimpan…' : 'Simpan'}
                 </button>
               </div>
             </div>

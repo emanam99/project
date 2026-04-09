@@ -59,4 +59,21 @@ final class RencanaPengeluaranWaHelper
 
         return "{$link}\n\nDitolak ❌\n\n> {$ket}\n\nTotal : {$total}\nDibuat : {$dibuat}\nDitolak: {$tolak}";
     }
+
+    /**
+     * Pesan WA saat draft rencana disimpan / diperbarui (penerima: role dengan aksi notif draft).
+     */
+    public static function buildDraftSavedMessage(
+        int $rencanaId,
+        string $keterangan,
+        string $lembagaLabel,
+        string $namaPenyimpan,
+        bool $isUpdate
+    ): string {
+        $link = self::ebeddienBaseUrl() . '/pengeluaran?tab=draft&rencana=' . $rencanaId;
+        $ket = trim($keterangan) !== '' ? trim($keterangan) : 'Tanpa Keterangan';
+        $tag = $isUpdate ? 'Diperbarui' : 'Baru';
+
+        return "{$link}\n\n*Draft rencana* ({$tag})\n\n> {$ket}\nLembaga: {$lembagaLabel}\n\nDisimpan oleh: {$namaPenyimpan}\n\n> Simpan nomor ini agar link di atas bisa diklik.";
+    }
 }

@@ -37,7 +37,7 @@ export const useRencanaDetail = () => {
     }
   }, [searchParams, showRencanaOffcanvas, selectedRencana])
 
-  const handleRencanaClick = useCallback(async (rencana, scrollToKomentar = false, onLoadAdmins) => {
+  const handleRencanaClick = useCallback(async (rencana, scrollToKomentar = false, onLoadAdmins = null) => {
     try {
       setLoadingRencanaDetail(true)
       setSelectedRencana(rencana)
@@ -54,8 +54,10 @@ export const useRencanaDetail = () => {
         // Buka offcanvas SETELAH data di-set
         setShowRencanaOffcanvas(true)
         // Load list admins when offcanvas opens
-        if (onLoadAdmins) {
-          onLoadAdmins()
+        if (typeof onLoadAdmins === 'function') {
+          const lem = response.data?.lembaga ?? rencana?.lembaga ?? null
+          const notifDraft = (response.data?.ket ?? '') === 'draft'
+          onLoadAdmins(lem, notifDraft)
         }
         
         // Scroll ke input komentar jika diminta
@@ -98,7 +100,7 @@ export const useRencanaDetail = () => {
   }, [searchParams, setSearchParams])
 
   // Function untuk membuka offcanvas dari URL (deep linking)
-  const openRencanaFromUrl = useCallback(async (rencanaId, onLoadAdmins) => {
+  const openRencanaFromUrl = useCallback(async (rencanaId, onLoadAdmins = null) => {
     if (!rencanaId || selectedRencana?.id?.toString() === rencanaId.toString()) {
       return // Sudah terbuka atau ID sama
     }
@@ -114,8 +116,10 @@ export const useRencanaDetail = () => {
         setRencanaDetail(response.data)
         setShowRencanaOffcanvas(true)
         
-        if (onLoadAdmins) {
-          onLoadAdmins()
+        if (typeof onLoadAdmins === 'function') {
+          const lem = response.data?.lembaga ?? rencana?.lembaga ?? null
+          const notifDraft = (response.data?.ket ?? '') === 'draft'
+          onLoadAdmins(lem, notifDraft)
         }
       } else {
         showNotification(response.message || 'Gagal memuat detail rencana', 'error')

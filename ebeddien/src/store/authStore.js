@@ -169,7 +169,7 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  /** Keluar dari aplikasi. Token akses & user_data dihapus; refresh_token & auth_ever_logged_in tetap agar kalender/tool gratis tetap bisa diakses. */
+  /** Keluar dari aplikasi. Token akses & user_data dihapus; refresh_token & auth_ever_logged_in tetap agar kalender/tool gratis tetap bisa diakses. Web Push subscription tidak dihapus (notifikasi server tetap bisa masuk). */
   logout: () => {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user_data')

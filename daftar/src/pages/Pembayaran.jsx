@@ -18,6 +18,7 @@ import {
   pembayaranCacheMatchesUser,
   invalidatePembayaranAndDashboard,
 } from '../utils/daftarPagesLocalCache'
+import { buildWaAdminPembayaranUrl } from '../utils/waAdminPembayaran'
 
 /** @param {object[]} allBerkasData */
 function filterSortBuktiPembayaran(allBerkasData) {
@@ -511,8 +512,25 @@ function Pembayaran() {
   const wajibNol = wajib === 0
   const isLunas = !wajibNol && kurang <= 0
   const jumlahBukti = buktiPembayaranList.length
-  const waAdmin = '6282232999921'
-  const waAdminLink = `https://wa.me/${waAdmin}`
+  const waHubungiAdminLink = useMemo(
+    () =>
+      buildWaAdminPembayaranUrl({
+        nama: user?.nama || registrasi?.nama,
+        nik: user?.nik,
+        nis: user?.nis ?? registrasi?.nis,
+        daftarFormal: registrasi?.daftar_formal,
+        daftarDiniyah: registrasi?.daftar_diniyah,
+      }),
+    [
+      user?.nama,
+      user?.nik,
+      user?.nis,
+      registrasi?.nama,
+      registrasi?.nis,
+      registrasi?.daftar_formal,
+      registrasi?.daftar_diniyah,
+    ]
+  )
   const maxBukti = 6
   const bisaUploadBukti = !isLunas && jumlahBukti < maxBukti
   
@@ -640,7 +658,7 @@ function Pembayaran() {
                   Total wajib Rp 0. Cek kondisi pendaftaran (mungkin ada yang keliru), atau hubungi admin:
                 </p>
                 <a
-                  href={waAdminLink}
+                  href={waHubungiAdminLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -816,6 +834,7 @@ function Pembayaran() {
           onClose={() => navigate(pathname)}
           pathname={pathname}
           registrasi={registrasi}
+          user={user}
           idSantri={user?.id}
           paymentHistory={paymentHistory}
           paymentDataLoading={loading}

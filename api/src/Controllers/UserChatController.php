@@ -205,6 +205,9 @@ class UserChatController
                         'from_user_id' => $fromUsersId,
                         'to_user_id' => $toUsersId,
                     ],
+                    'actions' => [
+                        ['action' => 'reply', 'title' => 'Balas'],
+                    ],
                     'requireInteraction' => false,
                     'sender_name' => $senderName,
                 ]

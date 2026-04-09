@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { laporanAPI } from '../../services/api'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { useAuthStore } from '../../store/authStore'
-import { userMatchesAnyAllowedRole } from '../../utils/roleAccess'
 import { useLaporanFiturAccess } from '../../hooks/useLaporanFiturAccess'
 import {
   PrinterIcon,
@@ -16,6 +15,12 @@ import {
 } from '@heroicons/react/24/outline'
 import LaporanPrintOffcanvas from './components/LaporanPrintOffcanvas'
 
+/** Selaras backend ViaPembayaranHelper (varian iPayMu tanpa membedakan case/spasi). */
+function isIpaymuViaLabel(v) {
+  if (v == null || v === '' || v === '-') return false
+  return String(v).replace(/[\s_-]/g, '').toLowerCase() === 'ipaymu'
+}
+
 function Laporan() {
   const { user } = useAuthStore()
   const {
@@ -24,14 +29,10 @@ function Laporan() {
     tabUwaba,
     tabPendaftaran,
     apiHasLaporanTabs,
-    noTabAccess
+    noTabAccess,
+    hasUwabaLaporanGroup,
+    hasPsbLaporanGroup
   } = useLaporanFiturAccess()
-
-  const hasRole = (roles) => userMatchesAnyAllowedRole(user, roles)
-
-  // Tentukan tab yang bisa diakses berdasarkan role + aksi fitur (menu induk /laporan)
-  const hasUwabaRole = hasRole(['admin_uwaba', 'petugas_uwaba', 'super_admin'])
-  const hasPsbRole = hasRole(['admin_psb', 'petugas_psb', 'super_admin'])
   
   const [mode, setMode] = useState('uwaba') // Default, akan di-update oleh useEffect
   const [loading, setLoading] = useState(false)
@@ -45,9 +46,11 @@ function Laporan() {
   const [filterTanggal, setFilterTanggal] = useState('')
   const [filterAll, setFilterAll] = useState(false)
   const [filterTahunAjaran, setFilterTahunAjaran] = useState('')
-  const [filterAdmin, setFilterAdmin] = useState('')
+  const [filterAdmins, setFilterAdmins] = useState([])
   const [filterNama, setFilterNama] = useState('')
   const [filterKeterangan, setFilterKeterangan] = useState('')
+  const [showAdminChecklist, setShowAdminChecklist] = useState(false)
+  const adminChecklistRef = useRef(null)
   
   // Filter options (populated from data)
   const [adminOptions, setAdminOptions] = useState([])
@@ -65,31 +68,31 @@ function Laporan() {
   
   /** Urutan fallback tab UWABA lalu PSB */
   const firstAllowedMode = useMemo(() => {
-    if (hasUwabaRole) {
+    if (hasUwabaLaporanGroup) {
       if (tabUwaba) return 'uwaba'
       if (tabTunggakan) return 'tunggakan'
       if (tabKhusus) return 'khusus'
     }
-    if (hasPsbRole && tabPendaftaran) return 'pendaftaran'
+    if (hasPsbLaporanGroup && tabPendaftaran) return 'pendaftaran'
     return null
   }, [
-    hasUwabaRole,
-    hasPsbRole,
+    hasUwabaLaporanGroup,
+    hasPsbLaporanGroup,
     tabUwaba,
     tabTunggakan,
     tabKhusus,
     tabPendaftaran
   ])
 
-  // Default & koreksi mode: role + tab aktif di Pengaturan → Fitur
+  // Default & koreksi mode: kode fitur dari /me/fitur-menu + matriks Pengaturan → Fitur
   useEffect(() => {
     if (!user) return
 
     const uwabaModes = ['tunggakan', 'khusus', 'uwaba']
     const modeAllowed = () => {
-      if (mode === 'pendaftaran') return hasPsbRole && tabPendaftaran
+      if (mode === 'pendaftaran') return hasPsbLaporanGroup && tabPendaftaran
       if (uwabaModes.includes(mode)) {
-        if (!hasUwabaRole) return false
+        if (!hasUwabaLaporanGroup) return false
         if (mode === 'tunggakan') return tabTunggakan
         if (mode === 'khusus') return tabKhusus
         if (mode === 'uwaba') return tabUwaba
@@ -108,15 +111,14 @@ function Laporan() {
       return
     }
 
-    // Fallback perilaku lama bila belum ada kode action.laporan.* dari API
-    if (hasPsbRole && !hasUwabaRole) setMode('pendaftaran')
-    else if (hasUwabaRole && !hasPsbRole) setMode('uwaba')
-    else if (hasUwabaRole && hasPsbRole) setMode('uwaba')
+    if (hasPsbLaporanGroup && !hasUwabaLaporanGroup) setMode('pendaftaran')
+    else if (hasUwabaLaporanGroup && !hasPsbLaporanGroup) setMode('uwaba')
+    else if (hasUwabaLaporanGroup && hasPsbLaporanGroup) setMode('uwaba')
   }, [
     user,
     mode,
-    hasUwabaRole,
-    hasPsbRole,
+    hasUwabaLaporanGroup,
+    hasPsbLaporanGroup,
     tabTunggakan,
     tabKhusus,
     tabUwaba,
@@ -152,7 +154,7 @@ function Laporan() {
         tanggal: filterTanggal,
         showAll: filterAll,
         tahun_ajaran: filterTahunAjaran,
-        admin: filterAdmin
+        admin: ''
       }
       
       const response = await laporanAPI.getLaporan(mode, filters)
@@ -191,7 +193,7 @@ function Laporan() {
       loadLaporan()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, filterTanggal, filterAll, filterTahunAjaran, filterAdmin, noTabAccess])
+  }, [mode, filterTanggal, filterAll, filterTahunAjaran, noTabAccess])
 
   // Filter data based on nama and keterangan
   useEffect(() => {
@@ -204,6 +206,12 @@ function Laporan() {
         (row.nama_santri || '').toLowerCase().includes(query) ||
         (row.keterangan_1 || '').toLowerCase().includes(query)
       )
+    }
+
+    // Filter by multi admin checkbox
+    if (filterAdmins.length > 0) {
+      const selectedAdmins = new Set(filterAdmins)
+      filtered = filtered.filter(row => selectedAdmins.has(row.admin || ''))
     }
     
     // Filter by keterangan dropdown
@@ -219,7 +227,7 @@ function Laporan() {
     })
     
     setFilteredData(filtered)
-  }, [data, filterNama, filterKeterangan])
+  }, [data, filterNama, filterKeterangan, filterAdmins])
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -234,12 +242,14 @@ function Laporan() {
     let totalPemKab = 0
     let totalSubsidi = 0
     let totalPrestasi = 0
+    let totalIPayMu = 0
     let totalAll = 0
     
     filteredData.forEach(row => {
       const nominal = parseInt((row.nominal || '').replace(/[^\d]/g, '')) || 0
       if (row.via === 'Cash') totalCash += nominal
       else if (row.via === 'TF') totalTF += nominal
+      else if (row.via === 'iPayMu' || isIpaymuViaLabel(row.via)) totalIPayMu += nominal
       else if (row.via === 'Lembaga') totalLembaga += nominal
       else if (row.via === 'Beasiswa') totalBeasiswa += nominal
       else if (row.via === 'BagDIS') totalBagDIS += nominal
@@ -252,7 +262,21 @@ function Laporan() {
       totalAll += nominal
     })
     
-    return { totalCash, totalTF, totalLembaga, totalBeasiswa, totalBagDIS, totalPIP, totalKIP, totalAdiktis, totalPemKab, totalSubsidi, totalPrestasi, totalAll }
+    return {
+      totalCash,
+      totalTF,
+      totalIPayMu,
+      totalLembaga,
+      totalBeasiswa,
+      totalBagDIS,
+      totalPIP,
+      totalKIP,
+      totalAdiktis,
+      totalPemKab,
+      totalSubsidi,
+      totalPrestasi,
+      totalAll,
+    }
   }, [filteredData])
 
   const getKeteranganJenisData = () => {
@@ -265,8 +289,36 @@ function Laporan() {
 
   const openPrintPreview = () => {
     setShowFilterPanel(false)
+    setShowAdminChecklist(false)
     setShowPrintOffcanvas(true)
   }
+
+  const toggleAdmin = (adminName) => {
+    setFilterAdmins((prev) => {
+      if (prev.includes(adminName)) return prev.filter((a) => a !== adminName)
+      return [...prev, adminName]
+    })
+  }
+
+  const allAdminsSelected = adminOptions.length > 0 && filterAdmins.length === adminOptions.length
+  const filterAdminButtonLabel = useMemo(() => {
+    if (filterAdmins.length === 0) return 'Semua Admin'
+    if (allAdminsSelected) return `Semua Admin (${adminOptions.length})`
+    if (filterAdmins.length === 1) return filterAdmins[0]
+    if (filterAdmins.length === 2) return `${filterAdmins[0]}, ${filterAdmins[1]}`
+    return `${filterAdmins[0]}, ${filterAdmins[1]} +${filterAdmins.length - 2}`
+  }, [filterAdmins, allAdminsSelected, adminOptions.length])
+
+  useEffect(() => {
+    if (!showAdminChecklist) return
+    const handleClickOutside = (event) => {
+      if (adminChecklistRef.current && !adminChecklistRef.current.contains(event.target)) {
+        setShowAdminChecklist(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAdminChecklist])
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900/40 text-gray-900 dark:text-gray-100">
@@ -278,7 +330,7 @@ function Laporan() {
           transition={{ duration: 0.35 }}
           className="flex gap-2 flex-wrap"
         >
-            {hasUwabaRole && tabTunggakan && (
+            {hasUwabaLaporanGroup && tabTunggakan && (
               <button
                 onClick={() => setMode('tunggakan')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
@@ -290,7 +342,7 @@ function Laporan() {
                 Tunggakan
               </button>
             )}
-            {hasUwabaRole && tabKhusus && (
+            {hasUwabaLaporanGroup && tabKhusus && (
               <button
                 onClick={() => setMode('khusus')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
@@ -302,7 +354,7 @@ function Laporan() {
                 Khusus
               </button>
             )}
-            {hasUwabaRole && tabUwaba && (
+            {hasUwabaLaporanGroup && tabUwaba && (
               <button
                 onClick={() => setMode('uwaba')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
@@ -314,7 +366,7 @@ function Laporan() {
                 UWABA
               </button>
             )}
-            {hasPsbRole && tabPendaftaran && (
+            {hasPsbLaporanGroup && tabPendaftaran && (
               <button
                 onClick={() => setMode('pendaftaran')}
                 className={`px-4 py-2 rounded-t-lg font-semibold transition ${
@@ -365,6 +417,14 @@ function Laporan() {
                     <div className="text-xs text-gray-500 dark:text-gray-400">via TF</div>
                     <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
                       Rp {totals.totalTF.toLocaleString('id')}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white dark:bg-gray-800/90 rounded-xl shadow-md dark:shadow-gray-900/30 border border-gray-100 dark:border-gray-700 p-3">
+                  <div className="flex justify-between items-center">
+                    <div className="text-xs text-gray-500 dark:text-gray-400">via iPayMu</div>
+                    <div className="text-lg font-bold text-teal-600 dark:text-teal-400">
+                      Rp {totals.totalIPayMu.toLocaleString('id')}
                     </div>
                   </div>
                 </div>
@@ -539,18 +599,47 @@ function Laporan() {
               {/* Admin */}
               <div className="flex items-center gap-2">
                 <UserIcon className="w-5 h-5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
-                <div className="flex-1">
+                <div className="flex-1 relative" ref={adminChecklistRef}>
                   <label className="text-sm text-gray-700 dark:text-gray-300 block mb-1">Admin</label>
-                  <select
-                    value={filterAdmin}
-                    onChange={(e) => setFilterAdmin(e.target.value)}
-                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminChecklist((v) => !v)}
+                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm w-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-left"
                   >
-                    <option value="">Semua</option>
-                    {adminOptions.map(admin => (
-                      <option key={admin} value={admin}>{admin}</option>
-                    ))}
-                  </select>
+                    {filterAdminButtonLabel}
+                  </button>
+                  {showAdminChecklist && (
+                    <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 p-2 shadow-xl">
+                      <label className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700 mb-1">
+                        <input
+                          type="checkbox"
+                          checked={allAdminsSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) setFilterAdmins([...adminOptions])
+                            else setFilterAdmins([])
+                            setShowAdminChecklist(false)
+                          }}
+                          className="rounded border-gray-300 dark:border-gray-600 text-teal-600"
+                        />
+                        Pilih Semua
+                      </label>
+                      {adminOptions.length === 0 ? (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 py-1">Tidak ada admin</div>
+                      ) : (
+                        adminOptions.map((admin) => (
+                          <label key={admin} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+                            <input
+                              type="checkbox"
+                              checked={filterAdmins.includes(admin)}
+                              onChange={() => toggleAdmin(admin)}
+                              className="rounded border-gray-300 dark:border-gray-600 text-teal-600"
+                            />
+                            {admin}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

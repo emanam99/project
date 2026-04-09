@@ -1,26 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { tahunAjaranAPI } from '../../services/api'
-import Modal from '../../components/Modal/Modal'
-import { useNotification } from '../../contexts/NotificationContext'
+import TahunAjaranFormOffcanvas from './components/TahunAjaranFormOffcanvas'
 
 function TahunAjaran() {
-  const { showNotification } = useNotification()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [kategoriFilter, setKategoriFilter] = useState('')
   const [isInputFocused, setIsInputFocused] = useState(false)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [formData, setFormData] = useState({
-    tahun_ajaran: '',
-    kategori: 'hijriyah',
-    dari: '',
-    sampai: ''
-  })
 
   useEffect(() => {
     loadData()
@@ -44,83 +35,14 @@ function TahunAjaran() {
     }
   }
 
-  const handleOpenModal = (item = null) => {
-    if (item) {
-      setEditingItem(item)
-      setFormData({
-        tahun_ajaran: item.tahun_ajaran || '',
-        kategori: item.kategori || 'hijriyah',
-        dari: item.dari || '',
-        sampai: item.sampai || ''
-      })
-    } else {
-      setEditingItem(null)
-      setFormData({
-        tahun_ajaran: '',
-        kategori: 'hijriyah',
-        dari: '',
-        sampai: ''
-      })
-    }
-    setIsModalOpen(true)
+  const openForm = (item = null) => {
+    setEditingItem(item)
+    setFormOpen(true)
   }
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false)
+  const closeForm = () => {
+    setFormOpen(false)
     setEditingItem(null)
-    setFormData({
-      tahun_ajaran: '',
-      kategori: 'hijriyah',
-      dari: '',
-      sampai: ''
-    })
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!formData.tahun_ajaran.trim()) {
-      showNotification('Tahun ajaran wajib diisi', 'error')
-      return
-    }
-    if (!['hijriyah', 'masehi'].includes(formData.kategori)) {
-      showNotification('Kategori harus hijriyah atau masehi', 'error')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const payload = {
-        tahun_ajaran: formData.tahun_ajaran.trim(),
-        kategori: formData.kategori,
-        dari: formData.dari || null,
-        sampai: formData.sampai || null
-      }
-
-      if (editingItem) {
-        const res = await tahunAjaranAPI.update(editingItem.tahun_ajaran, payload)
-        if (res.success) {
-          showNotification('Tahun ajaran berhasil diupdate', 'success')
-          handleCloseModal()
-          loadData()
-        } else {
-          showNotification(res.message || 'Gagal mengupdate tahun ajaran', 'error')
-        }
-      } else {
-        const res = await tahunAjaranAPI.create(payload)
-        if (res.success) {
-          showNotification('Tahun ajaran berhasil ditambahkan', 'success')
-          handleCloseModal()
-          loadData()
-        } else {
-          showNotification(res.message || 'Gagal menambahkan tahun ajaran', 'error')
-        }
-      }
-    } catch (err) {
-      console.error('Error saving tahun ajaran:', err)
-      showNotification('Terjadi kesalahan saat menyimpan data', 'error')
-    } finally {
-      setSaving(false)
-    }
   }
 
   const filteredItems = useMemo(() => {
@@ -202,7 +124,7 @@ function TahunAjaran() {
                 </select>
                 <button
                   type="button"
-                  onClick={() => handleOpenModal(null)}
+                  onClick={() => openForm(null)}
                   className="px-2.5 sm:px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm shrink-0"
                 >
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -233,7 +155,7 @@ function TahunAjaran() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -12 }}
                     transition={{ delay: index * 0.02 }}
-                    onClick={() => handleOpenModal(item)}
+                    onClick={() => openForm(item)}
                     className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md hover:border-teal-300 dark:hover:border-teal-600 transition-all duration-200 group p-3 sm:p-4"
                   >
                     <div className="flex justify-between items-start gap-2">
@@ -278,80 +200,14 @@ function TahunAjaran() {
         </div>
       </div>
 
-      {/* Modal Tambah/Edit */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        title={editingItem ? 'Edit Tahun Ajaran' : 'Tambah Tahun Ajaran'}
-        size="lg"
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Tahun Ajaran <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={formData.tahun_ajaran}
-              onChange={(e) => setFormData({ ...formData, tahun_ajaran: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-              placeholder="Contoh: 1447-1448 atau 2025-2026"
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategori</label>
-              <select
-                value={formData.kategori}
-                onChange={(e) => setFormData({ ...formData, kategori: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-              >
-                <option value="hijriyah">Hijriyah</option>
-                <option value="masehi">Masehi</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Periode (Masehi)</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <input
-                  type="date"
-                  value={formData.dari || ''}
-                  onChange={(e) => setFormData({ ...formData, dari: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-                />
-                <input
-                  type="date"
-                  value={formData.sampai || ''}
-                  onChange={(e) => setFormData({ ...formData, sampai: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Tanggal mulai & selesai dalam kalender masehi (contoh: 2025-07-01 s/d 2026-06-30).
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleCloseModal}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm"
-            >
-              {saving ? 'Menyimpan...' : editingItem ? 'Simpan Perubahan' : 'Simpan'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      <TahunAjaranFormOffcanvas
+        isOpen={formOpen}
+        onClose={closeForm}
+        item={editingItem}
+        onSaved={loadData}
+      />
     </div>
   )
 }
 
 export default TahunAjaran
-

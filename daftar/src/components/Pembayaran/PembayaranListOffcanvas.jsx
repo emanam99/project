@@ -6,6 +6,10 @@ import { pendaftaranAPI, paymentTransactionAPI, santriAPI } from '../../services
 import { useNotification } from '../../contexts/NotificationContext'
 import { BankIcon, CStoreIcon, QRISIcon } from './PaymentIcons'
 import { getGambarUrl } from '../../config/images'
+import {
+  buildWaAdminPembayaranUrl,
+  WA_OPENING_BANTUAN_PEMBAYARAN,
+} from '../../utils/waAdminPembayaran'
 
 /** Helper: konversi qr_code ke URL gambar yang bisa dipakai di <img src>. iPayMu bisa return base64, data URL, atau QR string (EMVCo). */
 function getQrImageSrc(qrCode) {
@@ -29,6 +33,38 @@ const SHOW_UPLOAD_TF_BUTTON = false
 const IPAYMU_SESSION_STORAGE_KEY = 'daftar_ipaymu_session_v1'
 /** Abaikan status failed/expired dari API jika transaksi baru dibuat (iPayMu/DB belum konsisten) */
 const IPAYMU_FAIL_GRACE_MS = 50000
+
+/**
+ * Biasanya VA/channel iPayMu memakai minimal Rp 100.000; bila sisa tagihan lebih kecil (mis. PAUD),
+ * nominal boleh di bawah itu — backend hanya mewajibkan > 0.
+ */
+const IPAYMU_TYPICAL_MIN = 100000
+
+function formatIdRupiahInput(n) {
+  const v = Math.max(0, Math.floor(Number(n) || 0))
+  return new Intl.NumberFormat('id-ID').format(v)
+}
+
+/** Minimal nominal valid: 1 rupiah jika sisa < 100rb; selain itu 100rb (kebiasaan channel). */
+function getIpaymuMinNominal(kurang) {
+  const k = Math.max(0, Number(kurang) || 0)
+  if (k <= 0) return IPAYMU_TYPICAL_MIN
+  if (k < IPAYMU_TYPICAL_MIN) return 1
+  return IPAYMU_TYPICAL_MIN
+}
+
+/** Default terisi di langkah 1: penuh sisa bila sisa di bawah 100rb. */
+function getIpaymuDefaultAmountFormatted(kurang) {
+  const k = Math.max(0, Number(kurang) || 0)
+  if (k > 0 && k < IPAYMU_TYPICAL_MIN) return formatIdRupiahInput(k)
+  return ''
+}
+
+/** Sisa < 100rb: nominal wajib penuh sisa, input dinonaktifkan. */
+function isIpaymuNominalLockedToSisa(kurang) {
+  const k = Math.max(0, Number(kurang) || 0)
+  return k > 0 && k < IPAYMU_TYPICAL_MIN
+}
 
 function clearIpaymuSessionPersistence() {
   try {
@@ -159,6 +195,8 @@ function PembayaranListOffcanvas({
   onClose,
   pathname: pathnameProp,
   registrasi,
+  /** Biodata login (nama, nik, nis) — registrasi API tidak selalu menyertakan nama/nik */
+  user = null,
   idSantri,
   buktiPembayaranList = [],
   wajib,
@@ -225,6 +263,30 @@ function PembayaranListOffcanvas({
 
   const vaChannels = IPAYMU_VA_CHANNELS
   const cstoreChannels = IPAYMU_CSTORE_CHANNELS
+
+  const { waKendalaPembayaranUrl, waBantuanPembayaranUrl } = useMemo(() => {
+    const biodata = {
+      nama: user?.nama || registrasi?.nama,
+      nik: user?.nik,
+      nis: user?.nis ?? registrasi?.nis,
+      daftarFormal: registrasi?.daftar_formal,
+      daftarDiniyah: registrasi?.daftar_diniyah,
+    }
+    return {
+      waKendalaPembayaranUrl: buildWaAdminPembayaranUrl(biodata),
+      waBantuanPembayaranUrl: buildWaAdminPembayaranUrl(biodata, {
+        openingLine: WA_OPENING_BANTUAN_PEMBAYARAN,
+      }),
+    }
+  }, [
+    user?.nama,
+    user?.nik,
+    user?.nis,
+    registrasi?.nama,
+    registrasi?.nis,
+    registrasi?.daftar_formal,
+    registrasi?.daftar_diniyah,
+  ])
 
   const [showEditModal, setShowEditModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
@@ -666,7 +728,10 @@ function PembayaranListOffcanvas({
   // Isi form edit saat modal edit dibuka; reset field wizard hanya saat modal edit benar-benar ditutup (bukan setiap vaInfo berubah dari polling)
   useEffect(() => {
     if (showEditModal && vaInfo) {
-      if (vaInfo.amount) {
+      const k = Math.max(0, Number(kurang) || 0)
+      if (k > 0 && k < IPAYMU_TYPICAL_MIN) {
+        setIpaymuAmount(formatIdRupiahInput(k))
+      } else if (vaInfo.amount) {
         const formattedAmount = new Intl.NumberFormat('id-ID').format(vaInfo.amount)
         setIpaymuAmount(formattedAmount)
       }
@@ -690,7 +755,24 @@ function PembayaranListOffcanvas({
       setPaymentChannel('')
       setOpenAccordion(null)
     }
-  }, [showEditModal, vaInfo])
+  }, [showEditModal, vaInfo, kurang])
+
+  // Langkah iPayMu 1: sisa < 100rb → nominal selalu = penuh sisa (terkunci); sisa besar → jangan timpa input user
+  useEffect(() => {
+    if (!isOpen || !showIPaymuModal || ipaymuStep !== 1 || vaInfo) return
+    const k = Math.max(0, Number(kurang) || 0)
+    if (k > 0 && k < IPAYMU_TYPICAL_MIN) {
+      setIpaymuAmount(formatIdRupiahInput(k))
+      return
+    }
+    setIpaymuAmount((prev) => {
+      const prevNum = parseFloat(String(prev).replace(/\./g, '')) || 0
+      if (prev !== '' && k >= IPAYMU_TYPICAL_MIN && prevNum > 0 && prevNum < IPAYMU_TYPICAL_MIN) {
+        return ''
+      }
+      return prev
+    })
+  }, [isOpen, showIPaymuModal, ipaymuStep, kurang, vaInfo])
 
   // Handle iPayMu Payment Modal
   const handleIPaymuClick = async () => {
@@ -714,7 +796,7 @@ function PembayaranListOffcanvas({
         const pendingTransaction = pendingResult.data
         if (isPaymentPendingExpiredClient(pendingTransaction)) {
           clearIpaymuSessionPersistence()
-          setIpaymuAmount('')
+          setIpaymuAmount(getIpaymuDefaultAmountFormatted(kurang))
           setPaymentMethod('')
           setPaymentChannel('')
           setVaInfo(null)
@@ -826,7 +908,7 @@ function PembayaranListOffcanvas({
         // Tidak ada transaksi pending, buka modal untuk membuat transaksi baru
         console.log('No pending transaction found, opening new transaction modal')
         clearIpaymuSessionPersistence()
-        setIpaymuAmount('')
+        setIpaymuAmount(getIpaymuDefaultAmountFormatted(kurang))
         setPaymentMethod('')
         setPaymentChannel('')
         setVaInfo(null)
@@ -837,7 +919,7 @@ function PembayaranListOffcanvas({
     } catch (err) {
       console.error('Error checking pending transaction:', err)
       clearIpaymuSessionPersistence()
-      setIpaymuAmount('')
+      setIpaymuAmount(getIpaymuDefaultAmountFormatted(kurang))
       setPaymentMethod('')
       setPaymentChannel('')
       setVaInfo(null)
@@ -872,18 +954,56 @@ function PembayaranListOffcanvas({
     setIpaymuAmount(formatted)
   }
 
+  const advanceIpaymuFromStep1 = useCallback(() => {
+    const amount = parseFloat(String(ipaymuAmount).replace(/\./g, '')) || 0
+    const minNominal = getIpaymuMinNominal(kurang)
+    const locked = isIpaymuNominalLockedToSisa(kurang)
+    if (!amount || amount <= 0) {
+      showNotification('Masukkan nominal pembayaran', 'error')
+      return
+    }
+    if (locked && Math.floor(amount) !== Math.floor(Number(kurang) || 0)) {
+      showNotification('Nominal harus tepat sesuai sisa tagihan.', 'error')
+      return
+    }
+    if (amount < minNominal) {
+      showNotification(
+        `Minimal pembayaran Rp ${minNominal.toLocaleString('id-ID')}` +
+          (kurang > 0 && kurang < IPAYMU_TYPICAL_MIN ? ' (sisa tagihan di bawah Rp 100.000)' : ''),
+        'error'
+      )
+      return
+    }
+    if (amount > kurang) {
+      showNotification(`Tidak boleh melebihi Rp ${kurang.toLocaleString('id-ID')}`, 'error')
+      return
+    }
+    setStepDirection(1)
+    goToIPaymuStep(2)
+  }, [ipaymuAmount, kurang, showNotification, goToIPaymuStep])
+
   // Handle iPayMu Payment
   const handleIPaymuPayment = async () => {
     const amount = parseFloat(ipaymuAmount.replace(/\./g, '')) || 0
-    const minAmount = 100000
+    const minNominal = getIpaymuMinNominal(kurang)
+    const lockedPay = isIpaymuNominalLockedToSisa(kurang)
 
     if (!amount || amount <= 0) {
       showNotification('Masukkan nominal pembayaran', 'error')
       return
     }
 
-    if (amount < minAmount) {
-      showNotification(`Minimal pembayaran adalah Rp ${minAmount.toLocaleString('id-ID')}`, 'error')
+    if (lockedPay && Math.floor(amount) !== Math.floor(Number(kurang) || 0)) {
+      showNotification('Nominal harus tepat sesuai sisa tagihan.', 'error')
+      return
+    }
+
+    if (amount < minNominal) {
+      showNotification(
+        `Minimal pembayaran Rp ${minNominal.toLocaleString('id-ID')}` +
+          (kurang > 0 && kurang < IPAYMU_TYPICAL_MIN ? ' (sisa tagihan di bawah Rp 100.000)' : ''),
+        'error'
+      )
       return
     }
 
@@ -1313,7 +1433,7 @@ function PembayaranListOffcanvas({
         setPaymentMethod('')
         setPaymentChannel('')
         setOpenAccordion(null)
-        setIpaymuAmount('')
+        setIpaymuAmount(getIpaymuDefaultAmountFormatted(kurang))
         await syncAfterPembayaranMutation()
       } else {
         showNotification(result?.message || 'Gagal membatalkan pesanan', 'error')
@@ -1335,7 +1455,8 @@ function PembayaranListOffcanvas({
     try {
       // Ambil data dari form edit
       const amount = parseFloat(ipaymuAmount.replace(/\./g, '')) || 0
-      const minAmount = 100000
+      const minNominal = getIpaymuMinNominal(kurang)
+      const lockedEdit = isIpaymuNominalLockedToSisa(kurang)
 
       if (!amount || amount <= 0) {
         showNotification('Masukkan nominal pembayaran', 'error')
@@ -1343,8 +1464,18 @@ function PembayaranListOffcanvas({
         return
       }
 
-      if (amount < minAmount) {
-        showNotification(`Minimal pembayaran adalah Rp ${minAmount.toLocaleString('id-ID')}`, 'error')
+      if (lockedEdit && Math.floor(amount) !== Math.floor(Number(kurang) || 0)) {
+        showNotification('Nominal harus tepat sesuai sisa tagihan.', 'error')
+        setIsUpdating(false)
+        return
+      }
+
+      if (amount < minNominal) {
+        showNotification(
+          `Minimal pembayaran Rp ${minNominal.toLocaleString('id-ID')}` +
+            (kurang > 0 && kurang < IPAYMU_TYPICAL_MIN ? ' (sisa tagihan di bawah Rp 100.000)' : ''),
+          'error'
+        )
         setIsUpdating(false)
         return
       }
@@ -1822,11 +1953,31 @@ function PembayaranListOffcanvas({
                           <motion.div key="step-1" initial={{ x: stepDirection === 1 ? 300 : -300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: stepDirection === 1 ? -300 : 300, opacity: 0 }} transition={{ duration: 0.3 }} className="flex-1 min-h-0 space-y-4 overflow-y-auto">
                             <div><h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Mau Bayar Berapa?</h4>
                               <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Sisa kurang: <strong className="text-red-600">Rp {kurang.toLocaleString('id-ID')}</strong></div>
-                              <div className="text-xs text-gray-500 mb-4">Minimal pembayaran: <strong>Rp 100.000</strong></div>
+                              {kurang > 0 && kurang < IPAYMU_TYPICAL_MIN ? (
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                                  Sisa di bawah Rp 100.000 — nominal otomatis dan dikunci sesuai sisa (tidak dapat diubah).
+                                </div>
+                              ) : (
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                                  Minimal pembayaran: <strong>Rp {IPAYMU_TYPICAL_MIN.toLocaleString('id-ID')}</strong> (untuk sisa ≥ Rp 100.000).
+                                </div>
+                              )}
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Jumlah Pembayaran</label>
-                              <input type="text" value={ipaymuAmount} onChange={handleAmountInput} placeholder="Masukkan nominal (min. 100.000)" className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-teal-500 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100 text-right font-mono text-lg" autoFocus />
+                              <input
+                                type="text"
+                                value={ipaymuAmount}
+                                onChange={handleAmountInput}
+                                disabled={isIpaymuNominalLockedToSisa(kurang)}
+                                placeholder={
+                                  kurang > 0 && kurang < IPAYMU_TYPICAL_MIN
+                                    ? 'Nominal mengikuti sisa tagihan'
+                                    : `Minimal ${IPAYMU_TYPICAL_MIN.toLocaleString('id-ID')}`
+                                }
+                                className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-teal-500 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100 text-right font-mono text-lg disabled:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-gray-800/80"
+                                autoFocus={!isIpaymuNominalLockedToSisa(kurang)}
+                              />
                             </div>
                           </motion.div>
                         )}
@@ -1881,7 +2032,7 @@ function PembayaranListOffcanvas({
                           {ipaymuStep === 1 && (
                             <>
                               <button onClick={() => goToPaymentOpen()} className="flex-1 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 text-xs font-medium">Batal</button>
-                              <button onClick={() => { const amount = parseFloat(ipaymuAmount.replace(/\./g,''))||0; const minAmount=100000; if(!amount||amount<=0){showNotification('Masukkan nominal pembayaran','error');return} if(amount<minAmount){showNotification(`Minimal Rp ${minAmount.toLocaleString('id-ID')}`,'error');return} if(amount>kurang){showNotification(`Tidak boleh melebihi Rp ${kurang.toLocaleString('id-ID')}`,'error');return} setStepDirection(1); goToIPaymuStep(2) }} className="flex-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">Selanjutnya <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></button>
+                              <button type="button" onClick={advanceIpaymuFromStep1} className="flex-1 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">Selanjutnya <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg></button>
                             </>
                           )}
                           {ipaymuStep === 2 && (
@@ -1921,7 +2072,7 @@ function PembayaranListOffcanvas({
                     Total wajib Rp 0. Cek kondisi pendaftaran (mungkin ada yang keliru), atau hubungi admin:
                   </p>
                   <a
-                    href="https://wa.me/6282232999921"
+                    href={waKendalaPembayaranUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -2345,10 +2496,10 @@ function PembayaranListOffcanvas({
                   )}
                 </div>
 
-                {/* Bantuan Kendala Pembayaran — selalu tampil di bawah offcanvas Rincian Pembayaran */}
+                {/* Bantuan Pembayaran — selalu tampil di bawah offcanvas Rincian Pembayaran */}
                 <div className="flex-shrink-0 p-3 pt-2 border-t border-gray-200 dark:border-gray-700">
                   <a
-                    href="https://wa.me/6282232999921"
+                    href={waBantuanPembayaranUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -2356,7 +2507,7 @@ function PembayaranListOffcanvas({
                     <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                     </svg>
-                    Bantuan Kendala Pembayaran
+                    Bantuan Pembayaran
                   </a>
                 </div>
               </div>
@@ -2539,12 +2690,19 @@ function PembayaranListOffcanvas({
                           type="text"
                           value={ipaymuAmount}
                           onChange={handleAmountInput}
-                          placeholder="Masukkan nominal (min. 100.000)"
-                          className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100 text-right font-mono text-lg"
-                          disabled={isUpdating}
+                          placeholder={
+                            kurang > 0 && kurang < IPAYMU_TYPICAL_MIN
+                              ? 'Nominal mengikuti sisa tagihan'
+                              : `Minimal ${IPAYMU_TYPICAL_MIN.toLocaleString('id-ID')}`
+                          }
+                          className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100 text-right font-mono text-lg disabled:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-gray-800/80"
+                          disabled={isUpdating || isIpaymuNominalLockedToSisa(kurang)}
                         />
                         <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                           Sisa kurang: <strong>Rp {kurang.toLocaleString('id-ID')}</strong>
+                          {isIpaymuNominalLockedToSisa(kurang) ? (
+                            <span className="block mt-1 text-gray-600 dark:text-gray-400">Nominal dikunci sesuai sisa.</span>
+                          ) : null}
                         </div>
                       </div>
 

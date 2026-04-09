@@ -175,6 +175,7 @@ class PaymentTransactionController
             }
 
             $amount = (float)$input['amount'];
+            // Tidak memaksa minimal Rp 100.000: sisa tagihan kecil (mis. PAUD) tetap boleh; iPayMu menolak hanya jika di luar ketentuan mereka.
             $adminFee = $this->getAdminFeeForChannel($input['payment_method'] ?? 'va', $input['payment_channel'] ?? '');
             $total = $amount + $adminFee;
             $name = $input['name'];

@@ -34,6 +34,21 @@ function DetailOffcanvas({
   canEditPengeluaran = undefined,
   /** Pengeluaran: hapus. undefined = hanya super_admin (perilaku lama) */
   canDeletePengeluaran = undefined,
+  /**
+   * Rencana: hapus komentar orang lain — action.pengeluaran.rencana.hapus_komentar.
+   * Pemilik komentar selalu boleh hapus sendiri. false = sembunyikan hapus untuk komentar bukan milik user.
+   */
+  canHapusKomentar = false,
+  /**
+   * Rencana: centang penerima WA + modal — action.pengeluaran.rencana.kelola_penerima_notif.
+   * undefined = perilaku lama (boleh). false = hanya baca.
+   */
+  canKelolaPenerimaNotifWa = undefined,
+  /**
+   * Pengeluaran: ubah penerima uang (id_penerima) di offcanvas — action.pengeluaran.item.kelola_penerima
+   * (atau kompatibel rencana.kelola_penerima_notif jika tidak diisi; undefined = ikut canKelolaPenerimaNotifWa lalu legacy true).
+   */
+  canUbahPenerimaUang = undefined,
   // Props untuk notifikasi admin (rencana)
   listAdmins = [],
   selectedAdmins = [],
@@ -42,6 +57,15 @@ function DetailOffcanvas({
   onSendNotification = null,
   getStatusBadge = null
 }) {
+  const allowWaNotifRecipients =
+    canKelolaPenerimaNotifWa === undefined ? true : Boolean(canKelolaPenerimaNotifWa)
+  const allowUbahPenerimaUang =
+    canUbahPenerimaUang !== undefined
+      ? Boolean(canUbahPenerimaUang)
+      : canKelolaPenerimaNotifWa === undefined
+        ? true
+        : allowWaNotifRecipients
+
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
   const [komentar, setKomentar] = useState([])
@@ -149,21 +173,25 @@ function DetailOffcanvas({
         status: detailData?.status || detailData?.sumber_uang || 'Cash' // untuk pemasukan
       })
 
-      // Load pengurus list untuk pengeluaran
+      // Load pengurus list untuk pengeluaran (hanya jika boleh mengubah penerima uang)
       if (type === 'pengeluaran' && detailData?.id) {
-        try {
-          setLoadingPengurus(true)
-          const response = await pengeluaranAPI.getPengurusByLembaga(detailData.id)
-          if (response.success) {
-            setPengurusList(response.data || [])
+        setSelectedPenerima(detailData.id_penerima || null)
+        if (allowUbahPenerimaUang) {
+          try {
+            setLoadingPengurus(true)
+            const response = await pengeluaranAPI.getPengurusByLembaga(detailData.id)
+            if (response.success) {
+              setPengurusList(response.data || [])
+            }
+          } catch (error) {
+            console.error('Error loading pengurus:', error)
+            showNotification('Gagal memuat daftar pengurus', 'error')
+            setPengurusList([])
+          } finally {
+            setLoadingPengurus(false)
           }
-          // Set selected penerima dari detailData
-          setSelectedPenerima(detailData.id_penerima || null)
-        } catch (error) {
-          console.error('Error loading pengurus:', error)
-          showNotification('Gagal memuat daftar pengurus', 'error')
+        } else {
           setPengurusList([])
-        } finally {
           setLoadingPengurus(false)
         }
       }
@@ -250,7 +278,7 @@ function DetailOffcanvas({
     }
 
     loadKomentarAndViewer()
-  }, [isOpen, detailData?.id, detailData?.id_rencana, type])
+  }, [isOpen, detailData?.id, detailData?.id_rencana, type, allowUbahPenerimaUang])
 
   // Load lembaga saat edit mode aktif
   useEffect(() => {
@@ -342,8 +370,12 @@ function DetailOffcanvas({
                 sumber_uang: detailResponse.data.sumber_uang || 'Cash',
                 status: 'Cash'
               })
-              // Reload pengurus jika lembaga berubah
-              if (detailResponse.data.lembaga && detailResponse.data.lembaga !== oldLembaga) {
+              // Reload pengurus jika lembaga berubah (hanya jika boleh kelola penerima uang)
+              if (
+                allowUbahPenerimaUang &&
+                detailResponse.data.lembaga &&
+                detailResponse.data.lembaga !== oldLembaga
+              ) {
                 const pengurusResponse = await pengeluaranAPI.getPengurusByLembaga(detailData.id)
                 if (pengurusResponse.success) {
                   setPengurusList(pengurusResponse.data || [])
@@ -585,11 +617,16 @@ function DetailOffcanvas({
     }
   }
 
-  // Cek apakah bisa hapus komentar (hanya author atau super admin)
+  // Pemilik komentar boleh hapus sendiri; komentar lain hanya jika canHapusKomentar (aksi fitur / super lewat hook)
   const canDeleteKomentar = (item) => {
     if (!item || !user) return false
     const userId = user?.id || user?.user_id
-    return item.id_admin == userId || userHasSuperAdminAccess(user)
+    const isOwner =
+      item.id_admin != null &&
+      userId != null &&
+      String(item.id_admin) === String(userId)
+    if (isOwner) return true
+    return canHapusKomentar === true
   }
 
   const isSuperAdmin = userHasSuperAdminAccess(user)
@@ -1331,6 +1368,11 @@ function DetailOffcanvas({
                                 </button>
                               )}
                             </div>
+                            {!allowWaNotifRecipients && (
+                              <p className="text-xs text-amber-800 dark:text-amber-200/90 bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
+                                Anda tidak memiliki akses mengubah daftar penerima WA. Kirim ulang tetap memakai penerima yang sudah dipilih sistem (semua yang memenuhi syarat bawaan).
+                              </p>
+                            )}
                             {loadingAdmins ? (
                               <div className="flex items-center justify-center py-8">
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
@@ -1343,12 +1385,14 @@ function DetailOffcanvas({
                                       key={admin.id}
                                       className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                                     >
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedAdmins.includes(admin.id)}
-                                        onChange={() => onToggleAdmin && onToggleAdmin(admin.id)}
-                                        className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
-                                      />
+                                      {allowWaNotifRecipients ? (
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedAdmins.includes(admin.id)}
+                                          onChange={() => onToggleAdmin && onToggleAdmin(admin.id)}
+                                          className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                                        />
+                                      ) : null}
                                       <div className="flex-1">
                                         <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
                                           {admin.nama || 'Unknown'}
@@ -1654,69 +1698,76 @@ function DetailOffcanvas({
                                 </span>
                               </div>
                             )}
-                            {/* Select Penerima - hanya untuk type pengeluaran */}
+                            {/* Penerima uang — aksi item.kelola_penerima (tab Pengeluaran) atau kompatibel rencana.kelola_penerima_notif */}
                             {type === 'pengeluaran' && (
                               <div className="flex flex-col gap-2">
                                 <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Penerima:</span>
-                                <select
-                                  value={selectedPenerima || ''}
-                                  onChange={async (e) => {
-                                    const newPenerimaId = e.target.value ? parseInt(e.target.value) : null
-                                    setSelectedPenerima(newPenerimaId)
+                                {allowUbahPenerimaUang ? (
+                                  <>
+                                    <select
+                                      value={selectedPenerima || ''}
+                                      onChange={async (e) => {
+                                        const newPenerimaId = e.target.value ? parseInt(e.target.value, 10) : null
+                                        setSelectedPenerima(newPenerimaId)
 
-                                    // Update ke backend
-                                    try {
-                                      setUpdatingPenerima(true)
-                                      const response = await pengeluaranAPI.updatePengeluaran(detailData.id, {
-                                        id_penerima: newPenerimaId
-                                      })
-                                      if (response.success) {
-                                        showNotification('Penerima berhasil diupdate', 'success')
-                                        // Update detailData untuk refresh
-                                        if (detailData) {
-                                          const selectedPengurus = pengurusList.find(p => p.id === newPenerimaId)
-                                          detailData.id_penerima = newPenerimaId
-                                          detailData.penerima_nama = selectedPengurus?.nama_lengkap || selectedPengurus?.nama || null
+                                        try {
+                                          setUpdatingPenerima(true)
+                                          const response = await pengeluaranAPI.updatePengeluaran(detailData.id, {
+                                            id_penerima: newPenerimaId
+                                          })
+                                          if (response.success) {
+                                            showNotification('Penerima berhasil diupdate', 'success')
+                                            if (detailData) {
+                                              const selectedPengurus = pengurusList.find(p => p.id === newPenerimaId)
+                                              detailData.id_penerima = newPenerimaId
+                                              detailData.penerima_nama = selectedPengurus?.nama_lengkap || selectedPengurus?.nama || null
+                                            }
+                                          } else {
+                                            showNotification(response.message || 'Gagal mengupdate penerima', 'error')
+                                            setSelectedPenerima(detailData?.id_penerima || null)
+                                          }
+                                        } catch (error) {
+                                          console.error('Error updating penerima:', error)
+                                          showNotification(error.response?.data?.message || 'Gagal mengupdate penerima', 'error')
+                                          setSelectedPenerima(detailData?.id_penerima || null)
+                                        } finally {
+                                          setUpdatingPenerima(false)
                                         }
-                                      } else {
-                                        showNotification(response.message || 'Gagal mengupdate penerima', 'error')
-                                        // Revert selection
-                                        setSelectedPenerima(detailData?.id_penerima || null)
-                                      }
-                                    } catch (error) {
-                                      console.error('Error updating penerima:', error)
-                                      showNotification(error.response?.data?.message || 'Gagal mengupdate penerima', 'error')
-                                      // Revert selection
-                                      setSelectedPenerima(detailData?.id_penerima || null)
-                                    } finally {
-                                      setUpdatingPenerima(false)
-                                    }
-                                  }}
-                                  disabled={loadingPengurus || updatingPenerima}
-                                  className="text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <option value="">-- Pilih Penerima --</option>
-                                  {loadingPengurus ? (
-                                    <option value="" disabled>Memuat daftar pengurus...</option>
-                                  ) : pengurusList.length > 0 ? (
-                                    pengurusList.map((pengurus) => (
-                                      <option key={pengurus.id} value={pengurus.id}>
-                                        {pengurus.nama_lengkap || pengurus.nama} {pengurus.roles ? `(${pengurus.roles})` : ''}
-                                      </option>
-                                    ))
-                                  ) : (
-                                    <option value="" disabled>Tidak ada pengurus untuk lembaga ini</option>
-                                  )}
-                                </select>
-                                {selectedPenerima && (() => {
-                                  const selectedPengurus = pengurusList.find(p => p.id === selectedPenerima)
-                                  const penerimaName = selectedPengurus?.nama_lengkap || selectedPengurus?.nama || detailData.penerima_nama || ''
-                                  return penerimaName ? (
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                      Saat ini: {penerimaName}
-                                    </span>
-                                  ) : null
-                                })()}
+                                      }}
+                                      disabled={loadingPengurus || updatingPenerima}
+                                      className="text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <option value="">-- Pilih Penerima --</option>
+                                      {loadingPengurus ? (
+                                        <option value="" disabled>Memuat daftar pengurus...</option>
+                                      ) : pengurusList.length > 0 ? (
+                                        pengurusList.map((pengurus) => (
+                                          <option key={pengurus.id} value={pengurus.id}>
+                                            {pengurus.nama_lengkap || pengurus.nama} {pengurus.roles ? `(${pengurus.roles})` : ''}
+                                          </option>
+                                        ))
+                                      ) : (
+                                        <option value="" disabled>Tidak ada pengurus untuk lembaga ini</option>
+                                      )}
+                                    </select>
+                                    {selectedPenerima && (() => {
+                                      const selectedPengurus = pengurusList.find(p => p.id === selectedPenerima)
+                                      const penerimaName = selectedPengurus?.nama_lengkap || selectedPengurus?.nama || detailData.penerima_nama || ''
+                                      return penerimaName ? (
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                          Saat ini: {penerimaName}
+                                        </span>
+                                      ) : null
+                                    })()}
+                                  </>
+                                ) : (
+                                  <div className="rounded-md border border-gray-200 dark:border-gray-600 bg-white/60 dark:bg-gray-800/60 px-3 py-2 text-sm text-gray-800 dark:text-gray-200">
+                                    {detailData.penerima_nama || 'Belum ada penerima'}
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                      Hanya role dengan aksi &quot;Ubah penerima uang (offcanvas)&quot; atau &quot;Kelola penerima notifikasi WA&quot; di Pengaturan → Fitur yang dapat mengubah penerima.
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
                             <div className="flex justify-between">

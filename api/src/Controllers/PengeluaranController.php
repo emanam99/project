@@ -3,12 +3,14 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\PengeluaranWaNotifRecipientHelper;
 use App\Helpers\PengurusHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\RoleHelper;
 use App\Helpers\UserAktivitasLogger;
 use App\Services\RencanaPengeluaranWaHelper;
 use App\Services\WhatsAppService;
+use App\Utils\DeferredHttpTask;
 use App\Utils\PushNotificationService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -56,6 +58,27 @@ class PengeluaranController
         $user = $this->userFromRequest($request);
         if (RoleHelper::tokenPengeluaranActionAllowed($this->db, $user, $code)) {
             return null;
+        }
+
+        return $this->jsonResponse($response, [
+            'success' => false,
+            'message' => 'Akses ditolak untuk aksi ini',
+        ], 403);
+    }
+
+    /**
+     * Ubah penerima uang (id_penerima) + daftar pengurus untuk dropdown: item.kelola_penerima atau kompatibel rencana.kelola_penerima_notif.
+     */
+    private function pengeluaranDenyUnlessMoneyRecipientKelola(Request $request, Response $response): ?Response
+    {
+        $user = $this->userFromRequest($request);
+        foreach ([
+            'action.pengeluaran.item.kelola_penerima',
+            'action.pengeluaran.rencana.kelola_penerima_notif',
+        ] as $code) {
+            if (RoleHelper::tokenPengeluaranActionAllowed($this->db, $user, $code)) {
+                return null;
+            }
         }
 
         return $this->jsonResponse($response, [
@@ -271,6 +294,16 @@ class PengeluaranController
                     UserAktivitasLogger::log(null, $idAdmin, UserAktivitasLogger::ACTION_CREATE, 'pengeluaran___rencana', $idRencana, null, $newRencana, $request);
                 }
 
+                if ($status === 'draft') {
+                    $this->scheduleNotifOnDraftSaved(
+                        (int) $idRencana,
+                        $lembaga !== null ? (string) $lembaga : null,
+                        $idAdmin !== null ? (int) $idAdmin : null,
+                        (string) $keterangan,
+                        false
+                    );
+                }
+
                 return $this->jsonResponse($response, [
                     'success' => true,
                     'message' => 'Rencana pengeluaran berhasil dibuat',
@@ -479,11 +512,15 @@ class PengeluaranController
 
             $rencana['details'] = $details;
 
-            // Track viewer - auto track saat melihat detail
+            // Track viewer - auto track saat melihat detail; PWA ke audiens notif WA hanya pada kunjungan pertama per admin per rencana
             $user = $request->getAttribute('user');
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
             if ($idAdmin) {
                 try {
+                    $stmtHad = $this->db->prepare('SELECT 1 FROM pengeluaran___viewer WHERE id_rencana = ? AND id_admin = ? LIMIT 1');
+                    $stmtHad->execute([$idRencana, $idAdmin]);
+                    $alreadyViewed = $stmtHad->fetch() !== false;
+
                     $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
                     $sqlViewer = "INSERT INTO pengeluaran___viewer (id_rencana, id_admin, jumlah_view)
                                   VALUES (?, ?, 1)
@@ -492,6 +529,47 @@ class PengeluaranController
                                     jumlah_view = jumlah_view + 1";
                     $stmtViewer = $this->db->prepare($sqlViewer);
                     $stmtViewer->execute([$idRencana, $idAdmin, $waktuIndonesia]);
+
+                    if (!$alreadyViewed) {
+                        $stmtVn = $this->db->prepare('SELECT nama FROM pengurus WHERE id = ? LIMIT 1');
+                        $stmtVn->execute([(int) $idAdmin]);
+                        $viewerNama = trim((string) ($stmtVn->fetchColumn() ?: ''));
+                        $ketLabel = (string) ($rencana['keterangan'] ?? 'Rencana pengeluaran');
+                        if (strlen($ketLabel) > 80) {
+                            $ketLabel = substr($ketLabel, 0, 77) . '...';
+                        }
+                        $who = $viewerNama !== '' ? $viewerNama : 'Seorang admin';
+                        $lembagaPush = isset($rencana['lembaga']) ? trim((string) $rencana['lembaga']) : '';
+                        $isDraftPush = (($rencana['ket'] ?? '') === 'draft');
+                        $idAdminInt = (int) $idAdmin;
+                        $idRencanaInt = (int) $idRencana;
+                        $self = $this;
+                        $titleBuka = 'Rencana dibuka - ' . $ketLabel;
+                        $bodyBuka = $who . ' melihat detail rencana';
+                        DeferredHttpTask::runAfterResponse(function () use (
+                            $self,
+                            $lembagaPush,
+                            $isDraftPush,
+                            $idAdminInt,
+                            $titleBuka,
+                            $bodyBuka,
+                            $idRencanaInt
+                        ): void {
+                            $self->sendPengeluaranNotifPolicyPush(
+                                $lembagaPush !== '' ? $lembagaPush : null,
+                                $isDraftPush,
+                                [$idAdminInt],
+                                $titleBuka,
+                                $bodyBuka,
+                                '/pengeluaran?tab=rencana&rencana=' . $idRencanaInt,
+                                'rencana-dilihat-' . $idRencanaInt . '-' . $idAdminInt . '-' . microtime(true),
+                                [
+                                    'type' => 'rencana_dilihat',
+                                    'rencana_id' => $idRencanaInt,
+                                ]
+                            );
+                        });
+                    }
                 } catch (\Exception $e) {
                     // Log error tapi jangan gagalkan response
                     error_log("Track viewer error: " . $e->getMessage());
@@ -606,7 +684,8 @@ class PengeluaranController
     }
 
     /**
-     * POST /api/pengeluaran/rencana/notif-wa - Kirim notifikasi WA rencana pengeluaran ke admin (backend + log).
+     * POST /api/pengeluaran/rencana/notif-wa - Kirim notifikasi WA + Web Push (PWA) ke admin (backend + log).
+     * Penerima push = daftar penerima yang sama setelah filter akses notif WA (termasuk aturan draft).
      * Body: { "rencana_id": int, "message": string, "recipients": [ { "id": pengurus_id, "whatsapp": "08xxx" } ] }
      */
     public function sendRencanaNotifWa(Request $request, Response $response): Response
@@ -637,68 +716,43 @@ class PengeluaranController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Pilih minimal satu penerima (recipients)'], 400);
             }
 
-            $stmt = $this->db->prepare("SELECT id FROM pengeluaran___rencana WHERE id = ? LIMIT 1");
+            $stmt = $this->db->prepare('SELECT id, lembaga, ket FROM pengeluaran___rencana WHERE id = ? LIMIT 1');
             $stmt->execute([$rencanaId]);
-            if (!$stmt->fetch()) {
+            $rencRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$rencRow) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Rencana tidak ditemukan'], 404);
             }
-
-            WhatsAppService::wakeWaServer(false);
+            $lem = isset($rencRow['lembaga']) ? trim((string) $rencRow['lembaga']) : '';
+            $isDraftWa = (($rencRow['ket'] ?? '') === 'draft');
+            $recipients = PengeluaranWaNotifRecipientHelper::filterRecipients(
+                $this->db,
+                $lem !== '' ? $lem : null,
+                $recipients,
+                $isDraftWa
+            );
+            if ($recipients === []) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Tidak ada penerima yang diizinkan (periksa aksi notif WA di Pengaturan → Fitur untuk role terkait).'], 400);
+            }
 
             $user = $request->getAttribute('user');
             $idPengurusPengirim = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
 
-            $successCount = 0;
-            $failCount = 0;
-            $recipientIds = [];
-
-            foreach ($recipients as $r) {
-                $idPengurus = isset($r['id']) ? (int) $r['id'] : 0;
-                $whatsapp = isset($r['whatsapp']) ? trim((string) $r['whatsapp']) : '';
-                if ($whatsapp === '') {
-                    $failCount++;
-                    continue;
-                }
-                $recipientIds[] = $idPengurus;
-                $logContext = [
-                    'id_santri' => null,
-                    'id_pengurus' => $idPengurus > 0 ? $idPengurus : null,
-                    'tujuan' => 'pengurus',
-                    'id_pengurus_pengirim' => $idPengurusPengirim,
-                    'kategori' => 'pengeluaran_rencana_notif',
-                    'sumber' => 'uwaba',
-                ];
-                $result = WhatsAppService::sendMessage($whatsapp, $message, null, $logContext);
-                $actuallySent = !empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result);
-                if ($actuallySent) {
-                    $successCount++;
-                } else {
-                    $failCount++;
-                }
-            }
-
-            UserAktivitasLogger::log(
-                null,
-                $idPengurusPengirim,
-                UserAktivitasLogger::ACTION_UPDATE,
-                'pengeluaran___rencana',
-                $rencanaId,
-                null,
-                [
-                    'notif_wa' => true,
-                    'success_count' => $successCount,
-                    'fail_count' => $failCount,
-                    'recipient_ids' => $recipientIds,
-                ],
-                $request
-            );
+            $recipientsCopy = $recipients;
+            $messageCopy = $message;
+            $rid = $rencanaId;
+            $idSender = $idPengurusPengirim;
+            $self = $this;
+            DeferredHttpTask::runAfterResponse(function () use ($self, $recipientsCopy, $messageCopy, $rid, $idSender): void {
+                $self->runRencanaNotifWaDelivery($recipientsCopy, $messageCopy, $rid, $idSender);
+            });
 
             return $this->jsonResponse($response, [
                 'success' => true,
-                'message' => $failCount === 0
-                    ? "Notifikasi berhasil dikirim ke {$successCount} admin"
-                    : "Notifikasi berhasil dikirim ke {$successCount} admin, gagal {$failCount}",
-                'data' => ['success_count' => $successCount, 'fail_count' => $failCount],
+                'message' => 'Notifikasi WA dan push sedang diproses di latar belakang',
+                'data' => [
+                    'queued' => true,
+                    'recipient_count' => \count($recipients),
+                ],
             ], 200);
         } catch (\Throwable $e) {
             error_log("Pengeluaran sendRencanaNotifWa error: " . $e->getMessage());
@@ -710,7 +764,8 @@ class PengeluaranController
     }
 
     /**
-     * POST /api/pengeluaran/notif-wa - Kirim notifikasi WA pengeluaran (entity sudah di-approve) ke admin.
+     * POST /api/pengeluaran/notif-wa - Kirim notifikasi WA + Web Push (PWA) pengeluaran ke admin.
+     * Penerima push = daftar penerima yang sama setelah filter akses notif WA.
      * Body: { "pengeluaran_id": int, "message": string, "recipients": [ { "id": pengurus_id, "whatsapp": "08xxx" } ] }
      */
     public function sendPengeluaranNotifWa(Request $request, Response $response): Response
@@ -740,68 +795,37 @@ class PengeluaranController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Pilih minimal satu penerima (recipients)'], 400);
             }
 
-            $stmt = $this->db->prepare("SELECT id FROM pengeluaran WHERE id = ? LIMIT 1");
+            $stmt = $this->db->prepare('SELECT id, lembaga FROM pengeluaran WHERE id = ? LIMIT 1');
             $stmt->execute([$pengeluaranId]);
-            if (!$stmt->fetch()) {
+            $pRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$pRow) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Pengeluaran tidak ditemukan'], 404);
             }
-
-            WhatsAppService::wakeWaServer(false);
+            $lemP = isset($pRow['lembaga']) ? trim((string) $pRow['lembaga']) : '';
+            $recipients = PengeluaranWaNotifRecipientHelper::filterRecipients($this->db, $lemP !== '' ? $lemP : null, $recipients);
+            if ($recipients === []) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Tidak ada penerima yang diizinkan (periksa aksi notif WA di Pengaturan → Fitur untuk role terkait).'], 400);
+            }
 
             $user = $request->getAttribute('user');
             $idPengurusPengirim = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
 
-            $successCount = 0;
-            $failCount = 0;
-            $recipientIds = [];
-
-            foreach ($recipients as $r) {
-                $idPengurus = isset($r['id']) ? (int) $r['id'] : 0;
-                $whatsapp = isset($r['whatsapp']) ? trim((string) $r['whatsapp']) : '';
-                if ($whatsapp === '') {
-                    $failCount++;
-                    continue;
-                }
-                $recipientIds[] = $idPengurus;
-                $logContext = [
-                    'id_santri' => null,
-                    'id_pengurus' => $idPengurus > 0 ? $idPengurus : null,
-                    'tujuan' => 'pengurus',
-                    'id_pengurus_pengirim' => $idPengurusPengirim,
-                    'kategori' => 'pengeluaran_notif',
-                    'sumber' => 'uwaba',
-                ];
-                $result = WhatsAppService::sendMessage($whatsapp, $message, null, $logContext);
-                $actuallySent = !empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result);
-                if ($actuallySent) {
-                    $successCount++;
-                } else {
-                    $failCount++;
-                }
-            }
-
-            UserAktivitasLogger::log(
-                null,
-                $idPengurusPengirim,
-                UserAktivitasLogger::ACTION_UPDATE,
-                'pengeluaran',
-                $pengeluaranId,
-                null,
-                [
-                    'notif_wa' => true,
-                    'success_count' => $successCount,
-                    'fail_count' => $failCount,
-                    'recipient_ids' => $recipientIds,
-                ],
-                $request
-            );
+            $recipientsCopy = $recipients;
+            $messageCopy = $message;
+            $pid = $pengeluaranId;
+            $idSender = $idPengurusPengirim;
+            $self = $this;
+            DeferredHttpTask::runAfterResponse(function () use ($self, $recipientsCopy, $messageCopy, $pid, $idSender): void {
+                $self->runPengeluaranNotifWaDelivery($recipientsCopy, $messageCopy, $pid, $idSender);
+            });
 
             return $this->jsonResponse($response, [
                 'success' => true,
-                'message' => $failCount === 0
-                    ? "Notifikasi berhasil dikirim ke {$successCount} admin"
-                    : "Notifikasi berhasil dikirim ke {$successCount} admin, gagal {$failCount}",
-                'data' => ['success_count' => $successCount, 'fail_count' => $failCount],
+                'message' => 'Notifikasi WA dan push sedang diproses di latar belakang',
+                'data' => [
+                    'queued' => true,
+                    'recipient_count' => \count($recipients),
+                ],
             ], 200);
         } catch (\Throwable $e) {
             error_log("Pengeluaran sendPengeluaranNotifWa error: " . $e->getMessage());
@@ -1100,9 +1124,20 @@ class PengeluaranController
                     $totalData = $stmtTotal->fetch(\PDO::FETCH_ASSOC);
                     $totalNominal = floatval($totalData['total'] ?? 0);
 
-                    $sqlUpdateNominal = "UPDATE pengeluaran___rencana SET nominal = ?, ket = 'di edit' WHERE id = ?";
+                    $stmtKetNow = $this->db->prepare('SELECT ket FROM pengeluaran___rencana WHERE id = ? LIMIT 1');
+                    $stmtKetNow->execute([$idRencana]);
+                    $ketNow = trim((string) ($stmtKetNow->fetchColumn() ?: ''));
+                    if ($ketNow === 'draft') {
+                        $nextKet = 'draft';
+                    } elseif ($ketNow === 'pending' && $isDraftRow) {
+                        $nextKet = 'pending';
+                    } else {
+                        $nextKet = 'di edit';
+                    }
+
+                    $sqlUpdateNominal = 'UPDATE pengeluaran___rencana SET nominal = ?, ket = ? WHERE id = ?';
                     $stmtUpdateNominal = $this->db->prepare($sqlUpdateNominal);
-                    $stmtUpdateNominal->execute([$totalNominal, $idRencana]);
+                    $stmtUpdateNominal->execute([$totalNominal, $nextKet, $idRencana]);
                 }
 
                 $this->db->commit();
@@ -1112,6 +1147,16 @@ class PengeluaranController
                 $newRencana = $stmtNew->fetch(\PDO::FETCH_ASSOC);
                 if ($oldRencana && $newRencana) {
                     UserAktivitasLogger::log(null, $idAdmin, UserAktivitasLogger::ACTION_UPDATE, 'pengeluaran___rencana', $idRencana, $oldRencana, $newRencana, $request);
+                }
+
+                if ($newRencana && (($newRencana['ket'] ?? '') === 'draft')) {
+                    $this->scheduleNotifOnDraftSaved(
+                        (int) $idRencana,
+                        isset($newRencana['lembaga']) ? (string) $newRencana['lembaga'] : null,
+                        $idAdmin !== null ? (int) $idAdmin : null,
+                        (string) ($newRencana['keterangan'] ?? ''),
+                        true
+                    );
                 }
 
                 return $this->jsonResponse($response, [
@@ -1180,18 +1225,526 @@ class PengeluaranController
     }
 
     /**
-     * Kirim WA rencana (bangun koneksi WA dulu, lalu kirim per penerima — sama pola log dengan notif-wa).
+     * Nama pengurus untuk teks PWA; $actorId dari JWT bisa berupa pengurus.id atau users.id.
+     */
+    private function resolvePengurusNamaForPush(?int $actorId): string
+    {
+        if ($actorId === null || $actorId <= 0) {
+            return '—';
+        }
+        $stmt = $this->db->prepare('SELECT nama FROM pengurus WHERE id = ? LIMIT 1');
+        $stmt->execute([$actorId]);
+        $nama = trim((string) ($stmt->fetchColumn() ?: ''));
+        if ($nama !== '') {
+            return $nama;
+        }
+        $stmt2 = $this->db->prepare('SELECT nama FROM pengurus WHERE id_user = ? LIMIT 1');
+        $stmt2->execute([$actorId]);
+        $nama2 = trim((string) ($stmt2->fetchColumn() ?: ''));
+
+        return $nama2 !== '' ? $nama2 : '—';
+    }
+
+    /** Token JWT: pengurus.id atau users.id → pengurus.id (untuk exclude penerima notif). */
+    private function resolveActorPengurusId(?int $actorId): ?int
+    {
+        if ($actorId === null || $actorId <= 0) {
+            return null;
+        }
+        $stmt = $this->db->prepare('SELECT id FROM pengurus WHERE id = ? LIMIT 1');
+        $stmt->execute([$actorId]);
+        if ($stmt->fetchColumn()) {
+            return $actorId;
+        }
+        $stmt2 = $this->db->prepare('SELECT id FROM pengurus WHERE id_user = ? LIMIT 1');
+        $stmt2->execute([$actorId]);
+        $row = $stmt2->fetch(\PDO::FETCH_ASSOC);
+
+        return $row && !empty($row['id']) ? (int) $row['id'] : null;
+    }
+
+    /**
+     * PWA + WA ke role dengan aksi notif draft (setelah response HTTP).
+     */
+    private function scheduleNotifOnDraftSaved(
+        int $rencanaId,
+        ?string $lembagaRaw,
+        ?int $actorId,
+        string $keterangan,
+        bool $isUpdate
+    ): void {
+        $lem = $lembagaRaw !== null ? trim($lembagaRaw) : '';
+        $actorPengurusId = $this->resolveActorPengurusId($actorId);
+        $namaPenyimpan = $this->resolvePengurusNamaForPush($actorId);
+        $rid = $rencanaId;
+        $lemCopy = $lem;
+        $ex = $actorPengurusId ?? 0;
+        $ketCopy = $keterangan;
+        $upd = $isUpdate;
+        $namaCopy = $namaPenyimpan;
+        $self = $this;
+        DeferredHttpTask::runAfterResponse(function () use ($self, $rid, $lemCopy, $ex, $ketCopy, $upd, $namaCopy): void {
+            $self->runDraftSavedNotifDelivery($rid, $lemCopy, $ex, $ketCopy, $upd, $namaCopy);
+        });
+    }
+
+    private function runDraftSavedNotifDelivery(
+        int $rencanaId,
+        string $lembaga,
+        int $excludePengurusId,
+        string $keterangan,
+        bool $isUpdate,
+        string $namaPenyimpan
+    ): void {
+        $lemParam = $lembaga !== '' ? $lembaga : null;
+        $recipients = PengeluaranWaNotifRecipientHelper::fetchEligiblePengurusWithWa($this->db, $lemParam, true);
+        if ($excludePengurusId > 0) {
+            $recipients = array_values(array_filter(
+                $recipients,
+                static fn (array $r): bool => (int) ($r['id'] ?? 0) !== $excludePengurusId
+            ));
+        }
+
+        $ketShort = trim($keterangan) !== '' ? trim($keterangan) : 'Draft';
+        if (strlen($ketShort) > 100) {
+            $ketShort = substr($ketShort, 0, 97) . '...';
+        }
+        $verb = $isUpdate ? 'diperbarui' : 'disimpan';
+        $title = 'Draft rencana ' . $verb;
+        $body = $namaPenyimpan . ' — ' . $ketShort;
+
+        $excludeForPush = $excludePengurusId > 0 ? [$excludePengurusId] : [];
+        $this->sendPengeluaranNotifPolicyPush(
+            $lemParam,
+            true,
+            $excludeForPush,
+            $title,
+            $body,
+            '/pengeluaran?tab=draft&rencana=' . $rencanaId,
+            'pengeluaran-draft-' . $rencanaId . '-' . microtime(true),
+            [
+                'type' => 'pengeluaran_draft',
+                'rencana_id' => $rencanaId,
+            ]
+        );
+
+        $lemLabel = $lembaga !== '' ? $lembaga : '-';
+        $waMessage = RencanaPengeluaranWaHelper::buildDraftSavedMessage(
+            $rencanaId,
+            $keterangan,
+            $lemLabel,
+            $namaPenyimpan,
+            $isUpdate
+        );
+
+        WhatsAppService::wakeWaServer(false);
+        foreach ($recipients as $r) {
+            if (!\is_array($r)) {
+                continue;
+            }
+            $wa = trim((string) ($r['whatsapp'] ?? ''));
+            if ($wa === '') {
+                continue;
+            }
+            $idP = isset($r['id']) ? (int) $r['id'] : 0;
+            $logContext = [
+                'id_santri' => null,
+                'id_pengurus' => $idP > 0 ? $idP : null,
+                'tujuan' => 'pengurus',
+                'id_pengurus_pengirim' => $excludePengurusId > 0 ? $excludePengurusId : null,
+                'kategori' => 'pengeluaran_draft_notif',
+                'sumber' => 'uwaba',
+            ];
+            WhatsAppService::sendMessage($wa, $waMessage, null, $logContext);
+        }
+    }
+
+    /**
+     * Web Push ke pengurus yang sama dengan daftar penerima WA (setelah filter akses fitur).
+     * Kegagalan push tidak mengubah hasil pengiriman WA.
+     *
+     * @param list<array<string, mixed>> $filteredWaRecipients
+     * @return array{success:int, failed:int}
+     */
+    private function sendPengeluaranWaCompanionPush(
+        array $filteredWaRecipients,
+        string $title,
+        string $fullMessage,
+        string $relativeUrl,
+        string $tag,
+        array $dataPayload,
+        ?int $excludePengurusId,
+        ?string $explicitPushBody = null
+    ): array {
+        $pushIds = [];
+        foreach ($filteredWaRecipients as $r) {
+            if (!\is_array($r)) {
+                continue;
+            }
+            $id = isset($r['id']) ? (int) $r['id'] : 0;
+            if ($id > 0) {
+                $pushIds[] = $id;
+            }
+        }
+        $pushIds = array_values(array_unique($pushIds));
+        if ($excludePengurusId !== null && $excludePengurusId > 0) {
+            $pushIds = array_values(array_filter(
+                $pushIds,
+                static fn (int $pid): bool => $pid !== $excludePengurusId
+            ));
+        }
+        if ($pushIds === []) {
+            return ['success' => 0, 'failed' => 0];
+        }
+
+        if ($explicitPushBody !== null && trim($explicitPushBody) !== '') {
+            $lines = preg_split('/\r\n|\r|\n/', trim($explicitPushBody));
+            $lines = array_map(
+                static fn (string $l): string => preg_replace('/[ \t]+/u', ' ', trim($l)),
+                $lines
+            );
+            $body = implode("\n", array_values(array_filter($lines, static fn (string $l): bool => $l !== '')));
+            if (strlen($body) > 320) {
+                $body = substr($body, 0, 317) . '...';
+            }
+        } else {
+            $body = preg_replace('/\s+/u', ' ', trim(str_replace(["\r\n", "\r", "\n"], ' ', $fullMessage)));
+            if ($body === '') {
+                $body = $title;
+            }
+            if (strlen($body) > 180) {
+                $body = substr($body, 0, 177) . '...';
+            }
+        }
+
+        try {
+            $push = new PushNotificationService();
+            $result = $push->sendToPengurus($pushIds, $title, $body, [
+                'url' => $relativeUrl,
+                'icon' => '/gambar/icon/icon192.png',
+                'badge' => '/gambar/icon/icon128.png',
+                'tag' => $tag,
+                'data' => $dataPayload,
+                'requireInteraction' => false,
+                'vibrate' => [200, 100, 200],
+            ]);
+
+            return [
+                'success' => (int) ($result['success'] ?? 0),
+                'failed' => (int) ($result['failed'] ?? 0),
+            ];
+        } catch (\Throwable $e) {
+            error_log('Pengeluaran WA companion PWA push error: ' . $e->getMessage());
+
+            return ['success' => 0, 'failed' => 0];
+        }
+    }
+
+    /**
+     * Web Push ke semua pengurus yang memenuhi kebijakan aksi notif WA untuk lembaga/konteks draft.
+     * Dipakai untuk komentar & “rencana dibuka”; tidak mensyaratkan nomor WA. Pengiriman memakai
+     * baris pengurus___subscription — tidak bergantung pada JWT/session penerima (push dikirim server-side).
+     *
+     * @param list<int> $excludePengurusIds
+     */
+    private function sendPengeluaranNotifPolicyPush(
+        ?string $lembagaId,
+        bool $draftWaPolicy,
+        array $excludePengurusIds,
+        string $title,
+        string $body,
+        string $relativeUrl,
+        string $tag,
+        array $dataPayload
+    ): void {
+        $lem = $lembagaId !== null ? trim($lembagaId) : '';
+        $pushIds = PengeluaranWaNotifRecipientHelper::fetchEligiblePengurusIdsForPush(
+            $this->db,
+            $lem !== '' ? $lem : null,
+            $draftWaPolicy
+        );
+        $exclude = [];
+        foreach ($excludePengurusIds as $x) {
+            $ix = (int) $x;
+            if ($ix > 0) {
+                $exclude[$ix] = true;
+            }
+        }
+        if ($exclude !== []) {
+            $pushIds = array_values(array_filter(
+                $pushIds,
+                static fn (int $pid): bool => !isset($exclude[$pid])
+            ));
+        }
+        if ($pushIds === []) {
+            return;
+        }
+        $bodyOut = $body;
+        if (strlen($bodyOut) > 180) {
+            $bodyOut = substr($bodyOut, 0, 177) . '...';
+        }
+        try {
+            $push = new PushNotificationService();
+            $push->sendToPengurus($pushIds, $title, $bodyOut, [
+                'url' => $relativeUrl,
+                'icon' => '/gambar/icon/icon192.png',
+                'badge' => '/gambar/icon/icon128.png',
+                'tag' => $tag,
+                'data' => $dataPayload,
+                'requireInteraction' => false,
+                'vibrate' => [200, 100, 200],
+            ]);
+        } catch (\Throwable $e) {
+            error_log('sendPengeluaranNotifPolicyPush: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Kirim WA + push + log untuk POST notif-wa rencana (setelah response terkirim).
      *
      * @param list<array<string, mixed>> $recipients
-     * @return array{success_count:int, fail_count:int}
+     */
+    private function runRencanaNotifWaDelivery(array $recipients, string $message, int $rencanaId, ?int $idPengurusPengirim): void
+    {
+        $stmtJ = $this->db->prepare('SELECT keterangan FROM pengeluaran___rencana WHERE id = ? LIMIT 1');
+        $stmtJ->execute([$rencanaId]);
+        $ketPush = trim((string) ($stmtJ->fetchColumn() ?: ''));
+        if ($ketPush === '') {
+            $ketPush = 'Rencana';
+        }
+        if (strlen($ketPush) > 44) {
+            $ketPush = substr($ketPush, 0, 41) . '...';
+        }
+        $pushTitleWa = 'Notifikasi - ' . $ketPush;
+
+        WhatsAppService::wakeWaServer(false);
+        $successCount = 0;
+        $failCount = 0;
+        $recipientIds = [];
+        foreach ($recipients as $r) {
+            $idPengurus = isset($r['id']) ? (int) $r['id'] : 0;
+            $whatsapp = isset($r['whatsapp']) ? trim((string) $r['whatsapp']) : '';
+            if ($whatsapp === '') {
+                $failCount++;
+                continue;
+            }
+            $recipientIds[] = $idPengurus;
+            $logContext = [
+                'id_santri' => null,
+                'id_pengurus' => $idPengurus > 0 ? $idPengurus : null,
+                'tujuan' => 'pengurus',
+                'id_pengurus_pengirim' => $idPengurusPengirim,
+                'kategori' => 'pengeluaran_rencana_notif',
+                'sumber' => 'uwaba',
+            ];
+            $result = WhatsAppService::sendMessage($whatsapp, $message, null, $logContext);
+            $actuallySent = !empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result);
+            if ($actuallySent) {
+                $successCount++;
+            } else {
+                $failCount++;
+            }
+        }
+
+        $pushStats = $this->sendPengeluaranWaCompanionPush(
+            $recipients,
+            $pushTitleWa,
+            $message,
+            '/pengeluaran?tab=rencana&rencana=' . $rencanaId,
+            'pengeluaran-rencana-notif-wa-' . $rencanaId,
+            [
+                'type' => 'pengeluaran_rencana_wa',
+                'rencana_id' => $rencanaId,
+            ],
+            $idPengurusPengirim,
+            null
+        );
+
+        UserAktivitasLogger::log(
+            null,
+            $idPengurusPengirim,
+            UserAktivitasLogger::ACTION_UPDATE,
+            'pengeluaran___rencana',
+            $rencanaId,
+            null,
+            [
+                'notif_wa' => true,
+                'notif_push' => true,
+                'success_count' => $successCount,
+                'fail_count' => $failCount,
+                'push_success' => $pushStats['success'],
+                'push_failed' => $pushStats['failed'],
+                'recipient_ids' => $recipientIds,
+            ],
+            null
+        );
+    }
+
+    /**
+     * Kirim WA + push + log untuk POST notif-wa baris pengeluaran (setelah response terkirim).
+     *
+     * @param list<array<string, mixed>> $recipients
+     */
+    private function runPengeluaranNotifWaDelivery(array $recipients, string $message, int $pengeluaranId, ?int $idPengurusPengirim): void
+    {
+        $stmtJ = $this->db->prepare('SELECT keterangan FROM pengeluaran WHERE id = ? LIMIT 1');
+        $stmtJ->execute([$pengeluaranId]);
+        $ketPush = trim((string) ($stmtJ->fetchColumn() ?: ''));
+        if ($ketPush === '') {
+            $ketPush = 'Pengeluaran';
+        }
+        if (strlen($ketPush) > 44) {
+            $ketPush = substr($ketPush, 0, 41) . '...';
+        }
+        $pushTitleP = 'Notifikasi - ' . $ketPush;
+
+        WhatsAppService::wakeWaServer(false);
+        $successCount = 0;
+        $failCount = 0;
+        $recipientIds = [];
+        foreach ($recipients as $r) {
+            $idPengurus = isset($r['id']) ? (int) $r['id'] : 0;
+            $whatsapp = isset($r['whatsapp']) ? trim((string) $r['whatsapp']) : '';
+            if ($whatsapp === '') {
+                $failCount++;
+                continue;
+            }
+            $recipientIds[] = $idPengurus;
+            $logContext = [
+                'id_santri' => null,
+                'id_pengurus' => $idPengurus > 0 ? $idPengurus : null,
+                'tujuan' => 'pengurus',
+                'id_pengurus_pengirim' => $idPengurusPengirim,
+                'kategori' => 'pengeluaran_notif',
+                'sumber' => 'uwaba',
+            ];
+            $result = WhatsAppService::sendMessage($whatsapp, $message, null, $logContext);
+            $actuallySent = !empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result);
+            if ($actuallySent) {
+                $successCount++;
+            } else {
+                $failCount++;
+            }
+        }
+
+        $pushStats = $this->sendPengeluaranWaCompanionPush(
+            $recipients,
+            $pushTitleP,
+            $message,
+            '/pengeluaran?tab=pengeluaran&pengeluaran=' . $pengeluaranId,
+            'pengeluaran-notif-wa-' . $pengeluaranId,
+            [
+                'type' => 'pengeluaran_wa',
+                'pengeluaran_id' => $pengeluaranId,
+            ],
+            $idPengurusPengirim,
+            null
+        );
+
+        UserAktivitasLogger::log(
+            null,
+            $idPengurusPengirim,
+            UserAktivitasLogger::ACTION_UPDATE,
+            'pengeluaran',
+            $pengeluaranId,
+            null,
+            [
+                'notif_wa' => true,
+                'notif_push' => true,
+                'success_count' => $successCount,
+                'fail_count' => $failCount,
+                'push_success' => $pushStats['success'],
+                'push_failed' => $pushStats['failed'],
+                'recipient_ids' => $recipientIds,
+            ],
+            null
+        );
+    }
+
+    /**
+     * Kirim WA rencana (approve/reject): filter dulu; pengiriman setelah response HTTP.
+     *
+     * @param list<array<string, mixed>> $recipients
+     * @return array<string, mixed>
      */
     private function deliverRencanaWaRecipients(
         string $message,
         array $recipients,
         ?int $idPengurusPengirim,
-        Request $request,
-        int $rencanaId
+        int $rencanaId,
+        bool $isReject = false
     ): array {
+        $stmtL = $this->db->prepare('SELECT lembaga, ket FROM pengeluaran___rencana WHERE id = ? LIMIT 1');
+        $stmtL->execute([$rencanaId]);
+        $rowL = $stmtL->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $lem = trim((string) ($rowL['lembaga'] ?? ''));
+        $isDraftWa = (($rowL['ket'] ?? '') === 'draft');
+        $recipients = PengeluaranWaNotifRecipientHelper::filterRecipients(
+            $this->db,
+            $lem !== '' ? $lem : null,
+            $recipients,
+            $isDraftWa
+        );
+
+        if ($recipients === []) {
+            return [
+                'success_count' => 0,
+                'fail_count' => 0,
+                'push' => ['success' => 0, 'failed' => 0],
+            ];
+        }
+
+        $messageCopy = $message;
+        $recipientsCopy = $recipients;
+        $idSender = $idPengurusPengirim;
+        $rid = $rencanaId;
+        $rejectFlag = $isReject;
+        $self = $this;
+        DeferredHttpTask::runAfterResponse(function () use ($self, $messageCopy, $recipientsCopy, $idSender, $rid, $rejectFlag): void {
+            $self->deliverRencanaWaRecipientsSync($messageCopy, $recipientsCopy, $idSender, $rid, $rejectFlag);
+        });
+
+        return [
+            'queued' => true,
+            'async' => true,
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $recipients Sudah difilter policy.
+     */
+    private function deliverRencanaWaRecipientsSync(
+        string $message,
+        array $recipients,
+        ?int $idPengurusPengirim,
+        int $rencanaId,
+        bool $isReject
+    ): void {
+        $stmtMeta = $this->db->prepare(
+            'SELECT r.keterangan, r.id_admin, p_pembuat.nama AS nama_pembuat
+             FROM pengeluaran___rencana r
+             LEFT JOIN pengurus p_pembuat ON p_pembuat.id = r.id_admin
+             WHERE r.id = ? LIMIT 1'
+        );
+        $stmtMeta->execute([$rencanaId]);
+        $metaR = $stmtMeta->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $judulPush = trim((string) ($metaR['keterangan'] ?? ''));
+        if ($judulPush === '') {
+            $judulPush = 'Rencana pengeluaran';
+        }
+        if (strlen($judulPush) > 72) {
+            $judulPush = substr($judulPush, 0, 69) . '...';
+        }
+        $namaPembuat = trim((string) ($metaR['nama_pembuat'] ?? ''));
+        if ($namaPembuat === '') {
+            $namaPembuat = '—';
+        }
+        $namaApprover = $this->resolvePengurusNamaForPush($idPengurusPengirim);
+        $pushJudul = $isReject
+            ? ('❌ Ditolak - ' . $judulPush)
+            : ('✅ Disetujui - ' . $judulPush);
+        $pushBodyPwa = 'dibuat : ' . $namaPembuat . "\napprover : " . $namaApprover;
+
         WhatsAppService::wakeWaServer(false);
         $successCount = 0;
         $failCount = 0;
@@ -1223,6 +1776,21 @@ class PengeluaranController
                 $failCount++;
             }
         }
+
+        $pushStats = $this->sendPengeluaranWaCompanionPush(
+            $recipients,
+            $pushJudul,
+            $message,
+            '/pengeluaran?tab=rencana&rencana=' . $rencanaId,
+            'pengeluaran-rencana-wa-' . $rencanaId,
+            [
+                'type' => 'pengeluaran_rencana_wa',
+                'rencana_id' => $rencanaId,
+            ],
+            $idPengurusPengirim,
+            $pushBodyPwa
+        );
+
         if ($successCount + $failCount > 0) {
             UserAktivitasLogger::log(
                 null,
@@ -1233,16 +1801,17 @@ class PengeluaranController
                 null,
                 [
                     'notif_wa' => true,
+                    'notif_push' => true,
                     'success_count' => $successCount,
                     'fail_count' => $failCount,
+                    'push_success' => $pushStats['success'],
+                    'push_failed' => $pushStats['failed'],
                     'recipient_ids' => $recipientIds,
                     'via' => 'rencana_approve_reject',
                 ],
-                $request
+                null
             );
         }
-
-        return ['success_count' => $successCount, 'fail_count' => $failCount];
     }
 
     /**
@@ -1387,7 +1956,7 @@ class PengeluaranController
                     if ($rowWa !== null) {
                         $msg = RencanaPengeluaranWaHelper::buildApproveMessage($rowWa, $totalNominalApproved);
                         $idPengirim = $idAdminApprove !== null ? (int) $idAdminApprove : null;
-                        $data['wa_notif'] = $this->deliverRencanaWaRecipients($msg, $waRecipients, $idPengirim, $request, (int) $idRencana);
+                        $data['wa_notif'] = $this->deliverRencanaWaRecipients($msg, $waRecipients, $idPengirim, (int) $idRencana);
                     }
                 }
 
@@ -1477,7 +2046,7 @@ class PengeluaranController
             if (!empty($waRecipients)) {
                 $msg = RencanaPengeluaranWaHelper::buildRejectMessage($rencana, $totalNom, $namaReject);
                 $idPengirim = $idAdminReject !== null ? (int) $idAdminReject : null;
-                $payload['wa_notif'] = $this->deliverRencanaWaRecipients($msg, $waRecipients, $idPengirim, $request, (int) $idRencana);
+                $payload['wa_notif'] = $this->deliverRencanaWaRecipients($msg, $waRecipients, $idPengirim, (int) $idRencana, true);
             }
 
             return $this->jsonResponse($response, [
@@ -1733,11 +2302,15 @@ class PengeluaranController
             $idRencana = $pengeluaran['id_rencana'] ?? null;
             
             if ($idRencana) {
-                // Track viewer - auto track saat melihat detail (berdasarkan id_rencana)
+                // Track viewer (id_rencana); PWA ke audiens notif WA pada kunjungan pertama per admin per rencana
                 $user = $request->getAttribute('user');
                 $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
                 if ($idAdmin) {
                     try {
+                        $stmtHad = $this->db->prepare('SELECT 1 FROM pengeluaran___viewer WHERE id_rencana = ? AND id_admin = ? LIMIT 1');
+                        $stmtHad->execute([$idRencana, $idAdmin]);
+                        $alreadyViewed = $stmtHad->fetch() !== false;
+
                         $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
                         $sqlViewer = "INSERT INTO pengeluaran___viewer (id_rencana, id_admin, jumlah_view)
                                       VALUES (?, ?, 1)
@@ -1746,6 +2319,54 @@ class PengeluaranController
                                         jumlah_view = jumlah_view + 1";
                         $stmtViewer = $this->db->prepare($sqlViewer);
                         $stmtViewer->execute([$idRencana, $idAdmin, $waktuIndonesia]);
+
+                        if (!$alreadyViewed) {
+                            $stmtKet = $this->db->prepare('SELECT ket FROM pengeluaran___rencana WHERE id = ? LIMIT 1');
+                            $stmtKet->execute([$idRencana]);
+                            $renKet = (string) ($stmtKet->fetchColumn() ?: '');
+
+                            $stmtVn = $this->db->prepare('SELECT nama FROM pengurus WHERE id = ? LIMIT 1');
+                            $stmtVn->execute([(int) $idAdmin]);
+                            $viewerNama = trim((string) ($stmtVn->fetchColumn() ?: ''));
+                            $ketLabel = (string) ($pengeluaran['keterangan'] ?? 'Pengeluaran');
+                            if (strlen($ketLabel) > 80) {
+                                $ketLabel = substr($ketLabel, 0, 77) . '...';
+                            }
+                            $who = $viewerNama !== '' ? $viewerNama : 'Seorang admin';
+                            $lembagaPush = isset($pengeluaran['lembaga']) ? trim((string) $pengeluaran['lembaga']) : '';
+                            $isDraftPush = ($renKet === 'draft');
+                            $idAdminInt = (int) $idAdmin;
+                            $idRencanaInt = (int) $idRencana;
+                            $idPengeluaranInt = (int) $idPengeluaran;
+                            $self = $this;
+                            $titleBukaP = 'Pengeluaran dibuka - ' . $ketLabel;
+                            $bodyBukaP = $who . ' melihat detail pengeluaran';
+                            DeferredHttpTask::runAfterResponse(function () use (
+                                $self,
+                                $lembagaPush,
+                                $isDraftPush,
+                                $idAdminInt,
+                                $titleBukaP,
+                                $bodyBukaP,
+                                $idRencanaInt,
+                                $idPengeluaranInt
+                            ): void {
+                                $self->sendPengeluaranNotifPolicyPush(
+                                    $lembagaPush !== '' ? $lembagaPush : null,
+                                    $isDraftPush,
+                                    [$idAdminInt],
+                                    $titleBukaP,
+                                    $bodyBukaP,
+                                    '/pengeluaran?tab=pengeluaran&pengeluaran=' . $idPengeluaranInt,
+                                    'pengeluaran-dilihat-' . $idRencanaInt . '-' . $idAdminInt . '-' . microtime(true),
+                                    [
+                                        'type' => 'pengeluaran_dilihat',
+                                        'rencana_id' => $idRencanaInt,
+                                        'pengeluaran_id' => $idPengeluaranInt,
+                                    ]
+                                );
+                            });
+                        }
                     } catch (\Exception $e) {
                         // Log error tapi jangan gagalkan response
                         error_log("Track viewer error: " . $e->getMessage());
@@ -1852,7 +2473,7 @@ class PengeluaranController
             }
 
             // Cek apakah rencana ada
-            $sqlCheck = "SELECT id, ket, keterangan FROM pengeluaran___rencana WHERE id = ?";
+            $sqlCheck = 'SELECT id, ket, keterangan, lembaga FROM pengeluaran___rencana WHERE id = ?';
             $stmtCheck = $this->db->prepare($sqlCheck);
             $stmtCheck->execute([$idRencana]);
             $rencanaData = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
@@ -1923,74 +2544,55 @@ class PengeluaranController
                 }
             }
 
-            // Kirim PWA push notification ke super_admin dan admin_uwaba
+            // PWA: setelah response — agar POST komentar tidak menunggu push
             try {
-                error_log("=== Starting push notification for komentar ===");
-                error_log("Rencana ID: {$idRencana}, Komentar ID: {$komentarId}, Admin ID: {$idAdmin}");
-                
-                // Get nama admin yang membuat komentar
-                $sqlAdmin = "SELECT nama FROM pengurus WHERE id = ?";
+                $sqlAdmin = 'SELECT nama FROM pengurus WHERE id = ?';
                 $stmtAdmin = $this->db->prepare($sqlAdmin);
                 $stmtAdmin->execute([$idAdmin]);
-                $adminData = $stmtAdmin->fetch(\PDO::FETCH_ASSOC);
-                $adminNama = $adminData['nama'] ?? 'Admin';
-
-                // Prepare notification data
-                $rencanaKeterangan = $rencanaData['keterangan'] ?? 'Rencana Pengeluaran';
-                $title = 'Komentar Baru pada Rencana Pengeluaran';
-                $body = $adminNama . ' menambahkan komentar pada: ' . $rencanaKeterangan;
-                
-                // Truncate body jika terlalu panjang
-                if (strlen($body) > 100) {
-                    $body = substr($body, 0, 97) . '...';
+                $adminNama = (string) (($stmtAdmin->fetch(\PDO::FETCH_ASSOC) ?: [])['nama'] ?? 'Admin');
+                $judulRencana = trim((string) ($rencanaData['keterangan'] ?? 'Rencana'));
+                if (strlen($judulRencana) > 56) {
+                    $judulRencana = substr($judulRencana, 0, 53) . '...';
                 }
-
-                error_log("Notification title: {$title}");
-                error_log("Notification body: {$body}");
-
-                // Kirim notifikasi ke super_admin dan admin_uwaba
-                $pushService = new PushNotificationService();
-                error_log("PushNotificationService created, calling sendToRoles...");
-                
-                $result = $pushService->sendToRoles(
-                    ['super_admin', 'admin_uwaba'],
+                $title = 'Komentar Baru - ' . $judulRencana;
+                $body = $adminNama . ' - ' . $komentar;
+                $lemPush = isset($rencanaData['lembaga']) ? trim((string) $rencanaData['lembaga']) : '';
+                $isDraftRencana = (($rencanaData['ket'] ?? '') === 'draft');
+                $idAdminInt = $idAdmin !== null ? (int) $idAdmin : 0;
+                $idRencanaInt = (int) $idRencana;
+                $komentarIdInt = (int) $komentarId;
+                $self = $this;
+                DeferredHttpTask::runAfterResponse(function () use (
+                    $self,
+                    $lemPush,
+                    $isDraftRencana,
+                    $idAdminInt,
                     $title,
                     $body,
-                    [
-                        'url' => '/pengeluaran?rencana=' . $idRencana,
-                        'icon' => '/gambar/icon/icon192.png',
-                        'badge' => '/gambar/icon/icon128.png',
-                        'tag' => 'komentar-rencana-' . $idRencana,
-                        'data' => [
-                            'type' => 'komentar_rencana',
-                            'rencana_id' => $idRencana,
-                            'komentar_id' => $komentarId
-                        ],
-                        'requireInteraction' => false,
-                        'vibrate' => [200, 100, 200]
-                    ]
-                );
-
-                error_log("Push notification result: " . json_encode($result));
-
-                // Log hasil (tidak perlu throw error jika gagal)
-                if ($result['success'] > 0) {
-                    error_log("✅ Push notification sent successfully to {$result['success']} subscribers");
-                }
-                if ($result['failed'] > 0) {
-                    error_log("❌ Push notification failed for {$result['failed']} subscribers");
-                    foreach ($result['errors'] as $error) {
-                        error_log("   Error: {$error}");
+                    $idRencanaInt,
+                    $komentarIdInt
+                ): void {
+                    try {
+                        $self->sendPengeluaranNotifPolicyPush(
+                            $lemPush !== '' ? $lemPush : null,
+                            $isDraftRencana,
+                            $idAdminInt > 0 ? [$idAdminInt] : [],
+                            $title,
+                            $body,
+                            '/pengeluaran?tab=rencana&rencana=' . $idRencanaInt,
+                            'komentar-rencana-' . $idRencanaInt . '-' . $komentarIdInt,
+                            [
+                                'type' => 'komentar_rencana',
+                                'rencana_id' => $idRencanaInt,
+                                'komentar_id' => $komentarIdInt,
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        error_log('Push komentar rencana: ' . $e->getMessage());
                     }
-                }
-                if ($result['success'] === 0 && $result['failed'] === 0) {
-                    error_log("⚠️ No subscribers found or no subscriptions available");
-                }
-                error_log("=== End push notification ===");
+                });
             } catch (\Exception $e) {
-                // Jangan ganggu response jika push notification gagal
-                error_log("❌ Push notification exception: " . $e->getMessage());
-                error_log("Stack trace: " . $e->getTraceAsString());
+                error_log('Push komentar rencana (jadwal): ' . $e->getMessage());
             }
 
             return $this->jsonResponse($response, [
@@ -2084,8 +2686,7 @@ class PengeluaranController
         try {
             $idRencana = $args['id'] ?? null;
             $komentarId = $args['komentarId'] ?? null;
-            $user = $request->getAttribute('user');
-            
+            $user = $this->userFromRequest($request);
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
 
             if (!$idRencana || !$komentarId) {
@@ -2095,7 +2696,7 @@ class PengeluaranController
                 ], 400);
             }
 
-            // Cek apakah komentar ada dan milik admin yang sama (atau super admin)
+            // Cek apakah komentar ada (izin: pemilik atau aksi rencana.hapus_komentar)
             $sqlCheck = "SELECT k.id_admin,
                         (SELECT r.`key` FROM pengurus___role pr INNER JOIN role r ON pr.role_id = r.id WHERE pr.pengurus_id = p.id ORDER BY CASE r.`key` WHEN 'super_admin' THEN 1 WHEN 'admin_uwaba' THEN 2 WHEN 'admin_lembaga' THEN 3 ELSE 4 END LIMIT 1) AS level
                         FROM pengeluaran___komentar k
@@ -2112,12 +2713,15 @@ class PengeluaranController
                 ], 404);
             }
 
-            // Hanya bisa dihapus oleh pembuat komentar atau super admin (multi-role aman)
-            $isOwner = $komentarData['id_admin'] == $idAdmin;
-            $idAdminInt = (int) ($idAdmin ?? 0);
-            $isSuperAdmin = $idAdminInt > 0 && RoleHelper::pengurusHasSuperAdminRole($idAdminInt);
+            $isOwner = isset($komentarData['id_admin'], $idAdmin) && (int) $komentarData['id_admin'] === (int) $idAdmin;
+            $canModerate = RoleHelper::tokenPengeluaranActionAllowed(
+                $this->db,
+                $user,
+                'action.pengeluaran.rencana.hapus_komentar'
+            );
 
-            if (!$isOwner && !$isSuperAdmin) {
+            // Pemilik komentar selalu boleh hapus sendiri; komentar orang lain hanya dengan aksi rencana.hapus_komentar
+            if (!$isOwner && !$canModerate) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Anda tidak memiliki izin untuk menghapus komentar ini'
@@ -2893,6 +3497,10 @@ class PengeluaranController
 
             // Update id_penerima (FK ke pengurus.id; client bisa kirim id atau NIP)
             if (isset($data['id_penerima'])) {
+                $denyKelolaPenerima = $this->pengeluaranDenyUnlessMoneyRecipientKelola($request, $response);
+                if ($denyKelolaPenerima !== null) {
+                    return $denyKelolaPenerima;
+                }
                 $idPenerimaRaw = $data['id_penerima'];
                 $idPenerima = null;
                 if ($idPenerimaRaw !== null && $idPenerimaRaw !== '') {
@@ -2979,6 +3587,11 @@ class PengeluaranController
             $denyPl = $this->assertPengeluaranLembagaRow($request, $response, isset($pengeluaran['lembaga']) ? (string) $pengeluaran['lembaga'] : null);
             if ($denyPl !== null) {
                 return $denyPl;
+            }
+
+            $denyKelolaPenerima = $this->pengeluaranDenyUnlessMoneyRecipientKelola($request, $response);
+            if ($denyKelolaPenerima !== null) {
+                return $denyKelolaPenerima;
             }
 
             $lembaga = $pengeluaran['lembaga'];

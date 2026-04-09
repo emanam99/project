@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../store/authStore'
@@ -9,14 +9,19 @@ import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, getAppEnv } from '../.
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { APP_VERSION } from '../../config/version'
 import { STATIC_FALLBACK_MENU_CATALOG_ROWS } from '../../config/menuConfig'
-import { userHasSuperAdminAccess, userMatchesAnyAllowedRole } from '../../utils/roleAccess'
+import { HEADER_SPECIAL_SUMMARY_GROUPS } from '../../config/headerSummaryConfig'
+import { userHasSuperAdminAccess } from '../../utils/roleAccess'
+import { BERANDA_WIDGET_CODES } from '../../config/berandaFiturCodes'
 import {
   catalogMenusToNavFlat,
   filterCatalogMenuByUserCodes,
-  getHeaderGroupsFromMenuFlat
+  getHeaderGroupsFromMenuFlat,
+  matchHeaderRoute
 } from '../../utils/menuCatalogNav'
 
 function Header() {
+  const AKTIVITAS_CACHE_KEY_PREFIX = 'headerAktivitasTerakhir_'
+  const AKTIVITAS_REFRESH_INTERVAL_MS = 30000
   const appEnv = getAppEnv()
   const isStaging = appEnv === 'staging'
   const { user, logout } = useAuthStore()
@@ -59,6 +64,7 @@ function Header() {
   const [showPaymentDropdown, setShowPaymentDropdown] = useState(false)
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [showSaldoDropdown, setShowSaldoDropdown] = useState(false)
+  const [showAktivitasDropdown, setShowAktivitasDropdown] = useState(false)
   const [tanggalMasehi, setTanggalMasehi] = useState('')
   const [tanggalHijriyah, setTanggalHijriyah] = useState('')
   const [paymentData, setPaymentData] = useState({
@@ -91,7 +97,8 @@ function Header() {
   const [pendapatanPendaftaranHariIni, setPendapatanPendaftaranHariIni] = useState(0)
   const [pendapatanPendaftaranAdminHariIni, setPendapatanPendaftaranAdminHariIni] = useState(0)
   const [pendapatanPendaftaranRincian, setPendapatanPendaftaranRincian] = useState({ jumlah_transaksi: 0, jumlah_transaksi_admin: 0, rincian_via: {}, rincian_via_admin: {} })
-  const [showPendaftaranDropdown, setShowPendaftaranDropdown] = useState(false)
+  const [aktivitasTerakhir, setAktivitasTerakhir] = useState([])
+  const [aktivitasTextVersion, setAktivitasTextVersion] = useState(0)
   const [openTADropdown, setOpenTADropdown] = useState(null) // 'hijriyah' | 'masehi' | null
   const [todayKalender, setTodayKalender] = useState(null)
   const [loadingTodayKalender, setLoadingTodayKalender] = useState(false)
@@ -100,9 +107,9 @@ function Header() {
   const headerPhotoRef = useRef(null)
 
   const paymentRef = useRef(null)
+  const aktivitasRef = useRef(null)
   const userRef = useRef(null)
   const saldoRef = useRef(null)
-  const pendaftaranRef = useRef(null)
   const taRef = useRef(null)
 
   const loadHeaderPhoto = () => {
@@ -154,54 +161,50 @@ function Header() {
     }
   }, [user?.id])
 
-  // Judul halaman: berdasarkan grup aktif, judul = label menu yang aktif (lebih simpel)
-  const getPageTitle = () => {
-    const path = location.pathname
-    if (path === '/' || path === '/dashboard') return 'Dashboard Pembayaran'
-    if (path === '/aktivitas-saya') return 'Aktivitas Saya'
-    for (const group of headerGroups) {
-      for (const route of group.routes) {
-        const match = route.prefix
-          ? (path === route.path || path.startsWith(route.path + '/'))
-          : path === route.path
-        if (match) return route.label
-      }
-    }
-    return 'Dashboard'
-  }
+  const matchedNavState = useMemo(
+    () => matchHeaderRoute(location.pathname, headerGroups),
+    [location.pathname, headerGroups]
+  )
 
-  // Grup yang aktif (untuk pengecekan dropdown/subtitle)
-  const getActiveGroup = () => {
-    const path = location.pathname
-    if (path === '/' || path === '/dashboard') return 'UWABA'
-    for (const group of headerGroups) {
-      for (const route of group.routes) {
-        const match = route.prefix
-          ? (path === route.path || path.startsWith(route.path + '/'))
-          : path === route.path
-        if (match) return group.name
-      }
+  // Fallback saat route belum/tdk termuat di katalog header, agar grup utama tetap konsisten.
+  const fallbackGroupByPath = useMemo(() => {
+    const path = location.pathname || ''
+    if (path.startsWith('/pendaftaran')) return 'Pendaftaran'
+    if (
+      path.startsWith('/uwaba') ||
+      path.startsWith('/tunggakan') ||
+      path.startsWith('/khusus') ||
+      path.startsWith('/laporan') ||
+      path === '/' ||
+      path === '/dashboard' ||
+      path.startsWith('/dashboard-pembayaran')
+    ) {
+      return 'UWABA'
     }
     return null
-  }
-
-  // Check if current page is pemasukan or pengeluaran
-  const isPemasukanPengeluaranPage = () => {
-    const path = location.pathname
-    return path === '/pengeluaran' || path.startsWith('/pengeluaran/') || 
-           path === '/pemasukan' || path.startsWith('/pemasukan/')
-  }
-
-  // Check if current page is aktivitas
-  const isAktivitasPage = () => {
-    const path = location.pathname
-    return path === '/aktivitas' || path.startsWith('/aktivitas/')
-  }
+  }, [location.pathname])
 
   // Cek grup aktif dari headerGroups (katalog DB + kode user)
-  const isKeuanganGroup = () => getActiveGroup() === 'Keuangan'
-  const isPendaftaranGroup = () => getActiveGroup() === 'Pendaftaran'
-  const isKalenderGroup = () => getActiveGroup() === 'Kalender'
+  const activeGroupRaw = matchedNavState?.group || fallbackGroupByPath
+  const [activeGroup, setActiveGroup] = useState(activeGroupRaw)
+  useEffect(() => {
+    if (activeGroupRaw) setActiveGroup(activeGroupRaw)
+  }, [activeGroupRaw])
+  const pageTitleRaw = matchedNavState?.label || null
+  const [pageTitle, setPageTitle] = useState(pageTitleRaw || 'Dashboard')
+  useEffect(() => {
+    if (pageTitleRaw) setPageTitle(pageTitleRaw)
+  }, [pageTitleRaw])
+  const isKeuanganGroup = activeGroup === 'Keuangan'
+  const isPendaftaranGroup = activeGroup === 'Pendaftaran'
+  const isKalenderGroup = activeGroup === 'Kalender'
+  const PAYMENT_HEADER_GROUPS = new Set(HEADER_SPECIAL_SUMMARY_GROUPS.pembayaran || [])
+  const isConfiguredPaymentGroup = PAYMENT_HEADER_GROUPS.has(activeGroup || '')
+  const showAktivitasAsDefault =
+    !isKeuanganGroup &&
+    !isKalenderGroup &&
+    !isPendaftaranGroup &&
+    !isConfiguredPaymentGroup
 
   // Format tanggal Y-m-d -> dd-mm-yyyy untuk header Kalender
   const formatDateDMY = (ymd) => {
@@ -213,9 +216,8 @@ function Header() {
 
   // Update document title when route changes
   useEffect(() => {
-    const title = getPageTitle()
-    document.title = `${title} - Sistem Pembayaran`
-  }, [location.pathname, headerGroups])
+    document.title = `${pageTitle} - Sistem Pembayaran`
+  }, [pageTitle])
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -243,25 +245,107 @@ function Header() {
     )
   }
 
-  // Render rincian pendapatan pendaftaran (per via: Cash, Transfer, ipaymu, dll.)
-  const renderPendaftaranRincianVia = () => {
-    const viaData = pendapatanPendaftaranRincian?.rincian_via ?? {}
-    if (!viaData || Object.keys(viaData).length === 0) return null
-    const viaLabel = (v) => (v && String(v).trim() !== '' ? v : 'Lainnya')
-    return (
-      <div className="mt-2">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Pembayaran per metode / channel</p>
-        <div className="space-y-2">
-          {Object.entries(viaData).map(([via, amount]) => (
-            <div key={via} className="flex justify-between items-center py-1.5 px-2 rounded bg-gray-50 dark:bg-gray-700/50">
-              <span className="text-xs text-gray-700 dark:text-gray-300">Pembayaran via {viaLabel(via)}</span>
-              <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(amount)}</span>
+  const paymentSummaryData = useMemo(() => {
+    const pendaftaranAdmin = pendapatanPendaftaranAdminHariIni || 0
+    const pendaftaranAllAdmin = pendapatanPendaftaranHariIni || 0
+    return {
+      total: (paymentData.total || 0) + pendaftaranAdmin,
+      totalKeseluruhan: (paymentData.totalKeseluruhan || 0) + pendaftaranAllAdmin,
+      rincian: {
+        ...(paymentData.rincian || {}),
+        pendaftaran: pendaftaranAdmin,
+        total: (paymentData.rincian?.total || 0) + pendaftaranAdmin
+      },
+      rincianVia: {
+        ...(paymentData.rincianVia || {}),
+        pendaftaran: pendapatanPendaftaranRincian?.rincian_via_admin || {}
+      },
+      keseluruhan: {
+        ...(paymentData.keseluruhan || {}),
+        pendaftaran: pendaftaranAllAdmin,
+        total: (paymentData.keseluruhan?.total || 0) + pendaftaranAllAdmin
+      }
+    }
+  }, [
+    paymentData,
+    pendapatanPendaftaranAdminHariIni,
+    pendapatanPendaftaranHariIni,
+    pendapatanPendaftaranRincian
+  ])
+
+  const renderPaymentDropdownContent = () => (
+    <div className="px-4 pb-3 border-b dark:border-gray-700">
+      <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Rincian Pembayaran Hari Ini</h3>
+      <div className="mb-4">
+        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{user?.nama || 'Admin'}</div>
+        <div className="space-y-1.5">
+          <div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-600 dark:text-gray-400">Uwaba:</span>
+              <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentSummaryData.rincian.uwaba)}</span>
             </div>
-          ))}
+            {renderViaBreakdown(paymentSummaryData.rincianVia.uwaba, 'uwaba')}
+          </div>
+          <div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-600 dark:text-gray-400">Tunggakan:</span>
+              <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentSummaryData.rincian.tunggakan)}</span>
+            </div>
+            {renderViaBreakdown(paymentSummaryData.rincianVia.tunggakan, 'tunggakan')}
+          </div>
+          <div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-600 dark:text-gray-400">Khusus:</span>
+              <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentSummaryData.rincian.khusus)}</span>
+            </div>
+            {renderViaBreakdown(paymentSummaryData.rincianVia.khusus, 'khusus')}
+          </div>
+          <div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-600 dark:text-gray-400">Pendaftaran:</span>
+              <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentSummaryData.rincian.pendaftaran)}</span>
+            </div>
+            {renderViaBreakdown(paymentSummaryData.rincianVia.pendaftaran, 'pendaftaran')}
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Total:</span>
+            <span className="text-base font-bold text-primary-600 dark:text-primary-400">{formatCurrency(paymentSummaryData.rincian.total)}</span>
+          </div>
         </div>
       </div>
-    )
-  }
+      <div>
+        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Semua Admin</div>
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-gray-600 dark:text-gray-400">Uwaba:</span>
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentSummaryData.keseluruhan.uwaba)}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-gray-600 dark:text-gray-400">Tunggakan:</span>
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentSummaryData.keseluruhan.tunggakan)}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-gray-600 dark:text-gray-400">Khusus:</span>
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentSummaryData.keseluruhan.khusus)}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-xs text-gray-600 dark:text-gray-400">Pendaftaran:</span>
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentSummaryData.keseluruhan.pendaftaran)}</span>
+          </div>
+          <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Total:</span>
+            <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">{formatCurrency(paymentSummaryData.keseluruhan.total)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  const aktivitasPreviewText = useMemo(() => {
+    if (!aktivitasTerakhir[0]) return 'Belum ada aktivitas'
+    const first = aktivitasTerakhir[0]
+    return `${first.action || 'Aktivitas'} · ${first.entity_type || '-'}`
+  }, [aktivitasTerakhir])
 
   // Update tanggal dari API
   const updateTanggal = async () => {
@@ -286,7 +370,7 @@ function Header() {
 
   // Load hari ini (Masehi + Hijriyah) untuk header grup Kalender
   useEffect(() => {
-    if (!isKalenderGroup()) {
+    if (!isKalenderGroup) {
       setTodayKalender(null)
       return
     }
@@ -313,11 +397,12 @@ function Header() {
     return () => { cancelled = true }
   }, [location.pathname])
 
-  // Load payment data — endpoint hanya boleh diakses role admin_uwaba, petugas_uwaba, super_admin (gabungan multi_role)
-  const canAccessTotalPembayaran = useMemo(
-    () => userMatchesAnyAllowedRole(user, ['admin_uwaba', 'petugas_uwaba', 'super_admin']),
-    [user]
-  )
+  // Load payment data — selaras widget Beranda: aksi action.beranda.widget.pembayaran_hari_ini di matriks fitur
+  const canAccessTotalPembayaran = useMemo(() => {
+    if (userHasSuperAdminAccess(user)) return true
+    const codes = Array.isArray(fiturMenuCodes) ? fiturMenuCodes : []
+    return codes.includes(BERANDA_WIDGET_CODES.pembayaranHariIni)
+  }, [user, fiturMenuCodes])
 
   useEffect(() => {
     if (!user?.id || !canAccessTotalPembayaran) return
@@ -360,7 +445,7 @@ function Header() {
 
   // Load saldo data (pemasukan & pengeluaran) untuk grup Keuangan
   useEffect(() => {
-    if (!isKeuanganGroup()) return
+    if (!isKeuanganGroup) return
 
     const loadSaldoData = async () => {
       try {
@@ -382,11 +467,11 @@ function Header() {
     // Refresh setiap 30 detik
     const interval = setInterval(loadSaldoData, 30000)
     return () => clearInterval(interval)
-  }, [location.pathname, tahunAjaran])
+  }, [isKeuanganGroup, tahunAjaran])
 
   // Load pendapatan hari ini dari transaksi pendaftaran untuk grup Pendaftaran
   useEffect(() => {
-    if (!isPendaftaranGroup()) return
+    if (!isPendaftaranGroup && !isConfiguredPaymentGroup) return
 
     const loadPendapatanHariIni = async () => {
       try {
@@ -409,7 +494,66 @@ function Header() {
     loadPendapatanHariIni()
     const interval = setInterval(loadPendapatanHariIni, 30000)
     return () => clearInterval(interval)
-  }, [location.pathname, tahunAjaran, tahunAjaranMasehi])
+  }, [isPendaftaranGroup, isConfiguredPaymentGroup, tahunAjaran, tahunAjaranMasehi])
+
+  const aktivitasCacheKey = useMemo(
+    () => (user?.id ? `${AKTIVITAS_CACHE_KEY_PREFIX}${user.id}` : null),
+    [user?.id]
+  )
+
+  useEffect(() => {
+    if (!aktivitasCacheKey) {
+      setAktivitasTerakhir([])
+      return
+    }
+    try {
+      const raw = localStorage.getItem(aktivitasCacheKey)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) setAktivitasTerakhir(parsed)
+    } catch {
+      // ignore parse/cache error
+    }
+  }, [aktivitasCacheKey])
+
+  const refreshAktivitasBackground = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const res = await profilAPI.getAktivitas({ limit: 5 })
+      if (!(res?.success && Array.isArray(res.data))) return
+      const next = res.data
+      const nextSignature = JSON.stringify(next)
+      const prevSignature = JSON.stringify(aktivitasTerakhir)
+      if (nextSignature === prevSignature) return
+      setAktivitasTerakhir(next)
+      setAktivitasTextVersion((v) => v + 1)
+      if (aktivitasCacheKey) {
+        try {
+          localStorage.setItem(aktivitasCacheKey, JSON.stringify(next))
+        } catch {
+          // ignore write cache error
+        }
+      }
+    } catch {
+      // keep last cached value
+    }
+  }, [user?.id, aktivitasTerakhir, aktivitasCacheKey])
+
+  useEffect(() => {
+    if (!user?.id) return
+    refreshAktivitasBackground()
+    const interval = setInterval(refreshAktivitasBackground, AKTIVITAS_REFRESH_INTERVAL_MS)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshAktivitasBackground()
+    }
+    window.addEventListener('focus', refreshAktivitasBackground)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', refreshAktivitasBackground)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [user?.id, refreshAktivitasBackground])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -417,14 +561,14 @@ function Header() {
       if (paymentRef.current && !paymentRef.current.contains(event.target)) {
         setShowPaymentDropdown(false)
       }
+      if (aktivitasRef.current && !aktivitasRef.current.contains(event.target)) {
+        setShowAktivitasDropdown(false)
+      }
       if (userRef.current && !userRef.current.contains(event.target)) {
         setShowUserDropdown(false)
       }
       if (saldoRef.current && !saldoRef.current.contains(event.target)) {
         setShowSaldoDropdown(false)
-      }
-      if (pendaftaranRef.current && !pendaftaranRef.current.contains(event.target)) {
-        setShowPendaftaranDropdown(false)
       }
       if (taRef.current && !taRef.current.contains(event.target)) {
         setOpenTADropdown(null)
@@ -447,9 +591,20 @@ function Header() {
     <header className={`${isStaging ? 'bg-red-600 dark:bg-red-800' : 'bg-primary-600 dark:bg-primary-800'} text-white p-3 rounded-lg mb-2 shadow-lg flex items-start md:items-center justify-between relative gap-3 mx-2 sm:mx-3 mt-2`}>
       {/* Left Section - Title & Mobile Payment */}
       <div className="flex-1 min-w-0 relative">
-        <h1 className="text-xl md:text-2xl font-bold">{getPageTitle()}</h1>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.h1
+            key={pageTitle}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2 }}
+            className="text-xl md:text-2xl font-bold"
+          >
+            {pageTitle}
+          </motion.h1>
+        </AnimatePresence>
         {/* Subtitle grup Kalender: Hari ini dd-mm-yyyy M / dd-mm-yyyy H */}
-        {isKalenderGroup() && !loadingTodayKalender && todayKalender && (
+        {isKalenderGroup && !loadingTodayKalender && todayKalender && (
           <p className="text-sm text-white/90 mt-0.5">
             Hari ini {formatDateDMY(todayKalender.masehi)} M
             {todayKalender.hijriyah && (
@@ -459,7 +614,7 @@ function Header() {
         )}
 
         {/* Mobile: Keuangan = saldo, Pendaftaran = pendapatan hari ini (transaksi pendaftaran), lain = pembayaran */}
-        {isKeuanganGroup() ? (
+        {isKeuanganGroup ? (
           <div className="md:hidden relative" ref={saldoRef}>
             <div 
               className="flex items-center gap-2 mt-2 cursor-pointer hover:opacity-80 transition-opacity"
@@ -557,23 +712,31 @@ function Header() {
               )}
             </AnimatePresence>
           </div>
-        ) : isKalenderGroup() ? null : isPendaftaranGroup() ? (
-          <div className="md:hidden relative" ref={pendaftaranRef}>
-            <div
-              className="flex items-center gap-2 mt-2 cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => setShowPendaftaranDropdown(!showPendaftaranDropdown)}
-            >
-              <svg className="w-4 h-4 text-white/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-white">{formatCurrency(pendapatanPendaftaranAdminHariIni)}</span>
-                <span className="text-xs text-white/60">•</span>
-                <span className="text-xs text-white/70">Total: {formatCurrency(pendapatanPendaftaranHariIni)}</span>
-              </div>
+        ) : showAktivitasAsDefault ? (
+          <div
+            className="md:hidden flex items-center gap-2 mt-2 cursor-pointer hover:opacity-80 transition-opacity relative"
+            onClick={() => setShowAktivitasDropdown(!showAktivitasDropdown)}
+            ref={aktivitasRef}
+          >
+            <svg className="w-4 h-4 text-white/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex items-center gap-2 min-w-0">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.span
+                  key={`${aktivitasTextVersion}-${aktivitasPreviewText}`}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.22 }}
+                  className="text-xs font-semibold text-white truncate"
+                >
+                  {aktivitasPreviewText}
+                </motion.span>
+              </AnimatePresence>
             </div>
             <AnimatePresence>
-              {showPendaftaranDropdown && (
+              {showAktivitasDropdown && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -581,24 +744,23 @@ function Header() {
                   className="md:hidden absolute left-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-3 text-gray-700 dark:text-gray-200 z-50"
                 >
                   <div className="px-4">
-                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Pendapatan Hari Ini (Pendaftaran)</h3>
-                    <div className="mb-3">
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{user?.nama || 'Admin'}</div>
-                      <div className="flex justify-between items-center py-1.5">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Hari ini:</span>
-                        <span className="text-base font-bold text-teal-600 dark:text-teal-400">{formatCurrency(pendapatanPendaftaranAdminHariIni)}</span>
+                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Aktivitas User Terakhir</h3>
+                    {aktivitasTerakhir.length === 0 ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Belum ada aktivitas tercatat.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {aktivitasTerakhir.map((a) => (
+                          <div key={a.id} className="py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                            <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                              <span className="capitalize">{a.action}</span> · {a.entity_type}
+                            </p>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                              {a.created_at ? new Date(a.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{pendapatanPendaftaranRincian.jumlah_transaksi_admin} transaksi</p>
-                    </div>
-                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Semua Admin</div>
-                      <div className="flex justify-between items-center py-1.5">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Total hari ini:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(pendapatanPendaftaranHariIni)}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{pendapatanPendaftaranRincian.jumlah_transaksi} transaksi</p>
-                    </div>
-                    {renderPendaftaranRincianVia()}
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -613,78 +775,23 @@ function Header() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-white">{formatCurrency(paymentData.total)}</span>
+              <span className="text-xs font-semibold text-white">{formatCurrency(paymentSummaryData.total)}</span>
               <span className="text-xs text-white/60">•</span>
-              <span className="text-xs text-white/70">Total: {formatCurrency(paymentData.totalKeseluruhan)}</span>
+              <span className="text-xs text-white/70">Total: {formatCurrency(paymentSummaryData.totalKeseluruhan)}</span>
             </div>
           </div>
         )}
 
         {/* Mobile Payment Dropdown - tidak ditampilkan di grup Kalender */}
         <AnimatePresence>
-          {showPaymentDropdown && !isKalenderGroup() && (
+          {showPaymentDropdown && !isKalenderGroup && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               className="md:hidden absolute left-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-3 text-gray-700 dark:text-gray-200 z-50"
             >
-              <div className="px-4 pb-3 border-b dark:border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Rincian Pembayaran Hari Ini</h3>
-                {/* Rincian Admin */}
-                <div className="mb-4">
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{user?.nama || 'Admin'}</div>
-                  <div className="space-y-1.5">
-                    <div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Uwaba:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentData.rincian.uwaba)}</span>
-                      </div>
-                      {renderViaBreakdown(paymentData.rincianVia.uwaba, 'uwaba')}
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Tunggakan:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentData.rincian.tunggakan)}</span>
-                      </div>
-                      {renderViaBreakdown(paymentData.rincianVia.tunggakan, 'tunggakan')}
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Khusus:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentData.rincian.khusus)}</span>
-                      </div>
-                      {renderViaBreakdown(paymentData.rincianVia.khusus, 'khusus')}
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Total:</span>
-                      <span className="text-base font-bold text-primary-600 dark:text-primary-400">{formatCurrency(paymentData.rincian.total)}</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Rincian Keseluruhan */}
-                <div>
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Semua Admin</div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600 dark:text-gray-400">Uwaba:</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentData.keseluruhan.uwaba)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600 dark:text-gray-400">Tunggakan:</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentData.keseluruhan.tunggakan)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600 dark:text-gray-400">Khusus:</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentData.keseluruhan.khusus)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Total:</span>
-                      <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">{formatCurrency(paymentData.keseluruhan.total)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {renderPaymentDropdownContent()}
             </motion.div>
           )}
         </AnimatePresence>
@@ -692,7 +799,7 @@ function Header() {
 
       {/* Right Section - Desktop: Keuangan = saldo, Pendaftaran = pendapatan hari ini, lain = pembayaran */}
       <div className="relative flex items-center gap-3 flex-shrink-0" ref={paymentRef}>
-        {isKeuanganGroup() ? (
+        {isKeuanganGroup ? (
           <div className="hidden md:block relative" ref={saldoRef}>
             <div 
               className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
@@ -790,22 +897,33 @@ function Header() {
               )}
             </AnimatePresence>
           </div>
-        ) : isKalenderGroup() ? null : isPendaftaranGroup() ? (
-          <div className="hidden md:block relative" ref={pendaftaranRef}>
+        ) : showAktivitasAsDefault ? (
+          <div className="hidden md:block relative" ref={aktivitasRef}>
             <div
-              className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
-              onClick={() => setShowPendaftaranDropdown(!showPendaftaranDropdown)}
+              className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
+              onClick={() => setShowAktivitasDropdown(!showAktivitasDropdown)}
             >
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-white">{formatCurrency(pendapatanPendaftaranAdminHariIni)}</span>
-                <span className="text-xs text-white/70">Total: {formatCurrency(pendapatanPendaftaranHariIni)}</span>
+              <div className="flex flex-col min-w-0">
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={`${aktivitasTextVersion}-${aktivitasPreviewText}`}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.22 }}
+                    className="text-sm font-bold text-white truncate"
+                  >
+                    {aktivitasPreviewText}
+                  </motion.span>
+                </AnimatePresence>
+                <span className="text-xs text-white/70">Aktivitas User Terakhir</span>
               </div>
             </div>
             <AnimatePresence>
-              {showPendaftaranDropdown && (
+              {showAktivitasDropdown && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -813,24 +931,23 @@ function Header() {
                   className="hidden md:block absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-3 text-gray-700 dark:text-gray-200 z-50"
                 >
                   <div className="px-4">
-                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Pendapatan Hari Ini (Pendaftaran)</h3>
-                    <div className="mb-3">
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">{user?.nama || 'Admin'}</div>
-                      <div className="flex justify-between items-center py-1.5">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Hari ini:</span>
-                        <span className="text-base font-bold text-teal-600 dark:text-teal-400">{formatCurrency(pendapatanPendaftaranAdminHariIni)}</span>
+                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Aktivitas User Terakhir</h3>
+                    {aktivitasTerakhir.length === 0 ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Belum ada aktivitas tercatat.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {aktivitasTerakhir.map((a) => (
+                          <div key={a.id} className="py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
+                            <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                              <span className="capitalize">{a.action}</span> · {a.entity_type}
+                            </p>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                              {a.created_at ? new Date(a.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{pendapatanPendaftaranRincian.jumlah_transaksi_admin} transaksi</p>
-                    </div>
-                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Semua Admin</div>
-                      <div className="flex justify-between items-center py-1.5">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Total hari ini:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(pendapatanPendaftaranHariIni)}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{pendapatanPendaftaranRincian.jumlah_transaksi} transaksi</p>
-                    </div>
-                    {renderPendaftaranRincianVia()}
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -845,77 +962,22 @@ function Header() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-white">{formatCurrency(paymentData.total)}</span>
-              <span className="text-xs text-white/70">Total: {formatCurrency(paymentData.totalKeseluruhan)}</span>
+              <span className="text-sm font-bold text-white">{formatCurrency(paymentSummaryData.total)}</span>
+              <span className="text-xs text-white/70">Total: {formatCurrency(paymentSummaryData.totalKeseluruhan)}</span>
             </div>
           </div>
         )}
 
         {/* Desktop Payment Dropdown - tidak ditampilkan di grup Kalender */}
         <AnimatePresence>
-          {showPaymentDropdown && !isKalenderGroup() && (
+          {showPaymentDropdown && !isKalenderGroup && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               className="hidden md:block absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-3 text-gray-700 dark:text-gray-200 z-50"
             >
-              <div className="px-4 pb-3 border-b dark:border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Rincian Pembayaran Hari Ini</h3>
-                {/* Rincian Admin */}
-                <div className="mb-4">
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{user?.nama || 'Admin'}</div>
-                  <div className="space-y-1.5">
-                    <div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Uwaba:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentData.rincian.uwaba)}</span>
-                      </div>
-                      {renderViaBreakdown(paymentData.rincianVia.uwaba, 'uwaba')}
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Tunggakan:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentData.rincian.tunggakan)}</span>
-                      </div>
-                      {renderViaBreakdown(paymentData.rincianVia.tunggakan, 'tunggakan')}
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">Khusus:</span>
-                        <span className="text-base font-bold text-gray-800 dark:text-gray-200">{formatCurrency(paymentData.rincian.khusus)}</span>
-                      </div>
-                      {renderViaBreakdown(paymentData.rincianVia.khusus, 'khusus')}
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Total:</span>
-                      <span className="text-base font-bold text-primary-600 dark:text-primary-400">{formatCurrency(paymentData.rincian.total)}</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Rincian Keseluruhan */}
-                <div>
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Semua Admin</div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600 dark:text-gray-400">Uwaba:</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentData.keseluruhan.uwaba)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600 dark:text-gray-400">Tunggakan:</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentData.keseluruhan.tunggakan)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-600 dark:text-gray-400">Khusus:</span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{formatCurrency(paymentData.keseluruhan.khusus)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Total:</span>
-                      <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">{formatCurrency(paymentData.keseluruhan.total)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {renderPaymentDropdownContent()}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1072,6 +1134,33 @@ function Header() {
                     </button>
                   </>
                 )}
+
+                <button
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    navigate('/chat')
+                  }}
+                >
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4v-4z" />
+                  </svg>
+                  Chat
+                </button>
+
+                <button
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                  onClick={() => {
+                    setShowUserDropdown(false)
+                    navigate('/chat-ai')
+                  }}
+                >
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 3a6.75 6.75 0 016.502 8.565A6.75 6.75 0 119.75 3z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.5 14.5L21 21" />
+                  </svg>
+                  eBeddien
+                </button>
                 
                 <button 
                   className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"

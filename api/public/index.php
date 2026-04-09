@@ -108,6 +108,101 @@ if (!function_exists('sanitizeErrorMessage')) {
     }
 }
 
+// Alert WA untuk error penting (fatal/5xx). Default aktif; bisa dimatikan via ERROR_ALERT_ENABLED=false
+if (!function_exists('sendErrorAlertWhatsApp')) {
+    function sendErrorAlertWhatsApp(string $title, string $message, array $context = []): void
+    {
+        try {
+            $enabled = filter_var((string)(getenv('ERROR_ALERT_ENABLED') ?: 'true'), FILTER_VALIDATE_BOOLEAN);
+            if (!$enabled) {
+                return;
+            }
+
+            $targetWa = preg_replace('/\D/', '', (string)(getenv('ERROR_ALERT_WA_NUMBER') ?: '082232999921'));
+            if ($targetWa === '') {
+                return;
+            }
+
+            $appEnv = (string)(getenv('APP_ENV') ?: 'local');
+            $path = (string)($context['path'] ?? ($_SERVER['REQUEST_URI'] ?? '-'));
+            $method = (string)($context['method'] ?? ($_SERVER['REQUEST_METHOD'] ?? '-'));
+            $status = (string)($context['status'] ?? '-');
+            $detail = sanitizeErrorMessage((string)$message);
+            if (strlen($detail) > 600) {
+                $detail = substr($detail, 0, 600) . '...';
+            }
+
+            // Anti-spam: signature sama ditahan 60 detik
+            $signature = sha1($title . '|' . $method . '|' . $path . '|' . $status . '|' . $detail);
+            $throttleFile = __DIR__ . '/../.error_alert_throttle.json';
+            $last = [];
+            if (file_exists($throttleFile)) {
+                $raw = (string)@file_get_contents($throttleFile);
+                $last = json_decode($raw, true);
+                if (!is_array($last)) {
+                    $last = [];
+                }
+            }
+            $now = time();
+            $lastTs = (int)($last[$signature] ?? 0);
+            if (($now - $lastTs) < 60) {
+                return;
+            }
+            $last[$signature] = $now;
+            @file_put_contents($throttleFile, json_encode($last, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+            $text = "*ALERT API ERROR*\n"
+                . "Judul: {$title}\n"
+                . "Env: {$appEnv}\n"
+                . "Status: {$status}\n"
+                . "Method: {$method}\n"
+                . "Path: {$path}\n"
+                . "Waktu: " . date('Y-m-d H:i:s') . " WIB\n"
+                . "Detail: {$detail}";
+
+            // Prioritas kirim via WA server sendiri (aktif). Fallback ke WatZap bila gagal.
+            $preferOwnWa = ((string)(getenv('ERROR_ALERT_PROVIDER') ?: 'wa_sendiri')) !== 'watzap';
+            $sent = false;
+            if ($preferOwnWa) {
+                try {
+                    $cfg = require __DIR__ . '/../config.php';
+                    $wa = $cfg['whatsapp'] ?? [];
+                    $waApiUrl = getenv('WA_API_URL') ?: ($wa['api_url'] ?? '');
+                    $waApiKey = getenv('WA_API_KEY') ?: ($wa['api_key'] ?? '');
+                    $waSessionId = trim((string)(getenv('WA_SESSION_ID') !== false ? getenv('WA_SESSION_ID') : ($wa['session_id'] ?? '')));
+
+                    if ($waApiUrl !== '' && $waApiKey !== '') {
+                        $client = new \GuzzleHttp\Client(['timeout' => 10]);
+                        $payload = [
+                            'phoneNumber' => \App\Services\WhatsAppService::formatPhoneNumber($targetWa),
+                            'message' => $text,
+                        ];
+                        if ($waSessionId !== '') {
+                            $payload['sessionId'] = $waSessionId;
+                        }
+                        $res = $client->post($waApiUrl, [
+                            'headers' => [
+                                'Content-Type' => 'application/json',
+                                'X-API-Key' => $waApiKey,
+                            ],
+                            'json' => $payload,
+                        ]);
+                        $code = $res->getStatusCode();
+                        $sent = ($code >= 200 && $code < 300);
+                    }
+                } catch (\Throwable $waErr) {
+                    error_log('sendErrorAlertWhatsApp WA server error: ' . $waErr->getMessage());
+                }
+            }
+            if (!$sent) {
+                \App\Services\WatzapService::sendMessage($targetWa, $text);
+            }
+        } catch (\Throwable $ignored) {
+            // Jangan ganggu alur utama request bila notifikasi gagal
+        }
+    }
+}
+
 // Set timezone ke Jakarta (WIB)
 date_default_timezone_set('Asia/Jakarta');
 
@@ -119,7 +214,8 @@ if ($isProduction) {
     error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
     ini_set('display_errors', 0);
 } else {
-    error_reporting(E_ALL);
+    // Development: tetap log warning/error penting, tapi kurangi noise notice/deprecated/strict.
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT & ~E_NOTICE & ~E_USER_NOTICE);
     ini_set('display_errors', 0); // Jangan tampilkan di output, tapi log
 }
 ini_set('log_errors', 1);
@@ -134,6 +230,15 @@ register_shutdown_function(function() {
         if ($isProduction && function_exists('error_log')) {
             error_log('Fatal error (shutdown): ' . ($error['message'] ?? '') . ' in ' . ($error['file'] ?? '') . ' line ' . ($error['line'] ?? ''));
         }
+        sendErrorAlertWhatsApp(
+            'Fatal shutdown',
+            (string)($error['message'] ?? 'Unknown fatal error'),
+            [
+                'status' => 500,
+                'method' => $_SERVER['REQUEST_METHOD'] ?? '-',
+                'path' => $_SERVER['REQUEST_URI'] ?? '-',
+            ]
+        );
         $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
         $corsConfig = require __DIR__ . '/../config.php';
         $allowAll = $corsConfig['cors']['allow_all'];
@@ -170,17 +275,23 @@ if ($basePath === '.' || $basePath === '\\') {
     $basePath = '/';
 }
 
-// Log untuk debugging
-error_log("SCRIPT_NAME: " . $scriptName);
-error_log("Calculated basePath: " . $basePath);
-error_log("REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'not set'));
-error_log("PATH_INFO: " . ($_SERVER['PATH_INFO'] ?? 'not set'));
+// Log bootstrap request dimatikan default agar error.log tidak spam.
+// Aktifkan hanya saat investigasi: API_LOG_BOOTSTRAP=true
+$logBootstrap = filter_var((string)(getenv('API_LOG_BOOTSTRAP') ?: 'false'), FILTER_VALIDATE_BOOLEAN);
+if ($logBootstrap) {
+    error_log("SCRIPT_NAME: " . $scriptName);
+    error_log("Calculated basePath: " . $basePath);
+    error_log("REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'not set'));
+    error_log("PATH_INFO: " . ($_SERVER['PATH_INFO'] ?? 'not set'));
+}
 
 // Set base path jika tidak di root
 if ($basePath !== '/') {
     $app->setBasePath($basePath);
-    error_log("Base path set to: " . $basePath);
-} else {
+    if ($logBootstrap) {
+        error_log("Base path set to: " . $basePath);
+    }
+} elseif ($logBootstrap) {
     error_log("Using root base path (/)");
 }
 
@@ -266,6 +377,9 @@ $errorMiddleware->setErrorHandler(
             $statusCode = $exception->getCode();
             $message = $exception->getMessage();
         }
+        if ($statusCode < 100 || $statusCode > 599) {
+            $statusCode = 500;
+        }
         
         // Log error (sanitize pesan; di production tidak log path/stack trace)
         if ($logErrors) {
@@ -275,6 +389,17 @@ $errorMiddleware->setErrorHandler(
                 error_log("File: " . $exception->getFile() . " Line: " . $exception->getLine());
                 error_log("Stack trace: " . $exception->getTraceAsString());
             }
+        }
+        if ($statusCode >= 500) {
+            sendErrorAlertWhatsApp(
+                'Unhandled exception',
+                (string)$exception->getMessage(),
+                [
+                    'status' => $statusCode,
+                    'method' => $request->getMethod(),
+                    'path' => (string)$request->getUri()->getPath(),
+                ]
+            );
         }
         
         // Response untuk user

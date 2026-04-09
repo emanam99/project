@@ -4,7 +4,7 @@ import { useNotification } from '../../../../contexts/NotificationContext'
 
 /**
  * Custom hook untuk mengelola loading dan selection admin list
- * @param {boolean} onlySuperAdminAndUwaba - Jika true, hanya load super admin dan admin uwaba
+ * @param {boolean} onlySuperAdminAndUwaba - Jika true, load penerima WA pengeluaran (endpoint list-super-admin-uwaba + lembaga_id)
  * @returns {Object} State dan handlers untuk admin list
  */
 export const useAdminList = (onlySuperAdminAndUwaba = false) => {
@@ -13,29 +13,26 @@ export const useAdminList = (onlySuperAdminAndUwaba = false) => {
   const [selectedAdmins, setSelectedAdmins] = useState([])
   const [loading, setLoading] = useState(false)
 
-  const loadAdmins = useCallback(async () => {
+  /**
+   * @param {string|null} [lembagaId]
+   * @param {boolean} [notifDraft] - true = daftar penerima WA untuk rencana draft (satu lembaga, aksi draft.notif)
+   */
+  const loadAdmins = useCallback(async (lembagaId = null, notifDraft = false) => {
     try {
       setLoading(true)
       // Gunakan API yang sesuai berdasarkan parameter
-      const response = onlySuperAdminAndUwaba 
-        ? await userAPI.getSuperAdminAndUwaba()
+      const response = onlySuperAdminAndUwaba
+        ? await userAPI.getSuperAdminAndUwaba(lembagaId, notifDraft ? { notifContext: 'draft' } : {})
         : await userAPI.getAll()
       if (response.success) {
         let adminList = response.data || []
         
-        // Jika menggunakan getSuperAdminAndUwaba, filter hanya admin yang punya role admin_uwaba
-        // (termasuk yang juga punya super_admin, tapi harus punya admin_uwaba)
+        // Jika memakai endpoint khusus, backend sudah menentukan policy; frontend hanya dedupe.
         if (onlySuperAdminAndUwaba) {
-          // Deduplicate berdasarkan id untuk menghindari duplikasi
           const adminUwabaMap = new Map()
-          adminList.forEach(admin => {
-            // Hanya ambil yang punya role admin_uwaba
-            // Backend sudah filter, tapi untuk memastikan, kita filter lagi di frontend
-            if (admin.role_key === 'admin_uwaba' || !admin.role_key) {
-              // Jika belum ada di map, tambahkan
-              if (!adminUwabaMap.has(admin.id)) {
-                adminUwabaMap.set(admin.id, admin)
-              }
+          adminList.forEach((admin) => {
+            if (!adminUwabaMap.has(admin.id)) {
+              adminUwabaMap.set(admin.id, admin)
             }
           })
           adminList = Array.from(adminUwabaMap.values())

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use App\Config\EbeddienFiturAccess;
+use App\Config\LegacyRouteRoleKeys;
+use App\Config\LegacyRouteRoles;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\ManageUsersController;
@@ -21,7 +23,7 @@ return function (\Slim\App $app): void {
         $group->put('/{id}', [ManageUsersController::class, 'updateUserProfileV2']);
         $group->delete('/{id}', [ManageUsersController::class, 'deleteUserV2']);
         $group->get('/{id}', [ManageUsersController::class, 'getUserByIdV2']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::manageUsersV2Selectors(), ['super_admin', 'admin_cashless']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::manageUsersV2Selectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::MANAGE_USERS_V2_SELECTORS)))->add(new AuthMiddleware());
 
     $app->group('/api/manage-users', function ($group) {
         $group->get('/roles/list', [ManageUsersController::class, 'getRolesList']);
@@ -38,5 +40,5 @@ return function (\Slim\App $app): void {
         $group->put('/{id}', [ManageUsersController::class, 'updateUser']);
         $group->delete('/{id}', [ManageUsersController::class, 'deleteUser']);
         $group->post('/{id}/send-reset-password-link', [ManageUsersController::class, 'sendResetPasswordLink']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::manageUsersLegacySelectors(), ['super_admin', 'admin_ugt', 'tarbiyah']))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::manageUsersLegacySelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::MANAGE_USERS_LEGACY_SELECTORS)))->add(new AuthMiddleware());
 };

@@ -1,11 +1,5 @@
 import { useState, useCallback } from 'react'
 import { pengeluaranAPI } from '../../../../services/api'
-
-const wakeWaBestEffort = async () => {
-  try {
-    await pengeluaranAPI.wakeRencanaWa()
-  } catch (_) {}
-}
 import { useNotification } from '../../../../contexts/NotificationContext'
 
 /**
@@ -72,9 +66,6 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
       const rencanaData = allRencana.find(r => r.id === confirmId) || rencanaDetail
       
       const recipients = waRecipientsFrom(confirmSelectedAdmins, confirmListAdmins)
-      if (recipients.length > 0) {
-        await wakeWaBestEffort()
-      }
 
       let response
       if (confirmAction === 'approve') {
@@ -82,13 +73,16 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
         if (response.success) {
           showNotification('Rencana berhasil di-approve', 'success')
           const wa = response.data?.wa_notif
-          if (wa) {
-            const ok = wa.success_count ?? 0
-            const fail = wa.fail_count ?? 0
-            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
-            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
-          } else if (rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
+          if (wa && !wa.queued && !wa.async) {
+            const total = (wa.success_count ?? 0) + (wa.fail_count ?? 0)
+            if (total > 0) {
+              const ok = wa.success_count ?? 0
+              const fail = wa.fail_count ?? 0
+              if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+              else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+            }
+          } else if (!wa && rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
+            sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
           }
           loadAllRencana()
 
@@ -103,13 +97,16 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
         if (response.success) {
           showNotification('Rencana berhasil ditolak', 'success')
           const wa = response.data?.wa_notif
-          if (wa) {
-            const ok = wa.success_count ?? 0
-            const fail = wa.fail_count ?? 0
-            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
-            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
-          } else if (rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
+          if (wa && !wa.queued && !wa.async) {
+            const total = (wa.success_count ?? 0) + (wa.fail_count ?? 0)
+            if (total > 0) {
+              const ok = wa.success_count ?? 0
+              const fail = wa.fail_count ?? 0
+              if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+              else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+            }
+          } else if (!wa && rencanaData && confirmSelectedAdmins.length > 0 && sendNotifications) {
+            sendNotifications(rencanaData, confirmAction, confirmSelectedAdmins, confirmListAdmins)
           }
           loadAllRencana()
 
@@ -137,9 +134,6 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
       setLoading(true)
       
       const recipients = waRecipientsFrom(confirmRencanaSelectedAdmins, rencanaListAdmins)
-      if (recipients.length > 0) {
-        await wakeWaBestEffort()
-      }
 
       let response
       if (pendingAction === 'approve') {
@@ -147,13 +141,16 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
         if (response.success) {
           showNotification('Rencana berhasil di-approve', 'success')
           const wa = response.data?.wa_notif
-          if (wa) {
-            const ok = wa.success_count ?? 0
-            const fail = wa.fail_count ?? 0
-            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
-            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
-          } else if (confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaDetail, 'approve', confirmRencanaSelectedAdmins, rencanaListAdmins)
+          if (wa && !wa.queued && !wa.async) {
+            const total = (wa.success_count ?? 0) + (wa.fail_count ?? 0)
+            if (total > 0) {
+              const ok = wa.success_count ?? 0
+              const fail = wa.fail_count ?? 0
+              if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+              else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+            }
+          } else if (!wa && confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
+            sendNotifications(rencanaDetail, 'approve', confirmRencanaSelectedAdmins, rencanaListAdmins)
           }
           loadAllRencana()
 
@@ -168,13 +165,16 @@ export const useRencanaModals = (loadAllRencana, onCloseOffcanvas, sendNotificat
         if (response.success) {
           showNotification('Rencana berhasil ditolak', 'success')
           const wa = response.data?.wa_notif
-          if (wa) {
-            const ok = wa.success_count ?? 0
-            const fail = wa.fail_count ?? 0
-            if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
-            else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
-          } else if (confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
-            await sendNotifications(rencanaDetail, 'reject', confirmRencanaSelectedAdmins, rencanaListAdmins)
+          if (wa && !wa.queued && !wa.async) {
+            const total = (wa.success_count ?? 0) + (wa.fail_count ?? 0)
+            if (total > 0) {
+              const ok = wa.success_count ?? 0
+              const fail = wa.fail_count ?? 0
+              if (fail === 0) showNotification(`Notifikasi WA terkirim ke ${ok} admin`, 'success')
+              else showNotification(`WA: ${ok} berhasil, ${fail} gagal`, 'warning')
+            }
+          } else if (!wa && confirmRencanaSelectedAdmins.length > 0 && sendNotifications) {
+            sendNotifications(rencanaDetail, 'reject', confirmRencanaSelectedAdmins, rencanaListAdmins)
           }
           loadAllRencana()
 

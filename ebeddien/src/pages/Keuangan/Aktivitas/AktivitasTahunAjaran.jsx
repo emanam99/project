@@ -3,11 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { aktivitasAPI, pemasukanAPI, pengeluaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
+import { usePengeluaranFiturAccess } from '../../../hooks/usePengeluaranFiturAccess'
 import DetailOffcanvas from '../../../components/DetailOffcanvas/DetailOffcanvas'
 
 function AktivitasTahunAjaran() {
   const { showNotification } = useNotification()
   const { tahunAjaran } = useTahunAjaranStore()
+  const pengeluaranFitur = usePengeluaranFiturAccess()
   const [loading, setLoading] = useState(false)
   const [aktivitas, setAktivitas] = useState([])
   const [saldo, setSaldo] = useState({
@@ -1097,6 +1099,8 @@ function AktivitasTahunAjaran() {
           formatDate={formatDateShort}
           formatHijriyahDate={formatHijriyahDate}
           activeTab={dateMode === 'masehi' ? 'masehi' : 'hijriyah'}
+          canUbahPenerimaUang={pengeluaranFitur.pengeluaranUbahPenerimaUang}
+          canHapusKomentar={pengeluaranFitur.rencanaHapusKomentar}
         />
       </div>
     </div>

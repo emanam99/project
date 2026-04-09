@@ -9,7 +9,8 @@ use Phinx\Seed\AbstractSeed;
  *
  * Cara pakai: php vendor/bin/phinx seed:run -s RoleSeed
  * Aman dijalankan berulang: pakai INSERT IGNORE (id + key unik), tidak timpa data yang sudah ada.
- * Untuk tambah role baru: tambah baris di $entries, lalu jalankan seed lagi.
+ * Role baru juga bisa ditambah dari eBeddien (Role & Akses → Tambah role) tanpa ubah kode;
+ * entri di bawah hanya baseline instalasi awal.
  */
 class RoleSeed extends AbstractSeed
 {

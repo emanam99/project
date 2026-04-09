@@ -5,21 +5,23 @@ import { getGambarUrl } from '../config/images'
 
 /**
  * Custom hook untuk mengirim notifikasi PWA ketika ada komentar baru di rencana pengeluaran
- * Mengirim ke pengurus dengan role admin_uwaba atau petugas_keuangan (endpoint list-super-admin-uwaba).
+ * (Hook memuat daftar via GET /user/list-super-admin-uwaba; penerima mengikuti aksi fitur notif + lembaga_id.)
  */
 export const useRencanaKomentarNotification = () => {
   const { sendNotification, isGranted } = usePWANotification()
 
   /**
-   * Kirim notifikasi PWA ke admin_uwaba & petugas_keuangan ketika ada komentar baru
+   * Kirim notifikasi PWA lokal ketika ada komentar baru (daftar admin dari API = admin_uwaba)
    * @param {Object} options - Opsi notifikasi
    * @param {number} options.rencanaId - ID rencana pengeluaran
+   * @param {string} [options.rencanaLembagaId] - id lembaga rencana (untuk query penerima)
+   * @param {string} [options.rencanaKet] - jika 'draft', penerima mengikuti aksi draft.notif (satu lembaga)
    * @param {string} options.rencanaKeterangan - Keterangan rencana
    * @param {string} options.komentar - Isi komentar
    * @param {string} options.komentarAuthor - Nama pembuat komentar
    */
   const sendKomentarNotification = useCallback(async (options) => {
-    const { rencanaId, rencanaKeterangan, komentar, komentarAuthor } = options
+    const { rencanaId, rencanaKeterangan, komentar, komentarAuthor, rencanaLembagaId, rencanaKet } = options
 
     // Cek permission
     if (!isGranted) {
@@ -28,8 +30,10 @@ export const useRencanaKomentarNotification = () => {
     }
 
     try {
-      // Daftar dari API: admin_uwaba + petugas_keuangan
-      const response = await userAPI.getSuperAdminAndUwaba()
+      // Daftar dari API: admin_uwaba (untuk konsistensi dengan penerima WA rencana)
+      const response = await userAPI.getSuperAdminAndUwaba(rencanaLembagaId ?? null, {
+        notifContext: rencanaKet === 'draft' ? 'draft' : undefined
+      })
       if (!response.success) {
         console.error('Failed to get admin list for notification')
         return

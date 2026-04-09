@@ -42,6 +42,7 @@ export default function LaporanPrintPreview({ jenisLabel, printInfo, totals, fil
             {[
               ['via Cash', totals.totalCash],
               ['via TF', totals.totalTF],
+              ['via iPayMu', totals.totalIPayMu ?? 0],
               ['via Lembaga', totals.totalLembaga],
               ['via Beasiswa', totals.totalBeasiswa],
               ['via BagDIS', totals.totalBagDIS],

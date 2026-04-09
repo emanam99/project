@@ -38,6 +38,9 @@ export default function Notifikasi() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [provider, setProvider] = useState('wa_sendiri')
+  const [testPhone, setTestPhone] = useState('082232999921')
+  const [testMessage, setTestMessage] = useState('')
+  const [testingAlert, setTestingAlert] = useState(false)
   const [error, setError] = useState(null)
   const [groups, setGroups] = useState([])
   const [groupsLoading, setGroupsLoading] = useState(false)
@@ -199,6 +202,28 @@ export default function Notifikasi() {
       showNotification(err?.response?.data?.message || 'Gagal menyimpan', 'error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTestErrorAlert = async () => {
+    if (testingAlert) return
+    setTestingAlert(true)
+    try {
+      const payload = {}
+      if ((testPhone || '').trim() !== '') payload.phone = testPhone.trim()
+      if ((testMessage || '').trim() !== '') payload.message = testMessage.trim()
+      const res = await notificationConfigAPI.testErrorAlert(payload)
+      if (res?.success) {
+        const providerName = res?.data?.provider || '-'
+        const phone = res?.data?.phone || testPhone || '-'
+        showNotification(`Tes alert terkirim via ${providerName} ke ${phone}`, 'success')
+      } else {
+        showNotification(res?.message || 'Tes alert gagal', 'error')
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || 'Tes alert gagal', 'error')
+    } finally {
+      setTestingAlert(false)
     }
   }
 
@@ -480,6 +505,48 @@ export default function Notifikasi() {
                     Buka halaman WatZap →
                   </Link>
                 )}
+              </div>
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+                <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Tes Alert Error WA</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Mengirim pesan tes ke endpoint alert backend untuk memastikan notifikasi error aktif.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                      Nomor tujuan
+                    </label>
+                    <input
+                      type="text"
+                      value={testPhone}
+                      onChange={(e) => setTestPhone(e.target.value)}
+                      placeholder="0822..."
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">
+                      Pesan (opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={testMessage}
+                      onChange={(e) => setTestMessage(e.target.value)}
+                      placeholder="Kosongkan untuk pesan default"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleTestErrorAlert}
+                    disabled={testingAlert}
+                    className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {testingAlert ? 'Mengirim tes...' : 'Kirim tes alert error'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

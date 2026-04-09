@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Database;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
+use App\Helpers\ViaPembayaranHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -452,14 +453,7 @@ class PemasukanController
                 $stmtVia->execute([$tanggal, $idAdmin]);
                 $dataVia = $stmtVia->fetchAll(\PDO::FETCH_ASSOC);
                 
-                // Format data via
-                $listVia = array_map(function($viaRow) {
-                    return [
-                        'via' => $viaRow['via'] ?? 'Unknown',
-                        'total_via' => floatval($viaRow['total_via'] ?? 0),
-                        'jumlah_transaksi' => intval($viaRow['jumlah_transaksi_via'] ?? 0)
-                    ];
-                }, $dataVia);
+                $listVia = ViaPembayaranHelper::mergeAggregatedViaRows($dataVia);
                 
                 $listAdmin[] = [
                     'id_admin' => $idAdmin,
@@ -551,14 +545,7 @@ class PemasukanController
                 $stmtVia->execute([$tanggal, $idAdmin]);
                 $dataVia = $stmtVia->fetchAll(\PDO::FETCH_ASSOC);
                 
-                // Format data via
-                $listVia = array_map(function($viaRow) {
-                    return [
-                        'via' => $viaRow['via'] ?? 'Unknown',
-                        'total_via' => floatval($viaRow['total_via'] ?? 0),
-                        'jumlah_transaksi' => intval($viaRow['jumlah_transaksi_via'] ?? 0)
-                    ];
-                }, $dataVia);
+                $listVia = ViaPembayaranHelper::mergeAggregatedViaRows($dataVia);
                 
                 $listAdmin[] = [
                     'id_admin' => $idAdmin,
@@ -650,14 +637,7 @@ class PemasukanController
                 $stmtVia->execute([$tanggal, $idAdmin]);
                 $dataVia = $stmtVia->fetchAll(\PDO::FETCH_ASSOC);
                 
-                // Format data via
-                $listVia = array_map(function($viaRow) {
-                    return [
-                        'via' => $viaRow['via'] ?? 'Unknown',
-                        'total_via' => floatval($viaRow['total_via'] ?? 0),
-                        'jumlah_transaksi' => intval($viaRow['jumlah_transaksi_via'] ?? 0)
-                    ];
-                }, $dataVia);
+                $listVia = ViaPembayaranHelper::mergeAggregatedViaRows($dataVia);
                 
                 $listAdmin[] = [
                     'id_admin' => $idAdmin,
@@ -749,14 +729,7 @@ class PemasukanController
                 $stmtVia->execute([$tanggal, $idAdmin]);
                 $dataVia = $stmtVia->fetchAll(\PDO::FETCH_ASSOC);
                 
-                // Format data via
-                $listVia = array_map(function($viaRow) {
-                    return [
-                        'via' => $viaRow['via'] ?? 'Unknown',
-                        'total_via' => floatval($viaRow['total_via'] ?? 0),
-                        'jumlah_transaksi' => intval($viaRow['jumlah_transaksi_via'] ?? 0)
-                    ];
-                }, $dataVia);
+                $listVia = ViaPembayaranHelper::mergeAggregatedViaRows($dataVia);
                 
                 $listAdmin[] = [
                     'id_admin' => $idAdmin,

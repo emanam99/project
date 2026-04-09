@@ -7,6 +7,7 @@ use App\Auth\PasswordHelper;
 use App\Helpers\AuditLogger;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
+use App\Helpers\PengeluaranWaNotifRecipientHelper;
 use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -379,40 +380,33 @@ class UserController
     }
 
     /**
-     * GET /api/user/list-super-admin-uwaba — pengurus dengan role admin_uwaba (aktif), untuk notifikasi WA rencana/pengeluaran.
-     * Akses endpoint: siapa pun yang punya hak modul pengeluaran/keuangan (bukan hanya admin_uwaba).
+     * GET /api/user/list-super-admin-uwaba — daftar pengurus (aktif, punya no WA) yang boleh menerima notif WA rencana/pengeluaran.
+     * Query opsional: lembaga_id — id lembaga rencana/pengeluaran (kolom lembaga); untuk menyaring penerima berdasarkan aksi fitur notif.
+     * Query opsional: notif_context=draft — hanya penerima dengan aksi draft (satu lembaga sesuai role), untuk rencana berstatus draft.
+     * Akses endpoint: selector userListUwabaNotifySelectors (+ legacy role).
      */
     public function getSuperAdminAndUwabaUsers(Request $request, Response $response): Response
     {
         try {
-            // Admin UWABA + petugas keuangan (notifikasi WA rencana / komentar pengeluaran).
-            $stmt = $this->db->prepare("
-                SELECT DISTINCT p.id, p.nama, COALESCE(u.no_wa, '') AS whatsapp, r.`key` AS role_key
-                FROM pengurus p
-                LEFT JOIN users u ON u.id = p.id_user
-                INNER JOIN pengurus___role pr ON p.id = pr.pengurus_id
-                INNER JOIN role r ON pr.role_id = r.id
-                WHERE r.`key` IN ('admin_uwaba', 'petugas_keuangan')
-                AND (
-                    p.status IS NULL 
-                    OR LOWER(TRIM(COALESCE(p.status, ''))) NOT IN ('tidak aktif', 'inactive')
-                )
-                ORDER BY p.nama ASC
-            ");
-            $stmt->execute();
-            $users = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
+            $q = $request->getQueryParams();
+            $lembagaRaw = isset($q['lembaga_id']) ? trim((string) $q['lembaga_id']) : '';
+            $lembagaId = $lembagaRaw !== '' ? $lembagaRaw : null;
+            $ctx = isset($q['notif_context']) ? strtolower(trim((string) $q['notif_context'])) : '';
+            $draftWaOnly = ($ctx === 'draft');
+
+            $users = PengeluaranWaNotifRecipientHelper::fetchEligiblePengurusWithWa($this->db, $lembagaId, $draftWaOnly);
+
             return $this->jsonResponse($response, [
                 'success' => true,
-                'data' => $users
+                'data' => $users,
             ], 200);
-            
         } catch (\Exception $e) {
-            error_log("Get admin uwaba users error: " . $e->getMessage());
+            error_log("Get pengeluaran WA notif recipients error: " . $e->getMessage());
+
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Database error: ' . $e->getMessage(),
-                'data' => []
+                'data' => [],
             ], 500);
         }
     }
