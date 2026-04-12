@@ -32,8 +32,10 @@ let liveSocketInstance = null
 function getOrCreateSocket() {
   if (liveSocketInstance != null) return liveSocketInstance
   liveSocketInstance = io(getLiveServerUrl(), {
-    // WebSocket dulu: hindari latensi long-polling di awal sesi (chat & presence lebih responsif).
-    transports: ['websocket', 'polling'],
+    // Polling dulu: banyak lingkungan dev/Windows memblokir atau gagal upgrade WS ke localhost;
+    // setelah tersambung, Socket.IO tetap bisa naik ke WebSocket. Urutan ['websocket','polling']
+    // sering memunculkan error merah di konsol walau koneksi akhirnya jalan.
+    transports: ['polling', 'websocket'],
     reconnection: true,
     reconnectionDelay: 1000,
   })

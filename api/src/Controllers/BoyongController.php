@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\TextSanitizer;
+use App\Helpers\LiveSantriIndexNotifier;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -138,6 +139,8 @@ class BoyongController
             // Update status_santri jadi 'Boyong' di tabel santri
             $stmtSantri = $this->db->prepare("UPDATE santri SET status_santri = 'Boyong' WHERE id = ?");
             $stmtSantri->execute([$idSantri]);
+
+            LiveSantriIndexNotifier::ping();
 
             return $this->jsonResponse($response, [
                 'success' => true,

@@ -32,8 +32,9 @@ final class AiChatDailyLimitService
 
     /**
      * @param array<int> $userIds
+     * @param bool $excludeInstansiGuestWa true = jangan hitung baris session_id wa-guest-* (log WA pengunjung lewat users_id kuota instansi)
      */
-    public static function countTodayForUserIds(\PDO $db, array $userIds): int
+    public static function countTodayForUserIds(\PDO $db, array $userIds, bool $excludeInstansiGuestWa = false): int
     {
         $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds), static fn (int $x): bool => $x > 0)));
         if ($userIds === []) {
@@ -45,9 +46,33 @@ final class AiChatDailyLimitService
         }
         $q = '`' . str_replace('`', '``', $col) . '`';
         $ph = implode(',', array_fill(0, count($userIds), '?'));
+        $guestEx = $excludeInstansiGuestWa ? ' AND (session_id IS NULL OR session_id NOT LIKE \'wa-guest-%\')' : '';
         try {
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ai___chat WHERE users_id IN ($ph) AND {$q} >= CURDATE()");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM ai___chat WHERE users_id IN ($ph) AND {$q} >= CURDATE(){$guestEx}");
             $stmt->execute($userIds);
+
+            return (int) $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
+    /** Untuk sesi terpisah (mis. pengunjung WA per-JID) agar limit tidak tercampur utas lain di akun kuota. */
+    public static function countTodayForUserAndSession(\PDO $db, int $usersId, string $sessionId): int
+    {
+        if ($usersId < 1 || trim($sessionId) === '') {
+            return 0;
+        }
+        $col = self::resolveAiChatDateColumn($db);
+        if ($col === null) {
+            return 0;
+        }
+        $q = '`' . str_replace('`', '``', $col) . '`';
+        try {
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM ai___chat WHERE users_id = ? AND session_id = ? AND {$q} >= CURDATE()"
+            );
+            $stmt->execute([$usersId, $sessionId]);
 
             return (int) $stmt->fetchColumn();
         } catch (\Throwable $e) {

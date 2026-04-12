@@ -32,6 +32,35 @@ const WA_BAILEYS_CONNECT_TIMEOUT_MS = Number(process.env.WA_BAILEYS_CONNECT_TIME
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Error libsignal / auth file korup / dua proses memakai session sama — reconnect otomatis tidak akan sembuh.
+ * Log produksi: "Bad MAC", "No matching sessions found for message", "Failed to decrypt", dll.
+ */
+export function isSessionCryptoCorruptionError(raw) {
+  const s = String(raw || '').toLowerCase();
+  if (!s) return false;
+  return (
+    s.includes('bad mac') ||
+    s.includes('badmac') ||
+    /no matching session/.test(s) ||
+    s.includes('failed to decrypt') ||
+    s.includes('message failed to decrypt') ||
+    s.includes('invalid prekey') ||
+    s.includes('prekey error') ||
+    s.includes('signalerror') ||
+    s.includes('session error') ||
+    (s.includes('decrypt') && s.includes('error'))
+  );
+}
+
+export function humanizeSessionCryptoError() {
+  return (
+    'Sesi WhatsApp tidak sinkron atau file auth rusak (enkripsi). Pastikan hanya satu container/proses memakai volume whatsapp-sessions. ' +
+    'Backup folder session, kosongkan auth Baileys untuk slot ini, lalu scan QR ulang di Koneksi WA. ' +
+    'Lihat wa/docs/TROUBLESHOOTING-WA-SESSION.md'
+  );
+}
+
 /** Debounce sambung ulang otomatis per session (setelah disconnect WA, bukan logout). */
 const reconnectTimerBySession = {};
 const reconnectAttemptsBySession = {};
@@ -288,6 +317,9 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const reason = lastDisconnect?.error?.output?.payload?.reason;
       const errMsg = lastDisconnect?.error?.message || '';
+      const payloadMsg = lastDisconnect?.error?.output?.payload?.message || '';
+      const combinedErr = [errMsg, String(reason || ''), String(payloadMsg || '')].join(' ').trim();
+      const cryptoSessionDead = isSessionCryptoCorruptionError(combinedErr);
       if (statusCode === DisconnectReason.loggedOut) {
         clearBaileysReconnectTimer(id);
         resetBaileysReconnectAttempts(id);
@@ -325,12 +357,27 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
           id,
           'Sesi diganti / conflict (biasanya 440): WhatsApp menutup karena kredensial slot ini dipakai di lebih dari satu koneksi sekaligus. Cek: tidak ada container/PM2/proses kedua dengan folder whatsapp-sessions yang sama; tidak ada staging + produksi pakai salinan session; tutup Linked Devices lama lalu hubungkan lagi dari satu server saja. Auto-reconnect untuk kasus ini dinonaktifkan — login ulang atau bersihkan auth slot jika perlu.'
         );
+      } else if (cryptoSessionDead) {
+        console.error(
+          '[WA Baileys]',
+          id,
+          'SESI ENKRIPSI / AUTH KORUP atau BENTROK (Bad MAC, no matching session, decrypt, dll.):',
+          combinedErr.slice(0, 200)
+        );
+        console.error(
+          '[WA Baileys]',
+          id,
+          humanizeSessionCryptoError()
+        );
       } else if (errMsg.includes('Connection Failure') || errMsg.includes('connection errored')) {
         console.warn('[WA Baileys]', id, 'Koneksi gagal (Connection Failure). Coba klik Hubungkan lagi. Jika sering gagal: ganti jaringan/WiFi atau gunakan VPN.');
       } else {
         console.log('[WA Baileys]', id, 'Disconnected:', statusCode, reason || errMsg);
       }
-      if (shouldAutoReconnectAfterDisconnect(statusCode)) {
+      if (cryptoSessionDead) {
+        clearBaileysReconnectTimer(id);
+        resetBaileysReconnectAttempts(id);
+      } else if (shouldAutoReconnectAfterDisconnect(statusCode)) {
         scheduleBaileysReconnect(id, String(statusCode || '?') + ' ' + (reason || errMsg || 'close'));
       } else {
         resetBaileysReconnectAttempts(id);
@@ -414,6 +461,10 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
           console.log('[WA Baileys]', id, 'skip: pesan grup');
           continue;
         }
+        if (/status@broadcast$/i.test(remoteJid) || /@broadcast$/i.test(remoteJid) || /@newsletter/i.test(remoteJid)) {
+          console.log('[WA Baileys]', id, 'skip: status / broadcast / newsletter');
+          continue;
+        }
         let from62 = '';
         if (remoteJid.endsWith('@s.whatsapp.net') || remoteJid.endsWith('@c.us')) {
           const fromRaw = remoteJid.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '');
@@ -452,6 +503,8 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
           messageId: messageId || undefined,
           sessionId: id,
           from_jid: remoteJid,
+          is_group: false,
+          chat_type: 'private',
         };
         let lastOk = false;
         let lastErr = null;
@@ -474,7 +527,13 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
           console.error('[WA Baileys] Gagal forward pesan masuk ke API: from=' + from62 + ' error=' + (lastErr || 'timeout'));
         }
       } catch (err) {
-        console.error('[WA Baileys] message handler error:', err?.message);
+        const em = err?.message || String(err);
+        if (isSessionCryptoCorruptionError(em)) {
+          console.error('[WA Baileys]', id, 'Pesan masuk: error sesi (enkripsi):', em.slice(0, 160));
+          console.error('[WA Baileys]', id, humanizeSessionCryptoError());
+        } else {
+          console.error('[WA Baileys] message handler error:', em);
+        }
       }
     }
   });
@@ -686,11 +745,20 @@ export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase
       return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
     } catch (err) {
       lastErr = err;
-      if (WA_VERBOSE_LOG) console.warn('[WA Baileys] sendMessage gagal jid=' + jid + ': ' + (err?.message || err));
+      const em = err?.message || String(err);
+      if (isSessionCryptoCorruptionError(em)) {
+        console.error('[WA Baileys]', id, 'Kirim gagal (sesi kripto):', em.slice(0, 160));
+        return { ok: false, error: humanizeSessionCryptoError(), code: 'wa_session_corrupt' };
+      }
+      if (WA_VERBOSE_LOG) console.warn('[WA Baileys] sendMessage gagal jid=' + jid + ': ' + em);
       await delay(350);
     }
   }
-  return { ok: false, error: humanizeLidSendError(lastErr?.message || lastErr) };
+  const lastEm = lastErr?.message || String(lastErr || '');
+  if (isSessionCryptoCorruptionError(lastEm)) {
+    return { ok: false, error: humanizeSessionCryptoError(), code: 'wa_session_corrupt' };
+  }
+  return { ok: false, error: humanizeLidSendError(lastEm) };
 }
 
 /** Kirim pesan dengan simulasi "sedang mengetik" (composing) sebelum kirim.
@@ -738,10 +806,19 @@ export async function sendMessageWithTypingBaileys(sessionId, phoneNumber, text,
       return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
     } catch (err) {
       lastErr = err;
+      const em = err?.message || String(err);
+      if (isSessionCryptoCorruptionError(em)) {
+        console.error('[WA Baileys]', id, 'Kirim (typing) gagal (sesi kripto):', em.slice(0, 160));
+        return { ok: false, error: humanizeSessionCryptoError(), code: 'wa_session_corrupt' };
+      }
       await delay(350);
     }
   }
-  return { ok: false, error: humanizeLidSendError(lastErr?.message || lastErr) };
+  const lastTypingEm = lastErr?.message || String(lastErr || '');
+  if (isSessionCryptoCorruptionError(lastTypingEm)) {
+    return { ok: false, error: humanizeSessionCryptoError(), code: 'wa_session_corrupt' };
+  }
+  return { ok: false, error: humanizeLidSendError(lastTypingEm) };
 }
 
 export async function getChatMessagesBaileys(sessionId, phoneNumber, limit = 50) {

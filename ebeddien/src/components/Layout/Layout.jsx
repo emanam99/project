@@ -59,11 +59,12 @@ function Layout() {
   /** Chat AI eBeddien + sub-rute training: sama seperti /chat-ai — tanpa animasi y agar tidak “terangkat” vs nav bawah */
   const isChatAiRoute =
     location.pathname === '/chat-ai' || location.pathname.startsWith('/chat-ai/')
+  /** Satu "halaman" shell untuk semua /chat-ai/* agar ChatAiLayout + tab tidak remount saat pindah tab */
+  const layoutMotionPageKey = isChatAiRoute ? '__chat_ai__' : location.pathname
   const hideHeader =
     location.pathname === '/beranda' ||
     location.pathname === '/semua-menu' ||
-    location.pathname === '/chat' ||
-    isChatAiRoute
+    location.pathname === '/chat'
   // HP: thread chat (/chat?c= atau ?u=) pakai layar penuh — tanpa padding bawah untuk bottom nav (nav disembunyikan di Navigation.jsx)
   const chatSearch = typeof location.search === 'string' ? new URLSearchParams(location.search) : null
   const chatMobileThreadOpen =
@@ -121,7 +122,7 @@ function Layout() {
       
       {/* Main Content Area */}
       <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative z-10 w-0">
-        {/* Header: jangan animasi collapse (maxHeight/y) — itu membuat sidebar+main “terangkat” saat pindah ke /chat-ai dsb. Nav bawah fixed tidak ikut → terlihat seperti geser. */}
+        {/* Header: jangan animasi collapse (maxHeight/y) — itu membuat sidebar+main “terangkat”. Nav bawah fixed tidak ikut → terlihat seperti geser. */}
         {!hideHeader ? (
           <motion.div
             className="shrink-0 z-20 overflow-visible"
@@ -141,7 +142,7 @@ function Layout() {
         >
           <AnimatePresence mode="wait">
             <motion.div
-              key={location.pathname}
+              key={layoutMotionPageKey}
               variants={
               location.pathname === '/beranda' || isChatAiRoute
                 ? berandaInstantVariants

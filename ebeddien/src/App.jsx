@@ -23,6 +23,11 @@ import InstallPrompt from './components/InstallPrompt'
 import LiveSocketSync from './components/LiveSocket/LiveSocketSync'
 import { LiveSocketProvider } from './contexts/LiveSocketContext'
 import GlobalChatNotifier from './components/Chat/GlobalChatNotifier'
+import ChatOffcanvasHost from './components/Chat/ChatOffcanvasHost'
+import ChatAiOffcanvasHost from './components/Chat/ChatAiOffcanvasHost'
+import { ChatOffcanvasProvider } from './contexts/ChatOffcanvasContext'
+import { ChatAiOffcanvasProvider } from './contexts/ChatAiOffcanvasContext'
+import Chat from './pages/MyWorkspace/Chat/index.jsx'
 import pwaSubscriptionService from './services/pwaSubscriptionService'
 import { authPageFlipVariants, authPageFlipStyle } from './utils/authPageTransition'
 import { useUgtLaporanFiturAccess } from './hooks/useUgtLaporanFiturAccess'
@@ -60,13 +65,14 @@ const ImportTunggakan = lazy(() => import('./pages/Pembayaran/ImportTunggakan'))
 const Profil = lazy(() => import('./pages/MyWorkspace/Profil/index.jsx'))
 const Beranda = lazy(() => import('./pages/MyWorkspace/Beranda/index.jsx'))
 const AktivitasSaya = lazy(() => import('./pages/MyWorkspace/AktivitasSaya/index.jsx'))
-const Chat = lazy(() => import('./pages/MyWorkspace/Chat/index.jsx'))
 const DeepseekChat = lazy(() => import('./pages/MyWorkspace/DeepseekChat/index.jsx'))
 const ChatAiLayout = lazy(() => import('./pages/MyWorkspace/ChatAiLayout.jsx'))
 const AiTrainingBank = lazy(() => import('./pages/MyWorkspace/AiTrainingBank.jsx'))
 const AiTrainingChat = lazy(() => import('./pages/MyWorkspace/AiTrainingChat.jsx'))
 const AiChatDashboard = lazy(() => import('./pages/MyWorkspace/AiChatDashboard.jsx'))
 const AiChatRiwayat = lazy(() => import('./pages/MyWorkspace/AiChatRiwayat.jsx'))
+const AiUserSettingsPage = lazy(() => import('./pages/MyWorkspace/AiUserSettingsPage.jsx'))
+const ChatAiPengaturanPage = lazy(() => import('./pages/MyWorkspace/ChatAiPengaturanPage.jsx'))
 const SemuaMenu = lazy(() => import('./pages/MyWorkspace/SemuaMenu/index.jsx'))
 const Print = lazy(() => import('./pages/Pembayaran/print/Print'))
 const PrintPengeluaran = lazy(() => import('./pages/Keuangan/Pengeluaran/print/PrintPengeluaran'))
@@ -77,7 +83,7 @@ const Aktivitas = lazy(() => import('./pages/Keuangan/Aktivitas'))
 const KeuanganDashboard = lazy(() => import('./pages/Keuangan/KeuanganDashboard'))
 const AktivitasTahunAjaran = lazy(() => import('./pages/Keuangan/Aktivitas/AktivitasTahunAjaran'))
 const Lembaga = lazy(() => import('./pages/Settings/Lembaga'))
-const AbsenPengurus = lazy(() => import('./pages/Lembaga/AbsenPengurus'))
+const AbsenPage = lazy(() => import('./pages/Lembaga/Absen'))
 const Kitab = lazy(() => import('./pages/Settings/Kitab'))
 const Mapel = lazy(() => import('./pages/Settings/Mapel'))
 const Rombel = lazy(() => import('./pages/Settings/Rombel'))
@@ -120,6 +126,7 @@ const Fitur = lazy(() => import('./pages/Settings/Fitur'))
 const TahunAjaranPage = lazy(() => import('./pages/Settings/TahunAjaran'))
 const Notifikasi = lazy(() => import('./pages/Settings/Notifikasi'))
 const Watzap = lazy(() => import('./pages/Settings/Watzap'))
+const EvolutionWa = lazy(() => import('./pages/Settings/EvolutionWa'))
 const WaInteractiveMenu = lazy(() => import('./pages/Settings/WaInteractiveMenu'))
 const DataSantri = lazy(() => import('./pages/Santri/DataSantri'))
 const DataLulusan = lazy(() => import('./pages/Lulusan/DataLulusan'))
@@ -512,6 +519,8 @@ function App() {
   return (
     <NotificationProvider>
       <LiveSocketProvider>
+        <ChatOffcanvasProvider>
+        <ChatAiOffcanvasProvider>
         <InstallPrompt />
         <LiveSocketSync />
         <GlobalChatNotifier />
@@ -689,14 +698,7 @@ function App() {
               </Suspense>
             }
           />
-          <Route
-            path="/chat"
-            element={
-              <Suspense fallback={<PageLoader />}>
-                <Chat />
-              </Suspense>
-            }
-          />
+          <Route path="/chat" element={<Chat />} />
           <Route
             path="/chat-ai"
             element={
@@ -743,6 +745,22 @@ function App() {
                 element={
                   <Suspense fallback={<PageLoader />}>
                     <AiChatRiwayat />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="pengaturan"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <ChatAiPengaturanPage />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="user-ai"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <AiUserSettingsPage />
                   </Suspense>
                 }
               />
@@ -1067,7 +1085,7 @@ function App() {
               path="/absen"
               element={
                 <Suspense fallback={<PageLoader />}>
-                  <AbsenPengurus />
+                  <AbsenPage />
                 </Suspense>
               }
             />
@@ -1196,6 +1214,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Watzap />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/settings/evolution-wa"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <EvolutionWa />
                 </Suspense>
               }
             />
@@ -1407,6 +1433,10 @@ function App() {
       {/* 404 - Jangan arahkan /setup-akun ke login (link WA ke buat username/password) */}
       <Route path="*" element={<CatchAllRedirect />} />
     </Routes>
+        <ChatOffcanvasHost />
+        <ChatAiOffcanvasHost />
+        </ChatAiOffcanvasProvider>
+        </ChatOffcanvasProvider>
       </LiveSocketProvider>
     </NotificationProvider>
   )

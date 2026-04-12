@@ -136,9 +136,17 @@ return [
         'api_key' => env('WATZAP_API_KEY', ''),
         'number_key' => env('WATZAP_NUMBER_KEY', 'ALL'),
     ],
+    // Evolution API v2 — koneksi WA (QR) lewat instance; dipakai halaman Setting → Evolution WA. Set EVOLUTION_API_BASE_URL + EVOLUTION_API_KEY di .env.
+    // Dokumentasi: https://doc.evolution-api.com/v2/en/get-started/introduction
+    'evolution_api' => [
+        'base_url' => rtrim((string) env('EVOLUTION_API_BASE_URL', ''), '/'),
+        'api_key' => env('EVOLUTION_API_KEY', ''),
+    ],
     // Live server (Socket.IO): API key untuk simpan pesan chat ke tabel chat. Set LIVE_SERVER_API_KEY di .env (sama dengan live/.env).
+    // LIVE_SERVER_URL: asal HTTP server live (contoh http://127.0.0.1:3004) untuk broadcast hint indeks santri dari PHP.
     'live_server' => [
         'api_key' => env('LIVE_SERVER_API_KEY', ''),
+        'url' => rtrim((string) env('LIVE_SERVER_URL', 'http://127.0.0.1:3004'), '/'),
     ],
     // Base URL API ini (untuk webhook WatZap). Staging: https://api2.alutsmani.id, production: https://api.alutsmani.id.
     // Di .env set API_PUBLIC_URL; atau WATZAP_WEBHOOK_URL (full URL) untuk override.

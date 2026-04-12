@@ -13,7 +13,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  * Endpoint mesin absensi ZKTeco / iClock (HTTP push). Tanpa login JWT.
  * PIN pada mesin = NIP pengurus (pengurus.nip); disimpan sebagai id_pengurus (pengurus.id).
  *
- * Konfigurasi mesin: Server URL = {API_PUBLIC_URL}/api  → mesin memanggil .../api/iclock/cdata
+ * Konfigurasi mesin: Server URL = {API_PUBLIC_URL}/api (api.alutsmani.id/api)  → mesin memanggil .../api/iclock/cdata
  * Opsional .env: ABSEN_FINGERPRINT_ALLOWED_SN=SN1,SN2 | ABSEN_FINGERPRINT_SECRET=... (&key=... di URL)
  */
 class AbsenFingerprintController
@@ -107,7 +107,7 @@ class AbsenFingerprintController
                     // Kolom `timestamp` = waktu kejadian dari mesin (ATTLOG), bukan waktu server.
                     // `tanggal_dibuat` otomatis = saat baris masuk DB (metadata); UI & rekap mengutamakan timestamp.
                     $stmt = $pdo->prepare(
-                        'INSERT INTO absen___pengurus (`timestamp`, id_pengurus, status, verified, work_code, raw_data) VALUES (?, ?, ?, ?, ?, ?)'
+                        'INSERT INTO absen___pengurus (`timestamp`, id_pengurus, sumber_absen, id_absen_lokasi, status, verified, work_code, raw_data) VALUES (?, ?, \'sidik_jari\', NULL, ?, ?, ?, ?)'
                     );
                     $stmt->execute([$dateTime, $idPengurus, $statusText, $verified, $workCode, $line]);
                     $inserted++;
@@ -140,7 +140,7 @@ class AbsenFingerprintController
 
                 try {
                     $stmt = $pdo->prepare(
-                        'INSERT INTO absen___pengurus (`timestamp`, id_pengurus, status, verified, work_code, raw_data) VALUES (?, ?, ?, ?, ?, ?)'
+                        'INSERT INTO absen___pengurus (`timestamp`, id_pengurus, sumber_absen, id_absen_lokasi, status, verified, work_code, raw_data) VALUES (?, ?, \'sidik_jari\', NULL, ?, ?, ?, ?)'
                     );
                     $stmt->execute([$dateTime, $idPengurus, $status, $verified, $workCode, $line]);
                     $inserted++;

@@ -8,6 +8,7 @@ use App\Helpers\SantriKamarHelper;
 use App\Helpers\SantriDomisiliHelper;
 use App\Helpers\SantriRombelHelper;
 use App\Helpers\TextSanitizer;
+use App\Helpers\LiveSantriIndexNotifier;
 use App\Helpers\UserAktivitasLogger;
 use App\Helpers\PengurusAdminIdHelper;
 use App\Helpers\RoleHelper;
@@ -921,6 +922,8 @@ class PendaftaranController
 
                 $this->db->commit();
 
+                LiveSantriIndexNotifier::ping();
+
                 return $this->jsonResponse($response, [
                     'success' => true,
                     'message' => 'Santri baru berhasil dibuat',
@@ -1328,6 +1331,8 @@ class PendaftaranController
                     
                     $this->db->commit();
 
+                    LiveSantriIndexNotifier::ping();
+
                     $stmtNew = $this->db->prepare("SELECT * FROM santri WHERE id = ?");
                     $stmtNew->execute([$id]);
                     $newSantri = $stmtNew->fetch(\PDO::FETCH_ASSOC);
@@ -1479,6 +1484,8 @@ class PendaftaranController
                     $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, null);
                     
                     $this->db->commit();
+
+                    LiveSantriIndexNotifier::ping();
 
                     $stmtNew = $this->db->prepare("SELECT * FROM santri WHERE id = ?");
                     $stmtNew->execute([$id]);
@@ -7451,7 +7458,13 @@ class PendaftaranController
                 $stmtDeleteSantri = $this->db->prepare($sqlDeleteSantri);
                 $stmtDeleteSantri->execute([$idSantriSekunder]);
 
+                // Pastikan baris utama masuk sinkron inkremental (?since) walau tidak ada field yang di-merge dari sekunder
+                $stmtTouch = $this->db->prepare('UPDATE santri SET tanggal_update = CURRENT_TIMESTAMP WHERE id = ?');
+                $stmtTouch->execute([$idSantriUtama]);
+
                 $this->db->commit();
+
+                LiveSantriIndexNotifier::ping(['removed_ids' => [$idSantriSekunder]]);
 
                 return $this->jsonResponse($response, [
                     'success' => true,

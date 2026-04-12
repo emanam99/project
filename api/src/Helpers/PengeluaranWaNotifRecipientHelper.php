@@ -20,15 +20,12 @@ final class PengeluaranWaNotifRecipientHelper
     public const CODE_NOTIF_DRAFT_LEMBAGA_SESUAI_ROLE = 'action.pengeluaran.draft.notif.lembaga_sesuai_role';
 
     /**
+     * Hanya role dengan aksi notif semua lembaga (bukan draft).
+     *
      * @return list<array{id:int, nama:string, whatsapp:string}>
      */
-    public static function fetchEligiblePengurusWithWa(\PDO $db, ?string $lembagaId, bool $draftWaOnly = false): array
+    public static function fetchNotifSemuaLembagaPengurusWithWa(\PDO $db): array
     {
-        if ($draftWaOnly) {
-            return self::fetchEligiblePengurusWithWaDraftLembagaOnly($db, $lembagaId);
-        }
-
-        $lembagaId = $lembagaId !== null ? trim($lembagaId) : '';
         $sql = 'SELECT DISTINCT p.id, p.nama, COALESCE(u.no_wa, \'\') AS whatsapp
             FROM pengurus p
             LEFT JOIN users u ON u.id = p.id_user
@@ -37,40 +34,106 @@ final class PengeluaranWaNotifRecipientHelper
                 p.status IS NULL
                 OR LOWER(TRIM(COALESCE(p.status, \'\'))) NOT IN (\'tidak aktif\', \'inactive\')
             )
-            AND (
-                EXISTS (
-                    SELECT 1 FROM pengurus___role pr
-                    INNER JOIN role___fitur rf ON rf.role_id = pr.role_id
-                    INNER JOIN app___fitur af ON af.id = rf.fitur_id
-                        AND af.type = \'action\'
-                        AND af.code = ?
-                    WHERE pr.pengurus_id = p.id
-                )
-                OR (
-                    CHAR_LENGTH(?) > 0 AND EXISTS (
-                        SELECT 1 FROM pengurus___role pr
-                        INNER JOIN role___fitur rf ON rf.role_id = pr.role_id
-                        INNER JOIN app___fitur af ON af.id = rf.fitur_id
-                            AND af.type = \'action\'
-                            AND af.code = ?
-                        WHERE pr.pengurus_id = p.id
-                        AND pr.lembaga_id IS NOT NULL AND CHAR_LENGTH(TRIM(pr.lembaga_id)) > 0
-                        AND CONVERT(TRIM(pr.lembaga_id) USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                            = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
-                    )
-                )
+            AND EXISTS (
+                SELECT 1 FROM pengurus___role pr
+                INNER JOIN role___fitur rf ON rf.role_id = pr.role_id
+                INNER JOIN app___fitur af ON af.id = rf.fitur_id
+                    AND af.type = \'action\'
+                    AND af.code = ?
+                WHERE pr.pengurus_id = p.id
             )
             ORDER BY p.nama ASC';
 
         $stmt = $db->prepare($sql);
-        $stmt->execute([
-            self::CODE_NOTIF_SEMUA_LEMBAGA,
-            $lembagaId,
-            self::CODE_NOTIF_LEMBAGA_SESUAI_ROLE,
-            $lembagaId,
-        ]);
+        $stmt->execute([self::CODE_NOTIF_SEMUA_LEMBAGA]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        return self::rowsToRecipientList($rows);
+    }
+
+    /**
+     * Hanya role dengan aksi notif lembaga sesuai penugasan; wajib cocok dengan lembaga rencana/pengeluaran.
+     *
+     * @return list<array{id:int, nama:string, whatsapp:string}>
+     */
+    public static function fetchNotifLembagaSesuaiRolePengurusWithWa(\PDO $db, ?string $lembagaId): array
+    {
+        $lembagaId = $lembagaId !== null ? trim($lembagaId) : '';
+        if ($lembagaId === '') {
+            return [];
+        }
+
+        $sql = 'SELECT DISTINCT p.id, p.nama, COALESCE(u.no_wa, \'\') AS whatsapp
+            FROM pengurus p
+            LEFT JOIN users u ON u.id = p.id_user
+            WHERE CHAR_LENGTH(COALESCE(u.no_wa, \'\')) > 0
+            AND (
+                p.status IS NULL
+                OR LOWER(TRIM(COALESCE(p.status, \'\'))) NOT IN (\'tidak aktif\', \'inactive\')
+            )
+            AND EXISTS (
+                SELECT 1 FROM pengurus___role pr
+                INNER JOIN role___fitur rf ON rf.role_id = pr.role_id
+                INNER JOIN app___fitur af ON af.id = rf.fitur_id
+                    AND af.type = \'action\'
+                    AND af.code = ?
+                WHERE pr.pengurus_id = p.id
+                AND pr.lembaga_id IS NOT NULL AND CHAR_LENGTH(TRIM(pr.lembaga_id)) > 0
+                AND CONVERT(TRIM(pr.lembaga_id) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+            )
+            ORDER BY p.nama ASC';
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute([self::CODE_NOTIF_LEMBAGA_SESUAI_ROLE, $lembagaId]);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        return self::rowsToRecipientList($rows);
+    }
+
+    /**
+     * @return array{notif_semua_lembaga: list<array{id:int, nama:string, whatsapp:string}>, notif_lembaga_sesuai_role: list<array{id:int, nama:string, whatsapp:string}>}
+     */
+    public static function fetchRecipientGroupsWithWa(\PDO $db, ?string $lembagaId, bool $draftWaOnly = false): array
+    {
+        if ($draftWaOnly) {
+            $draftList = self::fetchEligiblePengurusWithWaDraftLembagaOnly($db, $lembagaId);
+
+            return [
+                'notif_semua_lembaga' => [],
+                'notif_lembaga_sesuai_role' => $draftList,
+            ];
+        }
+
+        $semua = self::fetchNotifSemuaLembagaPengurusWithWa($db);
+        $semuaIds = [];
+        foreach ($semua as $r) {
+            if ($r['id'] > 0) {
+                $semuaIds[$r['id']] = true;
+            }
+        }
+
+        $lembagaFull = self::fetchNotifLembagaSesuaiRolePengurusWithWa($db, $lembagaId);
+        $lembagaOnly = [];
+        foreach ($lembagaFull as $r) {
+            if ($r['id'] > 0 && !isset($semuaIds[$r['id']])) {
+                $lembagaOnly[] = $r;
+            }
+        }
+
+        return [
+            'notif_semua_lembaga' => $semua,
+            'notif_lembaga_sesuai_role' => $lembagaOnly,
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     *
+     * @return list<array{id:int, nama:string, whatsapp:string}>
+     */
+    private static function rowsToRecipientList(array $rows): array
+    {
         $out = [];
         foreach ($rows as $row) {
             $out[] = [
@@ -81,6 +144,48 @@ final class PengeluaranWaNotifRecipientHelper
         }
 
         return $out;
+    }
+
+    /**
+     * Gabung unik by id (urutan: semua dulu, lalu lembaga), sort nama.
+     *
+     * @param list<array{id:int, nama:string, whatsapp:string}> $a
+     * @param list<array{id:int, nama:string, whatsapp:string}> $b
+     *
+     * @return list<array{id:int, nama:string, whatsapp:string}>
+     */
+    public static function mergeRecipientListsUnique(array $a, array $b): array
+    {
+        $byId = [];
+        foreach (array_merge($a, $b) as $r) {
+            $id = (int) ($r['id'] ?? 0);
+            if ($id < 1) {
+                continue;
+            }
+            if (!isset($byId[$id])) {
+                $byId[$id] = $r;
+            }
+        }
+        $merged = array_values($byId);
+        usort($merged, static function (array $x, array $y): int {
+            return strcasecmp((string) ($x['nama'] ?? ''), (string) ($y['nama'] ?? ''));
+        });
+
+        return $merged;
+    }
+
+    /**
+     * @return list<array{id:int, nama:string, whatsapp:string}>
+     */
+    public static function fetchEligiblePengurusWithWa(\PDO $db, ?string $lembagaId, bool $draftWaOnly = false): array
+    {
+        if ($draftWaOnly) {
+            return self::fetchEligiblePengurusWithWaDraftLembagaOnly($db, $lembagaId);
+        }
+
+        $g = self::fetchRecipientGroupsWithWa($db, $lembagaId, false);
+
+        return self::mergeRecipientListsUnique($g['notif_semua_lembaga'], $g['notif_lembaga_sesuai_role']);
     }
 
     /**

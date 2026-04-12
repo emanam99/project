@@ -37,6 +37,7 @@ final class EbeddienFiturAccessDefinitions
             'menu.settings.fitur',
             'menu.settings.notifikasi',
             'menu.settings.watzap',
+            'menu.settings.evolution_wa',
             'menu.settings.wa_interactive_menu',
             'menu.manage_uploads',
             'menu.whatsapp_koneksi',
@@ -204,6 +205,56 @@ final class EbeddienFiturAccessDefinitions
     public static function tarbiyahSuperSelectors(): array
     {
         return self::merge(self::tarbiyahLembagaMenus(), self::superAdminMenus());
+    }
+
+    /**
+     * GET /api/absen-pengurus (+ rekap): tab Riwayat atau legacy menu.absen tanpa aksi granular.
+     */
+    public static function absenPengurusApiSelectors(): array
+    {
+        return self::merge(
+            self::superAdminMenus(),
+            ['menu.absen', 'action.absen.tab.riwayat']
+        );
+    }
+
+    /** GET/POST/PUT/DELETE /api/absen-lokasi */
+    public static function absenLokasiCrudApiSelectors(): array
+    {
+        return self::merge(
+            self::superAdminMenus(),
+            [
+                'menu.absen',
+                'action.absen.lokasi.list',
+                'action.absen.lokasi.absen',
+                'action.absen.lokasi.tambah',
+                'action.absen.lokasi.ubah',
+                'action.absen.lokasi.hapus',
+            ]
+        );
+    }
+
+    /** POST /api/absen-pengurus/lokasi */
+    public static function absenPengurusLokasiPostSelectors(): array
+    {
+        return self::merge(
+            self::superAdminMenus(),
+            ['menu.absen', 'action.absen.lokasi.absen'],
+            ['menu.absen', 'action.absen.tab.absen'],
+            ['menu.absen', 'action.absen.tab.ngabsen']
+        );
+    }
+
+    /** GET /api/geocode/reverse — alamat administratif dari koordinat (tab Absen) */
+    public static function absenGeocodeReverseSelectors(): array
+    {
+        return self::merge(
+            self::superAdminMenus(),
+            ['menu.absen', 'action.absen.tab.absen'],
+            ['menu.absen', 'action.absen.tab.ngabsen'],
+            ['menu.absen', 'action.absen.lokasi.absen'],
+            ['menu.absen', 'action.absen.lokasi.list']
+        );
     }
 
     public static function alamatListSelectors(): array

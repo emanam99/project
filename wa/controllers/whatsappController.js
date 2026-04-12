@@ -533,6 +533,13 @@ export const sendMessage = async (req, res) => {
     }
     if (!result.ok) {
       if (result.error === 'Nomor tidak valid') return res.status(400).json({ success: false, message: result.error });
+      if (result.code === 'wa_session_corrupt') {
+        return res.status(200).json({
+          success: false,
+          code: 'wa_session_corrupt',
+          message: String(result.error || ''),
+        });
+      }
       const msg = humanizeLidSendError(String(result.error || '')) || 'Gagal mengirim pesan';
       return res.status(200).json({ success: false, message: msg });
     }

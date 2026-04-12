@@ -461,12 +461,22 @@ class WatzapController
                 $fromJidFlow = trim((string) ($payload['chat_id'] ?? ''));
                 $fromJidFlow = $fromJidFlow !== '' ? $fromJidFlow : null;
 
+                $incomingIsGroup = null;
+                if (array_key_exists('is_group', $payload)) {
+                    $incomingIsGroup = filter_var($payload['is_group'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                } elseif (array_key_exists('isGroup', $payload)) {
+                    $incomingIsGroup = filter_var($payload['isGroup'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                }
+                if ($incomingIsGroup === null && $fromJidFlow !== null && preg_match('/@g\.us$/i', $fromJidFlow)) {
+                    $incomingIsGroup = true;
+                }
+
                 $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $fromJidFlow);
                 $isDaftarNotif = $reply !== null && $reply !== '';
                 $replyKind = $isDaftarNotif ? 'daftar_notif' : null;
                 $skipOtherIncomingFlows = $isDaftarNotif;
                 if (!$skipOtherIncomingFlows) {
-                    $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $fromJidFlow);
+                    $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $fromJidFlow, $incomingIsGroup);
                     if ($reply !== null && $reply !== '') {
                         $replyKind = 'ai_whatsapp';
                     }

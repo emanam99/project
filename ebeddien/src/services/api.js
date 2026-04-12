@@ -889,6 +889,12 @@ export const santriAPI = {
     return response.data
   },
 
+  /** Daftar santri yang tanggal_update / tanggal_dibuat lebih baru dari watermark (sinkron inkremental). */
+  getChangedSince: async (since) => {
+    const response = await api.get(`/santri?since=${encodeURIComponent(since)}`)
+    return response.data
+  },
+
   getById: async (id) => {
     const response = await api.get(`/santri?id=${id}`)
     return response.data
@@ -2017,12 +2023,12 @@ export const deepseekAPI = {
   directApiChat: (body) => api.post('/deepseek/api-chat', body).then((r) => r.data),
   /** Riwayat terakhir dari ai___chat; tanpa session_id = gabungan per user (mode utama). */
   getChatHistory: (params) => api.get('/deepseek/chat-history', { params }).then((r) => r.data),
-  getTrainingSuggestions: () => api.get('/deepseek/training-suggestions').then((r) => r.data),
-  getWhatsappAccess: () => api.get('/deepseek/whatsapp-access').then((r) => r.data),
-  putWhatsappAccess: (enabled) => api.put('/deepseek/whatsapp-access', { enabled: !!enabled }).then((r) => r.data),
-  /** Token sekali pakai + pesan wa.me (wajib login). */
-  postWhatsappActivationToken: () => api.post('/deepseek/whatsapp-activation-token', {}).then((r) => r.data),
-  /** Bangunkan koneksi WA Node (sama konsep dengan /pendaftaran/wa-wake) sebelum buka wa.me aktivasi AI. */
+  /** Saran tombol obrolan: hanya pertanyaan acak dari Bank Q&A (`ai___training`), bukan Training Chat. */
+  getBankQaSuggestedPrompts: () => api.get('/deepseek/training-suggestions').then((r) => r.data),
+  getWaInstansiSettings: () => api.get('/deepseek/wa-instansi-settings').then((r) => r.data),
+  putWaInstansiSettings: (body) => api.put('/deepseek/wa-instansi-settings', body).then((r) => r.data),
+  putChatModePreference: (mode) => api.put('/deepseek/chat-mode-preference', { mode }).then((r) => r.data),
+  /** Bangunkan koneksi WA Node (opsional). */
   getWaWake: () => api.get('/deepseek/wa-wake').then((r) => r.data),
   adminListAiUsers: (params = {}) => api.get('/deepseek/admin/ai-users', { params }).then((r) => r.data),
   adminUpdateAiUser: (id, body = {}) => api.put(`/deepseek/admin/ai-users/${id}`, body).then((r) => r.data),
@@ -2627,6 +2633,63 @@ export const watzapAPI = {
   },
   sendMessage: async (phoneNumber, message, numberKey = '') => {
     const response = await api.post('/watzap/send', { phone: phoneNumber, message, ...(numberKey ? { number_key: numberKey } : {}) })
+    return response.data
+  }
+}
+
+/** Evolution API v2 (Super Admin) — proxy ke server Evolution (QR, instance). Kunci di .env backend. */
+export const evolutionApiAPI = {
+  getConfig: async () => {
+    const response = await api.get('/evolution-api/config')
+    return response.data
+  },
+  putConfig: async (data) => {
+    const response = await api.put('/evolution-api/config', data)
+    return response.data
+  },
+  getInfo: async () => {
+    const response = await api.get('/evolution-api/info')
+    return response.data
+  },
+  getInstances: async (instanceName = '') => {
+    const response = await api.get('/evolution-api/instances', {
+      params: instanceName ? { instanceName } : undefined
+    })
+    return response.data
+  },
+  getConnectionState: async (name) => {
+    const response = await api.get(`/evolution-api/instance/${encodeURIComponent(name)}/connection-state`)
+    return response.data
+  },
+  getConnect: async (name, number) => {
+    const response = await api.get(`/evolution-api/instance/${encodeURIComponent(name)}/connect`, {
+      params: number ? { number } : undefined
+    })
+    return response.data
+  },
+  logout: async (name) => {
+    const response = await api.delete(`/evolution-api/instance/${encodeURIComponent(name)}/logout`)
+    return response.data
+  },
+  createInstance: async (body) => {
+    const response = await api.post('/evolution-api/instance/create', body)
+    return response.data
+  },
+  /** Tes kirim teks — instance = nama default tersimpan atau instance_name di body */
+  sendText: async ({ number, text, instance_name: instanceName } = {}) => {
+    const response = await api.post('/evolution-api/send-text', {
+      number,
+      text,
+      ...(instanceName ? { instance_name: instanceName } : {})
+    })
+    return response.data
+  },
+  sendList: async (payload) => {
+    const response = await api.post('/evolution-api/send-list', payload)
+    return response.data
+  },
+  sendButtons: async (payload) => {
+    const response = await api.post('/evolution-api/send-buttons', payload)
     return response.data
   }
 }
@@ -3433,6 +3496,37 @@ export const lembagaAPI = {
   }
 }
 
+/** Reverse geocoding (alamat dari lat/lng) — memakai proxy API + Nominatim */
+export const geocodeAPI = {
+  reverse: async ({ lat, lng }) => {
+    const q = new URLSearchParams()
+    q.set('lat', String(lat))
+    q.set('lng', String(lng))
+    const response = await api.get(`/geocode/reverse?${q.toString()}`)
+    return response.data
+  },
+}
+
+/** Titik lokasi absen GPS */
+export const absenLokasiAPI = {
+  getList: async () => {
+    const response = await api.get('/absen-lokasi')
+    return response.data
+  },
+  create: async (body) => {
+    const response = await api.post('/absen-lokasi', body)
+    return response.data
+  },
+  update: async (id, body) => {
+    const response = await api.put(`/absen-lokasi/${id}`, body)
+    return response.data
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/absen-lokasi/${id}`)
+    return response.data
+  }
+}
+
 /** Rekap absensi pengurus (absen___pengurus) — super_admin */
 export const absenPengurusAPI = {
   getList: async (params = {}) => {
@@ -3459,7 +3553,13 @@ export const absenPengurusAPI = {
     const url = q.toString() ? `/absen-pengurus/rekap?${q.toString()}` : '/absen-pengurus/rekap'
     const response = await api.get(url)
     return response.data
-  }
+  },
+
+  /** Absen mandiri lewat GPS (pengurus) */
+  postLokasi: async (body) => {
+    const response = await api.post('/absen-pengurus/lokasi', body)
+    return response.data
+  },
 }
 
 /** Daftar kitab (tabel kitab) — super_admin */

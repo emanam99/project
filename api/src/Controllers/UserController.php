@@ -394,11 +394,16 @@ class UserController
             $ctx = isset($q['notif_context']) ? strtolower(trim((string) $q['notif_context'])) : '';
             $draftWaOnly = ($ctx === 'draft');
 
-            $users = PengeluaranWaNotifRecipientHelper::fetchEligiblePengurusWithWa($this->db, $lembagaId, $draftWaOnly);
+            $groups = PengeluaranWaNotifRecipientHelper::fetchRecipientGroupsWithWa($this->db, $lembagaId, $draftWaOnly);
+            $users = PengeluaranWaNotifRecipientHelper::mergeRecipientListsUnique(
+                $groups['notif_semua_lembaga'],
+                $groups['notif_lembaga_sesuai_role']
+            );
 
             return $this->jsonResponse($response, [
                 'success' => true,
                 'data' => $users,
+                'recipient_groups' => $groups,
             ], 200);
         } catch (\Exception $e) {
             error_log("Get pengeluaran WA notif recipients error: " . $e->getMessage());

@@ -495,15 +495,24 @@ export default function Notifikasi() {
                 >
                   {saving ? 'Menyimpan...' : 'Simpan'}
                 </button>
+                <Link to="/settings/evolution-wa" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
+                  Evolution WA →
+                </Link>
                 {provider === 'wa_sendiri' && (
-                  <Link to="/whatsapp-koneksi" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
-                    Buka halaman WhatsApp →
-                  </Link>
+                  <>
+                    <span className="text-gray-300 dark:text-gray-600">·</span>
+                    <Link to="/whatsapp-koneksi" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
+                      Buka halaman WhatsApp →
+                    </Link>
+                  </>
                 )}
                 {provider === 'watzap' && (
-                  <Link to="/settings/watzap" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
-                    Buka halaman WatZap →
-                  </Link>
+                  <>
+                    <span className="text-gray-300 dark:text-gray-600">·</span>
+                    <Link to="/settings/watzap" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
+                      Buka halaman WatZap →
+                    </Link>
+                  </>
                 )}
               </div>
               <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">

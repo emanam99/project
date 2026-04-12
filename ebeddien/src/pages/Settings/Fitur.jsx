@@ -8,8 +8,10 @@ import FiturMenuRoleOffcanvas from '../../components/FiturMenuRoleOffcanvas'
 import EbeddienFiturSelectorsPanel from '../../components/EbeddienFiturSelectorsPanel'
 import PengeluaranFiturTabAccordions from '../../components/PengeluaranFiturTabAccordions'
 import KalenderPengaturanFiturTabAccordions from '../../components/KalenderPengaturanFiturTabAccordions'
+import AbsenFiturTabAccordions from '../../components/AbsenFiturTabAccordions'
 import { PENGELUARAN_MENU_CODE } from '../../config/pengeluaranFiturCodes'
 import { KALENDER_PENGATURAN_MENU_CODE } from '../../config/kalenderFiturCodes'
+import { ABSEN_MENU_CODE } from '../../config/absenFiturCodes'
 
 /** Hanya grup yang tidak ada di GROUP_ORDER (urutan akhir). Jangan duplikat nama grup yang sudah di GROUP_ORDER. */
 const EXTRA_GROUP_ORDER = ['Lainnya']
@@ -347,6 +349,9 @@ export default function Fitur() {
   const [kalenderPengaturanAccordionOpen, setKalenderPengaturanAccordionOpen] = useState(
     () => new Set(['bulan', 'hari_penting'])
   )
+  const [absenAccordionOpen, setAbsenAccordionOpen] = useState(
+    () => new Set(['riwayat', 'absen', 'ngabsen'])
+  )
 
   const closeOffcanvas = useOffcanvasBackClose(selectedFiturId != null, () => setSelectedFiturId(null))
 
@@ -580,6 +585,32 @@ export default function Fitur() {
                                       openKeys={pengeluaranAccordionOpen}
                                       onToggleKey={(key) => {
                                         setPengeluaranAccordionOpen((prev) => {
+                                          const next = new Set(prev)
+                                          if (next.has(key)) next.delete(key)
+                                          else next.add(key)
+                                          return next
+                                        })
+                                      }}
+                                      renderRow={(child, _tabKey, rowIdx) => (
+                                        <FiturTreeRow
+                                          key={child.id}
+                                          node={child}
+                                          index={rowIdx ?? 0}
+                                          depth={1}
+                                          expanded={false}
+                                          onToggleExpand={toggleExpand}
+                                          onSelect={(id) => setSelectedFiturId(id)}
+                                          showGroupLabel={false}
+                                          hasChildRows={false}
+                                        />
+                                      )}
+                                    />
+                                  ) : node.code === ABSEN_MENU_CODE ? (
+                                    <AbsenFiturTabAccordions
+                                      children={kids}
+                                      openKeys={absenAccordionOpen}
+                                      onToggleKey={(key) => {
+                                        setAbsenAccordionOpen((prev) => {
                                           const next = new Set(prev)
                                           if (next.has(key)) next.delete(key)
                                           else next.add(key)

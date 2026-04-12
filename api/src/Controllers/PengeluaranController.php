@@ -1305,13 +1305,15 @@ class PengeluaranController
             ));
         }
 
-        $ketShort = trim($keterangan) !== '' ? trim($keterangan) : 'Draft';
-        if (strlen($ketShort) > 100) {
-            $ketShort = substr($ketShort, 0, 97) . '...';
+        $ketLine = trim($keterangan) !== '' ? trim($keterangan) : '(tanpa keterangan)';
+        if (strlen($ketLine) > 160) {
+            $ketLine = substr($ketLine, 0, 157) . '...';
         }
-        $verb = $isUpdate ? 'diperbarui' : 'disimpan';
-        $title = 'Draft rencana ' . $verb;
-        $body = $namaPenyimpan . ' — ' . $ketShort;
+        $totalDraft = $this->sumRencanaDetailNominalNonRejected($rencanaId);
+        $idrDraft = RencanaPengeluaranWaHelper::formatIdr($totalDraft);
+        $firstDraft = $isUpdate ? 'Memperbarui ' . $ketLine : 'Membuat ' . $ketLine;
+        $body = $firstDraft . "\noleh : " . $namaPenyimpan . "\nnominal : " . $idrDraft;
+        $title = $isUpdate ? 'Draft diperbarui' : 'Draft rencana';
 
         $excludeForPush = $excludePengurusId > 0 ? [$excludePengurusId] : [];
         $this->sendPengeluaranNotifPolicyPush(
@@ -1325,7 +1327,9 @@ class PengeluaranController
             [
                 'type' => 'pengeluaran_draft',
                 'rencana_id' => $rencanaId,
-            ]
+            ],
+            false,
+            400
         );
 
         $lemLabel = $lembaga !== '' ? $lembaga : '-';
@@ -1446,6 +1450,7 @@ class PengeluaranController
      * baris pengurus___subscription — tidak bergantung pada JWT/session penerima (push dikirim server-side).
      *
      * @param list<int> $excludePengurusIds
+     * @param bool $skipUrlOnClick true = klik tidak membuka URL (jarang dipakai)
      */
     private function sendPengeluaranNotifPolicyPush(
         ?string $lembagaId,
@@ -1455,7 +1460,9 @@ class PengeluaranController
         string $body,
         string $relativeUrl,
         string $tag,
-        array $dataPayload
+        array $dataPayload,
+        bool $skipUrlOnClick = false,
+        int $bodyMaxLen = 180
     ): void {
         $lem = $lembagaId !== null ? trim($lembagaId) : '';
         $pushIds = PengeluaranWaNotifRecipientHelper::fetchEligiblePengurusIdsForPush(
@@ -1480,23 +1487,132 @@ class PengeluaranController
             return;
         }
         $bodyOut = $body;
-        if (strlen($bodyOut) > 180) {
-            $bodyOut = substr($bodyOut, 0, 177) . '...';
+        $maxLen = max(80, min(2000, $bodyMaxLen));
+        if (strlen($bodyOut) > $maxLen) {
+            $bodyOut = substr($bodyOut, 0, $maxLen - 3) . '...';
         }
         try {
             $push = new PushNotificationService();
-            $push->sendToPengurus($pushIds, $title, $bodyOut, [
-                'url' => $relativeUrl,
+            $pushOpts = [
                 'icon' => '/gambar/icon/icon192.png',
                 'badge' => '/gambar/icon/icon128.png',
                 'tag' => $tag,
                 'data' => $dataPayload,
                 'requireInteraction' => false,
                 'vibrate' => [200, 100, 200],
-            ]);
+            ];
+            if ($skipUrlOnClick) {
+                $pushOpts['skip_navigation'] = true;
+                $pushOpts['url'] = '';
+            } else {
+                $pushOpts['url'] = $relativeUrl;
+            }
+            $push->sendToPengurus($pushIds, $title, $bodyOut, $pushOpts);
         } catch (\Throwable $e) {
             error_log('sendPengeluaranNotifPolicyPush: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * PWA ke semua pengurus berhak (notif semua lembaga + notif lembaga sesuai role), setelah approve/tolak rencana.
+     */
+    private function scheduleRencanaApproveRejectPolicyPwa(int $rencanaId, ?int $actorTokenUserId, bool $isReject): void
+    {
+        $rid = $rencanaId;
+        $act = $actorTokenUserId;
+        $rej = $isReject;
+        $self = $this;
+        DeferredHttpTask::runAfterResponse(static function () use ($self, $rid, $act, $rej): void {
+            $self->runRencanaApproveRejectPolicyPwaSync($rid, $act, $rej);
+        });
+    }
+
+    private function runRencanaApproveRejectPolicyPwaSync(int $rencanaId, ?int $actorTokenUserId, bool $isReject): void
+    {
+        $stmt = $this->db->prepare(
+            'SELECT r.keterangan, r.lembaga, r.id_admin, p_pembuat.nama AS nama_pembuat
+             FROM pengeluaran___rencana r
+             LEFT JOIN pengurus p_pembuat ON p_pembuat.id = r.id_admin
+             WHERE r.id = ? LIMIT 1'
+        );
+        $stmt->execute([$rencanaId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            return;
+        }
+
+        $ket = trim((string) ($row['keterangan'] ?? ''));
+        if ($ket === '') {
+            $ket = '(tanpa keterangan)';
+        }
+        if (strlen($ket) > 160) {
+            $ket = substr($ket, 0, 157) . '...';
+        }
+
+        $namaPembuat = trim((string) ($row['nama_pembuat'] ?? ''));
+        if ($namaPembuat === '') {
+            $namaPembuat = '—';
+        }
+
+        $namaActor = $this->resolvePengurusNamaForPush($actorTokenUserId);
+        $lemRaw = isset($row['lembaga']) ? trim((string) $row['lembaga']) : '';
+        $lemParam = $lemRaw !== '' ? $lemRaw : null;
+
+        $title = $isReject ? 'Rencana ditolak' : 'Rencana diapprove';
+        $first = $isReject
+            ? '✗ Ditolak ' . $ket
+            : '✓ Diapprove ' . $ket;
+        $body = $first . "\noleh : " . $namaActor . "\ndiajukan : " . $namaPembuat;
+
+        $actorPid = $this->resolveActorPengurusId($actorTokenUserId);
+        $exclude = $actorPid !== null && $actorPid > 0 ? [$actorPid] : [];
+
+        $relUrl = '/pengeluaran?tab=rencana&rencana=' . $rencanaId;
+        $this->sendPengeluaranNotifPolicyPush(
+            $lemParam,
+            false,
+            $exclude,
+            $title,
+            $body,
+            $relUrl,
+            'pengeluaran-rencana-' . ($isReject ? 'tolak-' : 'approve-') . $rencanaId . '-' . microtime(true),
+            [
+                'type' => $isReject ? 'pengeluaran_rencana_tolak' : 'pengeluaran_rencana_approve',
+                'rencana_id' => $rencanaId,
+            ],
+            false,
+            400
+        );
+    }
+
+    /**
+     * Isi PWA rencana (tanpa URL di teks); klik memakai URL di payload push.
+     */
+    private function buildRencanaPwaBodyMembuatAjuan(int $rencanaId): string
+    {
+        $stmt = $this->db->prepare(
+            'SELECT r.keterangan, p.nama AS nama_pembuat
+             FROM pengeluaran___rencana r
+             LEFT JOIN pengurus p ON p.id = r.id_admin
+             WHERE r.id = ? LIMIT 1'
+        );
+        $stmt->execute([$rencanaId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $ket = trim((string) ($row['keterangan'] ?? ''));
+        if ($ket === '') {
+            $ket = '(tanpa keterangan)';
+        }
+        if (strlen($ket) > 160) {
+            $ket = substr($ket, 0, 157) . '...';
+        }
+        $nama = trim((string) ($row['nama_pembuat'] ?? ''));
+        if ($nama === '') {
+            $nama = '—';
+        }
+        $total = $this->sumRencanaDetailNominalNonRejected($rencanaId);
+        $idr = RencanaPengeluaranWaHelper::formatIdr($total);
+
+        return 'Membuat ' . $ket . "\noleh : " . $nama . "\nnominal : " . $idr;
     }
 
     /**
@@ -1506,16 +1622,7 @@ class PengeluaranController
      */
     private function runRencanaNotifWaDelivery(array $recipients, string $message, int $rencanaId, ?int $idPengurusPengirim): void
     {
-        $stmtJ = $this->db->prepare('SELECT keterangan FROM pengeluaran___rencana WHERE id = ? LIMIT 1');
-        $stmtJ->execute([$rencanaId]);
-        $ketPush = trim((string) ($stmtJ->fetchColumn() ?: ''));
-        if ($ketPush === '') {
-            $ketPush = 'Rencana';
-        }
-        if (strlen($ketPush) > 44) {
-            $ketPush = substr($ketPush, 0, 41) . '...';
-        }
-        $pushTitleWa = 'Notifikasi - ' . $ketPush;
+        $pushTitleWa = 'Rencana pengeluaran';
 
         WhatsAppService::wakeWaServer(false);
         $successCount = 0;
@@ -1546,6 +1653,7 @@ class PengeluaranController
             }
         }
 
+        $pushBodyClean = $this->buildRencanaPwaBodyMembuatAjuan($rencanaId);
         $pushStats = $this->sendPengeluaranWaCompanionPush(
             $recipients,
             $pushTitleWa,
@@ -1557,7 +1665,7 @@ class PengeluaranController
                 'rencana_id' => $rencanaId,
             ],
             $idPengurusPengirim,
-            null
+            $pushBodyClean
         );
 
         UserAktivitasLogger::log(
@@ -1720,31 +1828,6 @@ class PengeluaranController
         int $rencanaId,
         bool $isReject
     ): void {
-        $stmtMeta = $this->db->prepare(
-            'SELECT r.keterangan, r.id_admin, p_pembuat.nama AS nama_pembuat
-             FROM pengeluaran___rencana r
-             LEFT JOIN pengurus p_pembuat ON p_pembuat.id = r.id_admin
-             WHERE r.id = ? LIMIT 1'
-        );
-        $stmtMeta->execute([$rencanaId]);
-        $metaR = $stmtMeta->fetch(\PDO::FETCH_ASSOC) ?: [];
-        $judulPush = trim((string) ($metaR['keterangan'] ?? ''));
-        if ($judulPush === '') {
-            $judulPush = 'Rencana pengeluaran';
-        }
-        if (strlen($judulPush) > 72) {
-            $judulPush = substr($judulPush, 0, 69) . '...';
-        }
-        $namaPembuat = trim((string) ($metaR['nama_pembuat'] ?? ''));
-        if ($namaPembuat === '') {
-            $namaPembuat = '—';
-        }
-        $namaApprover = $this->resolvePengurusNamaForPush($idPengurusPengirim);
-        $pushJudul = $isReject
-            ? ('❌ Ditolak - ' . $judulPush)
-            : ('✅ Disetujui - ' . $judulPush);
-        $pushBodyPwa = 'dibuat : ' . $namaPembuat . "\napprover : " . $namaApprover;
-
         WhatsAppService::wakeWaServer(false);
         $successCount = 0;
         $failCount = 0;
@@ -1777,20 +1860,6 @@ class PengeluaranController
             }
         }
 
-        $pushStats = $this->sendPengeluaranWaCompanionPush(
-            $recipients,
-            $pushJudul,
-            $message,
-            '/pengeluaran?tab=rencana&rencana=' . $rencanaId,
-            'pengeluaran-rencana-wa-' . $rencanaId,
-            [
-                'type' => 'pengeluaran_rencana_wa',
-                'rencana_id' => $rencanaId,
-            ],
-            $idPengurusPengirim,
-            $pushBodyPwa
-        );
-
         if ($successCount + $failCount > 0) {
             UserAktivitasLogger::log(
                 null,
@@ -1801,13 +1870,14 @@ class PengeluaranController
                 null,
                 [
                     'notif_wa' => true,
-                    'notif_push' => true,
+                    'notif_push' => false,
                     'success_count' => $successCount,
                     'fail_count' => $failCount,
-                    'push_success' => $pushStats['success'],
-                    'push_failed' => $pushStats['failed'],
+                    'push_success' => 0,
+                    'push_failed' => 0,
                     'recipient_ids' => $recipientIds,
-                    'via' => 'rencana_approve_reject',
+                    'via' => 'rencana_approve_reject_wa',
+                    'reject_flow' => $isReject,
                 ],
                 null
             );
@@ -1950,6 +2020,12 @@ class PengeluaranController
 
                 $this->db->commit();
 
+                $this->scheduleRencanaApproveRejectPolicyPwa(
+                    (int) $idRencana,
+                    $idAdminApprove !== null ? (int) $idAdminApprove : null,
+                    false
+                );
+
                 $data = ['id_pengeluaran' => $idPengeluaran];
                 if (!empty($waRecipients)) {
                     $rowWa = $this->fetchRencanaRowForWaAfterApprove((int) $idRencana);
@@ -2041,6 +2117,12 @@ class PengeluaranController
             $sqlUpdate = "UPDATE pengeluaran___rencana SET ket = 'ditolak' WHERE id = ?";
             $stmtUpdate = $this->db->prepare($sqlUpdate);
             $stmtUpdate->execute([$idRencana]);
+
+            $this->scheduleRencanaApproveRejectPolicyPwa(
+                (int) $idRencana,
+                $idAdminReject !== null ? (int) $idAdminReject : null,
+                true
+            );
 
             $payload = [];
             if (!empty($waRecipients)) {

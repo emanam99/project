@@ -4,6 +4,10 @@
 #
 # Lifecycle & restart: biarkan Docker yang mengatur (restart: always). Jangan jalankan
 # container ini lewat PM2 — double layer bisa bentrok; PM2 hanya untuk `node server.js` di host tanpa Docker.
+#
+# Sesi Baileys (Bad MAC / "No matching sessions"): biasanya auth di volume ./whatsapp-sessions korup atau
+# dua proses memakai folder yang sama (host npm start + container, atau staging+prod). Hanya SATU instance
+# per volume. Lihat wa/docs/TROUBLESHOOTING-WA-SESSION.md
 
 services:
   app:
@@ -13,6 +17,7 @@ services:
     image: alutsmani-wa:local
     container_name: ${WA_CONTAINER_NAME:-wa-app}
     restart: always
+    stop_grace_period: 45s
     ports:
       - "${PORT:-3001}:${PORT:-3001}"
     env_file:

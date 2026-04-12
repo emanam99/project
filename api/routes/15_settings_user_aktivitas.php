@@ -11,6 +11,7 @@ use App\Controllers\SettingsController;
 use App\Controllers\UserAktivitasController;
 use App\Controllers\TahunAjaranController;
 use App\Controllers\WatzapController;
+use App\Controllers\EvolutionApiController;
 use App\Controllers\WaInteractiveMenuController;
 use App\Controllers\KontakController;
 
@@ -44,6 +45,20 @@ return function (\Slim\App $app): void {
         $group->get('/webhooks', [WatzapController::class, 'getWebhooks']);
         $group->post('/set-webhook', [WatzapController::class, 'setWebhook']);
         $group->post('/send', [WatzapController::class, 'send']);
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::SUPER_ADMIN_MENUS)))->add(new AuthMiddleware());
+
+    $app->group('/api/evolution-api', function ($group) {
+        $group->get('/config', [EvolutionApiController::class, 'getConfig']);
+        $group->put('/config', [EvolutionApiController::class, 'putConfig']);
+        $group->get('/info', [EvolutionApiController::class, 'getInfo']);
+        $group->get('/instances', [EvolutionApiController::class, 'getInstances']);
+        $group->post('/send-text', [EvolutionApiController::class, 'postSendText']);
+        $group->post('/send-list', [EvolutionApiController::class, 'postSendList']);
+        $group->post('/send-buttons', [EvolutionApiController::class, 'postSendButtons']);
+        $group->post('/instance/create', [EvolutionApiController::class, 'postCreate']);
+        $group->get('/instance/{name}/connection-state', [EvolutionApiController::class, 'getConnectionState']);
+        $group->get('/instance/{name}/connect', [EvolutionApiController::class, 'getConnect']);
+        $group->delete('/instance/{name}/logout', [EvolutionApiController::class, 'deleteLogout']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::SUPER_ADMIN_MENUS)))->add(new AuthMiddleware());
 
     $app->group('/api/wa-interactive-menu', function ($group) {

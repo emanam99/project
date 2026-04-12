@@ -1,9 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { aiTrainingAdminAPI } from '../../services/api'
-import { useChatAiHeaderSlot } from '../../contexts/ChatAiHeaderContext'
-import EbeddienChatHeaderTraining from './DeepseekChat/EbeddienChatHeaderTraining'
-
-const ASSISTANT_NAME = 'eBeddien'
 
 function senderStyle(sender) {
   if (sender === 'user') return 'bg-teal-600 text-white ml-8'
@@ -32,7 +28,6 @@ export default function AiTrainingChat() {
   const [isDesktop, setIsDesktop] = useState(false)
   const sidebarRef = useRef(null)
   const chatRef = useRef(null)
-  const [chatHeaderMenuOpen, setChatHeaderMenuOpen] = useState(false)
   /** Gulir hanya area pesan — jangan pakai scrollIntoView (bisa menggulir window & membuat layout “meloncat”). */
   const messagesScrollRef = useRef(null)
 
@@ -94,21 +89,6 @@ export default function AiTrainingChat() {
   useEffect(() => {
     loadSessions()
   }, [loadSessions])
-
-  const setHeaderFromLayout = useChatAiHeaderSlot()
-  useLayoutEffect(() => {
-    if (!setHeaderFromLayout) return
-    setHeaderFromLayout(
-      <EbeddienChatHeaderTraining
-        assistantName={ASSISTANT_NAME}
-        variant="training-chat"
-        accountLoading={false}
-        chatHeaderMenuOpen={chatHeaderMenuOpen}
-        setChatHeaderMenuOpen={setChatHeaderMenuOpen}
-      />
-    )
-    return () => setHeaderFromLayout(null)
-  }, [setHeaderFromLayout, chatHeaderMenuOpen])
 
   useEffect(() => {
     if (current?.id) loadMessages(current.id)

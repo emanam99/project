@@ -33,19 +33,28 @@ export function useChatAiFiturAccess() {
     const pageTrainingChat = can(CHAT_AI_ACTION_CODES.pageTrainingChat, superFb)
     const pageDashboard = can(CHAT_AI_ACTION_CODES.pageDashboard, superFb)
     const pageRiwayat = can(CHAT_AI_ACTION_CODES.pageRiwayat, superFb)
+    const pagePengaturan = can(CHAT_AI_ACTION_CODES.pagePengaturan, superFb)
     const uiUserAi = can(CHAT_AI_ACTION_CODES.uiUserAiSettings, superFb)
     const uiModeAlt = can(CHAT_AI_ACTION_CODES.uiModeAlternatif, superFb)
     const showPelatihanMenu =
-      pageBank || pageTrainingChat || pageDashboard || pageRiwayat || uiUserAi
+      pageBank || pageTrainingChat || pageDashboard || pageRiwayat || uiUserAi || pagePengaturan
+    const trainingSectionTabCount = [pageBank, pageTrainingChat, pageDashboard, pageRiwayat].filter(Boolean).length
+    const extraSectionTabCount = trainingSectionTabCount + (uiUserAi ? 1 : 0) + (pagePengaturan ? 1 : 0)
+    /** Tab layout: Obrolan + (pelatihan | User AI); tampil jika ≥2 tab total */
+    const showChatAiSectionTabs = extraSectionTabCount >= 1
     return {
       can: (code, fb) => can(code, typeof fb === 'function' ? fb : () => !!fb),
       pageTrainingBank: pageBank,
       pageTrainingChat,
       pageDashboard,
       pageRiwayat,
+      pagePengaturan,
       uiUserAiSettings: uiUserAi,
       modeAlternatif: uiModeAlt,
-      showPelatihanMenu
+      showPelatihanMenu,
+      trainingSectionTabCount,
+      extraSectionTabCount,
+      showChatAiSectionTabs
     }
   }, [user, fiturMenuCodes])
 }

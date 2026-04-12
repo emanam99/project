@@ -53,7 +53,7 @@ export default function DashboardSuperAdmin() {
   useEffect(() => {
     fetchOnline()
 
-    const socket = io(getLiveServerUrl(), { transports: ['websocket', 'polling'] })
+    const socket = io(getLiveServerUrl(), { transports: ['polling', 'websocket'] })
     socketRef.current = socket
 
     socket.on('users_updated', (data) => {

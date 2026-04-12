@@ -12,6 +12,7 @@ import { generateRencanaWhatsAppMessage } from './Pengeluaran/utils/pengeluaranU
 import { compressImage } from '../../utils/imageCompression'
 import * as XLSX from 'xlsx'
 import Modal from '../../components/Modal/Modal'
+import WaNotifRecipientChecklist from './Pengeluaran/components/WaNotifRecipientChecklist'
 
 function EditRencana() {
   const { id } = useParams()
@@ -25,6 +26,7 @@ function EditRencana() {
   const [saving, setSaving] = useState(false)
   const [rencana, setRencana] = useState(null)
   const [listAdmins, setListAdmins] = useState([])
+  const [recipientGroups, setRecipientGroups] = useState(null)
   const [selectedAdmins, setSelectedAdmins] = useState([])
   const [loadingAdmins, setLoadingAdmins] = useState(false)
   const [listLembaga, setListLembaga] = useState([])
@@ -173,6 +175,7 @@ function EditRencana() {
         notifDraft ? { notifContext: 'draft' } : {}
       )
       if (response.success) {
+        setRecipientGroups(response.recipient_groups ?? null)
         // Backend sudah menentukan policy; frontend hanya dedupe.
         const adminUwabaMap = new Map()
         ;(response.data || []).forEach((admin) => {
@@ -1000,7 +1003,7 @@ function EditRencana() {
     return (
       <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
         <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
-          <div className="p-4 sm:p-6 lg:p-8">
+          <div className="p-4 sm:p-6 lg:p-8 pb-24 sm:pb-6 lg:pb-8">
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
             </div>
@@ -1054,7 +1057,7 @@ function EditRencana() {
 
       {/* Konten Form - Bisa di-scroll */}
       <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-        <div className="p-4 sm:p-6 lg:p-8">
+        <div className="p-4 sm:p-6 lg:p-8 pb-24 sm:pb-6 lg:pb-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1514,42 +1517,18 @@ function EditRencana() {
                 </summary>
                 <div className="px-6 pb-6 pt-0 border-t border-gray-100 dark:border-gray-700">
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 mb-4">
-                    Daftar penerima mengikuti Pengaturan → Fitur: aksi &quot;Notif WA semua lembaga&quot; atau &quot;Notif WA lembaga sesuai role&quot;
-                    untuk role terkait, serta lembaga rencana ini. Buka bagian ini hanya jika perlu membatasi centang penerima di antara mereka yang memenuhi syarat.
+                    Daftar dipisah: &quot;Notif WA semua lembaga&quot; vs &quot;Notif WA lembaga sesuai role&quot; (mengikuti lembaga yang dipilih pada formulir).
+                    Buka bagian ini hanya jika perlu membatasi centang penerima.
                   </p>
-                  {loadingAdmins ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                    </div>
-                  ) : listAdmins.length > 0 ? (
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
-                        {listAdmins.map((admin) => (
-                          <div
-                            key={admin.id}
-                            className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedAdmins.includes(admin.id)}
-                              onChange={() => handleToggleAdmin(admin.id)}
-                              className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
-                            />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                                {admin.nama || 'Unknown'}
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{admin.whatsapp}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Tidak ada admin tersedia</p>
-                    </div>
-                  )}
+                  <WaNotifRecipientChecklist
+                    loading={loadingAdmins}
+                    recipientGroups={recipientGroups}
+                    listAdminsFallback={listAdmins}
+                    selectedAdmins={selectedAdmins}
+                    onToggle={handleToggleAdmin}
+                    canManage
+                    draftContext={rencana?.ket === 'draft'}
+                  />
                 </div>
               </details>
             ) : null}

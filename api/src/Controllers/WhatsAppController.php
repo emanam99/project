@@ -265,6 +265,28 @@ class WhatsAppController
             error_log('WhatsAppController::incoming saved id=' . $id . ' from=' . $nomorTujuan);
 
             $jid = $fromJid !== '' ? $fromJid : null;
+
+            $incomingIsGroup = null;
+            if (array_key_exists('is_group', $body)) {
+                $incomingIsGroup = filter_var($body['is_group'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            } elseif (array_key_exists('isGroup', $body)) {
+                $incomingIsGroup = filter_var($body['isGroup'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            }
+            if ($incomingIsGroup === null && isset($body['chat_type'])) {
+                $ct = strtolower(trim((string) $body['chat_type']));
+                if (in_array($ct, ['group', 'grp', 'g'], true)) {
+                    $incomingIsGroup = true;
+                } elseif (in_array($ct, ['private', 'personal', 'direct', 'dm'], true)) {
+                    $incomingIsGroup = false;
+                }
+            }
+            if ($incomingIsGroup === null && $jid !== null && $jid !== '') {
+                $jl = strtolower($jid);
+                if (str_ends_with($jl, '@g.us')) {
+                    $incomingIsGroup = true;
+                }
+            }
+
             // Jika provider mengirim chat @lid, simpan LID ke kontak agar pengiriman berikutnya bisa pakai chatId @lid.
             // Ini membantu kasus nomor sudah tersimpan tapi balasan/kirim berikutnya tidak sampai karena identitas chat berubah.
             WhatsAppService::syncKontakLidFromIncomingMeta($nomorTujuan, $jid);
@@ -279,8 +301,8 @@ class WhatsAppController
                 }
             }
             if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
-                // Pengguna dengan "Akses AI dari WA" aktif: AI dulu, baru menu interaktif.
-                $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $jid);
+                // AI instansi (master + terima semua): AI dulu, baru menu interaktif.
+                $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $jid, $incomingIsGroup);
                 if ($reply !== null && $reply !== '') {
                     $replySource = 'ai_whatsapp';
                 }
@@ -308,7 +330,7 @@ class WhatsAppController
                 if (!$skipOtherIncomingFlows) {
                     error_log(
                         'WhatsAppController::incoming hint: Menu interaktif tidak mengembalikan teks (mati/tidak cocok). '
-                        . 'AI WA butuh baris di atas dari AiWhatsappBridgeService jika penyebabnya bukan nomor/profil.'
+                        . 'AI instansi butuh master aktif + terima semua + kuota valid (lihat log AiWhatsappBridgeService).'
                     );
                 }
             }

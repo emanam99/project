@@ -10,6 +10,8 @@ import { useNotification } from '../../../../contexts/NotificationContext'
 export const useAdminList = (onlySuperAdminAndUwaba = false) => {
   const { showNotification } = useNotification()
   const [listAdmins, setListAdmins] = useState([])
+  /** @type {null | { notif_semua_lembaga: object[], notif_lembaga_sesuai_role: object[] }} */
+  const [recipientGroups, setRecipientGroups] = useState(null)
   const [selectedAdmins, setSelectedAdmins] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -26,7 +28,13 @@ export const useAdminList = (onlySuperAdminAndUwaba = false) => {
         : await userAPI.getAll()
       if (response.success) {
         let adminList = response.data || []
-        
+        const groups = onlySuperAdminAndUwaba ? response.recipient_groups ?? null : null
+        if (onlySuperAdminAndUwaba && groups) {
+          setRecipientGroups(groups)
+        } else {
+          setRecipientGroups(null)
+        }
+
         // Jika memakai endpoint khusus, backend sudah menentukan policy; frontend hanya dedupe.
         if (onlySuperAdminAndUwaba) {
           const adminUwabaMap = new Map()
@@ -37,9 +45,9 @@ export const useAdminList = (onlySuperAdminAndUwaba = false) => {
           })
           adminList = Array.from(adminUwabaMap.values())
         }
-        
+
         // Hanya tampilkan admin yang memiliki nomor WhatsApp
-        const adminsWithWhatsapp = adminList.filter(admin => 
+        const adminsWithWhatsapp = adminList.filter(admin =>
           admin.whatsapp && admin.whatsapp.trim() !== ''
         )
         setListAdmins(adminsWithWhatsapp)
@@ -72,6 +80,7 @@ export const useAdminList = (onlySuperAdminAndUwaba = false) => {
 
   return {
     listAdmins,
+    recipientGroups,
     selectedAdmins,
     loading,
     loadAdmins,

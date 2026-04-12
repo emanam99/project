@@ -9,7 +9,9 @@ const PATH_TO_CODE = {
   '/chat-ai/training': CHAT_AI_ACTION_CODES.pageTrainingBank,
   '/chat-ai/training-chat': CHAT_AI_ACTION_CODES.pageTrainingChat,
   '/chat-ai/dashboard': CHAT_AI_ACTION_CODES.pageDashboard,
-  '/chat-ai/riwayat': CHAT_AI_ACTION_CODES.pageRiwayat
+  '/chat-ai/riwayat': CHAT_AI_ACTION_CODES.pageRiwayat,
+  '/chat-ai/pengaturan': CHAT_AI_ACTION_CODES.pagePengaturan,
+  '/chat-ai/user-ai': CHAT_AI_ACTION_CODES.uiUserAiSettings,
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -14,8 +14,6 @@ import {
 } from 'chart.js'
 import { Bar, Line, Doughnut } from 'react-chartjs-2'
 import { deepseekAPI } from '../../services/api'
-import { useChatAiHeaderSlot } from '../../contexts/ChatAiHeaderContext'
-import EbeddienChatHeaderTraining from './DeepseekChat/EbeddienChatHeaderTraining'
 
 ChartJS.register(
   CategoryScale,
@@ -29,8 +27,6 @@ ChartJS.register(
   Legend,
   Filler
 )
-
-const ASSISTANT_NAME = 'eBeddien'
 
 const CATEGORY_COLORS = [
   '#0d9488',
@@ -57,23 +53,6 @@ export default function AiChatDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [payload, setPayload] = useState(null)
-  const [chatHeaderMenuOpen, setChatHeaderMenuOpen] = useState(false)
-
-  const setHeaderFromLayout = useChatAiHeaderSlot()
-  useLayoutEffect(() => {
-    if (!setHeaderFromLayout) return
-    setHeaderFromLayout(
-      <EbeddienChatHeaderTraining
-        assistantName={ASSISTANT_NAME}
-        variant="dashboard"
-        accountLoading={false}
-        chatHeaderMenuOpen={chatHeaderMenuOpen}
-        setChatHeaderMenuOpen={setChatHeaderMenuOpen}
-      />
-    )
-    return () => setHeaderFromLayout(null)
-  }, [setHeaderFromLayout, chatHeaderMenuOpen])
-
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)

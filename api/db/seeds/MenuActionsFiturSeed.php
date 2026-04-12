@@ -47,6 +47,7 @@ class MenuActionsFiturSeed extends AbstractSeed
         $this->seedChatAi($conn, $pidStmt, $ins);
         $this->seedPendaftaran($conn, $pidStmt, $ins);
         $this->seedPengeluaran($conn, $pidStmt, $ins);
+        $this->seedAbsen($conn, $pidStmt, $ins);
         $this->seedLaporanUwaba($conn, $pidStmt, $ins);
         $this->seedUgtMadrasahScope($conn, $pidStmt, $ins);
         $this->seedUgtLaporan($conn, $pidStmt, $ins);
@@ -107,10 +108,11 @@ class MenuActionsFiturSeed extends AbstractSeed
             return;
         }
         $actions = [
-            ['action.chat_ai.page.training_bank', 'Chat AI · Bank Q&A', 10],
-            ['action.chat_ai.page.training_chat', 'Chat AI · Training Chat', 20],
-            ['action.chat_ai.page.dashboard', 'Chat AI · Dashboard', 30],
-            ['action.chat_ai.page.riwayat', 'Chat AI · Riwayat', 40],
+            ['action.chat_ai.page.training_bank', 'Chat AI · Tab · Bank Q&A', 10],
+            ['action.chat_ai.page.training_chat', 'Chat AI · Tab · Training Chat', 20],
+            ['action.chat_ai.page.dashboard', 'Chat AI · Tab · Dashboard', 30],
+            ['action.chat_ai.page.riwayat', 'Chat AI · Tab · Riwayat', 40],
+            ['action.chat_ai.page.pengaturan', 'Chat AI · Tab · Pengaturan', 45],
             ['action.chat_ai.ui.user_ai_settings', 'Chat AI · Pengaturan User AI', 50],
             ['action.chat_ai.ui.mode_alternatif', 'Chat AI · Mode alternatif (proxy)', 60],
         ];
@@ -194,6 +196,27 @@ class MenuActionsFiturSeed extends AbstractSeed
         ];
         foreach ($actions as $a) {
             $ins->execute([$parentId, $a[0], $a[1], $a[2], 'Keuangan']);
+        }
+    }
+
+    private function seedAbsen(\PDO $conn, \PDOStatement $pidStmt, \PDOStatement $ins): void
+    {
+        $parentId = $this->parentId($conn, $pidStmt, 'menu.absen');
+        if ($parentId === null) {
+            return;
+        }
+        $actions = [
+            ['action.absen.tab.riwayat', 'Absen · Tab Riwayat', 10],
+            ['action.absen.tab.absen', 'Absen · Tab Absen', 20],
+            ['action.absen.tab.ngabsen', 'Absen · Tab Ngabsen', 30],
+            ['action.absen.lokasi.list', 'Absen · Lokasi · Daftar titik', 35],
+            ['action.absen.lokasi.absen', 'Absen · Lokasi · Absen mandiri (GPS)', 37],
+            ['action.absen.lokasi.tambah', 'Absen · Lokasi · Tambah', 40],
+            ['action.absen.lokasi.ubah', 'Absen · Lokasi · Ubah', 50],
+            ['action.absen.lokasi.hapus', 'Absen · Lokasi · Hapus', 60],
+        ];
+        foreach ($actions as $a) {
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'Lembaga']);
         }
     }
 

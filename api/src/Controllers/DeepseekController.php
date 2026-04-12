@@ -6,14 +6,19 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\AiTrainingRagHelper;
+use App\Helpers\RoleHelper;
 use App\Services\AiChatDailyLimitService;
-use App\Services\AiWaActivationTokenService;
+use App\Services\AiWaInstansiSettingsService;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
 class DeepseekController
 {
+    private const CHAT_AI_PENGATURAN_FITUR = 'action.chat_ai.page.pengaturan';
+
+    private const CHAT_AI_MODE_ALTERNATIF_FITUR = 'action.chat_ai.ui.mode_alternatif';
+
     private const BASE_URL = 'https://chat.deepseek.com/api/v0';
 
     private const HEADERS = [
@@ -49,6 +54,24 @@ class DeepseekController
         }
 
         return null;
+    }
+
+    private function canManageChatAiPengaturan(\PDO $db, array $userPayload): bool
+    {
+        if (!empty($userPayload['is_real_super_admin'])) {
+            return true;
+        }
+
+        return RoleHelper::tokenHasEbeddienFiturCode($db, $userPayload, self::CHAT_AI_PENGATURAN_FITUR);
+    }
+
+    private function canUseAlternativeChatMode(\PDO $db, array $userPayload): bool
+    {
+        if (!empty($userPayload['is_real_super_admin'])) {
+            return true;
+        }
+
+        return RoleHelper::tokenHasEbeddienFiturCode($db, $userPayload, self::CHAT_AI_MODE_ALTERNATIF_FITUR);
     }
 
     /**
@@ -465,7 +488,7 @@ class DeepseekController
         $bucket = AiChatDailyLimitService::bucketUserIdsForWebAi($db, $usersId);
 
         return [
-            'today' => AiChatDailyLimitService::countTodayForUserIds($db, $bucket),
+            'today' => AiChatDailyLimitService::countTodayForUserIds($db, $bucket, true),
             'limit' => $limit,
         ];
     }
@@ -611,9 +634,9 @@ class DeepseekController
                 return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 404);
             }
 
-            $hasWaAiCol = $this->columnExists($db, 'users', 'ai_whatsapp_enabled');
-            $waColSql = $hasWaAiCol ? ', ai_whatsapp_enabled' : '';
-            $stmt = $db->prepare("SELECT id, email{$waColSql} FROM users WHERE id = ? LIMIT 1");
+            $hasChatModeCol = $this->columnExists($db, 'users', 'ai_chat_mode_pref');
+            $modeColSql = $hasChatModeCol ? ', ai_chat_mode_pref' : '';
+            $stmt = $db->prepare("SELECT id, email{$modeColSql} FROM users WHERE id = ? LIMIT 1");
             $stmt->execute([$usersId]);
             $user = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -622,6 +645,11 @@ class DeepseekController
             }
 
             $email = trim((string) ($user['email'] ?? ''));
+            $aiChatMode = 'api';
+            if ($hasChatModeCol) {
+                $mv = strtolower(trim((string) ($user['ai_chat_mode_pref'] ?? 'api')));
+                $aiChatMode = ($mv === 'proxy') ? 'proxy' : 'api';
+            }
             $aiSettings = $this->getUserAiSettings($db, $usersId);
             $usage = $this->aiDailyUsageForLoggedInUser($db, $usersId);
             if ($email === '') {
@@ -631,7 +659,7 @@ class DeepseekController
                     'data' => [
                         'user_id' => (int) $user['id'],
                         'email' => null,
-                        'ai_whatsapp_enabled' => $hasWaAiCol ? ((int) ($user['ai_whatsapp_enabled'] ?? 0) === 1) : false,
+                        'ai_chat_mode' => $aiChatMode,
                         'ai_enabled' => (bool) ($aiSettings['enabled'] ?? true),
                         'ai_daily_limit' => $usage['limit'],
                         'ai_today_count' => $usage['today'],
@@ -644,7 +672,7 @@ class DeepseekController
                 'data' => [
                     'user_id' => (int) $user['id'],
                     'email' => $email,
-                    'ai_whatsapp_enabled' => $hasWaAiCol ? ((int) ($user['ai_whatsapp_enabled'] ?? 0) === 1) : false,
+                    'ai_chat_mode' => $aiChatMode,
                     'ai_enabled' => (bool) ($aiSettings['enabled'] ?? true),
                     'ai_daily_limit' => $usage['limit'],
                     'ai_today_count' => $usage['today'],
@@ -657,85 +685,7 @@ class DeepseekController
     }
 
     /**
-     * Data toggle AI WA + nomor profil + link aktivasi wa.me (slot 1 / session utama).
-     *
-     * @return array<string, mixed>
-     */
-    private function buildWhatsappAccessData(\PDO $db, int $usersId): array
-    {
-        $empty = [
-            'enabled' => false,
-            'no_wa_raw' => null,
-            'no_wa_normalized' => '',
-            'wa_number_ok' => false,
-            'username' => '',
-            'email' => null,
-            'ai_wa_jid_bound' => false,
-            'slot1_session_id' => 'default',
-            'slot1_ready' => false,
-            'slot1_phone' => '',
-            'activation_message' => '',
-            'wa_me_url' => null,
-            'activation_requires_login_token' => true,
-            'activation_token_table_ready' => false,
-            'activation_token_ttl_minutes' => AiWaActivationTokenService::ttlMinutes(),
-        ];
-        if (!$this->columnExists($db, 'users', 'ai_whatsapp_enabled')) {
-            return $empty;
-        }
-        $hasJidCol = $this->columnExists($db, 'users', 'ai_wa_jid');
-        $sql = 'SELECT ai_whatsapp_enabled, no_wa, username, email'
-            . ($hasJidCol ? ', ai_wa_jid' : '')
-            . ' FROM users WHERE id = ? LIMIT 1';
-        $stmt = $db->prepare($sql);
-        $stmt->execute([$usersId]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
-        $enabled = ((int) ($row['ai_whatsapp_enabled'] ?? 0) === 1);
-        $raw = isset($row['no_wa']) ? trim((string) $row['no_wa']) : '';
-        $norm = $raw !== '' ? WhatsAppService::formatPhoneNumber($raw) : '';
-        $len = strlen($norm);
-        $email = isset($row['email']) ? trim((string) $row['email']) : '';
-        $email = $email !== '' ? $email : null;
-        $username = isset($row['username']) ? trim((string) $row['username']) : '';
-        $aiWaJid = ($hasJidCol && isset($row['ai_wa_jid'])) ? trim((string) $row['ai_wa_jid']) : '';
-        $aiWaJidBound = $aiWaJid !== '';
-
-        $sessEnv = trim((string) (getenv('WA_AI_ACTIVATION_SESSION_ID') ?: ''));
-        $sessionId = $sessEnv !== '' ? $sessEnv : WhatsAppService::getPrimaryWaSessionId();
-        $st = WhatsAppService::fetchNodeSessionStatus($sessionId);
-        $slotReady = false;
-        $slotPhone = '';
-        if (is_array($st)) {
-            $slotReady = (($st['baileysStatus'] ?? '') === 'connected');
-            $rawSlot = $st['baileysPhoneNumber'] ?? $st['phoneNumber'] ?? null;
-            if (is_string($rawSlot) && trim($rawSlot) !== '') {
-                $slotPhone = WhatsAppService::formatPhoneNumber($rawSlot);
-            }
-        }
-        $tokenTable = AiWaActivationTokenService::tableExists($db);
-
-        return [
-            'enabled' => $enabled,
-            'no_wa_raw' => $raw !== '' ? $raw : null,
-            'no_wa_normalized' => $norm,
-            'wa_number_ok' => $len >= 10 && $len <= 16,
-            'username' => $username,
-            'email' => $email,
-            'ai_wa_jid_bound' => $aiWaJidBound,
-            'slot1_session_id' => $sessionId,
-            'slot1_ready' => $slotReady,
-            'slot1_phone' => $slotPhone,
-            /** Pesan aktivasi berisi token — hanya dibuat lewat POST /whatsapp-activation-token (setelah login). */
-            'activation_message' => '',
-            'wa_me_url' => null,
-            'activation_requires_login_token' => true,
-            'activation_token_table_ready' => $tokenTable,
-            'activation_token_ttl_minutes' => AiWaActivationTokenService::ttlMinutes(),
-        ];
-    }
-
-    /**
-     * GET /api/deepseek/wa-wake — bangunkan server WA (Node) agar siap terima pesan aktivasi (alun mirip daftar).
+     * GET /api/deepseek/wa-wake — bangunkan server WA (Node), mis. sebelum scan QR atau alur yang butuh koneksi aktif.
      */
     public function getWaWake(Request $request, Response $response): Response
     {
@@ -758,9 +708,9 @@ class DeepseekController
     }
 
     /**
-     * GET /api/deepseek/whatsapp-access
+     * GET /api/deepseek/wa-instansi-settings — master WA + terima semua + daftar kontak (hak: tab Pengaturan / super_admin).
      */
-    public function getWhatsappAccess(Request $request, Response $response): Response
+    public function getWaInstansiSettings(Request $request, Response $response): Response
     {
         try {
             $userPayload = $request->getAttribute('user');
@@ -768,91 +718,118 @@ class DeepseekController
                 return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
             }
             $db = Database::getInstance()->getConnection();
-            $usersId = $this->resolveUsersId($userPayload, $db);
-            if ($usersId === null) {
-                return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 404);
+            if (!$this->canManageChatAiPengaturan($db, $userPayload)) {
+                return $this->json($response, ['success' => false, 'message' => 'Forbidden'], 403);
             }
-            $data = $this->buildWhatsappAccessData($db, $usersId);
+            $settings = AiWaInstansiSettingsService::getSettings($db);
+            $contacts = AiWaInstansiSettingsService::listContacts($db, 200);
 
             return $this->json($response, [
                 'success' => true,
-                'data' => $data,
+                'data' => [
+                    'ai_wa_aktif' => $settings['ai_wa_aktif'],
+                    'terima_semua_pengirim' => $settings['terima_semua_pengirim'],
+                    'kuota_users_id' => $settings['kuota_users_id'],
+                    'wa_global_harian_per_pengirim' => (int) ($settings['wa_global_harian_per_pengirim'] ?? 10),
+                    'contacts' => $contacts,
+                ],
             ], 200);
         } catch (\Throwable $e) {
-            error_log('DeepseekController::getWhatsappAccess ' . $e->getMessage());
+            error_log('DeepseekController::getWaInstansiSettings ' . $e->getMessage());
+
             return $this->json($response, ['success' => false, 'message' => 'Server error'], 500);
         }
     }
 
     /**
-     * PUT /api/deepseek/whatsapp-access
-     * Body: { enabled: true|false }
+     * PUT /api/deepseek/wa-instansi-settings
+     * Body: { ai_wa_aktif?: bool, terima_semua_pengirim?: bool }
+     * Kuota untuk pengunjung tak terdaftar = users.id pemanggil saat terima_semua diaktifkan.
      */
-    public function putWhatsappAccess(Request $request, Response $response): Response
+    public function putWaInstansiSettings(Request $request, Response $response): Response
     {
         try {
             $userPayload = $request->getAttribute('user');
             if (!is_array($userPayload)) {
                 return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+            }
+            $db = Database::getInstance()->getConnection();
+            if (!$this->canManageChatAiPengaturan($db, $userPayload)) {
+                return $this->json($response, ['success' => false, 'message' => 'Forbidden'], 403);
             }
             $body = $request->getParsedBody();
             if (!is_array($body)) {
                 $body = json_decode((string) $request->getBody(), true) ?? [];
             }
-            if (!array_key_exists('enabled', $body)) {
-                return $this->json($response, ['success' => false, 'message' => 'enabled wajib true/false'], 400);
+            $cur = AiWaInstansiSettingsService::getSettings($db);
+            $aiWaAktif = array_key_exists('ai_wa_aktif', $body) ? (bool) $body['ai_wa_aktif'] : $cur['ai_wa_aktif'];
+            $terimaSemua = array_key_exists('terima_semua_pengirim', $body)
+                ? (bool) $body['terima_semua_pengirim']
+                : $cur['terima_semua_pengirim'];
+            $glim = $cur['wa_global_harian_per_pengirim'] ?? 10;
+            if (array_key_exists('wa_global_harian_per_pengirim', $body)) {
+                $glim = (int) $body['wa_global_harian_per_pengirim'];
             }
-            $enabled = (bool) $body['enabled'];
+            if ($glim < 0 || $glim > AiWaInstansiSettingsService::WA_GLOBAL_HARIAN_MAX) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'wa_global_harian_per_pengirim tidak valid (0 … ' . AiWaInstansiSettingsService::WA_GLOBAL_HARIAN_MAX . ')',
+                ], 400);
+            }
 
-            $db = Database::getInstance()->getConnection();
             $usersId = $this->resolveUsersId($userPayload, $db);
             if ($usersId === null) {
                 return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 404);
             }
-            if (!$this->columnExists($db, 'users', 'ai_whatsapp_enabled')) {
-                return $this->json($response, ['success' => false, 'message' => 'Kolom setting belum tersedia. Jalankan migrasi terbaru.'], 503);
-            }
-            /** Matikan akses = lepas pengikatan JID agar aktivasi berikutnya wajib lewat WA lagi (bukan switch langsung ON). */
-            if (!$enabled && $this->columnExists($db, 'users', 'ai_wa_jid')) {
-                $stmt = $db->prepare('UPDATE users SET ai_whatsapp_enabled = 0, ai_wa_jid = NULL WHERE id = ?');
-                $stmt->execute([$usersId]);
-            } else {
-                $stmt = $db->prepare('UPDATE users SET ai_whatsapp_enabled = ? WHERE id = ?');
-                $stmt->execute([$enabled ? 1 : 0, $usersId]);
-            }
 
-            $data = $this->buildWhatsappAccessData($db, $usersId);
-
-            $waBackendHint = null;
-            if ($enabled && WhatsAppService::getNotificationProvider() === 'wa_sendiri') {
-                WhatsAppService::wakeWaServer();
-                usleep(300000);
-                $st = WhatsAppService::fetchNodeSessionStatus(WhatsAppService::getPrimaryWaSessionId());
-                $bs = is_array($st) ? strtolower((string) ($st['baileysStatus'] ?? $st['status'] ?? '')) : '';
-                if ($bs !== 'connected') {
-                    $waBackendHint = 'WhatsApp lembaga belum terhubung. Buka halaman Koneksi WA dan pastikan nomor sudah terhubung (scan QR), lalu aktivasi dari aplikasi.';
+            $kuotaId = null;
+            if ($terimaSemua) {
+                if (!AiWaInstansiSettingsService::isValidQuotaUser($db, $usersId)) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'message' => 'Akun Anda tidak boleh memakai AI (dinonaktifkan). Tidak dapat mengaktifkan terima semua pengirim.',
+                    ], 400);
                 }
+                $kuotaId = $usersId;
             }
-            if ($waBackendHint !== null) {
-                $data['wa_backend_hint'] = $waBackendHint;
+
+            $save = AiWaInstansiSettingsService::saveSettings($db, $aiWaAktif, $terimaSemua, $kuotaId, $glim);
+            if (empty($save['ok'])) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => (string) ($save['message'] ?? 'Gagal menyimpan'),
+                ], 400);
             }
+
+            if ($aiWaAktif && WhatsAppService::getNotificationProvider() === 'wa_sendiri') {
+                WhatsAppService::wakeWaServer(false);
+            }
+
+            $settings = AiWaInstansiSettingsService::getSettings($db);
+            $contacts = AiWaInstansiSettingsService::listContacts($db, 200);
 
             return $this->json($response, [
                 'success' => true,
-                'message' => 'Pengaturan akses AI via WhatsApp diperbarui',
-                'data' => $data,
+                'message' => 'Pengaturan WA instansi diperbarui',
+                'data' => [
+                    'ai_wa_aktif' => $settings['ai_wa_aktif'],
+                    'terima_semua_pengirim' => $settings['terima_semua_pengirim'],
+                    'kuota_users_id' => $settings['kuota_users_id'],
+                    'wa_global_harian_per_pengirim' => (int) ($settings['wa_global_harian_per_pengirim'] ?? 10),
+                    'contacts' => $contacts,
+                ],
             ], 200);
         } catch (\Throwable $e) {
-            error_log('DeepseekController::putWhatsappAccess ' . $e->getMessage());
+            error_log('DeepseekController::putWaInstansiSettings ' . $e->getMessage());
+
             return $this->json($response, ['success' => false, 'message' => 'Server error'], 500);
         }
     }
 
     /**
-     * POST /api/deepseek/whatsapp-activation-token
-     * Token sekali pakai + kedaluwarsa; pesan WA wajib berisi token + Nama + Username + Nomor yang cocok.
+     * PUT /api/deepseek/chat-mode-preference — simpan Utama (api) / Alternatif (proxy) untuk tab Obrolan.
      */
-    public function postWhatsappActivationToken(Request $request, Response $response): Response
+    public function putChatModePreference(Request $request, Response $response): Response
     {
         try {
             $userPayload = $request->getAttribute('user');
@@ -864,101 +841,36 @@ class DeepseekController
             if ($usersId === null) {
                 return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 404);
             }
-            if (!AiWaActivationTokenService::tableExists($db)) {
+            if (!$this->columnExists($db, 'users', 'ai_chat_mode_pref')) {
                 return $this->json($response, [
                     'success' => false,
-                    'message' => 'Tabel token aktivasi belum ada. Jalankan migrasi database terbaru.',
+                    'message' => 'Kolom preferensi mode belum ada. Jalankan migrasi database terbaru.',
                 ], 503);
             }
-            if (!$this->columnExists($db, 'users', 'ai_whatsapp_enabled')) {
-                return $this->json($response, ['success' => false, 'message' => 'Fitur belum tersedia.'], 503);
+            $body = $request->getParsedBody();
+            if (!is_array($body)) {
+                $body = json_decode((string) $request->getBody(), true) ?? [];
             }
-            $stmt = $db->prepare('SELECT ai_whatsapp_enabled, no_wa FROM users WHERE id = ? LIMIT 1');
-            $stmt->execute([$usersId]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
-            if ((int) ($row['ai_whatsapp_enabled'] ?? 0) !== 1) {
+            $mode = strtolower(trim((string) ($body['mode'] ?? '')));
+            if ($mode !== 'api' && $mode !== 'proxy') {
+                return $this->json($response, ['success' => false, 'message' => 'mode wajib api atau proxy'], 400);
+            }
+            if ($mode === 'proxy' && !$this->canUseAlternativeChatMode($db, $userPayload)) {
                 return $this->json($response, [
                     'success' => false,
-                    'message' => 'Nyalakan dulu "Akses AI dari WA" di halaman chat AI, lalu minta token lagi.',
-                ], 400);
+                    'message' => 'Mode alternatif tidak diizinkan untuk role Anda.',
+                ], 403);
             }
-            $raw = trim((string) ($row['no_wa'] ?? ''));
-            $norm = $raw !== '' ? WhatsAppService::formatPhoneNumber($raw) : '';
-            $len = strlen($norm);
-            if ($len < 10 || $len > 16) {
-                return $this->json($response, [
-                    'success' => false,
-                    'message' => 'Lengkapi nomor WhatsApp di profil eBeddien terlebih dahulu.',
-                ], 400);
-            }
-            [$namaLabel, $usernameLabel] = AiWaActivationTokenService::fetchActivationLabels($db, $usersId);
-            if ($usernameLabel === '' || $namaLabel === '') {
-                return $this->json($response, [
-                    'success' => false,
-                    'message' => 'Username atau nama profil belum lengkap. Perbarui profil Anda.',
-                ], 400);
-            }
-            $ensured = AiWaActivationTokenService::ensurePlainTokenForUser($db, $usersId);
-            if (empty($ensured['ok'])) {
-                $payload = [
-                    'success' => false,
-                    'message' => (string) ($ensured['error'] ?? 'Tidak dapat membuat token.'),
-                ];
-                if (isset($ensured['retry_after_seconds'])) {
-                    $payload['data'] = ['retry_after_seconds' => max(1, (int) $ensured['retry_after_seconds'])];
-                }
-
-                return $this->json($response, $payload, isset($ensured['retry_after_seconds']) ? 429 : 400);
-            }
-            $plain = (string) $ensured['plain'];
-            $activationMessage = AiWaActivationTokenService::buildActivationMessage(
-                $namaLabel,
-                $usernameLabel,
-                $norm,
-                $plain
-            );
-            $sessEnv = trim((string) (getenv('WA_AI_ACTIVATION_SESSION_ID') ?: ''));
-            $sessionId = $sessEnv !== '' ? $sessEnv : WhatsAppService::getPrimaryWaSessionId();
-            if (WhatsAppService::getNotificationProvider() === 'wa_sendiri') {
-                WhatsAppService::wakeWaServer();
-                usleep(400000);
-            }
-            $st = WhatsAppService::fetchNodeSessionStatus($sessionId);
-            $slotReady = false;
-            $slotPhone = '';
-            if (is_array($st)) {
-                $slotReady = (($st['baileysStatus'] ?? '') === 'connected');
-                $rawSlot = $st['baileysPhoneNumber'] ?? $st['phoneNumber'] ?? null;
-                if (is_string($rawSlot) && trim($rawSlot) !== '') {
-                    $slotPhone = WhatsAppService::formatPhoneNumber($rawSlot);
-                }
-            }
-            $waMeUrl = null;
-            if (strlen($slotPhone) >= 10) {
-                $waDigits = preg_replace('/\D/', '', $slotPhone) ?? '';
-                if ($waDigits !== '') {
-                    $waMeUrl = 'https://wa.me/' . $waDigits . '?text=' . rawurlencode($activationMessage);
-                }
-            }
+            $stmt = $db->prepare('UPDATE users SET ai_chat_mode_pref = ? WHERE id = ?');
+            $stmt->execute([$mode, $usersId]);
 
             return $this->json($response, [
                 'success' => true,
-                'message' => 'OK',
-                'data' => [
-                    'expires_at' => $ensured['expires_at'],
-                    'expires_at_ts' => $ensured['expires_at_ts'],
-                    'token_reused' => !empty($ensured['reused']),
-                    'ttl_minutes' => AiWaActivationTokenService::ttlMinutes(),
-                    'issue_cooldown_seconds' => AiWaActivationTokenService::issueCooldownSeconds(),
-                    'activation_message' => $activationMessage,
-                    'wa_me_url' => $waMeUrl,
-                    'slot1_session_id' => $sessionId,
-                    'slot1_ready' => $slotReady,
-                    'slot1_phone' => $slotPhone,
-                ],
+                'message' => 'Preferensi mode obrolan disimpan',
+                'data' => ['ai_chat_mode' => $mode],
             ], 200);
         } catch (\Throwable $e) {
-            error_log('DeepseekController::postWhatsappActivationToken ' . $e->getMessage());
+            error_log('DeepseekController::putChatModePreference ' . $e->getMessage());
 
             return $this->json($response, ['success' => false, 'message' => 'Server error'], 500);
         }
@@ -1769,7 +1681,7 @@ class DeepseekController
     /**
      * GET /api/deepseek/chat-history?limit=10&session_id=
      * Memuat pasangan pesan terakhir dari ai___chat untuk pengguna terautentikasi.
-     * Tanpa session_id: 10 baris terakhir (semua session_id) — memuat riwayat lama + sesi utama.
+     * Tanpa session_id: utas utama web (ebeddien-main + baris legacy tanpa session_id) — tidak mencampur log WA pengunjung (wa-guest-* / users_id kuota sama).
      * Dengan session_id: filter ke utas itu (mode proxy / sesi tertentu).
      *
      * @return array{success:bool,data?:array{session_id:string,messages:array<int,array<string,mixed>>}}
@@ -1807,11 +1719,14 @@ class DeepseekController
                 );
                 $stmt->execute([$usersId, $sessionFilter]);
             } else {
+                $mainSid = self::EBEDDIEN_MAIN_SESSION_ID;
                 $stmt = $db->prepare(
-                    'SELECT id, user_message, ai_response, `timestamp` AS row_at FROM ai___chat WHERE users_id = ? ORDER BY id DESC LIMIT '
+                    'SELECT id, user_message, ai_response, `timestamp` AS row_at FROM ai___chat WHERE users_id = ? '
+                    . 'AND (session_id = ? OR session_id IS NULL OR TRIM(COALESCE(session_id, \'\')) = \'\') '
+                    . 'ORDER BY id DESC LIMIT '
                     . (int) $limit
                 );
-                $stmt->execute([$usersId]);
+                $stmt->execute([$usersId, $mainSid]);
             }
 
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -1905,7 +1820,7 @@ class DeepseekController
             $cnt = $db->prepare("SELECT COUNT(*) FROM users u LEFT JOIN pengurus p ON p.id_user=u.id LEFT JOIN santri s ON s.id_user=u.id WHERE {$whereSql}");
             $cnt->execute($bind);
             $total = (int) $cnt->fetchColumn();
-            $sql = "SELECT u.id, u.email, u.username, u.no_wa, COALESCE(u.ai_enabled,1) AS ai_enabled, COALESCE(u.ai_daily_limit,5) AS ai_daily_limit, COALESCE(u.ai_whatsapp_enabled,0) AS ai_whatsapp_enabled, COALESCE(NULLIF(TRIM(p.nama),''), NULLIF(TRIM(s.nama),'')) AS nama FROM users u LEFT JOIN pengurus p ON p.id_user=u.id LEFT JOIN santri s ON s.id_user=u.id WHERE {$whereSql} ORDER BY COALESCE(p.nama,s.nama,u.username,u.email) ASC LIMIT {$limit} OFFSET {$offset}";
+            $sql = "SELECT u.id, u.email, u.username, u.no_wa, COALESCE(u.ai_enabled,1) AS ai_enabled, COALESCE(u.ai_daily_limit,5) AS ai_daily_limit, COALESCE(NULLIF(TRIM(p.nama),''), NULLIF(TRIM(s.nama),'')) AS nama FROM users u LEFT JOIN pengurus p ON p.id_user=u.id LEFT JOIN santri s ON s.id_user=u.id WHERE {$whereSql} ORDER BY COALESCE(p.nama,s.nama,u.username,u.email) ASC LIMIT {$limit} OFFSET {$offset}";
             $st = $db->prepare($sql);
             $st->execute($bind);
             $items = [];
@@ -1919,7 +1834,6 @@ class DeepseekController
                     'no_wa' => trim((string) ($r['no_wa'] ?? '')) ?: null,
                     'ai_enabled' => (int) ($r['ai_enabled'] ?? 1) === 1,
                     'ai_daily_limit' => max(0, (int) ($r['ai_daily_limit'] ?? 5)),
-                    'ai_whatsapp_enabled' => (int) ($r['ai_whatsapp_enabled'] ?? 0) === 1,
                     'today_count' => $this->countTodayAiChatSingleUser($db, $uid),
                 ];
             }
@@ -1935,7 +1849,7 @@ class DeepseekController
 
     /**
      * PUT /api/deepseek/admin/ai-users/{id}
-     * Body: { ai_enabled?: bool, ai_daily_limit?: int, ai_whatsapp_enabled?: bool }
+     * Body: { ai_enabled?: bool, ai_daily_limit?: int }
      */
     public function adminUpdateAiUser(Request $request, Response $response, array $args): Response
     {
@@ -1963,10 +1877,6 @@ class DeepseekController
                 $lim = max(0, (int) $body['ai_daily_limit']);
                 $parts[] = 'ai_daily_limit = ?';
                 $bind[] = $lim;
-            }
-            if (array_key_exists('ai_whatsapp_enabled', $body)) {
-                $parts[] = 'ai_whatsapp_enabled = ?';
-                $bind[] = $body['ai_whatsapp_enabled'] ? 1 : 0;
             }
             if (!$parts) {
                 return $this->json($response, ['success' => false, 'message' => 'Tidak ada data yang diubah'], 400);
@@ -2441,7 +2351,8 @@ class DeepseekController
 
     /**
      * GET /api/deepseek/training-suggestions
-     * Tiga pertanyaan acak dari bank Q&A (ai___training) saja — untuk tombol saran saat layar kosong.
+     * Tiga pertanyaan acak dari Bank Q&A saja (tabel ai___training — kelola di menu Bank Q&A).
+     * Tidak memakai isi Training Chat (ai___training_messages / sesi).
      */
     public function trainingSuggestedPrompts(Request $request, Response $response): Response
     {

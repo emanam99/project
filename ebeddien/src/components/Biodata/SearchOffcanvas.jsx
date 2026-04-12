@@ -1,8 +1,15 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { santriAPI, pendaftaranAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
-import { getCachedSantriList, saveCachedSantriList } from '../../services/offcanvasSearchCache'
+import {
+  subscribeSantriRowsOrdered,
+  applySantriSearchServerPayload,
+  getLocalSantriSinceWatermark,
+  countSantriRows,
+  removeSantriRowsByIds,
+} from '../../services/offcanvasSearchCache'
+import { useLiveSocket } from '../../contexts/LiveSocketContext'
 
 function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -31,8 +38,8 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     gender: ''
   })
 
-  const santriListRef = useRef(santriList)
-  santriListRef.current = santriList
+  const liveCtx = useLiveSocket()
+  const socket = liveCtx?.socket ?? null
 
   // Prevent body scroll saat offcanvas terbuka
   useEffect(() => {
@@ -94,15 +101,18 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     }
   }
 
-  // Ambil data santri dari API + simpan IndexedDB (untuk buka offcanvas berikutnya tanpa hit server)
-  const fetchSantriList = useCallback(async () => {
+  // UI mengikuti IndexedDB (Dexie liveQuery)
+  useEffect(() => {
+    const sub = subscribeSantriRowsOrdered(setSantriList)
+    return () => sub.unsubscribe()
+  }, [])
+
+  const fetchSantriListFull = useCallback(async () => {
     setLoading(true)
     try {
       const result = await santriAPI.getAll()
       if (result.success && result.data) {
-        setSantriList(result.data)
-        setFilteredList(result.data.slice(0, 50))
-        await saveCachedSantriList(result.data)
+        await applySantriSearchServerPayload(result.data, false)
       }
     } catch (error) {
       console.error('Error fetching santri list:', error)
@@ -111,12 +121,23 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     }
   }, [])
 
-  // Sinkronisasi data dari server
+  const fetchSantriDeltaQuiet = useCallback(async () => {
+    try {
+      const since = await getLocalSantriSinceWatermark()
+      if (!since) return
+      const result = await santriAPI.getChangedSince(since)
+      if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+        await applySantriSearchServerPayload(result.data, true)
+      }
+    } catch (error) {
+      console.warn('Sinkron inkremental santri (cari santri):', error)
+    }
+  }, [])
+
   const handleSync = async () => {
     setSyncing(true)
     try {
-      await fetchSantriList()
-      // Show success notification (bisa ditambahkan later)
+      await fetchSantriListFull()
     } catch (error) {
       console.error('Error syncing data:', error)
     } finally {
@@ -186,27 +207,52 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     onClose()
   }
 
-  // Load data saat offcanvas dibuka: pakai IndexedDB jika ada; baru fetch dari server jika belum ada (tombol sync tetap memaksa refresh)
+  // Buka offcanvas: tahun ajaran + sinkron (penuh jika cache kosong / tanpa watermark; kalau tidak, delta diam-diam)
   useEffect(() => {
     if (!isOpen) return
     fetchTahunAjaranList()
-    if (santriListRef.current.length > 0) return
-
     let cancelled = false
     ;(async () => {
-      const cached = await getCachedSantriList()
+      const n = await countSantriRows()
       if (cancelled) return
-      if (cached && cached.length > 0) {
-        setSantriList(cached)
-        setFilteredList(cached.slice(0, 50))
+      if (n === 0) {
+        await fetchSantriListFull()
         return
       }
-      await fetchSantriList()
+      const since = await getLocalSantriSinceWatermark()
+      if (cancelled) return
+      if (!since) {
+        await fetchSantriListFull()
+        return
+      }
+      await fetchSantriDeltaQuiet()
     })()
     return () => {
       cancelled = true
     }
-  }, [isOpen, fetchSantriList])
+  }, [isOpen, fetchSantriListFull, fetchSantriDeltaQuiet])
+
+  // Socket.IO: pengguna lain mengubah data → hapus id yang di-merge + tarik delta (tanpa spinner)
+  useEffect(() => {
+    if (!socket) return
+    const onHint = async (payload) => {
+      await removeSantriRowsByIds(payload?.removed_ids)
+      await fetchSantriDeltaQuiet()
+    }
+    socket.on('santri_search_index_hint', onHint)
+    return () => {
+      socket.off('santri_search_index_hint', onHint)
+    }
+  }, [socket, fetchSantriDeltaQuiet])
+
+  // Polling ringan saat panel terbuka (cadangan jika socket atau ping PHP terlewat)
+  useEffect(() => {
+    if (!isOpen) return
+    const id = setInterval(() => {
+      fetchSantriDeltaQuiet()
+    }, 120000)
+    return () => clearInterval(id)
+  }, [isOpen, fetchSantriDeltaQuiet])
 
   // Fetch pendaftar IDs saat checkbox dicentang atau tahun ajaran berubah
   useEffect(() => {

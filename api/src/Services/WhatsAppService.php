@@ -333,6 +333,28 @@ class WhatsAppService
     }
 
     /**
+     * Bangunkan server WA Node paling sering sekali per interval (untuk menjaga proses aktif tanpa membanjiri /wake).
+     */
+    public static function wakeWaServerThrottled(int $minIntervalSec = 90): void
+    {
+        if (self::getNotificationProvider() !== 'wa_sendiri') {
+            return;
+        }
+        $minIntervalSec = max(30, min(600, $minIntervalSec));
+        $cfg = self::getConfig();
+        $apiUrl = trim((string) ($cfg['api_url'] ?? ''));
+        $key = $apiUrl !== '' ? md5($apiUrl) : 'default';
+        $path = sys_get_temp_dir() . '/ebeddien_wa_wake_throttle_' . $key . '.txt';
+        $now = time();
+        $raw = @file_get_contents($path);
+        if ($raw !== false && is_numeric($raw) && ($now - (int) $raw) < $minIntervalSec) {
+            return;
+        }
+        @file_put_contents($path, (string) $now);
+        self::wakeWaServer(false);
+    }
+
+    /**
      * Base URL aplikasi pendaftaran (untuk link di WA notifikasi PSB).
      */
     public static function getDaftarAppUrl(): string

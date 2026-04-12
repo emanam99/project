@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react'
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, Fragment } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useLiveSocket } from '../../../contexts/LiveSocketContext'
@@ -9,11 +9,45 @@ import { chatDexieStore, CHAT_CACHE_TTL_MS, shouldSyncFromServer } from '../../.
 import { prefetchChatPhotos } from '../../../services/chatPhotoPrefetchService'
 import { NamaUsernameDisplay } from '../../../components/NamaUsernameDisplay'
 import { useNotification } from '../../../contexts/NotificationContext'
+import { useChatOffcanvas } from '../../../contexts/ChatOffcanvasContext'
 
 function convKey(a, b) {
   const x = Number(a)
   const y = Number(b)
   return x <= y ? `${x}_${y}` : `${y}_${x}`
+}
+
+/** Key state messagesByKey untuk satu pesan masuk: id percakapan + peer_<lawan> agar cocok dengan /chat?u=… (tanpa ?c=). */
+function collectInboundMessageKeys(payload, myUsersId) {
+  const keys = new Set()
+  const convRaw = payload?.conversation_id
+  if (convRaw != null && convRaw !== '') {
+    const c = Number(convRaw)
+    if (c > 0) keys.add(String(c))
+  }
+  const sid = Number(payload?.sender_id ?? payload?.from_user_id)
+  const tid = Number(payload?.to_user_id)
+  if (sid > 0 && tid > 0) {
+    if (myUsersId != null) {
+      const me = Number(myUsersId)
+      const other = sid === me ? tid : tid === me ? sid : null
+      if (other != null && other > 0 && other !== me) {
+        keys.add(`peer_${other}`)
+      }
+    } else {
+      // myUsersId belum siap: isi kedua peer agar /chat?u=… tetap ketemu
+      keys.add(`peer_${sid}`)
+      keys.add(`peer_${tid}`)
+    }
+  }
+  return [...keys]
+}
+
+function messageIdsEqual(a, b) {
+  if (a == null || b == null) return false
+  if (typeof a === 'string' && String(a).includes('_')) return false
+  if (typeof b === 'string' && String(b).includes('_')) return false
+  return Number(a) === Number(b)
 }
 
 /** Status kirim untuk bubble pesan sendiri (optimistic + ack server / socket). */
@@ -145,8 +179,42 @@ function splitPeerDisplayName(peerName) {
   return { nama: s, username: '' }
 }
 
-export default function Chat() {
-  const [searchParams, setSearchParams] = useSearchParams()
+export default function Chat({ variant = 'page', onRequestClose } = {}) {
+  const [urlParams, setUrlParams] = useSearchParams()
+  const { savedOffcanvasQueryString, persistOffcanvasQuery, setChatTotalUnread } = useChatOffcanvas()
+
+  const [offcanvasQuery, setOffcanvasQuery] = useState(() => {
+    if (variant !== 'offcanvas') return new URLSearchParams()
+    const raw = String(savedOffcanvasQueryString || '').trim()
+    return new URLSearchParams(raw)
+  })
+
+  const searchParams = variant === 'offcanvas' ? offcanvasQuery : urlParams
+
+  const setSearchParams = useCallback(
+    (next, opts) => {
+      if (variant === 'offcanvas') {
+        setOffcanvasQuery((prev) => {
+          const base = new URLSearchParams(prev)
+          if (typeof next === 'function') {
+            const resolved = next(base)
+            return new URLSearchParams(resolved)
+          }
+          return new URLSearchParams(next)
+        })
+      } else {
+        setUrlParams(next, opts ?? {})
+      }
+    },
+    [variant, setUrlParams]
+  )
+
+  const offcanvasQueryString = variant === 'offcanvas' ? offcanvasQuery.toString() : ''
+  useEffect(() => {
+    if (variant !== 'offcanvas') return
+    persistOffcanvasQuery(offcanvasQueryString)
+  }, [variant, offcanvasQueryString, persistOffcanvasQuery])
+
   const { showNotification } = useNotification()
   const { socket, onlineUsers, isConnected } = useLiveSocket()
   const user = useAuthStore((s) => s.user)
@@ -157,7 +225,16 @@ export default function Chat() {
   const [sendError, setSendError] = useState(null)
   const [conversations, setConversations] = useState([])
   const [conversationsLoading, setConversationsLoading] = useState(false)
-  const [newChatOpen, setNewChatOpen] = useState(() => searchParams.get('new') === '1')
+
+  useEffect(() => {
+    const t = conversations.reduce((s, c) => s + (Number(c.unread_count) || 0), 0)
+    setChatTotalUnread(t)
+  }, [conversations, setChatTotalUnread])
+  const [newChatOpen, setNewChatOpen] = useState(() => {
+    if (variant === 'offcanvas') return false
+    if (typeof window === 'undefined') return false
+    return new URLSearchParams(window.location.search).get('new') === '1'
+  })
   const [offcanvasClosing, setOffcanvasClosing] = useState(false)
   const [chatDetailOpen, setChatDetailOpen] = useState(false)
   const [chatDetailClosing, setChatDetailClosing] = useState(false)
@@ -175,9 +252,17 @@ export default function Chat() {
   const [lastSeenByUserId, setLastSeenByUserId] = useState({}) // users.id -> last_seen_at (dari GET chat/users)
   const [newChatSearch, setNewChatSearch] = useState('')
   const [historyLoading, setHistoryLoading] = useState(false) // loading riwayat dari DB saat buka chat
+  /** ID pesan pertama yang belum dibaca (dari API sebelum last_read); garis "Pesan Baru" di atas pesan ini */
+  const [firstUnreadBannerMessageId, setFirstUnreadBannerMessageId] = useState(null)
+  /** Setelah riwayat siap: scroll ke banner unread atau ke bawah; dikosongkan setelah dipakai */
+  const [pendingInitialScroll, setPendingInitialScroll] = useState(null) // 'unread' | 'bottom'
   const [loadingOlderHistory, setLoadingOlderHistory] = useState(false)
   const [historyPagingByKey, setHistoryPagingByKey] = useState({}) // { [messageKey]: { hasMoreServer: boolean } }
   const [userNamesMap, setUserNamesMap] = useState({}) // users.id -> username (lawan) dari API
+  const userNamesMapRef = useRef(userNamesMap)
+  useEffect(() => {
+    userNamesMapRef.current = userNamesMap
+  }, [userNamesMap])
   const [userPhotoMap, setUserPhotoMap] = useState({}) // users.id -> foto url (cache/local/api)
   const [groupPhotoMap, setGroupPhotoMap] = useState({}) // conversation_id -> blob url foto grup
   const [myUsersId, setMyUsersId] = useState(() => (user?.users_id != null ? Number(user.users_id) : null)) // users.id yang login (dari API); untuk isOwn & key percakapan
@@ -359,6 +444,9 @@ export default function Chat() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  /** Halaman: dari md ke atas = dua kolom. Offcanvas header: satu layar, list ↔ thread bergantian dengan geser. */
+  const splitLayoutDesktop = isDesktop && variant !== 'offcanvas'
+
   useEffect(() => {
     const onResize = () => setComposerMaxPx(Math.round(window.innerHeight * 0.5))
     window.addEventListener('resize', onResize)
@@ -454,6 +542,8 @@ export default function Chat() {
   }, [myUsersId])
 
   const openRoom = (conversationId, peerId) => {
+    setFirstUnreadBannerMessageId(null)
+    setPendingInitialScroll(null)
     preloadRoomFromDexie(conversationId ?? null, peerId ?? null).catch(() => {})
     setSelectedConversationId(conversationId ?? null)
     setSelectedUserId(peerId != null ? String(peerId) : null)
@@ -473,6 +563,8 @@ export default function Chat() {
     setChatDetailClosing(false)
     setSelectedConversationId(null)
     setSelectedUserId(null)
+    setFirstUnreadBannerMessageId(null)
+    setPendingInitialScroll(null)
     setSearchParams({}, { replace: true })
   }
 
@@ -530,7 +622,7 @@ export default function Chat() {
       }
 
       const meta = await chatDexieStore.getMeta(ownerUsersId, 'last_conversations_sync_at')
-      if (!shouldSyncFromServer(meta, CHAT_CACHE_TTL_MS.CONVERSATIONS)) {
+      if (variant !== 'offcanvas' && !shouldSyncFromServer(meta, CHAT_CACHE_TTL_MS.CONVERSATIONS)) {
         const cached = await chatDexieStore.getConversations(ownerUsersId)
         if (cancelled) return
         if (cached.length > 0) {
@@ -571,7 +663,7 @@ export default function Chat() {
     return () => {
       cancelled = true
     }
-  }, [myId, myUsersId])
+  }, [myId, myUsersId, variant])
 
   // Muat daftar user + last_seen (TTL: skip GET jika meta masih fresh)
   useEffect(() => {
@@ -659,10 +751,27 @@ export default function Chat() {
         }).catch(() => [])
       }
       const msgMeta = ownerUsersId ? await chatDexieStore.getMeta(ownerUsersId, roomMetaKey) : null
-      const skipNetwork = ownerUsersId && cached.length > 0 && !shouldSyncFromServer(msgMeta, CHAT_CACHE_TTL_MS.MESSAGES)
+      const skipNetwork =
+        variant !== 'offcanvas' &&
+        ownerUsersId &&
+        cached.length > 0 &&
+        !shouldSyncFromServer(msgMeta, CHAT_CACHE_TTL_MS.MESSAGES)
       if (cached.length > 0) applyCached(cached, myUid)
       if (skipNetwork) {
         setHistoryLoading(false)
+        setFirstUnreadBannerMessageId(null)
+        setPendingInitialScroll('bottom')
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (hasConv && Number(c.conversation_id) === Number(selectedConversationId)) {
+              return { ...c, unread_count: 0 }
+            }
+            if (hasPeer && c.peer_id != null && Number(c.peer_id) === peerId) {
+              return { ...c, unread_count: 0 }
+            }
+            return c
+          })
+        )
         return
       }
 
@@ -704,6 +813,8 @@ export default function Chat() {
         const key = selectedConversationId ? String(selectedConversationId) : (hasPeer ? `peer_${peerId}` : '')
         setMessagesByKey((prev) => ({ ...prev, [key]: prev[key] || [] }))
         setHistoryLoading(false)
+        setFirstUnreadBannerMessageId(null)
+        setPendingInitialScroll('bottom')
         return
       }
       const list = Array.isArray(res?.data) ? res.data : []
@@ -721,11 +832,21 @@ export default function Chat() {
           hasMoreServer: normalized.length >= MESSAGE_PAGE_SIZE,
         },
       }))
+      const fidRaw = res?.first_unread_message_id
+      const fid = fidRaw != null ? Number(fidRaw) : null
+      const inUnreadList = fid != null && fid > 0 && normalized.some((m) => Number(m.id) === fid)
+      setFirstUnreadBannerMessageId(inUnreadList ? fid : null)
+      setPendingInitialScroll(inUnreadList ? 'unread' : 'bottom')
       const ownerFinal = res?.my_user_id != null ? Number(res.my_user_id) : ownerUsersId
       if (ownerFinal) {
         const metaKeyRoom = `last_messages_sync_${convId != null ? String(convId) : `peer_${peerId}`}`
         chatDexieStore.upsertMessages(ownerFinal, normalized, { conversationId: convId, peerId: hasPeer ? peerId : null }).catch(() => {})
         chatDexieStore.setMeta(ownerFinal, metaKeyRoom, { at: new Date().toISOString() }).catch(() => {})
+      }
+      if (convId != null && convId > 0) {
+        setConversations((prev) =>
+          prev.map((c) => (Number(c.conversation_id) === convId ? { ...c, unread_count: 0 } : c))
+        )
       }
       setHistoryLoading(false)
     })()
@@ -733,7 +854,7 @@ export default function Chat() {
     return () => {
       cancelled = true
     }
-  }, [myId, myUsersId, selectedConversationId, selectedUserId])
+  }, [myId, myUsersId, selectedConversationId, selectedUserId, variant])
 
   const meId = myUsersId ?? myId
   // Daftar dari API (conversation_id, peer_id, peer_name, last_message, last_at, unread_count, is_self); merge last message dari state
@@ -896,8 +1017,9 @@ export default function Chat() {
     const next = outboxQueueRef.current[0]
     if (!next) return
     outboxInflightRef.current = next
-    // Grup: live socket lama butuh to_user_id, jadi kirim via HTTP /chat/send pakai conversation_id.
-    if (next.conversation_id != null && Number(next.conversation_id) > 0 && !(Number(next.to_user_id) > 0)) {
+    // Chat pribadi & grup: kirim langsung ke API (satu hop). Mengatasi pending lama karena
+    // socket.send_message memakai Node → PHP dulu. Realtime ke peer lewat PHP → live server (receive_message).
+    if (next.conversation_id != null && Number(next.conversation_id) > 0) {
       chatUserAPI.sendMessage({
         conversation_id: Number(next.conversation_id),
         message: next.message,
@@ -1048,27 +1170,65 @@ export default function Chat() {
   useEffect(() => {
     if (!socket) return
     const onReceive = (payload) => {
-      const key = payload.conversation_id != null ? String(payload.conversation_id) : convKey(payload.from_user_id, payload.to_user_id)
       const senderId = Number(payload.sender_id ?? payload.from_user_id)
       const convId = payload.conversation_id != null ? Number(payload.conversation_id) : null
       const isIncoming = myUsersId != null && senderId !== myUsersId
       const isOwn = myUsersId != null && senderId === myUsersId
       let merged = { ...payload, sender_id: senderId, created_at: payload.created_at, isOwn }
       if (convId != null && !merged.sender_display_name && !merged.sender_username) {
-        const fallback = userNamesMap[String(senderId)]
+        const fallback = userNamesMapRef.current[String(senderId)] ?? userNamesMapRef.current[senderId]
         if (fallback) merged = { ...merged, sender_display_name: fallback }
       }
+      let keysToWrite = collectInboundMessageKeys(payload, myUsersId)
+      if (keysToWrite.length === 0) {
+        const fallbackKey = convId != null && convId > 0 ? String(convId) : convKey(payload.from_user_id, payload.to_user_id)
+        keysToWrite = [fallbackKey]
+      }
       setMessagesByKey((prev) => {
-        const list = prev[key] || []
-        if (list.some((m) => m.id === payload.id)) return prev
-        return { ...prev, [key]: [...list, merged] }
+        let next = prev
+        let changed = false
+        for (const key of keysToWrite) {
+          const list = (next === prev ? prev : next)[key] || []
+          if (list.some((m) => messageIdsEqual(m.id, payload.id))) continue
+          const appended = [...list, merged]
+          if (!changed) {
+            next = { ...prev, [key]: appended }
+            changed = true
+          } else {
+            next = { ...next, [key]: appended }
+          }
+        }
+        return changed ? next : prev
       })
       if (myUsersId) {
+        const tid = Number(payload?.to_user_id)
+        const isPrivateDm = tid > 0
+        const peerForDexie = isPrivateDm && payload?.from_user_id != null ? Number(payload.from_user_id) : null
         chatDexieStore.upsertMessages(myUsersId, [merged], {
           conversationId: convId,
-          peerId: payload?.from_user_id != null ? Number(payload.from_user_id) : null,
+          peerId: peerForDexie,
         }).catch(() => {})
       }
+
+      const isActiveRoom = Boolean(messageKey) && keysToWrite.includes(messageKey)
+      if (convId != null && convId > 0) {
+        setConversations((prev) => {
+          if (!prev.some((c) => Number(c.conversation_id) === convId)) return prev
+          return prev.map((c) => {
+            if (Number(c.conversation_id) !== convId) return c
+            const next = { ...c }
+            if (merged.message) {
+              next.last_message = merged.message
+              next.last_at = merged.created_at || next.last_at
+            }
+            if (isIncoming) {
+              next.unread_count = isActiveRoom ? 0 : (c.unread_count ?? 0) + 1
+            }
+            return next
+          })
+        })
+      }
+
       if (convId != null && isIncoming && !conversationIdsRef.current.includes(convId)) {
         chatUserAPI.getConversations().then((r) => {
           if (r?.success && Array.isArray(r.data)) {
@@ -1127,7 +1287,7 @@ export default function Chat() {
       socket.off('receive_message', onReceive)
       socket.off('send_message_result', onResult)
     }
-  }, [socket, selectedUserId, myUsersId, messageKey, patchTempMessage, flushOutbox, userNamesMap])
+  }, [socket, selectedUserId, myUsersId, messageKey, patchTempMessage, flushOutbox])
 
   useEffect(() => {
     setSendError(null)
@@ -1201,15 +1361,37 @@ export default function Chat() {
     emitTypingStop()
   }
 
-  // Scroll ke bawah saat pindah room.
-  useEffect(() => {
-    const el = messagesContainerRef.current
-    if (!el) return
-    const raf = requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight
+  // Scroll awal: ke garis "Pesan Baru" (tengah) jika ada unread di jendela; jika tidak, ke bawah.
+  useLayoutEffect(() => {
+    if (pendingInitialScroll == null) return
+    const mode = pendingInitialScroll
+    const container = messagesContainerRef.current
+    if (!container) {
+      setPendingInitialScroll(null)
+      return
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const c = messagesContainerRef.current
+        if (!c) {
+          setPendingInitialScroll(null)
+          return
+        }
+        if (mode === 'unread') {
+          const el = c.querySelector('[data-chat-unread-banner="1"]')
+          if (el) {
+            const targetTop = el.offsetTop - c.clientHeight / 2 + el.offsetHeight / 2
+            c.scrollTop = Math.max(0, targetTop)
+          } else {
+            c.scrollTop = c.scrollHeight
+          }
+        } else {
+          c.scrollTop = c.scrollHeight
+        }
+        setPendingInitialScroll(null)
+      })
     })
-    return () => cancelAnimationFrame(raf)
-  }, [selectedConversationId, selectedUserId])
+  }, [pendingInitialScroll])
 
   // Auto-follow ke bawah saat ada pesan baru jika posisi user masih dekat bawah.
   useEffect(() => {
@@ -1490,40 +1672,51 @@ export default function Chat() {
   }
 
   const hasSelectedRoom = Boolean(selectedConversationId || selectedUserId)
-  const mobileThreadOpen = !isDesktop && hasSelectedRoom
+  const mobileThreadOpen = !splitLayoutDesktop && hasSelectedRoom && variant !== 'offcanvas'
 
-  return (
-    <div
-      className={`h-full overflow-hidden min-h-0 ${
-        mobileThreadOpen ? 'p-0 sm:p-3' : 'p-0 sm:p-3'
-      }`}
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className={`h-full flex flex-col overflow-x-hidden overflow-hidden min-h-0 ${
-          mobileThreadOpen ? 'max-md:min-h-[100dvh] max-md:max-h-[100dvh]' : ''
-        }`}
-      >
-        {/* Layout 2 kotak seperti UWABA: kiri = list, kanan = chat. PC = selalu 2 kolom; mobile = pilih buka kanan */}
-        <div className="flex flex-col md:grid md:grid-cols-2 md:grid-rows-1 gap-6 flex-1 min-h-0 overflow-hidden">
-          {/* Kotak kiri: Daftar percakapan. Dari md (768px) ke atas selalu tampil; mobile sembunyikan saat chat terbuka */}
-          <div
-            className={`col-span-1 h-full min-h-0 overflow-hidden flex flex-col ${!isDesktop && hasSelectedRoom ? 'hidden' : ''} md:!flex`}
-          >
+  const listColumnClass =
+    variant === 'offcanvas'
+      ? 'box-border flex h-full min-h-0 w-1/2 min-w-0 shrink-0 flex-col overflow-hidden pr-1'
+      : `col-span-1 h-full min-h-0 overflow-hidden flex flex-col ${!splitLayoutDesktop && hasSelectedRoom ? 'hidden' : ''} ${splitLayoutDesktop ? '!flex' : 'md:!flex'}`
+
+  const threadColumnClass =
+    variant === 'offcanvas'
+      ? 'box-border flex h-full min-h-0 w-1/2 min-w-0 shrink-0 flex-col overflow-hidden pl-1'
+      : `col-span-1 min-h-0 overflow-hidden flex flex-col ${!splitLayoutDesktop && !hasSelectedRoom ? 'hidden' : ''} ${splitLayoutDesktop ? '!flex md:h-full' : 'md:!flex md:h-full'} ${
+          mobileThreadOpen
+            ? 'fixed inset-0 z-[85] h-[100dvh] max-h-[100dvh] w-full flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] md:static md:z-auto md:h-full md:max-h-none md:w-auto md:p-0 md:pt-0 md:pb-0'
+            : 'h-full'
+        }`
+
+  const renderListColumn = () => (
+      <div className={listColumnClass}>
             <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-none md:rounded-lg shadow-md h-full flex flex-col overflow-hidden min-h-0">
               <div className="shrink-0 px-2 md:px-4 py-3 bg-teal-600 text-white flex items-center justify-between gap-2 rounded-none md:rounded-t-lg">
-                <div className="min-w-0">
-                  <h1 className="text-lg font-semibold">Chat</h1>
-                  <p className="text-xs text-teal-100 mt-0.5">
-                    {isConnected ? 'Terhubung' : 'Menghubungkan...'}
-                  </p>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {variant === 'offcanvas' && typeof onRequestClose === 'function' ? (
+                    <button
+                      type="button"
+                      onClick={onRequestClose}
+                      className="shrink-0 p-2 rounded-full hover:bg-teal-500 text-white"
+                      title="Tutup"
+                      aria-label="Tutup chat"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  ) : null}
+                  <div className="min-w-0">
+                    <h1 className="text-lg font-semibold">Chat</h1>
+                    <p className="text-xs text-teal-100 mt-0.5 truncate">
+                      {isConnected ? 'Terhubung' : 'Menghubungkan...'}
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={openNewChatOffcanvas}
-                  className="hidden md:inline-flex shrink-0 p-2 rounded-full hover:bg-teal-500 text-white"
+                  className={`${variant === 'offcanvas' ? 'inline-flex' : 'hidden md:inline-flex'} shrink-0 p-2 rounded-full hover:bg-teal-500 text-white`}
                   title="Tambah chat baru"
                   aria-label="Tambah chat baru"
                 >
@@ -1572,7 +1765,7 @@ export default function Chat() {
                               )}
                             </div>
                             {c.unread_count > 0 && (
-                              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center px-1 ring-2 ring-white dark:ring-gray-800">
+                              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-semibold tabular-nums flex items-center justify-center px-1 dark:bg-red-600">
                                 {c.unread_count > 99 ? '99+' : c.unread_count}
                               </span>
                             )}
@@ -1602,8 +1795,7 @@ export default function Chat() {
                   </ul>
                 )}
               </div>
-              {/* Tombol tambah chat (mobile: pojok bawah) */}
-              {!isDesktop && (
+              {!isDesktop && variant !== 'offcanvas' && (
                 <div className="pointer-events-none fixed right-4 bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)] z-[90]">
                   <button
                     type="button"
@@ -1625,17 +1817,11 @@ export default function Chat() {
                 </div>
               )}
             </div>
-          </div>
+      </div>
+  )
 
-          {/* Kotak kanan: Area chat. Dari md (768px) ke atas selalu tampil; mobile tampil saat ada pilihan */}
-          <div
-            className={`col-span-1 min-h-0 overflow-hidden flex flex-col ${!isDesktop && !hasSelectedRoom ? 'hidden' : ''} md:!flex md:h-full ${
-              mobileThreadOpen
-                ? 'fixed inset-0 z-[85] h-[100dvh] max-h-[100dvh] w-full flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] md:static md:z-auto md:h-full md:max-h-none md:w-auto md:p-0 md:pt-0 md:pb-0'
-                : 'h-full'
-            }`}
-            style={{ minHeight: 0 }}
-          >
+  const renderThreadColumn = () => (
+      <div className={threadColumnClass} style={{ minHeight: 0 }}>
             <div
               className={`bg-transparent dark:bg-transparent shadow-md h-full min-h-0 flex flex-col overflow-hidden ${
                 mobileThreadOpen ? 'rounded-none md:rounded-lg' : 'rounded-lg'
@@ -1644,7 +1830,7 @@ export default function Chat() {
               {selectedContact ? (
                 <>
                   <div className="shrink-0 z-20 flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 bg-teal-600 text-white border-b border-teal-700/30 md:rounded-t-lg rounded-none shadow-sm">
-                    {!isDesktop && (
+                    {!splitLayoutDesktop && (
                       <button
                         type="button"
                         onClick={handleThreadBack}
@@ -1726,15 +1912,41 @@ export default function Chat() {
                     ) : messages.length === 0 ? (
                       <p className="text-center text-gray-500 dark:text-gray-400 text-sm py-4">Belum ada pesan. Mulai obrolan.</p>
                     ) : null}
-                    {messages.map((msg, i) => (
-                      <MessageBubble
-                        key={msg.tempId != null ? `temp-${msg.tempId}` : msg.id != null ? `id-${msg.id}` : `m-${i}`}
-                        msg={msg}
-                        isOwn={Boolean(msg.isOwn || msg.is_own) || (myUsersId != null && Number(msg.sender_id ?? msg.from_user_id) === myUsersId)}
-                        isGroup={roomIsGroup}
-                        groupSenderLabel={roomIsGroup ? getGroupMessageLabel(msg) : ''}
-                      />
-                    ))}
+                    {messages.map((msg, i) => {
+                      const showUnreadBanner =
+                        firstUnreadBannerMessageId != null &&
+                        Number(msg.id) === Number(firstUnreadBannerMessageId)
+                      const bubbleKey =
+                        msg.tempId != null
+                          ? `temp-${msg.tempId}`
+                          : msg.id != null
+                            ? `id-${messageKey}-${msg.id}-${i}`
+                            : `m-${messageKey}-${i}`
+                      return (
+                        <Fragment key={bubbleKey}>
+                          {showUnreadBanner ? (
+                            <div
+                              data-chat-unread-banner="1"
+                              className="flex w-full items-center gap-2 py-2"
+                              role="separator"
+                              aria-label="Pesan baru"
+                            >
+                              <span className="h-px min-w-0 flex-1 bg-gray-400/70 dark:bg-gray-500/60" />
+                              <span className="shrink-0 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                Pesan Baru
+                              </span>
+                              <span className="h-px min-w-0 flex-1 bg-gray-400/70 dark:bg-gray-500/60" />
+                            </div>
+                          ) : null}
+                          <MessageBubble
+                            msg={msg}
+                            isOwn={Boolean(msg.isOwn || msg.is_own) || (myUsersId != null && Number(msg.sender_id ?? msg.from_user_id) === myUsersId)}
+                            isGroup={roomIsGroup}
+                            groupSenderLabel={roomIsGroup ? getGroupMessageLabel(msg) : ''}
+                          />
+                        </Fragment>
+                      )
+                    })}
                   </div>
 
                   {sendError && (
@@ -1781,13 +1993,52 @@ export default function Chat() {
                     <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
                       {getIcon('chat', 'w-8 h-8 text-gray-500')}
                     </div>
-                    <p className="text-sm">Pilih percakapan di kiri atau tombol + untuk chat baru.</p>
+                    <p className="text-sm">
+                      {variant === 'offcanvas'
+                        ? 'Pilih percakapan di daftar atau tombol + untuk chat baru.'
+                        : 'Pilih percakapan di kiri atau tombol + untuk chat baru.'}
+                    </p>
                   </div>
                 </div>
               )}
             </div>
+      </div>
+  )
+
+  return (
+    <div
+      className={`h-full overflow-hidden min-h-0 ${
+        mobileThreadOpen ? 'p-0 sm:p-3' : 'p-0 sm:p-3'
+      }`}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: variant === 'offcanvas' ? 0 : 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: variant === 'offcanvas' ? 0.2 : 0.5 }}
+        className={`h-full flex flex-col overflow-x-hidden overflow-hidden min-h-0 ${
+          mobileThreadOpen ? 'max-md:min-h-[100dvh] max-md:max-h-[100dvh]' : ''
+        }`}
+      >
+        {/* Offcanvas: geser kiri saat buka thread, geser kanan kembali ke daftar. Halaman: grid / mobile seperti sebelumnya. */}
+        {variant === 'offcanvas' ? (
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <motion.div
+              className="flex h-full"
+              style={{ width: '200%' }}
+              initial={false}
+              animate={{ x: hasSelectedRoom ? '-50%' : '0%' }}
+              transition={{ type: 'tween', duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
+            >
+              {renderListColumn()}
+              {renderThreadColumn()}
+            </motion.div>
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col md:grid md:grid-cols-2 md:grid-rows-1 gap-6 flex-1 min-h-0 overflow-hidden">
+            {renderListColumn()}
+            {renderThreadColumn()}
+          </div>
+        )}
       </motion.div>
 
       {/* Offcanvas kanan: pilih user untuk chat baru — z di atas bottom nav (z-[100]) agar konten bawah tidak tertutup */}

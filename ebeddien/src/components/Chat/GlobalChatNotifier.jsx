@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useLiveSocket } from '../../contexts/LiveSocketContext'
+import { useChatOffcanvas } from '../../contexts/ChatOffcanvasContext'
 import { useAuthStore } from '../../store/authStore'
 import { chatUserAPI } from '../../services/api'
 import { chatDexieStore, CHAT_CACHE_TTL_MS, shouldSyncFromServer } from '../../services/chatDexieStore'
@@ -23,6 +24,7 @@ const getInitial = (text) => String(text || '?').trim().charAt(0).toUpperCase() 
 
 export default function GlobalChatNotifier() {
   const { socket } = useLiveSocket()
+  const { refreshChatUnreadFromApi } = useChatOffcanvas()
   const user = useAuthStore((s) => s.user)
   const location = useLocation()
   const navigate = useNavigate()
@@ -162,7 +164,7 @@ export default function GlobalChatNotifier() {
     pendingReplyRef.current = null
   }, [])
 
-  // Auto-tutup hanya saat panel balas belum dibuka; setelah "Balas" tetap sampai kirim / X / klik luar
+  // Auto-tutup hanya saat panel balas belum dibuka; setelah "Balas" tetap sampai kirim / X (tanpa overlay — halaman tetap interaktif)
   useEffect(() => {
     if (!activeNotif) return
     if (replyOpen) {
@@ -187,6 +189,30 @@ export default function GlobalChatNotifier() {
     }
   }, [])
 
+  const headerUnreadRefreshTimerRef = useRef(null)
+  useEffect(() => {
+    if (!socket || !user?.id) return
+    const scheduleHeaderUnreadRefresh = () => {
+      if (headerUnreadRefreshTimerRef.current) clearTimeout(headerUnreadRefreshTimerRef.current)
+      headerUnreadRefreshTimerRef.current = setTimeout(() => {
+        headerUnreadRefreshTimerRef.current = null
+        refreshChatUnreadFromApi()
+      }, 100)
+    }
+    const onReceiveForBadge = (payload) => {
+      if (!payload || typeof payload !== 'object') return
+      const from = Number(payload.sender_id ?? payload.from_user_id)
+      if (!Number.isFinite(from) || from < 1) return
+      if (myUsersId != null && from === myUsersId) return
+      scheduleHeaderUnreadRefresh()
+    }
+    socket.on('receive_message', onReceiveForBadge)
+    return () => {
+      socket.off('receive_message', onReceiveForBadge)
+      if (headerUnreadRefreshTimerRef.current) clearTimeout(headerUnreadRefreshTimerRef.current)
+    }
+  }, [socket, user?.id, myUsersId, refreshChatUnreadFromApi])
+
   useEffect(() => {
     if (!socket) return
     const onReceive = (payload) => {
@@ -199,6 +225,7 @@ export default function GlobalChatNotifier() {
       seenKeysRef.current.add(key)
       const onChatPage = location.pathname === '/chat' || location.pathname.startsWith('/chat/')
       if (onChatPage) return
+      // Jika payload punya to_user_id eksplisit (bukan 0 / kosong), abaikan bukan untuk kita.
       if (myUsersId != null && normalized.toUserId != null && normalized.toUserId !== myUsersId) return
       hydrateUserPhotoBlob(normalized.fromUserId)
       setReplyText('')
@@ -296,10 +323,11 @@ export default function GlobalChatNotifier() {
     }
   }, [socket, dismiss])
 
+  /** Hanya kartu notifikasi yang menerima pointer — tidak ada layer full-screen di belakangnya */
   const wrapperClass = useMemo(() => (
     isDesktop
-      ? 'fixed z-[9999] bottom-4 right-4 w-[360px] max-w-[calc(100vw-1rem)] pointer-events-auto'
-      : 'fixed z-[9999] top-[calc(env(safe-area-inset-top,0px)+0.5rem)] left-2 right-2 pointer-events-auto'
+      ? 'fixed z-[9999] bottom-4 right-4 w-[360px] max-w-[calc(100vw-1rem)] pointer-events-auto isolate'
+      : 'fixed z-[9999] top-[calc(env(safe-area-inset-top,0px)+0.5rem)] left-2 right-2 pointer-events-auto isolate'
   ), [isDesktop])
 
   const toastTree = (
@@ -307,15 +335,15 @@ export default function GlobalChatNotifier() {
       {activeNotif && (
         <motion.div
           key={String(activeNotif.id)}
-          role="dialog"
-          aria-modal="true"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
           aria-labelledby="global-chat-notif-title"
           initial={isDesktop ? { opacity: 0, x: 40 } : { opacity: 0, y: -36 }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           exit={isDesktop ? { opacity: 0, x: 48 } : { opacity: 0, y: -48 }}
           transition={{ duration: 0.22, ease: 'easeOut' }}
           className={wrapperClass}
-          onClick={(e) => e.stopPropagation()}
         >
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
             <div className="px-3 py-2 bg-teal-600 text-white flex items-start justify-between gap-2">
@@ -414,17 +442,5 @@ export default function GlobalChatNotifier() {
   )
 
   if (typeof document === 'undefined') return null
-  return createPortal(
-    <>
-      {activeNotif && (
-        <div
-          className="fixed inset-0 z-[9998] bg-black/25 dark:bg-black/45"
-          onClick={dismiss}
-          aria-hidden
-        />
-      )}
-      {toastTree}
-    </>,
-    document.body,
-  )
+  return createPortal(toastTree, document.body)
 }

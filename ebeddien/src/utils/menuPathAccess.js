@@ -66,6 +66,12 @@ export function canAccessPathByFitur(pathname, fiturMenuCodes) {
     return false
   }
 
+  if (norm === '/absen' || norm.startsWith('/absen/')) {
+    if (codes.some((c) => String(c).startsWith('action.absen.'))) return true
+    if (codesMatchAnyMenuCandidate(p, codes)) return true
+    return false
+  }
+
   const tabKey = (norm.endsWith('/') ? norm.slice(0, -1) : norm) || norm
   const tabCode = UGT_LAPORAN_PATH_TO_TAB[tabKey]
   if (tabCode) {

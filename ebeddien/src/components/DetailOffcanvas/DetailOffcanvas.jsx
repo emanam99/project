@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore'
 import { userHasSuperAdminAccess } from '../../utils/roleAccess'
 import Modal from '../Modal/Modal'
 import PrintPengeluaranOffcanvas from '../../pages/Keuangan/Pengeluaran/components/PrintPengeluaranOffcanvas'
+import WaNotifRecipientChecklist from '../../pages/Keuangan/Pengeluaran/components/WaNotifRecipientChecklist'
 
 /** Cooldown tombol "kirim ulang" notifikasi WA (rencana) agar tidak di-spam. */
 const RESEND_NOTIF_COOLDOWN_MS = 8000
@@ -51,6 +52,10 @@ function DetailOffcanvas({
   canUbahPenerimaUang = undefined,
   // Props untuk notifikasi admin (rencana)
   listAdmins = [],
+  /** Dari GET /user/list-super-admin-uwaba → recipient_groups */
+  recipientGroups = null,
+  /** true = konteks draft (satu grup lembaga sesuai role) */
+  waNotifDraftContext = false,
   selectedAdmins = [],
   onToggleAdmin = null,
   loadingAdmins = false,
@@ -1373,45 +1378,16 @@ function DetailOffcanvas({
                                 Anda tidak memiliki akses mengubah daftar penerima WA. Kirim ulang tetap memakai penerima yang sudah dipilih sistem (semua yang memenuhi syarat bawaan).
                               </p>
                             )}
-                            {loadingAdmins ? (
-                              <div className="flex items-center justify-center py-8">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                              </div>
-                            ) : listAdmins.length > 0 ? (
-                              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                                <div className="space-y-2 max-h-48 overflow-y-auto">
-                                  {listAdmins.map((admin) => (
-                                    <div
-                                      key={admin.id}
-                                      className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                                    >
-                                      {allowWaNotifRecipients ? (
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedAdmins.includes(admin.id)}
-                                          onChange={() => onToggleAdmin && onToggleAdmin(admin.id)}
-                                          className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
-                                        />
-                                      ) : null}
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                                          {admin.nama || 'Unknown'}
-                                        </p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                                          {admin.whatsapp}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                  Tidak ada admin tersedia
-                                </p>
-                              </div>
-                            )}
+                            <WaNotifRecipientChecklist
+                              loading={loadingAdmins}
+                              recipientGroups={recipientGroups}
+                              listAdminsFallback={listAdmins}
+                              selectedAdmins={selectedAdmins}
+                              onToggle={(id) => onToggleAdmin && onToggleAdmin(id)}
+                              canManage={allowWaNotifRecipients}
+                              draftContext={waNotifDraftContext}
+                              accent="teal"
+                            />
                           </div>
                         )}
 

@@ -8,8 +8,10 @@ import { useOffcanvasBackClose } from '../hooks/useOffcanvasBackClose'
 import { GROUP_ORDER } from '../config/menuConfig'
 import { PENGELUARAN_MENU_CODE } from '../config/pengeluaranFiturCodes'
 import { KALENDER_PENGATURAN_MENU_CODE } from '../config/kalenderFiturCodes'
+import { ABSEN_MENU_CODE } from '../config/absenFiturCodes'
 import PengeluaranFiturTabAccordions from './PengeluaranFiturTabAccordions'
 import KalenderPengaturanFiturTabAccordions from './KalenderPengaturanFiturTabAccordions'
+import AbsenFiturTabAccordions from './AbsenFiturTabAccordions'
 
 const EXTRA_GROUP_ORDER = ['Lainnya']
 
@@ -130,6 +132,9 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
   const [kalenderPengaturanAccordionOpen, setKalenderPengaturanAccordionOpen] = useState(
     () => new Set(['bulan', 'hari_penting'])
   )
+  const [absenAccordionOpen, setAbsenAccordionOpen] = useState(
+    () => new Set(['riwayat', 'absen', 'ngabsen'])
+  )
   const [patchingId, setPatchingId] = useState(null)
 
   const rk = roleKey != null && String(roleKey).trim() !== '' ? String(roleKey).trim() : ''
@@ -144,6 +149,7 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
     setTab('api')
     setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft']))
     setKalenderPengaturanAccordionOpen(new Set(['bulan', 'hari_penting']))
+    setAbsenAccordionOpen(new Set(['riwayat', 'absen', 'ngabsen']))
   }, [onClose])
 
   useOffcanvasBackClose(isOpen, close)
@@ -704,6 +710,48 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
                                         openKeys={pengeluaranAccordionOpen}
                                         onToggleKey={(key) => {
                                           setPengeluaranAccordionOpen((prev) => {
+                                            const next = new Set(prev)
+                                            if (next.has(key)) next.delete(key)
+                                            else next.add(key)
+                                            return next
+                                          })
+                                        }}
+                                        renderRow={(child) => {
+                                          const cChecked = roleHasFitur(child)
+                                          const cBusy = patchingId === child.id
+                                          const cDis = actionToggleDisabled(child)
+                                          return (
+                                            <div
+                                              key={child.id}
+                                              className="flex items-stretch gap-2 pl-14 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
+                                            >
+                                              <div className="flex-1 min-w-0">
+                                                <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
+                                                  Aksi
+                                                </span>
+                                                <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
+                                                <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
+                                              </div>
+                                              <label className="flex items-center shrink-0 cursor-pointer">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={cChecked}
+                                                  disabled={cBusy || cDis}
+                                                  title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
+                                                  onChange={(e) => handleToggleFitur(child, e.target.checked)}
+                                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
+                                                />
+                                              </label>
+                                            </div>
+                                          )
+                                        }}
+                                      />
+                                    ) : node.code === ABSEN_MENU_CODE ? (
+                                      <AbsenFiturTabAccordions
+                                        children={kids}
+                                        openKeys={absenAccordionOpen}
+                                        onToggleKey={(key) => {
+                                          setAbsenAccordionOpen((prev) => {
                                             const next = new Set(prev)
                                             if (next.has(key)) next.delete(key)
                                             else next.add(key)

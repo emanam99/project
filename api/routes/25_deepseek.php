@@ -18,11 +18,10 @@ return function (\Slim\App $app): void {
         $group->get('/chat-history', [DeepseekController::class, 'chatHistory']);
         /** Saran cepat acak dari data training (bank + training chat) — UI layar kosong. */
         $group->get('/training-suggestions', [DeepseekController::class, 'trainingSuggestedPrompts']);
-        /** Toggle per-user: akses AI via WhatsApp. */
-        $group->get('/whatsapp-access', [DeepseekController::class, 'getWhatsappAccess']);
-        $group->put('/whatsapp-access', [DeepseekController::class, 'putWhatsappAccess']);
-        $group->post('/whatsapp-activation-token', [DeepseekController::class, 'postWhatsappActivationToken']);
-        /** Sama seperti GET /pendaftaran/wa-wake — nyalakan koneksi WA Node sebelum user buka wa.me aktivasi. */
+        $group->get('/wa-instansi-settings', [DeepseekController::class, 'getWaInstansiSettings']);
+        $group->put('/wa-instansi-settings', [DeepseekController::class, 'putWaInstansiSettings']);
+        $group->put('/chat-mode-preference', [DeepseekController::class, 'putChatModePreference']);
+        /** Bangunkan koneksi WA Node (opsional, alur umum). */
         $group->get('/wa-wake', [DeepseekController::class, 'getWaWake']);
         /** Super admin: kelola limit + status AI user. */
         $group->get('/admin/ai-users', [DeepseekController::class, 'adminListAiUsers']);

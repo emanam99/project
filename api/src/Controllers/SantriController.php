@@ -8,6 +8,7 @@ use App\Helpers\SantriRombelHelper;
 use App\Helpers\SantriKamarHelper;
 use App\Helpers\SantriDomisiliHelper;
 use App\Helpers\TextSanitizer;
+use App\Helpers\LiveSantriIndexNotifier;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -33,23 +34,35 @@ class SantriController
             }
 
             // Jika tidak ada id, ambil semua santri (id_diniyah/id_formal + nama rombel dari JOIN)
+            // Parameter since (datetime ISO / MySQL): hanya baris yang diubah/dibuat setelah watermark — sinkron inkremental di klien.
+            $since = isset($queryParams['since']) ? trim((string) $queryParams['since']) : '';
+
             $sql = "SELECT s.id, s.nis, s.nama, s.nik, s.tempat_lahir, s.tanggal_lahir, s.gender, s.ayah, s.ibu, s.no_telpon, s.email,
                 s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kode_pos, s.kabupaten, s.provinsi,
                 s.id_diniyah, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
                 s.id_formal, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
                 s.lttq, s.kelas_lttq, s.kel_lttq, d.daerah, dk.kamar, s.id_kamar, s.status_santri,
-                COALESCE(d.kategori, s.kategori) AS kategori, s.saudara_di_pesantren
+                COALESCE(d.kategori, s.kategori) AS kategori, s.saudara_di_pesantren,
+                s.tanggal_update, s.tanggal_dibuat
                 FROM santri s
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah";
-            $stmt = $this->db->query($sql);
+            if ($since !== '') {
+                $sql .= ' WHERE (s.tanggal_update IS NOT NULL AND s.tanggal_update > ?)
+                    OR (s.tanggal_update IS NULL AND s.tanggal_dibuat > ?)';
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute([$since, $since]);
+            } else {
+                $stmt = $this->db->query($sql);
+            }
             $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             return $this->jsonResponse($response, [
                 'success' => true,
-                'data' => $data
+                'data' => $data,
+                'incremental' => $since !== '',
             ], 200);
 
         } catch (\Exception $e) {
@@ -355,6 +368,7 @@ class SantriController
                 if ($oldSantri && $newSantri) {
                     UserAktivitasLogger::log(null, $idAdmin, UserAktivitasLogger::ACTION_UPDATE, 'santri', $id, $oldSantri, $newSantri, $request);
                 }
+                LiveSantriIndexNotifier::ping();
                 return $this->jsonResponse($response, [
                     'success' => true,
                     'message' => 'Biodata berhasil diupdate'

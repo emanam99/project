@@ -202,6 +202,9 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
   const notificationData = event.notification.data || {}
+  if (notificationData.no_nav === true || notificationData.no_nav === '1' || notificationData.no_nav === 1) {
+    return
+  }
   const action = event.action || ''
 
   let rawUrl = notificationData.url || '/'
@@ -245,19 +248,40 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const topUrl = typeof data.url === 'string' && data.url !== '' ? data.url : '/'
   const mergedData =
     typeof data.data === 'object' && data.data !== null && !Array.isArray(data.data)
       ? { ...data.data }
       : {}
-  if (mergedData.url == null || mergedData.url === '') {
+  const noNav =
+    mergedData.no_nav === true || mergedData.no_nav === '1' || mergedData.no_nav === 1
+  const topUrl = noNav
+    ? ''
+    : typeof data.url === 'string' && data.url !== ''
+      ? data.url
+      : '/'
+  if (!noNav && (mergedData.url == null || mergedData.url === '')) {
     mergedData.url = topUrl
   }
 
   const topActions = Array.isArray(data.actions) ? data.actions : []
 
+  const senderNameRaw =
+    typeof data.sender_name === 'string' && data.sender_name.trim()
+      ? data.sender_name.trim()
+      : typeof mergedData.sender_name === 'string' && mergedData.sender_name.trim()
+        ? mergedData.sender_name.trim()
+        : ''
+  const rawBody = data.body || 'Anda memiliki notifikasi baru'
+  const body =
+    senderNameRaw &&
+    rawBody &&
+    !String(rawBody).startsWith(senderNameRaw + ':') &&
+    !String(rawBody).startsWith(senderNameRaw + '：')
+      ? `${senderNameRaw}: ${rawBody}`
+      : rawBody
+
   const options = {
-    body: data.body || 'Anda memiliki notifikasi baru',
+    body,
     icon: data.icon || 'https://alutsmani.id/gambar/icon/notif.png',
     badge: data.badge || 'https://alutsmani.id/gambar/icon/notif.png',
     tag: data.tag,

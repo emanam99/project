@@ -1,7 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { createPortal } from 'react-dom'
+import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
@@ -19,9 +18,9 @@ import {
   deepseekProxyChat
 } from '../../../services/deepseekClient'
 import { logNewlineDebug } from '../../../utils/newlineDebug'
-import { useChatAiHeaderSlot } from '../../../contexts/ChatAiHeaderContext'
+import { dispatchChatAiUsageHeaderUpdate } from '../../../utils/chatAiHeaderUsage'
 import { useNotification } from '../../../contexts/NotificationContext'
-import EbeddienChatHeaderMain from './EbeddienChatHeaderMain'
+import EbeddienChatConversationStarterToolbar from './EbeddienChatConversationStarterToolbar'
 
 function msgId() {
   try {
@@ -80,15 +79,8 @@ function mapServerHistoryToMessages(rows) {
     .filter(Boolean)
 }
 
-/** Cadangan jika server tidak mengembalikan cukup data training. */
-const SUGGESTED_PROMPTS_FALLBACK = [
-  'Ringkas dalam 5 poin: bagaimana cara menjaga produktif saat ramai tugas?',
-  'Buatkan contoh jadwal harian santri yang seimb antara belajar dan istirahat.',
-  'Jelaskan singkat perbedaan debit dan kredit dalam pembukatan sederhana.',
-  'Tulis naskah singkat sambutan acara 2 menit untuk pembukaan kegiatan sekolah.'
-]
-
-function padSuggestedPromptsWithFallback(fromApi) {
+/** Maks. 3 pertanyaan unik dari Bank Q&A saja — tanpa cadangan generik dari Training Chat atau teks statis. */
+function normalizeBankSuggestedPrompts(fromApi, max = 3) {
   const out = []
   const seen = new Set()
   for (const t of fromApi || []) {
@@ -97,21 +89,9 @@ function padSuggestedPromptsWithFallback(fromApi) {
       seen.add(s)
       out.push(s)
     }
-    if (out.length >= 3) return out.slice(0, 3)
+    if (out.length >= max) break
   }
-  const pool = [...SUGGESTED_PROMPTS_FALLBACK]
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[pool[i], pool[j]] = [pool[j], pool[i]]
-  }
-  for (const p of pool) {
-    if (!seen.has(p)) {
-      seen.add(p)
-      out.push(p)
-    }
-    if (out.length >= 3) break
-  }
-  return out.slice(0, 3)
+  return out.slice(0, max)
 }
 
 const CHAT_FONT_STORAGE_KEY = 'ebeddien_chat_font_scale'
@@ -124,6 +104,10 @@ const CHAT_FONT_STORAGE_KEY = 'ebeddien_chat_font_scale'
 function getChatFontClasses(scale) {
   const proseBase =
     'prose max-w-none text-gray-800 dark:text-gray-100 [&_p]:my-2 [&_h1]:my-2 [&_h2]:my-2 [&_h3]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_pre]:rounded-lg [&_pre]:bg-gray-100 dark:[&_pre]:bg-gray-900'
+  const templateBtnCommon =
+    'text-left w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200 dark:border-primary-800/50 bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:bg-primary-50/80 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors line-clamp-2'
+  const skeletonCommon =
+    'w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200/50 dark:border-primary-900/40 bg-gray-100 dark:bg-gray-800/80 animate-pulse'
   switch (scale) {
     case 'sm':
       return {
@@ -131,7 +115,20 @@ function getChatFontClasses(scale) {
         assistantName: 'text-[10px]',
         prose: `${proseBase} text-xs leading-relaxed [&_pre]:text-[11px] [&_code]:text-[11px]`,
         thinking: 'text-[11px]',
-        typing: 'text-xs'
+        typing: 'text-xs',
+        starter: {
+          title: 'text-sm font-medium text-gray-800 dark:text-gray-100',
+          description: 'text-xs mt-2 max-w-md mx-auto text-gray-500 dark:text-gray-400',
+          templateBtn: `${templateBtnCommon} text-xs px-2.5 py-2`,
+          skeleton: `${skeletonCommon} h-11`,
+          toolbarRoot: 'mb-5 p-3 space-y-3',
+          toolbarLabel: 'mb-1.5 text-[9px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400',
+          toolbarHint: 'text-[11px] leading-snug text-gray-600 dark:text-gray-400',
+          toolbarBtn: 'flex-1 rounded-lg py-1.5 text-[11px]',
+          sectionWhenEmpty: 'py-5 sm:py-8',
+          sectionWhenHistory: 'mt-6 border-t border-gray-200/90 pt-6 dark:border-gray-700/80',
+          templateGap: 'mt-5 gap-1.5'
+        }
       }
     case 'lg':
       return {
@@ -139,7 +136,20 @@ function getChatFontClasses(scale) {
         assistantName: 'text-sm',
         prose: `${proseBase} text-lg leading-relaxed [&_pre]:text-base [&_code]:text-[0.9em]`,
         thinking: 'text-sm',
-        typing: 'text-base'
+        typing: 'text-base',
+        starter: {
+          title: 'text-lg sm:text-xl font-medium text-gray-800 dark:text-gray-100',
+          description: 'text-base mt-2 max-w-md mx-auto text-gray-500 dark:text-gray-400',
+          templateBtn: `${templateBtnCommon} text-sm sm:text-base px-4 py-3`,
+          skeleton: `${skeletonCommon} min-h-[4.25rem]`,
+          toolbarRoot: 'mb-6 p-5 space-y-5',
+          toolbarLabel: 'mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400',
+          toolbarHint: 'text-sm leading-snug text-gray-600 dark:text-gray-400',
+          toolbarBtn: 'flex-1 rounded-lg py-2.5 text-sm',
+          sectionWhenEmpty: 'py-8 sm:py-12',
+          sectionWhenHistory: 'mt-6 border-t border-gray-200/90 pt-10 dark:border-gray-700/80',
+          templateGap: 'mt-7 gap-3'
+        }
       }
     default:
       return {
@@ -147,7 +157,20 @@ function getChatFontClasses(scale) {
         assistantName: 'text-xs',
         prose: `${proseBase} text-sm leading-relaxed [&_pre]:text-sm [&_code]:text-[0.875em]`,
         thinking: 'text-xs',
-        typing: 'text-sm'
+        typing: 'text-sm',
+        starter: {
+          title: 'text-base sm:text-lg font-medium text-gray-800 dark:text-gray-100',
+          description: 'text-sm mt-2 max-w-md mx-auto text-gray-500 dark:text-gray-400',
+          templateBtn: `${templateBtnCommon} text-xs sm:text-sm px-3 py-2.5`,
+          skeleton: `${skeletonCommon} h-14`,
+          toolbarRoot: 'mb-6 p-4 space-y-4',
+          toolbarLabel: 'mb-2 text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400',
+          toolbarHint: 'text-xs leading-snug text-gray-600 dark:text-gray-400',
+          toolbarBtn: 'flex-1 rounded-lg py-2 text-xs',
+          sectionWhenEmpty: 'py-6 sm:py-10',
+          sectionWhenHistory: 'mt-6 border-t border-gray-200/90 pt-8 dark:border-gray-700/80',
+          templateGap: 'mt-6 gap-2'
+        }
       }
   }
 }
@@ -310,19 +333,11 @@ function TypingIndicator({ nameClass = 'text-xs', statusClass = 'text-xs' }) {
   )
 }
 
-export default function DeepseekChat() {
+export default function DeepseekChat({ variant = 'page', onRequestClose } = {}) {
   const { user } = useAuthStore()
   const { showNotification } = useNotification()
   const chatAi = useChatAiFiturAccess()
   const canUseAlternativeMode = chatAi.modeAlternatif
-  const canManageAiUsers = chatAi.uiUserAiSettings
-  const chatAiTraining = {
-    bank: chatAi.pageTrainingBank,
-    trainingChat: chatAi.pageTrainingChat,
-    dashboard: chatAi.pageDashboard,
-    riwayat: chatAi.pageRiwayat,
-    userAi: chatAi.uiUserAiSettings
-  }
 
   const [accountEmail, setAccountEmail] = useState(null)
   const [accountLoading, setAccountLoading] = useState(true)
@@ -343,27 +358,7 @@ export default function DeepseekChat() {
 
   const [thinkingEnabled, setThinkingEnabled] = useState(false)
   const [searchEnabled, setSearchEnabled] = useState(false)
-  const [waAiEnabled, setWaAiEnabled] = useState(false)
-  const [waAiBusy, setWaAiBusy] = useState(false)
-  /** Nomor WA profil (ternormalisasi) yang dipakai backend untuk cocokkan pesan masuk WA → AI */
-  const [waProfileNumber, setWaProfileNumber] = useState('')
-  const [waProfileNumberOk, setWaProfileNumberOk] = useState(false)
-  const [waAiJidBound, setWaAiJidBound] = useState(false)
-  const [waActivationBusy, setWaActivationBusy] = useState(false)
   const [aiFeatureEnabled, setAiFeatureEnabled] = useState(true)
-  const [aiDailyLimit, setAiDailyLimit] = useState(5)
-  const [aiTodayCount, setAiTodayCount] = useState(0)
-  const [adminAiUsersOpen, setAdminAiUsersOpen] = useState(false)
-  const [adminAiUsers, setAdminAiUsers] = useState([])
-  const [adminAiUsersTotal, setAdminAiUsersTotal] = useState(0)
-  const [adminAiUsersLoading, setAdminAiUsersLoading] = useState(false)
-  const [adminAiUsersSearch, setAdminAiUsersSearch] = useState('')
-  const [adminAiUsersStatus, setAdminAiUsersStatus] = useState('')
-  const [adminAiUsersPage, setAdminAiUsersPage] = useState(1)
-  const [adminAiUsersLimit] = useState(20)
-  const [editAiUser, setEditAiUser] = useState(null)
-  const [editAiUserLimit, setEditAiUserLimit] = useState('5')
-  const [editAiUserBusy, setEditAiUserBusy] = useState(false)
 
   /** Mode utama = API server + training (default); alternatif = proxy (hanya super admin). */
   const [aiChatMode, setAiChatMode] = useState('api')
@@ -395,8 +390,6 @@ export default function DeepseekChat() {
     }
     return 'md'
   })
-  /** Panel menu header — mirip ekspansi profil (ringkas ↔ lengkap). */
-  const [chatHeaderMenuOpen, setChatHeaderMenuOpen] = useState(false)
   const chatFont = getChatFontClasses(chatFontScale)
 
   useEffect(() => {
@@ -422,8 +415,9 @@ export default function DeepseekChat() {
     try {
       const res = await deepseekAPI.getAccount()
       if (res?.success && res.data) {
-        setAiDailyLimit(Math.max(0, Number(res.data.ai_daily_limit ?? 5)))
-        setAiTodayCount(Math.max(0, Number(res.data.ai_today_count ?? 0)))
+        const lim = Math.max(0, Number(res.data.ai_daily_limit ?? 5))
+        const cnt = Math.max(0, Number(res.data.ai_today_count ?? 0))
+        dispatchChatAiUsageHeaderUpdate(cnt, lim)
       }
     } catch {
       /* noop */
@@ -501,13 +495,19 @@ export default function DeepseekChat() {
         if (res.success && res.data?.email) {
           setAccountEmail(res.data.email)
           setAiFeatureEnabled(res.data?.ai_enabled !== false)
-          setAiDailyLimit(Math.max(0, Number(res?.data?.ai_daily_limit ?? 5)))
-          setAiTodayCount(Math.max(0, Number(res?.data?.ai_today_count ?? 0)))
+          const m = res.data?.ai_chat_mode === 'proxy' ? 'proxy' : 'api'
+          setAiChatMode(m)
+          dispatchChatAiUsageHeaderUpdate(
+            Math.max(0, Number(res?.data?.ai_today_count ?? 0)),
+            Math.max(0, Number(res?.data?.ai_daily_limit ?? 5))
+          )
         } else {
           setAccountEmail(null)
           setAccountError(res.message || 'Email tidak tersedia')
-          setAiDailyLimit(Math.max(0, Number(res?.data?.ai_daily_limit ?? 5)))
-          setAiTodayCount(Math.max(0, Number(res?.data?.ai_today_count ?? 0)))
+          dispatchChatAiUsageHeaderUpdate(
+            Math.max(0, Number(res?.data?.ai_today_count ?? 0)),
+            Math.max(0, Number(res?.data?.ai_daily_limit ?? 5))
+          )
         }
       } catch (e) {
         if (!cancelled) {
@@ -523,182 +523,6 @@ export default function DeepseekChat() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!canManageAiUsers || !adminAiUsersOpen) return
-    let cancelled = false
-    ;(async () => {
-      setAdminAiUsersLoading(true)
-      try {
-        const res = await deepseekAPI.adminListAiUsers({
-          page: adminAiUsersPage,
-          limit: adminAiUsersLimit,
-          search: adminAiUsersSearch || undefined,
-          status: adminAiUsersStatus || undefined
-        })
-        if (cancelled) return
-        if (res?.success) {
-          setAdminAiUsers(res?.data?.items || [])
-          setAdminAiUsersTotal(res?.data?.total || 0)
-        } else {
-          setAdminAiUsers([])
-          setAdminAiUsersTotal(0)
-        }
-      } catch {
-        if (!cancelled) {
-          setAdminAiUsers([])
-          setAdminAiUsersTotal(0)
-        }
-      } finally {
-        if (!cancelled) setAdminAiUsersLoading(false)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [canManageAiUsers, adminAiUsersOpen, adminAiUsersPage, adminAiUsersLimit, adminAiUsersSearch, adminAiUsersStatus])
-
-  const openEditAiUserLimit = (userRow) => {
-    setEditAiUser(userRow)
-    setEditAiUserLimit(String(userRow?.ai_daily_limit ?? 5))
-  }
-
-  const saveEditAiUserLimit = async () => {
-    if (!editAiUser?.id || editAiUserBusy) return
-    setEditAiUserBusy(true)
-    try {
-      const lim = Math.max(0, parseInt(editAiUserLimit, 10) || 0)
-      const res = await deepseekAPI.adminUpdateAiUser(editAiUser.id, { ai_daily_limit: lim })
-      if (res?.success) {
-        setAdminAiUsers((prev) => prev.map((x) => (x.id === editAiUser.id ? { ...x, ai_daily_limit: lim } : x)))
-        setEditAiUser(null)
-      }
-    } finally {
-      setEditAiUserBusy(false)
-    }
-  }
-
-  const toggleAdminAiUserEnabled = async (userRow, next) => {
-    if (!userRow?.id) return
-    const prev = !!userRow.ai_enabled
-    setAdminAiUsers((arr) => arr.map((x) => (x.id === userRow.id ? { ...x, ai_enabled: !!next } : x)))
-    try {
-      const res = await deepseekAPI.adminUpdateAiUser(userRow.id, { ai_enabled: !!next })
-      if (!res?.success) {
-        setAdminAiUsers((arr) => arr.map((x) => (x.id === userRow.id ? { ...x, ai_enabled: prev } : x)))
-      }
-    } catch {
-      setAdminAiUsers((arr) => arr.map((x) => (x.id === userRow.id ? { ...x, ai_enabled: prev } : x)))
-    }
-  }
-
-  useEffect(() => {
-    if (!accountEmail) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await deepseekAPI.getWhatsappAccess()
-        if (cancelled) return
-        if (res?.success && res?.data) {
-          setWaAiEnabled(!!res.data.enabled)
-          setWaProfileNumber(typeof res.data.no_wa_normalized === 'string' ? res.data.no_wa_normalized : '')
-          setWaProfileNumberOk(!!res.data.wa_number_ok)
-          setWaAiJidBound(!!res.data.ai_wa_jid_bound)
-        }
-      } catch {
-        /* noop */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [accountEmail])
-
-  /**
-   * Buka wa.me — PWA standalone/mobile: about:blank + navigasi tertunda sering macet; pakai fallback di bawah.
-   */
-  const openWaAiActivation = useCallback((url) => {
-    if (!url || typeof url !== 'string') return
-    deepseekAPI.getWaWake().catch(() => {})
-    try {
-      const w = window.open(url, '_blank', 'noopener,noreferrer')
-      if (w) return
-    } catch {
-      /* noop */
-    }
-    try {
-      const a = document.createElement('a')
-      a.href = url
-      a.target = '_blank'
-      a.rel = 'noopener noreferrer'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      return
-    } catch {
-      /* noop */
-    }
-    window.location.assign(url)
-  }, [])
-
-  /** Buka wa.me dengan pesan aktivasi (token dari server). */
-  const requestWaActivationAndOpen = useCallback(
-    async (opts = {}) => {
-      const silent = opts.silent !== false
-      setWaActivationBusy(true)
-      try {
-        const tok = await deepseekAPI.postWhatsappActivationToken()
-        if (tok?.success && tok.data?.wa_me_url) {
-          openWaAiActivation(tok.data.wa_me_url)
-          if (!silent && !tok.data.slot1_ready) {
-            showNotification(
-              'Pastikan slot WhatsApp (Baileys) terhubung agar pesan aktivasi sampai.',
-              'warning'
-            )
-          }
-        } else {
-          showNotification(tok?.message || 'Gagal memulai aktivasi WhatsApp. Periksa profil & nomor WA.', 'error')
-        }
-      } catch (err) {
-        showNotification(err?.response?.data?.message || 'Gagal memulai aktivasi WhatsApp.', 'error')
-      } finally {
-        setWaActivationBusy(false)
-      }
-    },
-    [openWaAiActivation, showNotification]
-  )
-
-  const handleToggleWaAi = async (next) => {
-    if (waAiBusy) return
-    if (next && !waProfileNumberOk) {
-      showNotification('Lengkapi nomor WhatsApp di profil terlebih dahulu.', 'warning')
-      return
-    }
-    const prev = waAiEnabled
-    setWaAiBusy(true)
-    try {
-      const res = await deepseekAPI.putWhatsappAccess(next)
-      if (!res?.success) {
-        setWaAiEnabled(prev)
-      } else if (res?.data) {
-        setWaAiEnabled(!!res.data.enabled)
-        setWaProfileNumber(typeof res.data.no_wa_normalized === 'string' ? res.data.no_wa_normalized : '')
-        setWaProfileNumberOk(!!res.data.wa_number_ok)
-        setWaAiJidBound(!!res.data.ai_wa_jid_bound)
-        if (next && res.data.enabled && res.data.wa_number_ok && !res.data.ai_wa_jid_bound) {
-          await requestWaActivationAndOpen({ silent: true })
-        }
-        if (res.data.wa_backend_hint) {
-          showNotification(res.data.wa_backend_hint, 'warning')
-        }
-      }
-    } catch {
-      setWaAiEnabled(prev)
-    } finally {
-      setWaAiBusy(false)
-    }
-  }
-
-  /** Aktif di UI hanya jika server sudah mengikat JID (pesan aktivasi berhasil). */
-  const waAccessFullyActive = waAiEnabled && waAiJidBound
-
   /** Muat 10 pasangan terakhir dari server (satu utas per pengguna / per sesi proxy). */
   useEffect(() => {
     if (aiChatMode !== 'api') {
@@ -713,7 +537,7 @@ export default function DeepseekChat() {
     setApiHistoryFetched(false)
     ;(async () => {
       try {
-        const res = await deepseekAPI.getChatHistory({ limit: 10 })
+        const res = await deepseekAPI.getChatHistory({ limit: 10, session_id: EBEDDIEN_MAIN_SESSION_ID })
         if (cancelled) return
         if (res?.success && Array.isArray(res.data?.messages)) {
           setApiOfficialMessages(mapServerHistoryToMessages(res.data.messages))
@@ -762,7 +586,7 @@ export default function DeepseekChat() {
     }
   }, [accountEmail, aiChatMode, dsToken, sessionId])
 
-  /** Saran cepat (3) dari bank training — dimuat setelah riwayat siap, tetap dipakai walau sudah ada chat lama. */
+  /** Saran cepat (maks. 3) hanya dari Bank Q&A — dimuat setelah riwayat siap. */
   useEffect(() => {
     const shouldFetch =
       accountEmail &&
@@ -779,12 +603,12 @@ export default function DeepseekChat() {
     setSuggestedPromptsLoading(true)
     ;(async () => {
       try {
-        const res = await deepseekAPI.getTrainingSuggestions()
+        const res = await deepseekAPI.getBankQaSuggestedPrompts()
         if (cancelled) return
         const raw = res?.success && Array.isArray(res.data) ? res.data : []
-        setSuggestedPrompts(padSuggestedPromptsWithFallback(raw))
+        setSuggestedPrompts(normalizeBankSuggestedPrompts(raw))
       } catch {
-        if (!cancelled) setSuggestedPrompts(padSuggestedPromptsWithFallback([]))
+        if (!cancelled) setSuggestedPrompts([])
       } finally {
         if (!cancelled) setSuggestedPromptsLoading(false)
       }
@@ -887,14 +711,14 @@ export default function DeepseekChat() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     clearDeepseekAuth()
     setDsToken('')
     setSessionId('')
     setMessages([])
     setPassword('')
     setSendError(null)
-  }
+  }, [])
 
   const extractAssistantPayload = (d) => {
     if (!d || typeof d !== 'object') return { reply: '', thinking: '' }
@@ -1109,8 +933,6 @@ export default function DeepseekChat() {
     }
   }
 
-  const setHeaderFromLayout = useChatAiHeaderSlot()
-
   const showApiConversationStarter = useMemo(
     () => shouldShowConversationStarter(apiOfficialMessages),
     [apiOfficialMessages]
@@ -1119,42 +941,6 @@ export default function DeepseekChat() {
     () => shouldShowConversationStarter(messages),
     [messages]
   )
-
-  useLayoutEffect(() => {
-    if (!setHeaderFromLayout) return
-    setHeaderFromLayout(
-      <EbeddienChatHeaderMain
-        assistantName={ASSISTANT_NAME}
-        accountLoading={accountLoading}
-        aiTodayCount={aiTodayCount}
-        aiDailyLimit={aiDailyLimit}
-        aiChatMode={aiChatMode}
-        setAiChatMode={setAiChatMode}
-        canUseAlternativeMode={canUseAlternativeMode}
-        chatFontScale={chatFontScale}
-        setChatFontScale={setChatFontScale}
-        chatHeaderMenuOpen={chatHeaderMenuOpen}
-        setChatHeaderMenuOpen={setChatHeaderMenuOpen}
-        chatAiTraining={chatAiTraining}
-        dsToken={dsToken}
-        handleLogout={handleLogout}
-        onOpenAiUserSettings={() => setAdminAiUsersOpen(true)}
-      />
-    )
-    return () => setHeaderFromLayout(null)
-  }, [
-    setHeaderFromLayout,
-    accountLoading,
-    aiTodayCount,
-    aiDailyLimit,
-    aiChatMode,
-    chatFontScale,
-    chatHeaderMenuOpen,
-    chatAiTraining,
-    canUseAlternativeMode,
-    dsToken,
-    handleLogout
-  ])
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden" style={{ minHeight: 0 }}>
@@ -1170,6 +956,7 @@ export default function DeepseekChat() {
                   <p className="mt-1 opacity-90">{accountError}</p>
                   <Link
                     to="/profil"
+                    onClick={() => onRequestClose?.()}
                     className="mt-3 inline-block font-medium text-primary-700 underline dark:text-primary-400"
                   >
                     Buka Profil → isi / perbarui email
@@ -1218,36 +1005,43 @@ export default function DeepseekChat() {
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2 }}
-                      className={`text-center px-2 ${apiOfficialMessages.length > 0 ? 'mt-6 border-t border-gray-200/90 pt-8 dark:border-gray-700/80' : 'py-6 sm:py-10'}`}
+                      className={`text-center px-2 ${
+                        apiOfficialMessages.length > 0
+                          ? chatFont.starter.sectionWhenHistory
+                          : chatFont.starter.sectionWhenEmpty
+                      }`}
                     >
-                      <p className="text-base sm:text-lg font-medium text-gray-800 dark:text-gray-100">
-                        Mulai percakapan
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-md mx-auto">
+                      <EbeddienChatConversationStarterToolbar
+                        chatFontScale={chatFontScale}
+                        setChatFontScale={setChatFontScale}
+                        starter={chatFont.starter}
+                      />
+                      <p className={chatFont.starter.title}>Mulai percakapan</p>
+                      <p className={chatFont.starter.description}>
                         {ASSISTANT_NAME} memakai bank Q&amp;A lembaga (tabel terkurasi) untuk saran cepat. Pilih saran atau ketik di bawah.
                       </p>
-                      <div className="mt-6 flex flex-col sm:flex-row flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                      <div
+                        className={`flex flex-col sm:flex-row flex-wrap justify-center max-w-xl mx-auto ${chatFont.starter.templateGap}`}
+                      >
                         {suggestedPromptsLoading
                           ? [0, 1, 2].map((i) => (
                               <div
                                 key={i}
-                                className="h-14 w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200/50 dark:border-primary-900/40 bg-gray-100 dark:bg-gray-800/80 animate-pulse"
+                                className={chatFont.starter.skeleton}
                                 aria-hidden
                               />
                             ))
-                          : (suggestedPrompts.length ? suggestedPrompts : padSuggestedPromptsWithFallback([])).map(
-                              (p, idx) => (
-                                <button
-                                  key={`${idx}-${p.slice(0, 32)}`}
-                                  type="button"
-                                  disabled={apiOfficialBusy}
-                                  onClick={() => submitApiOfficial(null, p)}
-                                  className="text-left text-xs sm:text-sm px-3 py-2.5 rounded-xl border border-primary-200 dark:border-primary-800/50 bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:bg-primary-50/80 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors line-clamp-2"
-                                >
-                                  {p}
-                                </button>
-                              )
-                            )}
+                          : suggestedPrompts.map((p, idx) => (
+                              <button
+                                key={`${idx}-${p.slice(0, 32)}`}
+                                type="button"
+                                disabled={apiOfficialBusy}
+                                onClick={() => submitApiOfficial(null, p)}
+                                className={chatFont.starter.templateBtn}
+                              >
+                                {p}
+                              </button>
+                            ))}
                       </div>
                     </motion.div>
                   ) : null}
@@ -1279,25 +1073,15 @@ export default function DeepseekChat() {
                       busy={apiOfficialBusy}
                     />
                   </form>
-                  <div className="mt-3 space-y-2 border-t border-dashed border-gray-200/90 pt-3 dark:border-gray-600/80">
-                    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-                      <SwitchToggle
-                        compact
-                        toggleFirst
-                        label="Berpikir"
-                        checked={apiOfficialModel === 'deepseek-reasoner'}
-                        disabled={apiOfficialBusy}
-                        onChange={(on) => setApiOfficialModel(on ? 'deepseek-reasoner' : 'deepseek-chat')}
-                      />
-                      <SwitchToggle
-                        compact
-                        toggleFirst
-                        label="Akses AI dari WA"
-                        checked={waAccessFullyActive}
-                        disabled={apiOfficialBusy || waAiBusy || waActivationBusy}
-                        onChange={handleToggleWaAi}
-                      />
-                    </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 border-t border-dashed border-gray-200/90 pt-3 dark:border-gray-600/80">
+                    <SwitchToggle
+                      compact
+                      toggleFirst
+                      label="Berpikir"
+                      checked={apiOfficialModel === 'deepseek-reasoner'}
+                      disabled={apiOfficialBusy}
+                      onChange={(on) => setApiOfficialModel(on ? 'deepseek-reasoner' : 'deepseek-chat')}
+                    />
                   </div>
                 </div>
               </div>
@@ -1385,36 +1169,39 @@ export default function DeepseekChat() {
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.2 }}
-                  className={`text-center px-2 ${messages.length > 0 ? 'mt-6 border-t border-gray-200/90 pt-8 dark:border-gray-700/80' : 'py-6 sm:py-10'}`}
+                  className={`text-center px-2 ${
+                    messages.length > 0
+                      ? chatFont.starter.sectionWhenHistory
+                      : chatFont.starter.sectionWhenEmpty
+                  }`}
                 >
-                  <p className="text-base sm:text-lg font-medium text-gray-800 dark:text-gray-100">
-                    Mulai percakapan
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-md mx-auto">
+                  <EbeddienChatConversationStarterToolbar
+                    chatFontScale={chatFontScale}
+                    setChatFontScale={setChatFontScale}
+                    starter={chatFont.starter}
+                  />
+                  <p className={chatFont.starter.title}>Mulai percakapan</p>
+                  <p className={chatFont.starter.description}>
                     {ASSISTANT_NAME} memakai bank Q&amp;A lembaga (tabel terkurasi) untuk saran cepat. Pilih saran atau ketik di bawah.
                   </p>
-                  <div className="mt-6 flex flex-col sm:flex-row flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                  <div
+                    className={`flex flex-col sm:flex-row flex-wrap justify-center max-w-xl mx-auto ${chatFont.starter.templateGap}`}
+                  >
                     {suggestedPromptsLoading
                       ? [0, 1, 2].map((i) => (
-                          <div
-                            key={i}
-                            className="h-14 w-full min-w-0 sm:min-w-[14rem] sm:max-w-[20rem] rounded-xl border border-primary-200/50 dark:border-primary-900/40 bg-gray-100 dark:bg-gray-800/80 animate-pulse"
-                            aria-hidden
-                          />
+                          <div key={i} className={chatFont.starter.skeleton} aria-hidden />
                         ))
-                      : (suggestedPrompts.length ? suggestedPrompts : padSuggestedPromptsWithFallback([])).map(
-                          (p, idx) => (
-                            <button
-                              key={`${idx}-${p.slice(0, 32)}`}
-                              type="button"
-                              disabled={sending || sessionBusy}
-                              onClick={() => submitMessage(p)}
-                              className="text-left text-xs sm:text-sm px-3 py-2.5 rounded-xl border border-primary-200 dark:border-primary-800/50 bg-white/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:bg-primary-50/80 dark:hover:bg-primary-900/30 disabled:opacity-50 transition-colors line-clamp-2"
-                            >
-                              {p}
-                            </button>
-                          )
-                        )}
+                      : suggestedPrompts.map((p, idx) => (
+                          <button
+                            key={`${idx}-${p.slice(0, 32)}`}
+                            type="button"
+                            disabled={sending || sessionBusy}
+                            onClick={() => submitMessage(p)}
+                            className={chatFont.starter.templateBtn}
+                          >
+                            {p}
+                          </button>
+                        ))}
                   </div>
                 </motion.div>
               ) : null}
@@ -1462,138 +1249,20 @@ export default function DeepseekChat() {
                   disabled={sending || sessionBusy}
                   onChange={setSearchEnabled}
                 />
+                {dsToken && aiChatMode === 'proxy' ? (
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="text-xs font-medium text-primary-600 underline-offset-2 hover:underline dark:text-primary-400"
+                  >
+                    Keluar mode alternatif
+                  </button>
+                ) : null}
               </div>
             </div>
               </div>
             )}
 
-      {createPortal(
-        <AnimatePresence>
-          {canManageAiUsers && adminAiUsersOpen ? (
-            <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                onClick={() => setAdminAiUsersOpen(false)}
-                className="fixed inset-0 bg-black/40 z-[110]"
-              />
-              <motion.div
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'tween', duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-                className="fixed bottom-0 inset-x-0 z-[111] flex flex-col max-h-[90vh] w-full sm:left-0 sm:right-0 sm:mx-auto sm:w-[calc(100%-2rem)] sm:max-w-2xl rounded-t-xl sm:rounded-xl bg-white dark:bg-gray-800 shadow-xl border-t sm:border border-gray-200 dark:border-gray-700"
-              >
-                <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                  <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Pengaturan User AI</h3>
-                  <button type="button" onClick={() => setAdminAiUsersOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </div>
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-2">
-                  <input
-                    type="text"
-                    value={adminAiUsersSearch}
-                    onChange={(e) => { setAdminAiUsersSearch(e.target.value); setAdminAiUsersPage(1) }}
-                    placeholder="Cari nama, email, username, nomor WA..."
-                    className="flex-1 min-w-[220px] px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                  />
-                  <select
-                    value={adminAiUsersStatus}
-                    onChange={(e) => { setAdminAiUsersStatus(e.target.value); setAdminAiUsersPage(1) }}
-                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                  >
-                    <option value="">Status AI: Semua</option>
-                    <option value="active">Aktif</option>
-                    <option value="inactive">Nonaktif</option>
-                  </select>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3">
-                  {adminAiUsersLoading ? (
-                    <div className="flex justify-center py-12"><div className="h-10 w-10 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" /></div>
-                  ) : (
-                    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-                      <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {adminAiUsers.map((u) => (
-                          <li key={u.id} className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{u.nama || u.username || u.email || `User #${u.id}`}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{u.email || '-'} {u.no_wa ? `· ${u.no_wa}` : ''}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Limit: {u.today_count}/{u.ai_daily_limit} hari ini</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditAiUserLimit(u)}
-                                  className="px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs hover:bg-gray-100 dark:hover:bg-gray-700"
-                                >
-                                  Limit
-                                </button>
-                                <SwitchToggle
-                                  compact
-                                  label="AI aktif"
-                                  checked={!!u.ai_enabled}
-                                  onChange={(next) => toggleAdminAiUserEnabled(u, next)}
-                                />
-                              </div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-                {adminAiUsersTotal > adminAiUsersLimit && (
-                  <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Total {adminAiUsersTotal} user</span>
-                    <div className="flex gap-2">
-                      <button type="button" disabled={adminAiUsersPage <= 1} onClick={() => setAdminAiUsersPage((p) => Math.max(1, p - 1))} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50">Sebelumnya</button>
-                      <span className="text-gray-600 dark:text-gray-300">Halaman {adminAiUsersPage}</span>
-                      <button type="button" disabled={adminAiUsersPage * adminAiUsersLimit >= adminAiUsersTotal} onClick={() => setAdminAiUsersPage((p) => p + 1)} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50">Selanjutnya</button>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            </>
-          ) : null}
-        </AnimatePresence>,
-        document.body
-      )}
-      {createPortal(
-        <AnimatePresence>
-          {canManageAiUsers && editAiUser ? (
-            <>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-[120]" onClick={() => !editAiUserBusy && setEditAiUser(null)} />
-              <motion.div
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'tween', duration: 0.25 }}
-                className="fixed bottom-0 inset-x-0 z-[121] sm:left-1/2 sm:-translate-x-1/2 sm:max-w-md bg-white dark:bg-gray-800 rounded-t-xl border-t sm:rounded-xl sm:border shadow-xl"
-              >
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                  <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Ubah limit chat harian</h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{editAiUser.nama || editAiUser.email || `User #${editAiUser.id}`}</p>
-                </div>
-                <div className="p-4">
-                  <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">Limit per hari (reset 00:00)</label>
-                  <input type="number" min="0" value={editAiUserLimit} onChange={(e) => setEditAiUserLimit(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm" />
-                  <div className="mt-4 flex justify-end gap-2">
-                    <button type="button" onClick={() => setEditAiUser(null)} className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300">Batal</button>
-                    <button type="button" onClick={saveEditAiUserLimit} disabled={editAiUserBusy} className="px-3 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm disabled:opacity-50">
-                      {editAiUserBusy ? 'Menyimpan...' : 'Simpan'}
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </>
-          ) : null}
-        </AnimatePresence>,
-        document.body
-      )}
     </div>
   )
 }

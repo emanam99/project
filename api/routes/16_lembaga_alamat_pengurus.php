@@ -15,7 +15,9 @@ use App\Controllers\RombelController;
 use App\Controllers\SantriController;
 use App\Controllers\SantriLulusanController;
 use App\Controllers\WaliKelasController;
+use App\Controllers\AbsenLokasiController;
 use App\Controllers\AbsenPengurusController;
+use App\Controllers\GeocodeController;
 
 return function (\Slim\App $app): void {
     // GET lembaga: dropdown pengeluaran/rencana + master lembaga (admin_lembaga = scope token)
@@ -47,11 +49,27 @@ return function (\Slim\App $app): void {
     $app->post('/api/santri-lulusan', [SantriLulusanController::class, 'create'])
         ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
 
-    // Absensi pengurus (absen___pengurus) — super_admin + tarbiyah
+    // Absensi pengurus (absen___pengurus) — menu.absen / tab Riwayat / super_admin
     $app->get('/api/absen-pengurus/rekap', [AbsenPengurusController::class, 'getRekap'])
-        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenPengurusApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
     $app->get('/api/absen-pengurus', [AbsenPengurusController::class, 'getList'])
-        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenPengurusApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    $app->get('/api/absen-pengurus/mandiri-slot', [AbsenPengurusController::class, 'getMandiriSlot'])
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenPengurusLokasiPostSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    $app->post('/api/absen-pengurus/lokasi', [AbsenPengurusController::class, 'postLokasi'])
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenPengurusLokasiPostSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+
+    $app->get('/api/geocode/reverse', [GeocodeController::class, 'reverse'])
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenGeocodeReverseSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+
+    $app->get('/api/absen-lokasi', [AbsenLokasiController::class, 'getList'])
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    $app->post('/api/absen-lokasi', [AbsenLokasiController::class, 'create'])
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    $app->put('/api/absen-lokasi/{id}', [AbsenLokasiController::class, 'update'])
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    $app->delete('/api/absen-lokasi/{id}', [AbsenLokasiController::class, 'delete'])
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
 
     // Rombel (lembaga___rombel) — super_admin + tarbiyah
     $app->group('/api/rombel', function ($group) {

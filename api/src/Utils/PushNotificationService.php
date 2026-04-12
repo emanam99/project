@@ -75,18 +75,33 @@ class PushNotificationService
         if (!\is_array($customData)) {
             $customData = [];
         }
-        $navUrl = isset($options['url']) && \is_string($options['url']) && $options['url'] !== ''
-            ? $options['url']
-            : '/';
-        $customData['url'] = $navUrl;
+        $skipNav = !empty($options['skip_navigation']);
+        if ($skipNav) {
+            $navUrl = '';
+            $customData['no_nav'] = true;
+            $customData['url'] = '';
+        } else {
+            $navUrl = isset($options['url']) && \is_string($options['url']) && $options['url'] !== ''
+                ? $options['url']
+                : '/';
+            $customData['url'] = $navUrl;
+        }
 
         $actionsOpt = $options['actions'] ?? [];
         $actionsJson = \is_array($actionsOpt) ? array_values(array_filter($actionsOpt, static fn ($a): bool => \is_array($a))) : [];
+
+        $senderNameOpt = isset($options['sender_name']) && \is_string($options['sender_name'])
+            ? trim($options['sender_name'])
+            : '';
+        if ($senderNameOpt !== '') {
+            $customData['sender_name'] = $senderNameOpt;
+        }
 
         // Prepare payload
         $payload = json_encode([
             'title' => $title,
             'body' => $body,
+            'sender_name' => $senderNameOpt,
             'icon' => $options['icon'] ?? '/gambar/icon/icon192.png',
             'badge' => $options['badge'] ?? '/gambar/icon/icon128.png',
             'tag' => $options['tag'] ?? 'uwaba-notification',

@@ -119,6 +119,7 @@ class AppFiturMenuSeed extends AbstractSeed
             ['path' => '/settings/fitur', 'label' => 'Fitur', 'iconKey' => 'cube', 'group' => 'Setting'],
             ['path' => '/settings/notifikasi', 'label' => 'Notifikasi', 'iconKey' => 'bell', 'group' => 'Setting'],
             ['path' => '/settings/watzap', 'label' => 'WatZap', 'iconKey' => 'whatsapp', 'group' => 'Setting'],
+            ['path' => '/settings/evolution-wa', 'label' => 'Evolution WA', 'iconKey' => 'whatsapp', 'group' => 'Setting'],
             ['path' => '/settings/wa-interactive-menu', 'label' => 'Menu WA interaktif', 'iconKey' => 'chat', 'group' => 'Setting'],
             ['path' => '/manage-uploads', 'label' => 'Kelola File', 'iconKey' => 'folder', 'group' => 'Setting'],
             ['path' => '/whatsapp-koneksi', 'label' => 'WhatsApp', 'iconKey' => 'whatsapp', 'group' => 'Setting'],

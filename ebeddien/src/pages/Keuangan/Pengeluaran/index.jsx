@@ -12,6 +12,7 @@ import SearchAndFilterRencana from './components/SearchAndFilterRencana'
 import SearchAndFilterPengeluaran from './components/SearchAndFilterPengeluaran'
 import SearchAndFilterDraft from './components/SearchAndFilterDraft'
 import DraftTab from './components/DraftTab'
+import WaNotifRecipientChecklist from './components/WaNotifRecipientChecklist'
 import { formatCurrency, getStatusBadge, generatePreviewPesan, generateRencanaWhatsAppMessage } from './utils/pengeluaranUtils'
 import { useRencanaFilters } from './hooks/useRencanaFilters'
 import { usePengeluaranFilters } from './hooks/usePengeluaranFilters'
@@ -1185,6 +1186,8 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
         canHapusKomentar={pengeluaranFitur.rencanaHapusKomentar}
         canKelolaPenerimaNotifWa={pengeluaranFitur.rencanaKelolaPenerimaNotif}
         listAdmins={rencanaAdminList.listAdmins}
+        recipientGroups={rencanaAdminList.recipientGroups}
+        waNotifDraftContext={(rencanaDetailHook.rencanaDetail?.ket ?? '') === 'draft'}
         selectedAdmins={rencanaAdminList.selectedAdmins}
         onToggleAdmin={rencanaAdminList.toggleAdmin}
         loadingAdmins={rencanaAdminList.loading}
@@ -1298,45 +1301,15 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                     Anda tidak memiliki akses mengubah daftar penerima WA. Notifikasi akan dikirim ke semua admin yang memenuhi syarat bawaan.
                   </p>
                 )}
-                {confirmAdminList.loading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                  </div>
-                ) : confirmAdminList.listAdmins.length > 0 ? (
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {confirmAdminList.listAdmins.map((admin) => (
-                        <div
-                          key={admin.id}
-                          className="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          {pengeluaranFitur.rencanaKelolaPenerimaNotif ? (
-                            <input
-                              type="checkbox"
-                              checked={confirmAdminList.selectedAdmins.includes(admin.id)}
-                              onChange={() => confirmAdminList.toggleAdmin(admin.id)}
-                              className="w-4 h-4 text-teal-600 border-gray-300 dark:border-gray-600 rounded focus:ring-teal-500 dark:bg-gray-700"
-                            />
-                          ) : null}
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                              {admin.nama || 'Unknown'}
-                            </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              {admin.whatsapp}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Tidak ada admin tersedia
-                    </p>
-                  </div>
-                )}
+                <WaNotifRecipientChecklist
+                  loading={confirmAdminList.loading}
+                  recipientGroups={confirmAdminList.recipientGroups}
+                  listAdminsFallback={confirmAdminList.listAdmins}
+                  selectedAdmins={confirmAdminList.selectedAdmins}
+                  onToggle={confirmAdminList.toggleAdmin}
+                  canManage={pengeluaranFitur.rencanaKelolaPenerimaNotif}
+                  draftContext={false}
+                />
               </div>
 
               {/* Preview Pesan dengan Accordion - Dipindah ke atas */}
@@ -1517,58 +1490,16 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                             Anda tidak memiliki akses mengubah daftar penerima WA. Notifikasi akan dikirim ke semua admin yang memenuhi syarat bawaan.
                           </p>
                         )}
-                        {rencanaAdminList.loading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-                          </div>
-                        ) : rencanaAdminList.listAdmins.length > 0 ? (
-                          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
-                              {rencanaAdminList.listAdmins.map((admin) => (
-                                <div
-                                  key={admin.id}
-                                  className={`flex items-center gap-3 rounded-lg p-3 border transition-colors ${
-                                    rencanaAdminList.selectedAdmins.includes(admin.id)
-                                      ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700'
-                                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                  }`}
-                                >
-                                  {pengeluaranFitur.rencanaKelolaPenerimaNotif ? (
-                                    <input
-                                      type="checkbox"
-                                      checked={rencanaAdminList.selectedAdmins.includes(admin.id)}
-                                      onChange={() => rencanaAdminList.toggleAdmin(admin.id)}
-                                      disabled={!admin.whatsapp}
-                                      className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500 disabled:opacity-50"
-                                    />
-                                  ) : null}
-                                  <div className="flex-1">
-                                    <p className={`text-sm font-medium ${
-                                      rencanaAdminList.selectedAdmins.includes(admin.id)
-                                        ? 'text-primary-800 dark:text-primary-200'
-                                        : 'text-gray-800 dark:text-gray-200'
-                                    }`}>
-                                      {admin.nama || 'Unknown'}
-                                    </p>
-                                    <p className={`text-xs ${
-                                      admin.whatsapp
-                                        ? 'text-gray-500 dark:text-gray-400'
-                                        : 'text-red-500 dark:text-red-400'
-                                    }`}>
-                                      {admin.whatsapp || 'Tidak ada WhatsApp'}
-                                    </p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center border border-gray-200 dark:border-gray-600">
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              Tidak ada admin tersedia
-                            </p>
-                          </div>
-                        )}
+                        <WaNotifRecipientChecklist
+                          loading={rencanaAdminList.loading}
+                          recipientGroups={rencanaAdminList.recipientGroups}
+                          listAdminsFallback={rencanaAdminList.listAdmins}
+                          selectedAdmins={rencanaAdminList.selectedAdmins}
+                          onToggle={rencanaAdminList.toggleAdmin}
+                          canManage={pengeluaranFitur.rencanaKelolaPenerimaNotif}
+                          draftContext={(rencanaDetailHook.rencanaDetail?.ket ?? '') === 'draft'}
+                          accent="primary"
+                        />
                       </div>
                     </div>
                   </div>

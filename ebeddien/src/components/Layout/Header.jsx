@@ -3,9 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../store/authStore'
 import { useWhatsAppTemplate } from '../../contexts/WhatsAppTemplateContext'
+import { useChatOffcanvas } from '../../contexts/ChatOffcanvasContext'
+import { useChatAiOffcanvas } from '../../contexts/ChatAiOffcanvasContext'
 import { useThemeStore } from '../../store/themeStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
-import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, getAppEnv } from '../../services/api'
+import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, getAppEnv, deepseekAPI } from '../../services/api'
+import { CHAT_AI_USAGE_HEADER_EVENT } from '../../utils/chatAiHeaderUsage'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { APP_VERSION } from '../../config/version'
 import { STATIC_FALLBACK_MENU_CATALOG_ROWS } from '../../config/menuConfig'
@@ -16,6 +19,7 @@ import {
   catalogMenusToNavFlat,
   filterCatalogMenuByUserCodes,
   getHeaderGroupsFromMenuFlat,
+  labelForPathFromMenuCatalog,
   matchHeaderRoute
 } from '../../utils/menuCatalogNav'
 
@@ -60,7 +64,11 @@ function Header() {
   const { tahunAjaran, setTahunAjaran, options, tahunAjaranMasehi, setTahunAjaranMasehi, optionsMasehi } = useTahunAjaranStore()
   const navigate = useNavigate()
   const location = useLocation()
+  const isChatAiRoute = (location.pathname || '').startsWith('/chat-ai')
   const { open: openTemplateOffcanvas } = useWhatsAppTemplate()
+  const { open: openChatOffcanvas, close: closeChatOffcanvas, chatTotalUnread, refreshChatUnreadFromApi } =
+    useChatOffcanvas()
+  const { open: openChatAiOffcanvas, close: closeChatAiOffcanvas } = useChatAiOffcanvas()
   const [showPaymentDropdown, setShowPaymentDropdown] = useState(false)
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [showSaldoDropdown, setShowSaldoDropdown] = useState(false)
@@ -99,6 +107,7 @@ function Header() {
   const [pendapatanPendaftaranRincian, setPendapatanPendaftaranRincian] = useState({ jumlah_transaksi: 0, jumlah_transaksi_admin: 0, rincian_via: {}, rincian_via_admin: {} })
   const [aktivitasTerakhir, setAktivitasTerakhir] = useState([])
   const [aktivitasTextVersion, setAktivitasTextVersion] = useState(0)
+  const [chatAiHeaderUsage, setChatAiHeaderUsage] = useState({ today: 0, limit: 5 })
   const [openTADropdown, setOpenTADropdown] = useState(null) // 'hijriyah' | 'masehi' | null
   const [todayKalender, setTodayKalender] = useState(null)
   const [loadingTodayKalender, setLoadingTodayKalender] = useState(false)
@@ -161,10 +170,68 @@ function Header() {
     }
   }, [user?.id])
 
+  const CHAT_UNREAD_POLL_MS = 45000
+  useEffect(() => {
+    if (!user?.id) return
+    refreshChatUnreadFromApi()
+    const t = setInterval(() => {
+      refreshChatUnreadFromApi()
+    }, CHAT_UNREAD_POLL_MS)
+    return () => clearInterval(t)
+  }, [user?.id, refreshChatUnreadFromApi])
+
+  useEffect(() => {
+    if (!showUserDropdown || !user?.id) return
+    refreshChatUnreadFromApi()
+  }, [showUserDropdown, user?.id, refreshChatUnreadFromApi])
+
   const matchedNavState = useMemo(
     () => matchHeaderRoute(location.pathname, headerGroups),
     [location.pathname, headerGroups]
   )
+
+  const menuCatalogForPathLabel = useMemo(() => {
+    const dataReady =
+      fiturMenuFetchStatus === 'ok' &&
+      fiturMenuCatalogFetchStatus === 'ok' &&
+      Array.isArray(fiturMenuCatalog) &&
+      fiturMenuCatalog.length > 0
+    if (dataReady) {
+      const filtered = filterCatalogMenuByUserCodes(
+        fiturMenuCatalog,
+        fiturMenuCodes,
+        userHasSuperAdminAccess(user)
+      )
+      if (filtered.length > 0) return filtered
+    }
+    return STATIC_FALLBACK_MENU_CATALOG_ROWS
+  }, [
+    fiturMenuCatalog,
+    fiturMenuCodes,
+    fiturMenuFetchStatus,
+    fiturMenuCatalogFetchStatus,
+    user
+  ])
+
+  const catalogPathLabel = useMemo(
+    () => labelForPathFromMenuCatalog(menuCatalogForPathLabel, location.pathname),
+    [menuCatalogForPathLabel, location.pathname]
+  )
+
+  const pageTitle = useMemo(() => {
+    if (matchedNavState?.label) return matchedNavState.label
+    if (catalogPathLabel) return catalogPathLabel
+    const path = location.pathname || '/'
+    if (path === '/' || path === '/dashboard') return 'Dashboard'
+    const parts = path.split('/').filter(Boolean)
+    if (parts.length === 0) return 'Dashboard'
+    const last = parts[parts.length - 1]
+    return last
+      .split('-')
+      .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''))
+      .filter(Boolean)
+      .join(' ')
+  }, [matchedNavState?.label, catalogPathLabel, location.pathname])
 
   // Fallback saat route belum/tdk termuat di katalog header, agar grup utama tetap konsisten.
   const fallbackGroupByPath = useMemo(() => {
@@ -190,11 +257,6 @@ function Header() {
   useEffect(() => {
     if (activeGroupRaw) setActiveGroup(activeGroupRaw)
   }, [activeGroupRaw])
-  const pageTitleRaw = matchedNavState?.label || null
-  const [pageTitle, setPageTitle] = useState(pageTitleRaw || 'Dashboard')
-  useEffect(() => {
-    if (pageTitleRaw) setPageTitle(pageTitleRaw)
-  }, [pageTitleRaw])
   const isKeuanganGroup = activeGroup === 'Keuangan'
   const isPendaftaranGroup = activeGroup === 'Pendaftaran'
   const isKalenderGroup = activeGroup === 'Kalender'
@@ -555,6 +617,46 @@ function Header() {
     }
   }, [user?.id, refreshAktivitasBackground])
 
+  const refreshChatAiHeaderUsage = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const res = await deepseekAPI.getAccount()
+      if (!res?.success || !res?.data) return
+      setChatAiHeaderUsage({
+        today: Math.max(0, Number(res.data.ai_today_count ?? 0)),
+        limit: Math.max(0, Number(res.data.ai_daily_limit ?? 5))
+      })
+    } catch {
+      /* noop */
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id || !isChatAiRoute) return
+    refreshChatAiHeaderUsage()
+    const onDetail = (e) => {
+      const d = e?.detail
+      if (!d) return
+      setChatAiHeaderUsage({
+        today: Math.max(0, Number(d.aiTodayCount) || 0),
+        limit: Math.max(0, Number(d.aiDailyLimit) || 0)
+      })
+    }
+    window.addEventListener(CHAT_AI_USAGE_HEADER_EVENT, onDetail)
+    const interval = setInterval(refreshChatAiHeaderUsage, AKTIVITAS_REFRESH_INTERVAL_MS)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshChatAiHeaderUsage()
+    }
+    window.addEventListener('focus', refreshChatAiHeaderUsage)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener(CHAT_AI_USAGE_HEADER_EVENT, onDetail)
+      clearInterval(interval)
+      window.removeEventListener('focus', refreshChatAiHeaderUsage)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [user?.id, isChatAiRoute, refreshChatAiHeaderUsage])
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -713,59 +815,78 @@ function Header() {
             </AnimatePresence>
           </div>
         ) : showAktivitasAsDefault ? (
-          <div
-            className="md:hidden flex items-center gap-2 mt-2 cursor-pointer hover:opacity-80 transition-opacity relative"
-            onClick={() => setShowAktivitasDropdown(!showAktivitasDropdown)}
-            ref={aktivitasRef}
-          >
-            <svg className="w-4 h-4 text-white/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div className="flex items-center gap-2 min-w-0">
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={`${aktivitasTextVersion}-${aktivitasPreviewText}`}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.22 }}
-                  className="text-xs font-semibold text-white truncate"
-                >
-                  {aktivitasPreviewText}
-                </motion.span>
+          isChatAiRoute ? (
+            <div className="md:hidden flex items-center gap-2 mt-2">
+              <svg className="w-4 h-4 text-white/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                <span className="text-xs font-bold text-white tabular-nums">
+                  {chatAiHeaderUsage.today}/{chatAiHeaderUsage.limit}
+                </span>
+                <span className="text-xs text-white/70">Penggunaan AI hari ini</span>
+              </div>
+            </div>
+          ) : (
+            <div className="md:hidden relative mt-2" ref={aktivitasRef}>
+              <button
+                type="button"
+                className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg py-0.5 text-left transition-colors active:bg-white/15"
+                onClick={() => setShowAktivitasDropdown(!showAktivitasDropdown)}
+                aria-expanded={showAktivitasDropdown}
+                aria-haspopup="menu"
+              >
+                <svg className="w-4 h-4 text-white/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={`${aktivitasTextVersion}-${aktivitasPreviewText}`}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.22 }}
+                      className="truncate text-xs font-semibold text-white"
+                    >
+                      {aktivitasPreviewText}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+              </button>
+              <AnimatePresence>
+                {showAktivitasDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute left-0 top-full z-[60] mt-2 w-72 rounded-lg border border-gray-200 bg-white py-3 text-gray-700 shadow-xl dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  >
+                    <div className="px-4">
+                      <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-200">Aktivitas User Terakhir</h3>
+                      {aktivitasTerakhir.length === 0 ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Belum ada aktivitas tercatat.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {aktivitasTerakhir.map((a) => (
+                            <div key={a.id} className="border-b border-gray-100 py-1.5 last:border-b-0 dark:border-gray-700">
+                              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                <span className="capitalize">{a.action}</span> · {a.entity_type}
+                              </p>
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                {a.created_at ? new Date(a.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
               </AnimatePresence>
             </div>
-            <AnimatePresence>
-              {showAktivitasDropdown && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="md:hidden absolute left-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-3 text-gray-700 dark:text-gray-200 z-50"
-                >
-                  <div className="px-4">
-                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Aktivitas User Terakhir</h3>
-                    {aktivitasTerakhir.length === 0 ? (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Belum ada aktivitas tercatat.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {aktivitasTerakhir.map((a) => (
-                          <div key={a.id} className="py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                            <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                              <span className="capitalize">{a.action}</span> · {a.entity_type}
-                            </p>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                              {a.created_at ? new Date(a.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          )
         ) : (
           <div 
             className="md:hidden flex items-center gap-2 mt-2 cursor-pointer hover:opacity-80 transition-opacity relative"
@@ -898,61 +1019,76 @@ function Header() {
             </AnimatePresence>
           </div>
         ) : showAktivitasAsDefault ? (
-          <div className="hidden md:block relative" ref={aktivitasRef}>
-            <div
-              className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
-              onClick={() => setShowAktivitasDropdown(!showAktivitasDropdown)}
-            >
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          isChatAiRoute ? (
+            <div className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30">
+              <svg className="w-5 h-5 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
               <div className="flex flex-col min-w-0">
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.span
-                    key={`${aktivitasTextVersion}-${aktivitasPreviewText}`}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.22 }}
-                    className="text-sm font-bold text-white truncate"
-                  >
-                    {aktivitasPreviewText}
-                  </motion.span>
-                </AnimatePresence>
-                <span className="text-xs text-white/70">Aktivitas User Terakhir</span>
+                <span className="text-sm font-bold text-white tabular-nums">
+                  {chatAiHeaderUsage.today}/{chatAiHeaderUsage.limit}
+                </span>
+                <span className="text-xs text-white/70">Penggunaan AI hari ini</span>
               </div>
             </div>
-            <AnimatePresence>
-              {showAktivitasDropdown && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="hidden md:block absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 py-3 text-gray-700 dark:text-gray-200 z-50"
-                >
-                  <div className="px-4">
-                    <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Aktivitas User Terakhir</h3>
-                    {aktivitasTerakhir.length === 0 ? (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Belum ada aktivitas tercatat.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {aktivitasTerakhir.map((a) => (
-                          <div key={a.id} className="py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                            <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                              <span className="capitalize">{a.action}</span> · {a.entity_type}
-                            </p>
-                            <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                              {a.created_at ? new Date(a.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          ) : (
+            <div className="hidden md:block relative" ref={aktivitasRef}>
+              <div
+                className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
+                onClick={() => setShowAktivitasDropdown(!showAktivitasDropdown)}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex flex-col min-w-0">
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={`${aktivitasTextVersion}-${aktivitasPreviewText}`}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.22 }}
+                      className="text-sm font-bold text-white truncate"
+                    >
+                      {aktivitasPreviewText}
+                    </motion.span>
+                  </AnimatePresence>
+                  <span className="text-xs text-white/70">Aktivitas User Terakhir</span>
+                </div>
+              </div>
+              <AnimatePresence>
+                {showAktivitasDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full z-[60] mt-2 hidden w-72 rounded-lg border border-gray-200 bg-white py-3 text-gray-700 shadow-xl dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 md:block"
+                  >
+                    <div className="px-4">
+                      <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-200">Aktivitas User Terakhir</h3>
+                      {aktivitasTerakhir.length === 0 ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Belum ada aktivitas tercatat.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {aktivitasTerakhir.map((a) => (
+                            <div key={a.id} className="border-b border-gray-100 py-1.5 last:border-b-0 dark:border-gray-700">
+                              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                <span className="capitalize">{a.action}</span> · {a.entity_type}
+                              </p>
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                {a.created_at ? new Date(a.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )
         ) : (
           <div 
             className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
@@ -1073,14 +1209,25 @@ function Header() {
         {/* User Avatar + Staging badge (di bawah foto) */}
         <div className="relative flex flex-col items-center gap-1" ref={userRef}>
           <button
+            type="button"
             onClick={() => setShowUserDropdown(!showUserDropdown)}
-            className="w-11 h-11 rounded-full bg-teal-500/10 dark:bg-teal-400/10 flex items-center justify-center cursor-pointer shadow-lg border-2 border-gray-200 dark:border-gray-600 hover:border-teal-400 transition-colors overflow-hidden shrink-0"
+            className="relative w-11 h-11 rounded-full bg-teal-500/10 dark:bg-teal-400/10 flex items-center justify-center cursor-pointer shadow-lg border-2 border-gray-200 dark:border-gray-600 hover:border-teal-400 transition-colors overflow-visible shrink-0"
           >
-            {headerPhotoUrl ? (
-              <img src={headerPhotoUrl} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-lg font-semibold text-teal-600 dark:text-teal-400">
-                {(user?.nama || user?.username || '?').toString().charAt(0).toUpperCase()}
+            <span className="absolute inset-0 rounded-full overflow-hidden flex items-center justify-center">
+              {headerPhotoUrl ? (
+                <img src={headerPhotoUrl} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-lg font-semibold text-teal-600 dark:text-teal-400">
+                  {(user?.nama || user?.username || '?').toString().charAt(0).toUpperCase()}
+                </span>
+              )}
+            </span>
+            {chatTotalUnread > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 z-10 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold tabular-nums pointer-events-none"
+                aria-label={`${chatTotalUnread} pesan belum dibaca`}
+              >
+                {chatTotalUnread > 99 ? '99+' : chatTotalUnread}
               </span>
             )}
           </button>
@@ -1136,23 +1283,34 @@ function Header() {
                 )}
 
                 <button
-                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                  type="button"
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 justify-between"
                   onClick={() => {
                     setShowUserDropdown(false)
-                    navigate('/chat')
+                    closeChatAiOffcanvas()
+                    openChatOffcanvas()
                   }}
                 >
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4v-4z" />
-                  </svg>
-                  Chat
+                  <span className="flex items-center gap-2 min-w-0">
+                    <svg className="w-5 h-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4v-4z" />
+                    </svg>
+                    Chat
+                  </span>
+                  {chatTotalUnread > 0 && (
+                    <span className="shrink-0 tabular-nums text-[11px] font-bold text-red-600 dark:text-red-400">
+                      {chatTotalUnread > 99 ? '99+' : chatTotalUnread}
+                    </span>
+                  )}
                 </button>
 
                 <button
+                  type="button"
                   className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                   onClick={() => {
                     setShowUserDropdown(false)
-                    navigate('/chat-ai')
+                    closeChatOffcanvas()
+                    openChatAiOffcanvas()
                   }}
                 >
                   <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

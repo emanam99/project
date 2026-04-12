@@ -28,14 +28,31 @@ export async function saveMessage(payload) {
 
   if (CHAT_API_URL && LIVE_SERVER_API_KEY) {
     const url = `${CHAT_API_URL}/api/live/chat/message`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': LIVE_SERVER_API_KEY,
-      },
-      body: JSON.stringify({ from_user_id, to_user_id, message }),
-    });
+    const controller = new AbortController();
+    const timeoutMs = 20000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': LIVE_SERVER_API_KEY,
+        },
+        body: JSON.stringify({ from_user_id, to_user_id, message }),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e?.name === 'AbortError') {
+        console.error('[chatRepository] Timeout', timeoutMs, 'ms ke API:', url);
+        const err = new Error(`Timeout ${timeoutMs}ms ke API chat`);
+        err.status = 504;
+        throw err;
+      }
+      throw e;
+    }
+    clearTimeout(timeoutId);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error('[chatRepository] API error:', res.status, data?.message || res.statusText, 'URL:', url);

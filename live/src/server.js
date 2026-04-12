@@ -4,9 +4,9 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { PORT, CORS_ORIGINS, ADMIN_SECRET } from './config.js';
+import { PORT, CORS_ORIGINS, ADMIN_SECRET, LIVE_SERVER_API_KEY } from './config.js';
 import { attachSocket } from './socket.js';
-import { getAll, getCount } from './store.js';
+import { getAll, getCount, getSocketIdsByUserId } from './store.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -43,6 +43,59 @@ app.get('/admin/online', (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   res.json({ success: true, users: getAll(), count: getCount() });
+});
+
+/**
+ * Dipanggil dari PHP (SantriController / Pendaftaran / Boyong) setelah data santri berubah.
+ * Header: X-API-Key = LIVE_SERVER_API_KEY (wajib jika key di-set di .env).
+ * Body JSON opsional: { removed_ids?: number[] } — id yang dihapus di server (mis. merge santri).
+ */
+app.post('/internal/broadcast-santri-search-hint', (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  const keyOk =
+    LIVE_SERVER_API_KEY === '' ||
+    (typeof apiKey === 'string' && apiKey === LIVE_SERVER_API_KEY);
+  if (!keyOk) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  const removed = Array.isArray(req.body?.removed_ids)
+    ? req.body.removed_ids.map((n) => parseInt(String(n), 10)).filter((n) => n > 0)
+    : [];
+  io.emit('santri_search_index_hint', {
+    ts: new Date().toISOString(),
+    removed_ids: removed,
+  });
+  return res.json({ success: true });
+});
+
+/**
+ * Dipanggil dari PHP setelah POST /api/chat/send — kirim receive_message ke semua socket users.id terkait.
+ * Body: { target_user_ids: number[], payload: object }
+ */
+app.post('/internal/broadcast-chat-message', (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  const keyOk =
+    LIVE_SERVER_API_KEY === '' ||
+    (typeof apiKey === 'string' && apiKey === LIVE_SERVER_API_KEY);
+  if (!keyOk) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  const ids = Array.isArray(req.body?.target_user_ids)
+    ? [...new Set(req.body.target_user_ids.map((n) => parseInt(String(n), 10)).filter((n) => n > 0))]
+    : [];
+  const payload = req.body?.payload;
+  if (!payload || typeof payload !== 'object' || ids.length === 0) {
+    return res.json({ success: true, delivered: 0 });
+  }
+  let delivered = 0;
+  for (const uid of ids) {
+    const sockets = getSocketIdsByUserId(uid);
+    for (const sid of sockets) {
+      io.to(sid).emit('receive_message', payload);
+      delivered += 1;
+    }
+  }
+  return res.json({ success: true, delivered });
 });
 
 attachSocket(io);

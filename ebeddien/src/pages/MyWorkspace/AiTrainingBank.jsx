@@ -1,12 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { aiTrainingAdminAPI } from '../../services/api'
-import { useChatAiHeaderSlot } from '../../contexts/ChatAiHeaderContext'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
-import EbeddienChatHeaderTraining from './DeepseekChat/EbeddienChatHeaderTraining'
-
-const ASSISTANT_NAME = 'eBeddien'
 
 const defaultForm = {
   id: null,
@@ -109,21 +105,6 @@ export default function AiTrainingBank() {
     }
     return list
   }, [rows, searchQuery, categoryFilter])
-
-  const setHeaderFromLayout = useChatAiHeaderSlot()
-  useLayoutEffect(() => {
-    if (!setHeaderFromLayout) return
-    setHeaderFromLayout(
-      <EbeddienChatHeaderTraining
-        assistantName={ASSISTANT_NAME}
-        variant="bank"
-        accountLoading={false}
-        chatHeaderMenuOpen={chatHeaderMenuOpen}
-        setChatHeaderMenuOpen={setChatHeaderMenuOpen}
-      />
-    )
-    return () => setHeaderFromLayout(null)
-  }, [setHeaderFromLayout, chatHeaderMenuOpen])
 
   const openAdd = () => {
     setError(null)

@@ -14,8 +14,14 @@ export function normalizeIncomingChatPayload(payload) {
     id: payload.id ?? `${fromUserId}-${Date.now()}`,
     conversationId: payload.conversation_id != null ? Number(payload.conversation_id) : null,
     fromUserId,
-    toUserId: Number.isFinite(toUserId) ? toUserId : null,
-    senderName: String(payload.from_name ?? payload.sender_name ?? payload.nama_pengirim ?? `User ${fromUserId}`),
+    toUserId: Number.isFinite(toUserId) && toUserId > 0 ? toUserId : null,
+    senderName: String(
+      payload.sender_display_name ??
+        payload.from_name ??
+        payload.sender_name ??
+        payload.nama_pengirim ??
+        `User ${fromUserId}`
+    ),
     message,
     createdAt: payload.created_at ?? new Date().toISOString(),
   }

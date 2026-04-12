@@ -156,6 +156,14 @@ Setelah itu, panggilan dari aplikasi ke **POST /api/wa/send** (dan kirim gambar 
 
 ---
 
+## 4b. Produksi: tidak terbalas / log “Bad MAC” / “No matching sessions”
+
+Itu hampir selalu **session auth di volume `whatsapp-sessions` rusak atau dipakai dua proses** (mis. Docker + `npm start` di host yang sama). **Bukan** lewat perbaikan kode PHP saja.
+
+Ikuti langkah di **[TROUBLESHOOTING-WA-SESSION.md](./TROUBLESHOOTING-WA-SESSION.md)** (backup → hapus `baileys-default` → scan QR ulang; satu instance per volume).
+
+---
+
 ## 5. Endpoint lain (status, connect, disconnect, logout)
 
 - **GET** `/api/whatsapp/status` — cek status (tanpa auth). Response: `{ success, data: { status, qrCode, phoneNumber } }`.

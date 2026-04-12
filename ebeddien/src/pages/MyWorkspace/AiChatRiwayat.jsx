@@ -1,12 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, memo } from 'react'
+import { useCallback, useEffect, useMemo, useState, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { deepseekAPI, aiTrainingAdminAPI } from '../../services/api'
-import { useChatAiHeaderSlot } from '../../contexts/ChatAiHeaderContext'
 import { useNotification } from '../../contexts/NotificationContext'
-import EbeddienChatHeaderTraining from './DeepseekChat/EbeddienChatHeaderTraining'
-
-const ASSISTANT_NAME = 'eBeddien'
 
 const fieldClass =
   'w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm transition placeholder:text-gray-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-teal-400 dark:focus:ring-teal-400/25'
@@ -301,8 +297,6 @@ export default function AiChatRiwayat() {
 
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
-  const [chatHeaderMenuOpen, setChatHeaderMenuOpen] = useState(false)
-
   const [selected, setSelected] = useState(null)
   const [editUser, setEditUser] = useState('')
   const [editReply, setEditReply] = useState('')
@@ -315,21 +309,6 @@ export default function AiChatRiwayat() {
   const [bankModalCategoryOptions, setBankModalCategoryOptions] = useState(() => buildBankCategoryOptions([], ''))
   const [bankCategoriesLoading, setBankCategoriesLoading] = useState(false)
   const [bankSaving, setBankSaving] = useState(false)
-
-  const setHeaderFromLayout = useChatAiHeaderSlot()
-  useLayoutEffect(() => {
-    if (!setHeaderFromLayout) return
-    setHeaderFromLayout(
-      <EbeddienChatHeaderTraining
-        assistantName={ASSISTANT_NAME}
-        variant="riwayat"
-        accountLoading={false}
-        chatHeaderMenuOpen={chatHeaderMenuOpen}
-        setChatHeaderMenuOpen={setChatHeaderMenuOpen}
-      />
-    )
-    return () => setHeaderFromLayout(null)
-  }, [setHeaderFromLayout, chatHeaderMenuOpen])
 
   useEffect(() => {
     let cancelled = false

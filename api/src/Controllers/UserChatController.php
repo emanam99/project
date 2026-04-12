@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\LiveChatMessageNotifier;
 use App\Utils\PushNotificationService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -190,12 +191,13 @@ class UserChatController
             if ($preview === '') {
                 $preview = '(pesan baru)';
             }
+            $bodyLine = $senderName !== '' ? ($senderName . ': ' . $preview) : $preview;
 
             $push = new PushNotificationService();
             $push->sendToUserIds(
                 [$toUsersId],
                 'Pesan baru',
-                $preview,
+                $bodyLine,
                 [
                     'tag' => 'chat-message-' . $conversationId,
                     'url' => '/chat?u=' . $fromUsersId,
@@ -735,6 +737,22 @@ class UserChatController
                 return $this->json($response, ['success' => false, 'message' => 'Bukan anggota conversation'], 403);
             }
 
+            // Sebelum tandai baca: id pesan lawan pertama yang masih "belum dibaca" (untuk scroll + garis Pesan Baru di klien)
+            $firstUnreadMessageId = null;
+            $stmtFirstUnread = $db->prepare("
+                SELECT ch.id FROM chat ch
+                INNER JOIN chat___member m ON m.conversation_id = ch.conversation_id AND m.user_id = ?
+                WHERE ch.conversation_id = ? AND ch.sender_id != ?
+                AND (m.last_read_at IS NULL OR ch.tanggal_dibuat > m.last_read_at)
+                ORDER BY ch.tanggal_dibuat ASC, ch.id ASC
+                LIMIT 1
+            ");
+            $stmtFirstUnread->execute([$myUserId, $conversationId, $myUserId]);
+            $fur = $stmtFirstUnread->fetch(\PDO::FETCH_ASSOC);
+            if ($fur && isset($fur['id'])) {
+                $firstUnreadMessageId = (int) $fur['id'];
+            }
+
             // Update last_read_at
             $db->prepare("UPDATE chat___member SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?")->execute([$conversationId, $myUserId]);
 
@@ -816,6 +834,7 @@ class UserChatController
                 'conversation_id' => $conversationId,
                 'peer_user_id' => $peerUserId,
                 'peer_display_name' => $peerDisplayName,
+                'first_unread_message_id' => $firstUnreadMessageId,
             ]);
         } catch (\Throwable $e) {
             error_log('UserChatController::getMessages ' . $e->getMessage());
@@ -1022,6 +1041,34 @@ class UserChatController
                 $namaP = isset($uRow['nama_pengurus']) && trim((string) $uRow['nama_pengurus']) !== '' ? trim((string) $uRow['nama_pengurus']) : null;
                 $out['sender_username'] = $uName !== '' ? $uName : null;
                 $out['sender_display_name'] = $this->formatNamaUsername($namaP, $uName !== '' ? $uName : '', $senderId);
+            }
+
+            // Realtime Socket.IO: kirim receive_message ke anggota conversation (tanpa lewat Node saveMessage).
+            $stmtM = $db->prepare('SELECT user_id FROM chat___member WHERE conversation_id = ?');
+            $stmtM->execute([$conversationId]);
+            $notifyUserIds = array_values(array_filter(
+                array_map('intval', $stmtM->fetchAll(\PDO::FETCH_COLUMN) ?: []),
+                static fn (int $x): bool => $x > 0
+            ));
+            $payloadForLive = [
+                'id' => $id,
+                'conversation_id' => $conversationId,
+                'sender_id' => $senderId,
+                'from_user_id' => (string) $senderId,
+                'to_user_id' => $recipientId > 0 ? (string) $recipientId : '0',
+                'message' => $message,
+                'created_at' => $tanggalDibuat,
+            ];
+            if (isset($out['sender_username'])) {
+                $payloadForLive['sender_username'] = $out['sender_username'];
+            }
+            if (isset($out['sender_display_name'])) {
+                $payloadForLive['sender_display_name'] = $out['sender_display_name'];
+            }
+            // Langsung kirim (bukan register_shutdown): di beberapa setup FPM shutdown tidak sempat
+            // memanggil live server, sehingga lawan tidak dapat receive_message.
+            if ($notifyUserIds !== []) {
+                LiveChatMessageNotifier::emit($notifyUserIds, $payloadForLive);
             }
 
             return $this->json($response, $out);

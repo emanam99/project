@@ -111,6 +111,26 @@ final class EbeddienFiturAccess
         return EbeddienFiturSelectorRepository::codesForMethod('tarbiyahSuperSelectors');
     }
 
+    public static function absenPengurusApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('absenPengurusApiSelectors');
+    }
+
+    public static function absenLokasiCrudApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('absenLokasiCrudApiSelectors');
+    }
+
+    public static function absenPengurusLokasiPostSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('absenPengurusLokasiPostSelectors');
+    }
+
+    public static function absenGeocodeReverseSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('absenGeocodeReverseSelectors');
+    }
+
     public static function alamatListSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('alamatListSelectors');
