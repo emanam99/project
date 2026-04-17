@@ -22,7 +22,7 @@ function BulkCreateKhususOffcanvas({ isOpen, onClose, selectedDataList, onSucces
     total: ''
   })
 
-  const khususOptions = ['UJBA', 'Guru Tugas', 'KKN', 'PLP/PPL', 'Skripsi', 'Wisuda']
+  const khususOptions = ['UJBA', 'Guru Tugas', 'KKN', 'PLP/PPL', 'Skripsi', 'Wisuda', 'Ujian Kelulusan']
   const lembagaFormal = ['PAUD', 'SMP', 'MTs', 'SMAI', 'STAI']
 
   // Daftar santri unik (by id) dari selectedDataList

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../../store/authStore'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
-import { calculateWajibFromBiodata, bulanHijriyah } from '../../../utils/uwabaCalculator'
+import { calculateWajibFromBiodata, mergeBiodataForUwabaPricing, bulanHijriyah } from '../../../utils/uwabaCalculator'
 import { getSlimApiUrl } from '../../../services/api'
 import { getGambarUrl } from '../../../config/images'
 import './PrintUwaba.css'
@@ -345,16 +345,19 @@ function ReceiptContent({ data, formatRupiah, formatTanggal, getCurrentUrlWithPa
       finalWajibValue = t.wajib
     } else if (t.total && t.total > 0) {
       finalWajibValue = t.total
-    } else if (t.json && typeof t.json === 'string') {
+    } else if (t.json && typeof t.json === 'string' && uwaba_prices) {
       try {
         const jsonData = JSON.parse(t.json)
-        if (jsonData && (jsonData.status_santri || jsonData.kategori)) {
-          finalWajibValue = calculateWajibFromBiodata(jsonData, uwaba_prices)
+        const merged = mergeBiodataForUwabaPricing(jsonData, biodata)
+        if (merged && (merged.status_santri || merged.kategori)) {
+          finalWajibValue = calculateWajibFromBiodata(merged, uwaba_prices)
+        } else {
+          finalWajibValue = calculateWajibFromBiodata(biodata, uwaba_prices)
         }
       } catch (e) {
         finalWajibValue = calculateWajibFromBiodata(biodata, uwaba_prices)
       }
-    } else {
+    } else if (uwaba_prices) {
       finalWajibValue = calculateWajibFromBiodata(biodata, uwaba_prices)
     }
     
@@ -605,16 +608,19 @@ function ReceiptContentTwoColumns({ data, formatRupiah, formatTanggal, getCurren
       finalWajibValue = t.wajib
     } else if (t.total && t.total > 0) {
       finalWajibValue = t.total
-    } else if (t.json && typeof t.json === 'string') {
+    } else if (t.json && typeof t.json === 'string' && uwaba_prices) {
       try {
         const jsonData = JSON.parse(t.json)
-        if (jsonData && (jsonData.status_santri || jsonData.kategori)) {
-          finalWajibValue = calculateWajibFromBiodata(jsonData, uwaba_prices)
+        const merged = mergeBiodataForUwabaPricing(jsonData, biodata)
+        if (merged && (merged.status_santri || merged.kategori)) {
+          finalWajibValue = calculateWajibFromBiodata(merged, uwaba_prices)
+        } else {
+          finalWajibValue = calculateWajibFromBiodata(biodata, uwaba_prices)
         }
       } catch (e) {
         finalWajibValue = calculateWajibFromBiodata(biodata, uwaba_prices)
       }
-    } else {
+    } else if (uwaba_prices) {
       finalWajibValue = calculateWajibFromBiodata(biodata, uwaba_prices)
     }
     

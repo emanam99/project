@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\LiveDomisiliCacheNotifier;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -159,6 +160,8 @@ class DaerahPengurusController
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_CREATE, 'daerah___pengurus', (string) $newId, null, $newRow, $request);
             }
 
+            LiveDomisiliCacheNotifier::ping();
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'message' => 'Pengurus daerah berhasil ditambahkan',
@@ -223,6 +226,8 @@ class DaerahPengurusController
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'daerah___pengurus', (string) $id, $old, $new, $request);
             }
 
+            LiveDomisiliCacheNotifier::ping();
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'message' => 'Pengurus daerah berhasil diupdate',
@@ -283,6 +288,8 @@ class DaerahPengurusController
             if ($new && $pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'daerah___pengurus', (string) $id, $old, $new, $request);
             }
+
+            LiveDomisiliCacheNotifier::ping();
 
             return $this->jsonResponse($response, [
                 'success' => true,

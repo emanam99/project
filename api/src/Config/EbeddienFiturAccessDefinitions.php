@@ -207,6 +207,76 @@ final class EbeddienFiturAccessDefinitions
         return self::merge(self::tarbiyahLembagaMenus(), self::superAdminMenus());
     }
 
+    /** GET/POST /api/santri */
+    public static function santriCrudApiSelectors(): array
+    {
+        return self::merge(
+            self::psbMenus(),
+            self::tarbiyahLembagaMenus(),
+            self::superAdminMenus(),
+            ['action.santri.halaman', 'action.rombel.halaman']
+        );
+    }
+
+    /** GET /api/santri/by-kelas, riwayat-rombel, riwayat-kamar */
+    public static function santriByKelasApiSelectors(): array
+    {
+        return self::santriCrudApiSelectors();
+    }
+
+    /** /api/rombel, /api/wali-kelas, /api/santri-lulusan (konteks rombel) */
+    public static function rombelWaliKelasApiSelectors(): array
+    {
+        return self::merge(
+            self::psbMenus(),
+            self::tarbiyahLembagaMenus(),
+            self::superAdminMenus(),
+            ['action.rombel.halaman', 'action.mapel.halaman']
+        );
+    }
+
+    /** /api/jabatan */
+    public static function jabatanCrudApiSelectors(): array
+    {
+        return self::merge(
+            self::psbMenus(),
+            self::tarbiyahLembagaMenus(),
+            self::superAdminMenus(),
+            ['action.manage_jabatan.halaman']
+        );
+    }
+
+    /** /api/mapel */
+    public static function mapelCrudApiSelectors(): array
+    {
+        return self::merge(
+            self::psbMenus(),
+            self::tarbiyahLembagaMenus(),
+            self::superAdminMenus(),
+            ['action.mapel.halaman']
+        );
+    }
+
+    /** /api/kitab — dipakai halaman Mapel (master kitab) */
+    public static function kitabCrudApiSelectors(): array
+    {
+        return self::merge(
+            self::psbMenus(),
+            self::tarbiyahLembagaMenus(),
+            self::superAdminMenus(),
+            ['action.mapel.halaman']
+        );
+    }
+
+    /** /api/tarbiyah/santri (catatan domisili dari konteks Rombel, dll.) */
+    public static function tarbiyahSantriDomisiliApiSelectors(): array
+    {
+        return self::merge(
+            self::tarbiyahSuperSelectors(),
+            ['action.rombel.halaman']
+        );
+    }
+
     /**
      * GET /api/absen-pengurus (+ rekap): tab Riwayat atau legacy menu.absen tanpa aksi granular.
      */
@@ -230,8 +300,15 @@ final class EbeddienFiturAccessDefinitions
                 'action.absen.lokasi.tambah',
                 'action.absen.lokasi.ubah',
                 'action.absen.lokasi.hapus',
+                'action.absen.tab.pengaturan',
             ]
         );
+    }
+
+    /** GET/PUT /api/absen-setting — pengaturan global absen (jadwal default, sidik jari) */
+    public static function absenSettingApiSelectors(): array
+    {
+        return self::absenLokasiCrudApiSelectors();
     }
 
     /** POST /api/absen-pengurus/lokasi */
@@ -252,6 +329,7 @@ final class EbeddienFiturAccessDefinitions
             self::superAdminMenus(),
             ['menu.absen', 'action.absen.tab.absen'],
             ['menu.absen', 'action.absen.tab.ngabsen'],
+            ['menu.absen', 'action.absen.tab.pengaturan'],
             ['menu.absen', 'action.absen.lokasi.absen'],
             ['menu.absen', 'action.absen.lokasi.list']
         );
@@ -285,6 +363,17 @@ final class EbeddienFiturAccessDefinitions
     public static function psbStaffSuperSelectors(): array
     {
         return self::psbAdminSuperSelectors();
+    }
+
+    /**
+     * GET opsi kategori/daerah/kamar untuk filter halaman Santri — PSB staff atau aksi halaman Santri.
+     */
+    public static function pendaftaranSantriFilterOptionsSelectors(): array
+    {
+        return self::merge(
+            self::psbStaffSuperSelectors(),
+            ['action.santri.halaman']
+        );
     }
 
     public static function dashboardLaporanIjinSelectors(): array

@@ -1242,7 +1242,33 @@ class WhatsAppService
     }
 
     /**
-     * Baca provider notifikasi WA dari app___settings: wa_sendiri | watzap.
+     * @param array{ok?: bool, status?: int, data?: mixed, message?: ?string} $r
+     */
+    private static function evolutionSendFailureMessage(array $r): string
+    {
+        $prefix = 'Evolution';
+        if (isset($r['status'])) {
+            $prefix .= ' HTTP ' . (string) $r['status'];
+        }
+        $d = $r['data'] ?? null;
+        if (\is_array($d) && isset($d['response']['message'])) {
+            $m = $d['response']['message'];
+            if (\is_string($m) && trim($m) !== '') {
+                return $prefix . ': ' . trim($m);
+            }
+        }
+        if (\is_string($d) && trim($d) !== '') {
+            return $prefix . ': ' . substr(trim($d), 0, 240);
+        }
+        if (!empty($r['message']) && \is_string($r['message'])) {
+            return $prefix . ': ' . $r['message'];
+        }
+
+        return $prefix . ': kirim gagal';
+    }
+
+    /**
+     * Baca provider notifikasi WA dari app___settings: wa_sendiri | watzap | evolution.
      */
     public static function getNotificationProvider(): string
     {
@@ -1255,8 +1281,15 @@ class WhatsAppService
             $stmt = $db->prepare("SELECT `value` FROM app___settings WHERE `key` = 'notification_provider' LIMIT 1");
             $stmt->execute();
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            $provider = ($row && isset($row['value']) && trim((string) $row['value']) === 'watzap') ? 'watzap' : 'wa_sendiri';
-            return $provider;
+            $v = ($row && isset($row['value'])) ? trim((string) $row['value']) : 'wa_sendiri';
+            if ($v === 'watzap') {
+                return 'watzap';
+            }
+            if ($v === 'evolution') {
+                return 'evolution';
+            }
+
+            return 'wa_sendiri';
         } catch (\Throwable $e) {
             return 'wa_sendiri';
         }
@@ -1417,6 +1450,55 @@ class WhatsAppService
                 self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
             }
             return ['success' => $res['success'], 'message' => $res['message']];
+        }
+
+        if (self::getNotificationProvider() === 'evolution') {
+            if ($logContext !== null && \in_array(($logContext['kategori'] ?? ''), ['daftar_notif', 'wa_interactive_menu', 'ai_whatsapp'], true)) {
+                error_log('WhatsAppService: ' . ($logContext['kategori'] ?? '') . ' kirim via Evolution API.');
+            }
+            $evoTarget = $phone;
+            if ($isLidChat && $chatId !== null && trim((string) $chatId) !== '') {
+                $evoTarget = trim((string) $chatId);
+            }
+            $r = \App\Services\EvolutionApiService::sendTextToDigits($evoTarget, $message, null);
+            $ok = !empty($r['ok']);
+            $evoMsg = $ok ? 'OK' : self::evolutionSendFailureMessage($r);
+            if ($ok && $logContext !== null) {
+                self::logSentMessage(
+                    $phone,
+                    $message,
+                    0,
+                    'sent',
+                    $evoMsg,
+                    $logContext['id_santri'] ?? null,
+                    $logContext['id_pengurus'] ?? null,
+                    $logContext['tujuan'] ?? 'wali_santri',
+                    $logContext['id_pengurus_pengirim'] ?? null,
+                    $logContext['kategori'] ?? 'custom',
+                    $logContext['sumber'] ?? 'system',
+                    null
+                );
+            }
+            if (!$ok && $logContext !== null) {
+                self::logSentMessage(
+                    $phone,
+                    $message,
+                    0,
+                    'gagal',
+                    $evoMsg,
+                    $logContext['id_santri'] ?? null,
+                    $logContext['id_pengurus'] ?? null,
+                    $logContext['tujuan'] ?? 'wali_santri',
+                    $logContext['id_pengurus_pengirim'] ?? null,
+                    $logContext['kategori'] ?? 'custom',
+                    $logContext['sumber'] ?? 'system'
+                );
+            }
+            if ($ok && !$kontakStatus['exists']) {
+                self::ensureKontak($phone, 0, self::deriveKontakLabelFromLogContext($logContext));
+            }
+
+            return ['success' => $ok, 'message' => $evoMsg];
         }
 
         $cfg = self::getConfig();

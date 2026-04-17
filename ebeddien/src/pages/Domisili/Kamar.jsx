@@ -1,9 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { daerahAPI, daerahKamarAPI, daerahKetuaKamarAPI, santriAPI } from '../../services/api'
-import { useNotification } from '../../contexts/NotificationContext'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { getDomisiliSnapshot } from '../../services/domisiliIndexedDb'
+import { fetchAndPersistDomisiliCache, DOMISILI_CACHE_EVENT } from '../../services/domisiliCacheSync'
+
+/** Urutan tampilan kategori (selaras filter daerah / form) */
+const KATEGORI_ORDER = ['Banin', 'Banat']
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
+import { SantriPerKamarOffcanvas } from './SantriPerKamarOffcanvas'
+import { KamarEditOffcanvas } from './KamarEditOffcanvas'
+import { kategoriBadgeClass } from './kategoriBadgeClass'
 
 const normalizeStatus = (s) => {
   if (!s) return ''
@@ -14,72 +20,86 @@ const normalizeStatus = (s) => {
 }
 
 function Kamar() {
-  const { showNotification } = useNotification()
-  const { options: tahunAjaranOptions } = useTahunAjaranStore()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { options: tahunAjaranOptions, tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
   const [kamarList, setKamarList] = useState([])
   const [daerahList, setDaerahList] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [offcanvasOpen, setOffcanvasOpen] = useState(false)
   const [editingKamar, setEditingKamar] = useState(null)
-  const [formData, setFormData] = useState({
-    id_daerah: '',
-    kamar: '',
-    keterangan: '',
-    status: 'aktif'
-  })
   const [filterDaerah, setFilterDaerah] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
+  const [filterStatus, setFilterStatus] = useState('aktif')
   const [searchQuery, setSearchQuery] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [ketuaList, setKetuaList] = useState([])
-  const [ketuaOffcanvasOpen, setKetuaOffcanvasOpen] = useState(false)
-  const [editingKetua, setEditingKetua] = useState(null)
-  const [ketuaFormData, setKetuaFormData] = useState({
-    id_ketua_kamar: '',
-    tahun_ajaran: '',
-    status: 'aktif',
-    keterangan: ''
-  })
-  const [santriList, setSantriList] = useState([])
-  const [savingKetua, setSavingKetua] = useState(false)
+  /** Semua santri untuk hitung penghuni per kamar (id_kamar = id baris daerah___kamar) */
+  const [santriMasterList, setSantriMasterList] = useState([])
+  const [santriOffcanvasOpen, setSantriOffcanvasOpen] = useState(false)
+  const [santriOffcanvasKamar, setSantriOffcanvasKamar] = useState(null)
 
-  useEffect(() => {
-    loadDaerah()
+  const applyDomisiliSnapshot = useCallback((snap) => {
+    if (!snap) return
+    setDaerahList(Array.isArray(snap.daerah) ? snap.daerah : [])
+    setKamarList(Array.isArray(snap.kamar) ? snap.kamar : [])
+    setSantriMasterList(Array.isArray(snap.santri) ? snap.santri : [])
   }, [])
 
-  useEffect(() => {
-    loadKamar()
-  }, [])
-
-  const loadDaerah = async () => {
+  const loadDomisili = useCallback(async (opts = {}) => {
+    const background = opts.background === true
     try {
-      const res = await daerahAPI.getAll({})
-      if (res.success && res.data) setDaerahList(res.data)
-    } catch (err) {
-      console.error('Error loading daerah:', err)
-    }
-  }
-
-  const loadKamar = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await daerahKamarAPI.getAll({})
-      if (response.success) {
-        setKamarList(response.data || [])
-      } else {
-        setError(response.message || 'Gagal memuat data kamar')
+      if (!background) {
+        setLoading(true)
+        setError(null)
+        const snap = await getDomisiliSnapshot()
+        if (snap && (snap.kamar.length > 0 || snap.daerah.length > 0)) {
+          applyDomisiliSnapshot(snap)
+          setLoading(false)
+        }
+      }
+      const { daerah, kamar, santri, kamarOk } = await fetchAndPersistDomisiliCache({ notify: false })
+      setDaerahList(daerah)
+      setKamarList(kamar)
+      setSantriMasterList(santri)
+      if (kamar.length > 0 || kamarOk) setError(null)
+      if (!kamarOk && kamar.length === 0 && !background) {
+        setError('Gagal memuat data kamar')
       }
     } catch (err) {
       console.error('Error loading kamar:', err)
-      setError('Terjadi kesalahan saat memuat data kamar')
+      if (!background) setError('Terjadi kesalahan saat memuat data kamar')
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
-  }
+  }, [applyDomisiliSnapshot])
+
+  useEffect(() => {
+    loadDomisili()
+  }, [loadDomisili])
+
+  useEffect(() => {
+    const onDomisiliUpdated = async () => {
+      const snap = await getDomisiliSnapshot()
+      if (snap) applyDomisiliSnapshot(snap)
+    }
+    window.addEventListener(DOMISILI_CACHE_EVENT, onDomisiliUpdated)
+    return () => window.removeEventListener(DOMISILI_CACHE_EVENT, onDomisiliUpdated)
+  }, [applyDomisiliSnapshot])
+
+  /** Dari halaman Daerah: tombol Edit kamar di offcanvas santri mengarah ke sini dengan state. */
+  useEffect(() => {
+    const raw = location.state?.openEditKamarId
+    if (raw == null || loading) return
+    const idStr = String(raw)
+    const found = kamarList.find((k) => String(k.id) === idStr)
+    navigate(location.pathname, { replace: true, state: {} })
+    if (!found) return
+    setSantriOffcanvasOpen(false)
+    setSantriOffcanvasKamar(null)
+    setEditingKamar(found)
+    setOffcanvasOpen(true)
+  }, [location.state?.openEditKamarId, loading, kamarList, navigate, location.pathname])
 
   const matchByDaerah = useCallback((k, val) => !val || String(k.id_daerah) === String(val), [])
   const matchByStatus = useCallback((k, val) => !val || normalizeStatus(k.status) === normalizeStatus(val), [])
@@ -91,16 +111,49 @@ function Kamar() {
   }, [kamarList, filterDaerah, filterStatus, matchByDaerah, matchByStatus])
 
   const filteredKamar = useMemo(() => {
-    if (!searchQuery.trim()) return dataAfterFilters
-    const q = searchQuery.trim().toLowerCase()
-    return dataAfterFilters.filter(
-      (k) =>
-        (k.kamar && k.kamar.toLowerCase().includes(q)) ||
-        (k.daerah_nama && k.daerah_nama.toLowerCase().includes(q)) ||
-        (k.daerah_kategori && k.daerah_kategori.toLowerCase().includes(q)) ||
-        (k.keterangan && k.keterangan.toLowerCase().includes(q))
-    )
+    const qRaw = searchQuery.trim()
+    const rows = !qRaw
+      ? dataAfterFilters
+      : dataAfterFilters.filter((k) => {
+          const q = qRaw.toLowerCase()
+          return (
+            (k.kamar && k.kamar.toLowerCase().includes(q)) ||
+            (k.daerah_nama && k.daerah_nama.toLowerCase().includes(q)) ||
+            (k.daerah_kategori && k.daerah_kategori.toLowerCase().includes(q)) ||
+            (k.keterangan && k.keterangan.toLowerCase().includes(q))
+          )
+        })
+    const rankKategori = (kat) => {
+      const idx = KATEGORI_ORDER.indexOf(String(kat ?? '').trim())
+      return idx === -1 ? 99 : idx
+    }
+    return [...rows].sort((a, b) => {
+      const rk = rankKategori(a.daerah_kategori) - rankKategori(b.daerah_kategori)
+      if (rk !== 0) return rk
+      const rd = String(a.daerah_nama ?? '').localeCompare(String(b.daerah_nama ?? ''), 'id', { sensitivity: 'base', numeric: true })
+      if (rd !== 0) return rd
+      return String(a.kamar ?? '').localeCompare(String(b.kamar ?? ''), 'id', { sensitivity: 'base', numeric: true })
+    })
   }, [dataAfterFilters, searchQuery])
+
+  /** Hanya santri status Mukim (per kamar), selaras offcanvas list kamar di halaman Daerah */
+  const santriMukimCountByKamar = useMemo(() => {
+    const counts = {}
+    santriMasterList.forEach((s) => {
+      const id = s.id_kamar != null && s.id_kamar !== '' ? String(s.id_kamar) : ''
+      if (!id) return
+      const st = String(s.status_santri ?? '').trim().toLowerCase()
+      if (st !== 'mukim') return
+      counts[id] = (counts[id] || 0) + 1
+    })
+    return counts
+  }, [santriMasterList])
+
+  const santriOffcanvasRows = useMemo(() => {
+    if (!santriOffcanvasKamar?.id) return []
+    const kid = String(santriOffcanvasKamar.id)
+    return santriMasterList.filter((s) => s.id_kamar != null && String(s.id_kamar) === kid)
+  }, [santriMasterList, santriOffcanvasKamar])
 
   const statusLabel = useCallback((v) => (v === 'aktif' ? 'Aktif' : v === 'nonaktif' ? 'Nonaktif' : v), [])
 
@@ -129,200 +182,32 @@ function Kamar() {
     return { daerahOptions, statusOptions }
   }, [kamarList, statusLabel])
 
-  const loadKetuaKamar = useCallback(async (idDaerahKamar) => {
-    if (!idDaerahKamar) return
-    try {
-      const res = await daerahKetuaKamarAPI.getAll({ id_daerah_kamar: idDaerahKamar })
-      if (res.success && res.data) {
-        setKetuaList(res.data)
-      }
-    } catch (err) {
-      console.error('Error loading ketua kamar:', err)
-    }
-  }, [])
+  const handleCloseSantriOffcanvas = () => {
+    setSantriOffcanvasOpen(false)
+    setSantriOffcanvasKamar(null)
+  }
 
-  useEffect(() => {
-    if (offcanvasOpen && editingKamar?.id) {
-      loadKetuaKamar(editingKamar.id)
-    } else {
-      setKetuaList([])
+  const handleToggleSantriOffcanvas = (kamar) => {
+    if (!kamar?.id) return
+    const sameOpen = santriOffcanvasOpen && String(santriOffcanvasKamar?.id) === String(kamar.id)
+    if (sameOpen) {
+      handleCloseSantriOffcanvas()
+      return
     }
-  }, [offcanvasOpen, editingKamar?.id, loadKetuaKamar])
+    setSantriOffcanvasKamar(kamar)
+    setSantriOffcanvasOpen(true)
+  }
 
   const handleOpenOffcanvas = (kamar = null) => {
-    if (kamar) {
-      setEditingKamar(kamar)
-      setFormData({
-        id_daerah: String(kamar.id_daerah || ''),
-        kamar: kamar.kamar || '',
-        keterangan: kamar.keterangan || '',
-        status: kamar.status || 'aktif'
-      })
-    } else {
-      setEditingKamar(null)
-      setFormData({
-        id_daerah: filterDaerah || '',
-        kamar: '',
-        keterangan: '',
-        status: 'aktif'
-      })
-    }
+    handleCloseSantriOffcanvas()
+    setEditingKamar(kamar || null)
     setOffcanvasOpen(true)
   }
 
   const handleCloseOffcanvas = () => {
     setOffcanvasOpen(false)
     setEditingKamar(null)
-    setKetuaOffcanvasOpen(false)
-    setKetuaList([])
-    setFormData({ id_daerah: '', kamar: '', keterangan: '', status: 'aktif' })
   }
-
-  const handleOpenKetuaOffcanvas = () => {
-    setEditingKetua(null)
-    setKetuaFormData({
-      id_ketua_kamar: '',
-      tahun_ajaran: '',
-      status: 'aktif',
-      keterangan: ''
-    })
-    ;(async () => {
-      try {
-        const st = await santriAPI.getAll()
-        if (st?.data) setSantriList(Array.isArray(st.data) ? st.data : [])
-      } catch (_) {}
-    })()
-    setKetuaOffcanvasOpen(true)
-  }
-
-  const handleEditKetuaOffcanvas = (row) => {
-    setEditingKetua(row)
-    setKetuaFormData({
-      id_ketua_kamar: String(row.id_ketua_kamar || ''),
-      tahun_ajaran: row.tahun_ajaran || '',
-      status: row.status || 'aktif',
-      keterangan: row.keterangan || ''
-    })
-    ;(async () => {
-      try {
-        const st = await santriAPI.getAll()
-        if (st?.data) setSantriList(Array.isArray(st.data) ? st.data : [])
-      } catch (_) {}
-    })()
-    setKetuaOffcanvasOpen(true)
-  }
-
-  const handleCloseKetuaOffcanvas = () => {
-    setKetuaOffcanvasOpen(false)
-    setEditingKetua(null)
-    if (editingKamar?.id) loadKetuaKamar(editingKamar.id)
-  }
-
-  const handleSubmitKetua = async (e) => {
-    e.preventDefault()
-    if (!editingKamar?.id) return
-    if (!ketuaFormData.id_ketua_kamar) {
-      showNotification('Santri (ketua kamar) wajib dipilih', 'error')
-      return
-    }
-    setSavingKetua(true)
-    try {
-      const payload = {
-        id_daerah_kamar: editingKamar.id,
-        id_ketua_kamar: Number(ketuaFormData.id_ketua_kamar),
-        tahun_ajaran: ketuaFormData.tahun_ajaran || null,
-        status: ketuaFormData.status || 'aktif',
-        keterangan: ketuaFormData.keterangan || null
-      }
-      if (editingKetua?.id) {
-        const res = await daerahKetuaKamarAPI.update(editingKetua.id, payload)
-        if (res.success) {
-          showNotification('Ketua kamar berhasil diupdate', 'success')
-          handleCloseKetuaOffcanvas()
-          loadKetuaKamar(editingKamar.id)
-        } else {
-          showNotification(res.message || 'Gagal mengupdate ketua kamar', 'error')
-        }
-      } else {
-        const res = await daerahKetuaKamarAPI.create(payload)
-        if (res.success) {
-          showNotification('Ketua kamar berhasil ditambahkan', 'success')
-          handleCloseKetuaOffcanvas()
-          loadKetuaKamar(editingKamar.id)
-        } else {
-          showNotification(res.message || 'Gagal menambahkan ketua kamar', 'error')
-        }
-      }
-    } catch (err) {
-      console.error('Error saving ketua kamar:', err)
-      showNotification('Terjadi kesalahan saat menyimpan', 'error')
-    } finally {
-      setSavingKetua(false)
-    }
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!formData.id_daerah) {
-      showNotification('Daerah wajib diisi', 'error')
-      return
-    }
-    if (!formData.kamar?.trim()) {
-      showNotification('Nama kamar wajib diisi', 'error')
-      return
-    }
-    setSaving(true)
-    try {
-      const payload = {
-        id_daerah: Number(formData.id_daerah),
-        kamar: formData.kamar.trim(),
-        keterangan: formData.keterangan || null,
-        status: formData.status || 'aktif'
-      }
-      if (editingKamar) {
-        const response = await daerahKamarAPI.update(editingKamar.id, payload)
-        if (response.success) {
-          showNotification('Kamar berhasil diupdate', 'success')
-          handleCloseOffcanvas()
-          loadKamar()
-        } else {
-          showNotification(response.message || 'Gagal mengupdate kamar', 'error')
-        }
-      } else {
-        const response = await daerahKamarAPI.create(payload)
-        if (response.success) {
-          showNotification('Kamar berhasil ditambahkan', 'success')
-          handleCloseOffcanvas()
-          loadKamar()
-        } else {
-          showNotification(response.message || 'Gagal menambahkan kamar', 'error')
-        }
-      }
-    } catch (err) {
-      console.error('Error saving kamar:', err)
-      showNotification('Terjadi kesalahan saat menyimpan data', 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSetStatusKetua = async (id, status) => {
-    try {
-      const res = await daerahKetuaKamarAPI.setStatus(id, status)
-      if (res.success) {
-        showNotification(res.message || 'Status diubah', 'success')
-        if (editingKamar?.id) loadKetuaKamar(editingKamar.id)
-      } else {
-        showNotification(res.message || 'Gagal mengubah status', 'error')
-      }
-    } catch (err) {
-      showNotification('Gagal mengubah status', 'error')
-    }
-  }
-
-  const ketuaAktif = useMemo(() => ketuaList.filter((k) => normalizeStatus(k.status) === 'aktif'), [ketuaList])
-  const ketuaLain = useMemo(() => ketuaList.filter((k) => normalizeStatus(k.status) !== 'aktif'), [ketuaList])
-  const ketuaSorted = useMemo(() => [...ketuaAktif, ...ketuaLain], [ketuaAktif, ketuaLain])
 
   if (loading && kamarList.length === 0) {
     return (
@@ -373,7 +258,7 @@ function Kamar() {
                     </svg>
                   )}
                 </button>
-                <button type="button" onClick={loadKamar} className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-700 dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 p-1.5 rounded text-xs transition-colors pointer-events-auto" title="Refresh">
+                <button type="button" onClick={() => loadDomisili()} className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-700 dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 p-1.5 rounded text-xs transition-colors pointer-events-auto" title="Refresh">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
@@ -439,7 +324,7 @@ function Kamar() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="container mx-auto px-4 pb-6 max-w-7xl">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 min-[900px]:grid-cols-2 xl:grid-cols-3 gap-4">
             <AnimatePresence>
               {filteredKamar.map((kamar, index) => (
                 <motion.div
@@ -450,34 +335,50 @@ function Kamar() {
                   transition={{ delay: index * 0.03 }}
                   role="button"
                   tabIndex={0}
-                  onClick={() => handleOpenOffcanvas(kamar)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenOffcanvas(kamar) } }}
+                  onClick={() => handleToggleSantriOffcanvas(kamar)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleSantriOffcanvas(kamar) } }}
                   className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 border cursor-pointer hover:shadow-lg transition-all ${
                     kamar.status === 'nonaktif' ? 'border-gray-200 dark:border-gray-700 opacity-75' : 'border-gray-200 dark:border-gray-700'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-                        {kamar.daerah_nama ? `${kamar.daerah_kategori || ''} — ${kamar.daerah_nama}` : `Daerah #${kamar.id_daerah}`} — {kamar.kamar}
-                      </h3>
-                      <span
-                        className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
-                          kamar.status === 'aktif' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'
-                        }`}
-                      >
-                        {kamar.status === 'aktif' ? 'Aktif' : 'Nonaktif'}
-                      </span>
+                  <div className="flex justify-between items-start gap-2 mb-2">
+                    <div className="grid min-w-0 flex-1 grid-cols-2 grid-rows-[auto_auto] gap-x-0 gap-y-2">
+                      <div className="row-span-2 flex min-w-0 items-center border-r border-gray-200 pr-3 dark:border-gray-600">
+                        <h3 className="w-full min-w-0 text-xl font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 sm:text-2xl">
+                          {(kamar.daerah_nama || `Daerah #${kamar.id_daerah}`).trim()}.{String(kamar.kamar || '-').trim()}
+                        </h3>
+                      </div>
+                      <div className="col-start-2 flex min-w-0 justify-end">
+                        <span className={kategoriBadgeClass(kamar.daerah_kategori)}>
+                          {kamar.daerah_kategori || '–'}
+                        </span>
+                      </div>
+                      <div className="col-start-2 flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+                        {filterStatus === '' && (
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                              normalizeStatus(kamar.status) === 'aktif'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'
+                            }`}
+                          >
+                            {normalizeStatus(kamar.status) === 'aktif' ? 'Aktif' : 'Nonaktif'}
+                          </span>
+                        )}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-700">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                          </svg>
+                          {Number(santriMukimCountByKamar[String(kamar.id)] || 0)} mukim
+                        </span>
+                      </div>
                     </div>
-                    <svg className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 shrink-0 text-gray-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
                   {kamar.keterangan && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">{kamar.keterangan}</p>
-                  )}
-                  {kamar.tanggal_dibuat && (
-                    <p className="text-xs text-gray-500 dark:text-gray-500">Dibuat: {new Date(kamar.tanggal_dibuat).toLocaleDateString('id-ID')}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{kamar.keterangan}</p>
                   )}
                 </motion.div>
               ))}
@@ -494,220 +395,32 @@ function Kamar() {
         </div>
       </div>
 
-      {/* Offcanvas Kamar */}
-      {createPortal(
-        <AnimatePresence>
-          {offcanvasOpen && (
-            <>
-              <motion.div key="kamar-offcanvas-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={handleCloseOffcanvas} className="fixed inset-0 bg-black/50 z-[200]" />
-              <motion.div
-                key="kamar-offcanvas-panel"
-                initial={{ x: '100%' }}
-                animate={{ x: 0 }}
-                exit={{ x: '100%' }}
-                transition={{ type: 'tween', duration: 0.2 }}
-                className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white dark:bg-gray-800 shadow-xl z-[201] flex flex-col"
-              >
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{editingKamar ? 'Edit Kamar' : 'Tambah Kamar'}</h3>
-                  <button type="button" onClick={handleCloseOffcanvas} className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400" aria-label="Tutup">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+      <KamarEditOffcanvas
+        host="kamar"
+        open={offcanvasOpen}
+        onClose={handleCloseOffcanvas}
+        editingKamar={editingKamar}
+        defaultDaerahId={filterDaerah}
+        daerahList={daerahList}
+        tahunAjaranOptions={tahunAjaranOptions}
+        onSaved={() => loadDomisili({ background: true })}
+      />
 
-                <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Daerah <span className="text-red-500">*</span></label>
-                      <select
-                        value={formData.id_daerah}
-                        onChange={(e) => setFormData({ ...formData, id_daerah: e.target.value })}
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-                      >
-                        <option value="">Pilih Daerah</option>
-                        {daerahList.map((d) => (
-                          <option key={d.id} value={d.id}>{d.kategori} — {d.daerah}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Kamar <span className="text-red-500">*</span></label>
-                      <input
-                        type="text"
-                        value={formData.kamar}
-                        onChange={(e) => setFormData({ ...formData, kamar: e.target.value })}
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-                        placeholder="Nama kamar"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Keterangan</label>
-                      <textarea
-                        value={formData.keterangan}
-                        onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })}
-                        rows={3}
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-                        placeholder="Opsional"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-600 dark:text-gray-400">{formData.status === 'aktif' ? 'Aktif' : 'Nonaktif'}</span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={formData.status === 'aktif'}
-                          onClick={() => setFormData({ ...formData, status: formData.status === 'aktif' ? 'nonaktif' : 'aktif' })}
-                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 ${formData.status === 'aktif' ? 'bg-teal-600' : 'bg-gray-200 dark:bg-gray-600'}`}
-                        >
-                          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${formData.status === 'aktif' ? 'translate-x-5' : 'translate-x-1'}`} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {editingKamar?.id && (
-                      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ketua Kamar</h4>
-                          <button type="button" onClick={handleOpenKetuaOffcanvas} className="px-2 py-1.5 text-xs bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                            </svg>
-                            Tambah
-                          </button>
-                        </div>
-                        <ul className="space-y-0">
-                          {ketuaSorted.map((kk, idx) => {
-                            const isAktif = kk.status === 'aktif'
-                            const bgClass = isAktif ? 'bg-gray-50 dark:bg-gray-700/50' : 'bg-gray-100 dark:bg-gray-700'
-                            return (
-                              <li
-                                key={kk.id}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => handleEditKetuaOffcanvas(kk)}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEditKetuaOffcanvas(kk) } }}
-                                className={`relative flex items-start gap-3 pl-2 -ml-px py-2 rounded cursor-pointer hover:ring-1 hover:ring-teal-500/50 ${bgClass}`}
-                              >
-                                <span className="relative z-10 mt-1.5 h-3 w-3 shrink-0 rounded-full bg-teal-500 dark:bg-teal-400 border-2 border-white dark:border-gray-800" aria-hidden />
-                                <div className="min-w-0 flex-1 pt-0.5">
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">{kk.tahun_ajaran || '–'}</p>
-                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{kk.ketua_nama || '(Belum diisi)'}</p>
-                                  {isAktif && (
-                                    <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">Aktif</span>
-                                  )}
-                                  {!isAktif && (
-                                    <button type="button" onClick={(ev) => { ev.stopPropagation(); handleSetStatusKetua(kk.id, 'aktif') }} className="text-xs text-teal-600 hover:underline mt-0.5">Aktifkan</button>
-                                  )}
-                                </div>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                        {ketuaList.length === 0 && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 py-2">Belum ada ketua kamar.</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2 flex-shrink-0">
-                    <button type="button" onClick={handleCloseOffcanvas} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm">Batal</button>
-                    <button type="submit" disabled={saving} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm">
-                      {saving ? 'Menyimpan...' : (editingKamar ? 'Simpan Perubahan' : 'Tambah')}
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-
-              {/* Offcanvas Tambah/Edit Ketua Kamar */}
-              <AnimatePresence>
-                {ketuaOffcanvasOpen && (
-                  <>
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={handleCloseKetuaOffcanvas} className="fixed inset-0 bg-black/50 z-[202]" />
-                    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'tween', duration: 0.2 }} className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white dark:bg-gray-800 shadow-xl z-[203] flex flex-col">
-                      <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{editingKetua ? 'Edit Ketua Kamar' : 'Tambah Ketua Kamar'}</h3>
-                        <button type="button" onClick={handleCloseKetuaOffcanvas} className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400" aria-label="Tutup">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                      <form onSubmit={handleSubmitKetua} className="flex-1 flex flex-col min-h-0">
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tahun Ajaran</label>
-                            <select
-                              value={ketuaFormData.tahun_ajaran}
-                              onChange={(e) => setKetuaFormData({ ...ketuaFormData, tahun_ajaran: e.target.value })}
-                              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-                            >
-                              <option value="">-- Pilih Tahun Ajaran --</option>
-                              {tahunAjaranOptions.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Ketua Kamar (Santri) <span className="text-red-500">*</span></label>
-                            <select
-                              value={ketuaFormData.id_ketua_kamar}
-                              onChange={(e) => setKetuaFormData({ ...ketuaFormData, id_ketua_kamar: e.target.value })}
-                              required
-                              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 dark:bg-gray-700 dark:text-gray-200"
-                            >
-                              <option value="">-- Pilih Santri --</option>
-                              {santriList.slice(0, 300).map((s) => (
-                                <option key={s.id} value={s.id}>{s.nama || `NIS ${s.nis}`}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Status</label>
-                            <div className="flex items-center gap-3">
-                              <span className="text-sm text-gray-600 dark:text-gray-400">{ketuaFormData.status === 'aktif' ? 'Aktif' : 'Nonaktif'}</span>
-                              <button
-                                type="button"
-                                onClick={() => setKetuaFormData({ ...ketuaFormData, status: ketuaFormData.status === 'aktif' ? 'nonaktif' : 'aktif' })}
-                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${ketuaFormData.status === 'aktif' ? 'bg-teal-600' : 'bg-gray-200 dark:bg-gray-600'}`}
-                              >
-                                <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${ketuaFormData.status === 'aktif' ? 'translate-x-5' : 'translate-x-1'}`} />
-                              </button>
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Keterangan</label>
-                            <textarea
-                              value={ketuaFormData.keterangan}
-                              onChange={(e) => setKetuaFormData({ ...ketuaFormData, keterangan: e.target.value })}
-                              rows={2}
-                              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 dark:bg-gray-700 dark:text-gray-200"
-                              placeholder="Opsional"
-                            />
-                          </div>
-                        </div>
-                        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 flex-shrink-0">
-                          <button type="button" onClick={handleCloseKetuaOffcanvas} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">Batal</button>
-                          <button type="submit" disabled={savingKetua} className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 text-sm">
-                            {savingKetua ? 'Menyimpan...' : (editingKetua ? 'Simpan Perubahan' : 'Simpan')}
-                          </button>
-                        </div>
-                      </form>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+      <SantriPerKamarOffcanvas
+        variant="kamar"
+        open={santriOffcanvasOpen}
+        kamar={santriOffcanvasKamar}
+        rows={santriOffcanvasRows}
+        onClose={handleCloseSantriOffcanvas}
+        onEditKamar={
+          santriOffcanvasKamar ? () => handleOpenOffcanvas(santriOffcanvasKamar) : undefined
+        }
+        daerahList={daerahList}
+        kamarList={kamarList}
+        onSantriListChanged={() => loadDomisili({ background: true })}
+        tahunAjaranHijriyah={tahunAjaran}
+        tahunAjaranMasehi={tahunAjaranMasehi}
+      />
     </div>
   )
 }

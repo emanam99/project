@@ -545,13 +545,49 @@ export default function EvolutionWa() {
             <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" className="text-teal-600 dark:text-teal-400 hover:underline">
               Evolution API v2
             </a>
-            . URL dan API key di-set di server (<code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">EVOLUTION_API_BASE_URL</code>,{' '}
-            <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">EVOLUTION_API_KEY</code>).
+            . Di backend: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">EVOLUTION_API_BASE_URL</code> +{' '}
+            <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">EVOLUTION_API_KEY</code> untuk server deploy (mis.{' '}
+            <span className="font-mono text-xs">evo.alutsmani.id</span>). Untuk dev lokal dengan{' '}
+            <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">APP_ENV=local</code>, set{' '}
+            <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">EVOLUTION_API_BASE_URL_LOCAL</code> agar mengarah ke Evolution di mesin Anda; di production variabel itu diabaikan.
           </p>
 
           {!config?.configured && (
             <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
               Backend belum mengisi Evolution API (base URL / API key). Set variabel di <code className="text-xs">api/.env</code> lalu muat ulang.
+            </div>
+          )}
+
+          {config?.configured && (
+            <div className="mb-4 rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-sm text-blue-900 dark:text-blue-100 space-y-2">
+              <p className="font-semibold">Webhook pesan masuk (Chat AI & balasan otomatis)</p>
+              <p className="text-xs leading-relaxed">
+                Di Evolution, set webhook untuk instance ini dengan event{' '}
+                <code className="font-mono bg-white/70 dark:bg-gray-900/50 px-1 rounded">MESSAGES_UPSERT</code>. Lihat{' '}
+                <a
+                  href="https://doc.evolution-api.com/v2/en/configuration/webhooks"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-medium"
+                >
+                  dokumentasi Webhooks
+                </a>
+                . Di eBeddien: <strong>Setting → Notifikasi</strong> pilih provider <strong>Evolution API</strong> agar balasan dikirim lewat Evolution.
+              </p>
+              {config.inbound_webhook_url ? (
+                <p className="text-xs font-mono break-all bg-white/80 dark:bg-gray-900/40 rounded px-2 py-1.5">{config.inbound_webhook_url}</p>
+              ) : (
+                <p className="text-xs">
+                  Set <code className="font-mono bg-white/70 dark:bg-gray-900/50 px-1 rounded">API_PUBLIC_URL</code> di{' '}
+                  <code className="font-mono">api/.env</code> (contoh URL publik API Anda) agar alamat webhook lengkap tampil di sini. Path backend:{' '}
+                  <code className="font-mono break-all">{config.inbound_webhook_path || '/api/public/evolution-webhook'}</code>
+                </p>
+              )}
+              <p className="text-xs opacity-90">
+                Opsional: <code className="font-mono">EVOLUTION_WEBHOOK_SECRET</code> di <code className="font-mono">api/.env</code> — tambahkan{' '}
+                <code className="font-mono">?secret=…</code> pada URL webhook atau header{' '}
+                <code className="font-mono">X-Ebeddien-Webhook-Secret</code>.
+              </p>
             </div>
           )}
 
@@ -565,9 +601,20 @@ export default function EvolutionWa() {
               </div>
               <div className="p-4 space-y-3">
                 {config?.base_url && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">
-                    Server: {config.base_url}
-                  </p>
+                  <div className="space-y-1">
+                    {config?.uses_local_evolution ? (
+                      <p className="text-xs font-medium text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded px-2 py-1">
+                        Mode lokal: proxy memakai <span className="font-mono">EVOLUTION_API_BASE_URL_LOCAL</span> (bukan URL production).
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Mode deploy: URL production / terpusat (tanpa override lokal).
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all">
+                      Server: {config.base_url}
+                    </p>
+                  </div>
                 )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nama instance</label>

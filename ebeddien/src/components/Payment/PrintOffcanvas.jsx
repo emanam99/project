@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { checkWhatsAppNumber } from '../../utils/whatsappCheck'
 import { getSlimApiUrl, uwabaAPI, waAPI, chatAPI } from '../../services/api'
-import { calculateWajibFromBiodata } from '../../utils/uwabaCalculator'
+import { calculateWajibFromBiodata, mergeBiodataForUwabaPricing } from '../../utils/uwabaCalculator'
 import PrintKwitansi from '../../pages/Pembayaran/print/PrintKwitansi'
 import PrintUwaba from '../../pages/Pembayaran/print/PrintUwaba'
 import './PrintOffcanvas.css'
@@ -254,8 +254,9 @@ function PrintOffcanvas({ isOpen, onClose, santriId, mode = 'tunggakan' }) {
         } else if (t.json && typeof t.json === 'string' && uwabaPrices) {
           try {
             const jsonData = JSON.parse(t.json)
-            if (jsonData && (jsonData.status_santri || jsonData.kategori)) {
-              finalWajibValue = calculateWajibFromBiodata(jsonData, uwabaPrices)
+            const merged = mergeBiodataForUwabaPricing(jsonData, biodata)
+            if (merged && (merged.status_santri || merged.kategori)) {
+              finalWajibValue = calculateWajibFromBiodata(merged, uwabaPrices)
             } else {
               finalWajibValue = calculateWajibFromBiodata(biodata, uwabaPrices)
             }

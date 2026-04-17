@@ -26,6 +26,9 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
   const [statusSaving, setStatusSaving] = useState(false)
   const [jabatanStatusSavingId, setJabatanStatusSavingId] = useState(null)
   const [availableRoles, setAvailableRoles] = useState([])
+  /** Role yang boleh ditambahkan menurut matriks / GET assignable-list (bukan hanya super_admin). */
+  const [assignableRoles, setAssignableRoles] = useState([])
+  const [assignmentRestricted, setAssignmentRestricted] = useState(false)
   const [showAddRoleModal, setShowAddRoleModal] = useState(false)
   const [newRole, setNewRole] = useState({ role_id: '', lembaga_id: '' })
   const [roleSaving, setRoleSaving] = useState(false)
@@ -106,6 +109,22 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
       if (res.success && Array.isArray(res.data)) setAvailableRoles(res.data)
       else setAvailableRoles([])
     }).catch(() => setAvailableRoles([]))
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    manageUsersAPI.getAssignableRolesList().then((res) => {
+      if (res.success && Array.isArray(res.data)) {
+        setAssignableRoles(res.data)
+        setAssignmentRestricted(!!res.meta?.assignment_restricted)
+      } else {
+        setAssignableRoles([])
+        setAssignmentRestricted(false)
+      }
+    }).catch(() => {
+      setAssignableRoles([])
+      setAssignmentRestricted(false)
+    })
   }, [isOpen])
 
   const displayStatus = detail?.status?.toLowerCase()
@@ -390,6 +409,18 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
 
   const userRoles = Array.isArray(detail?.roles) ? detail.roles : []
 
+  const rolesForAddDropdown = assignmentRestricted ? assignableRoles : availableRoles
+
+  const canRemoveRoleRow = (r) => {
+    if (!assignmentRestricted) return true
+    const rid = r?.role_id
+    return assignableRoles.some((x) => String(x.id) === String(rid))
+  }
+
+  const canOpenAddRole = !assignmentRestricted || assignableRoles.length > 0
+  const showTambahRoleButton = isSuperAdmin || canOpenAddRole
+  const showRemoveRoleButton = (r) => isSuperAdmin || canRemoveRoleRow(r)
+
   const handleAddRole = async () => {
     if (!pengurusId || !newRole.role_id) {
       showNotification('Pilih role terlebih dahulu', 'warning')
@@ -644,7 +675,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                     </span>
                     Role
                   </h4>
-                  {isSuperAdmin && (
+                  {showTambahRoleButton && (
                     <button
                       type="button"
                       onClick={() => { setNewRole({ role_id: '', lembaga_id: '' }); setShowAddRoleModal(true) }}
@@ -677,7 +708,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                               </span>
                               {lembagaNama && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Lembaga: {lembagaNama}</p>}
                             </div>
-                            {isSuperAdmin && (
+                            {showRemoveRoleButton(r) && (
                               <button
                                 type="button"
                                 onClick={() => handleRemoveRole(r.pengurus_role_id)}
@@ -1001,7 +1032,7 @@ function DetailPengurusOffcanvas({ isOpen, onClose, pengurusId, lembagaList = []
                     className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-gray-200"
                   >
                     <option key="role-placeholder" value="">— Pilih Role —</option>
-                    {availableRoles
+                    {rolesForAddDropdown
                       .filter((role) => !userRoles.some((ur) => String(ur.role_id) === String(role.id)))
                       .map((role, idx) => (
                         <option key={role.id != null && role.id !== '' ? role.id : `role-${idx}`} value={role.id}>

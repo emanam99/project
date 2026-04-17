@@ -35,6 +35,9 @@ function BerkasSection({
   toggleBerkasNotAvailable,
   kkSamaDenganSantri = [],
   toggleKkSamaDenganSantri,
+  thumbnailUrlById = {},
+  thumbnailLoadingById = {},
+  prefetchBerkasPreview = null,
   standalone = false // true = dipakai di tab/panel sendiri (tanpa margin/border besar)
 }) {
   // Daftar semua jenis berkas yang tersedia (tanpa Bukti Pembayaran, karena akan dinamis)
@@ -126,6 +129,12 @@ function BerkasSection({
             const isKkSamaDenganSantri = kkSamaDenganSantri.includes(jenisBerkas)
             const isKkType = ['KK Ayah', 'KK Ibu', 'KK Wali'].includes(jenisBerkas)
             const hasKkSantri = berkasMap.has('KK Santri')
+            const isImageFile = Boolean(existingBerkas && (
+              existingBerkas.tipe_file?.startsWith('image/') ||
+              /\.(jpg|jpeg|png|gif|webp)$/i.test(existingBerkas.nama_file || '')
+            ))
+            const thumbnailUrl = existingBerkas ? thumbnailUrlById[existingBerkas.id] : null
+            const thumbnailLoading = existingBerkas ? thumbnailLoadingById[existingBerkas.id] : false
             
             return (
               <div key={jenisBerkas}>
@@ -138,6 +147,7 @@ function BerkasSection({
                       : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
                   }`}
                   onClick={existingBerkas && !isNotAvailable ? () => handlePreviewBerkas(existingBerkas) : undefined}
+                  onMouseEnter={existingBerkas && !isNotAvailable ? () => prefetchBerkasPreview?.(existingBerkas) : undefined}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -213,17 +223,34 @@ function BerkasSection({
                       </div>
                     )}
                     {!isNotAvailable && existingBerkas ? (
-                      <div className="flex items-center gap-2 flex-wrap mt-1 ml-7">
-                        {existingBerkas.tipe_file && (
-                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${getFileTypeColor(existingBerkas.tipe_file, existingBerkas.nama_file)}`}>
-                            {getFileTypeLabel(existingBerkas.tipe_file, existingBerkas.nama_file)}
-                          </span>
+                      <div className="mt-2 ml-7 flex items-start gap-3">
+                        {isImageFile && (
+                          <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center flex-shrink-0">
+                            {thumbnailUrl ? (
+                              <img src={thumbnailUrl} alt={existingBerkas.jenis_berkas} className="w-full h-full object-cover" loading="lazy" />
+                            ) : thumbnailLoading ? (
+                              <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14" />
+                              </svg>
+                            )}
+                          </div>
                         )}
-                        {existingBerkas.ukuran_file && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {formatFileSize(existingBerkas.ukuran_file)}
-                          </span>
-                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {existingBerkas.tipe_file && (
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${getFileTypeColor(existingBerkas.tipe_file, existingBerkas.nama_file)}`}>
+                                {getFileTypeLabel(existingBerkas.tipe_file, existingBerkas.nama_file)}
+                              </span>
+                            )}
+                            {existingBerkas.ukuran_file && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {formatFileSize(existingBerkas.ukuran_file)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ) : !isNotAvailable ? (
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-7">Belum diupload</p>

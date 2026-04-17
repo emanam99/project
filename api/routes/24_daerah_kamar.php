@@ -11,6 +11,8 @@ use App\Controllers\DaerahController;
 use App\Controllers\DaerahPengurusController;
 use App\Controllers\DaerahKamarController;
 use App\Controllers\DaerahKetuaKamarController;
+use App\Controllers\SantriTarbiyahDomisiliController;
+use App\Controllers\BoyongController;
 
 return function (\Slim\App $app): void {
     // Daerah (tabel daerah) — super_admin only
@@ -48,4 +50,12 @@ return function (\Slim\App $app): void {
         $group->put('/{id}', [DaerahKetuaKamarController::class, 'update']);
         $group->patch('/{id}/status', [DaerahKetuaKamarController::class, 'setStatus']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+
+    // Santri dari konteks Domisili (catatan, pindah kamar, boyong cepat) — tarbiyah super
+    $app->group('/api/tarbiyah/santri', function ($group) {
+        $group->get('/catatan', [SantriTarbiyahDomisiliController::class, 'listCatatan']);
+        $group->post('/catatan', [SantriTarbiyahDomisiliController::class, 'createCatatan']);
+        $group->post('/pindah-kamar', [SantriTarbiyahDomisiliController::class, 'pindahKamar']);
+        $group->post('/boyong-domisili', [BoyongController::class, 'createBoyongFromDomisili']);
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSantriDomisiliApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
 };

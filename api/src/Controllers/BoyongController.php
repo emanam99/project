@@ -113,11 +113,14 @@ class BoyongController
                 ], 400);
             }
 
-            $sql = "INSERT INTO santri___boyong (id_santri, diniyah, formal, tanggal_hijriyah, tahun_hijriyah, tahun_masehi, id_pengurus) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $idSantri = (int) $data['id_santri'];
+            // Route ijin: selalu "sudah mengurusi" saat entri dari halaman Data Boyong (bukan dari Domisili).
+            $sudahMengurusi = 1;
+
+            $sql = "INSERT INTO santri___boyong (id_santri, diniyah, formal, tanggal_hijriyah, tahun_hijriyah, tahun_masehi, id_pengurus, sudah_mengurusi) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
             $stmt = $this->db->prepare($sql);
-            $idSantri = (int) $data['id_santri'];
             $stmt->execute([
                 $idSantri,
                 $data['diniyah'] ?? null,
@@ -125,7 +128,8 @@ class BoyongController
                 $data['tanggal_hijriyah'] ?? null,
                 $data['tahun_hijriyah'] ?? null,
                 $data['tahun_masehi'] ?? null,
-                $idPengurus
+                $idPengurus,
+                $sudahMengurusi
             ]);
 
             $id = (int) $this->db->lastInsertId();
@@ -157,6 +161,99 @@ class BoyongController
         }
     }
 
+    /**
+     * Boyong dari halaman Domisili (daerah/kamar): lembaga dari santri, sudah_mengurusi = 0 (belum).
+     * Route terpisah dengan middleware tarbiyah (bukan ijin boyong).
+     */
+    public function createBoyongFromDomisili(Request $request, Response $response): Response
+    {
+        try {
+            $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            $user = $request->getAttribute('user');
+            $idPengurus = $user !== null ? (int) ($user['user_id'] ?? $user['id'] ?? 0) : null;
+            if ($idPengurus <= 0) {
+                $idPengurus = null;
+            }
+            if (!isset($data['id_santri'])) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'id_santri wajib diisi',
+                ], 400);
+            }
+            $idSantri = (int) $data['id_santri'];
+            // santri tidak lagi punya kolom diniyah/formal (pakai id_diniyah / id_formal + rombel)
+            $stS = $this->db->prepare(
+                'SELECT ld.nama AS nama_diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,
+                        lf.nama AS nama_formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal
+                 FROM santri s
+                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
+                 LEFT JOIN lembaga ld ON ld.id = rd.lembaga_id
+                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
+                 LEFT JOIN lembaga lf ON lf.id = rf.lembaga_id
+                 WHERE s.id = ?'
+            );
+            $stS->execute([$idSantri]);
+            $srow = $stS->fetch(\PDO::FETCH_ASSOC);
+            if (!$srow) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Santri tidak ditemukan',
+                ], 404);
+            }
+            $diniyahDefault = $this->formatBoyongLembagaLabel(
+                $srow['nama_diniyah'] ?? null,
+                $srow['kelas_diniyah'] ?? null,
+                $srow['kel_diniyah'] ?? null
+            );
+            $formalDefault = $this->formatBoyongLembagaLabel(
+                $srow['nama_formal'] ?? null,
+                $srow['kelas_formal'] ?? null,
+                $srow['kel_formal'] ?? null
+            );
+            $diniyah = isset($data['diniyah']) && $data['diniyah'] !== '' ? $data['diniyah'] : $diniyahDefault;
+            $formal = isset($data['formal']) && $data['formal'] !== '' ? $data['formal'] : $formalDefault;
+
+            $sql = 'INSERT INTO santri___boyong (id_santri, diniyah, formal, tanggal_hijriyah, tahun_hijriyah, tahun_masehi, id_pengurus, sudah_mengurusi)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)';
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                $idSantri,
+                $diniyah,
+                $formal,
+                $data['tanggal_hijriyah'] ?? null,
+                $data['tahun_hijriyah'] ?? null,
+                $data['tahun_masehi'] ?? null,
+                $idPengurus,
+            ]);
+
+            $id = (int) $this->db->lastInsertId();
+            $stmtNew = $this->db->prepare('SELECT * FROM santri___boyong WHERE id = ?');
+            $stmtNew->execute([$id]);
+            $newBoyong = $stmtNew->fetch(\PDO::FETCH_ASSOC);
+            if ($newBoyong && $idPengurus) {
+                UserAktivitasLogger::log(null, $idPengurus, UserAktivitasLogger::ACTION_CREATE, 'santri___boyong', $id, null, $newBoyong, $request);
+            }
+
+            $stmtSantri = $this->db->prepare("UPDATE santri SET status_santri = 'Boyong' WHERE id = ?");
+            $stmtSantri->execute([$idSantri]);
+
+            LiveSantriIndexNotifier::ping();
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Boyong tercatat (belum mengurusi)',
+                'data' => ['id' => $id],
+            ], 201);
+        } catch (\Exception $e) {
+            error_log('Create boyong domisili error: ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function updateBoyong(Request $request, Response $response, array $args): Response
     {
         try {
@@ -183,11 +280,16 @@ class BoyongController
             $fields = [];
             $params = [];
 
-            $allowed = ['id_santri', 'diniyah', 'formal', 'tanggal_hijriyah', 'tahun_hijriyah', 'tahun_masehi'];
+            $allowed = ['id_santri', 'diniyah', 'formal', 'tanggal_hijriyah', 'tahun_hijriyah', 'tahun_masehi', 'sudah_mengurusi'];
             foreach ($allowed as $key) {
                 if (array_key_exists($key, $data)) {
-                    $fields[] = "`$key` = ?";
-                    $params[] = $data[$key];
+                    if ($key === 'sudah_mengurusi') {
+                        $fields[] = '`sudah_mengurusi` = ?';
+                        $params[] = ((int) $data[$key] !== 0) ? 1 : 0;
+                    } else {
+                        $fields[] = "`$key` = ?";
+                        $params[] = $data[$key];
+                    }
                 }
             }
 
@@ -268,6 +370,23 @@ class BoyongController
                 'message' => 'Error: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /** Label teks untuk kolom santri___boyong.diniyah / formal (dari rombel + nama lembaga). */
+    private function formatBoyongLembagaLabel($namaLembaga, $kelas, $kel): ?string
+    {
+        $parts = [];
+        if ($namaLembaga !== null && trim((string) $namaLembaga) !== '') {
+            $parts[] = trim((string) $namaLembaga);
+        }
+        if ($kelas !== null && trim((string) $kelas) !== '') {
+            $parts[] = trim((string) $kelas);
+        }
+        if ($kel !== null && trim((string) $kel) !== '') {
+            $parts[] = trim((string) $kel);
+        }
+
+        return $parts === [] ? null : implode(' — ', $parts);
     }
 
     private function jsonResponse(Response $response, array $data, int $statusCode): Response

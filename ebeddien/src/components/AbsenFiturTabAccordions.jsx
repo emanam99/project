@@ -1,7 +1,8 @@
 import { ABSEN_TAB_ACCORDIONS, groupAbsenFiturChildren } from '../config/absenFiturCodes'
 
 /**
- * Mengelompokkan aksi fitur menu Absen ke accordion per tab (Riwayat / Absen / Ngabsen).
+ * Mengelompokkan aksi fitur menu Absen ke accordion per tab.
+ * Kelola titik (list/tambah/ubah/hapus) → Tab Pengaturan; absen GPS (lokasi.absen) → Tab Absen.
  */
 export default function AbsenFiturTabAccordions({
   children,

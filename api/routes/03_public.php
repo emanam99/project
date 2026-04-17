@@ -17,6 +17,7 @@ use App\Controllers\HariPentingController;
 use App\Middleware\OptionalAuthMiddleware;
 use App\Controllers\WhatsAppController;
 use App\Controllers\WatzapController;
+use App\Controllers\EvolutionWebhookController;
 use App\Controllers\UserChatController;
 use App\Controllers\AbsenFingerprintController;
 
@@ -74,6 +75,9 @@ return function (\Slim\App $app): void {
     // URL mesin: base = {API_PUBLIC_URL}/api → mesin memanggil /api/iclock/cdata & /api/iclock/getrequest
     $app->map(['GET', 'POST'], '/api/iclock/cdata', [AbsenFingerprintController::class, 'cdata']);
     $app->get('/api/iclock/getrequest', [AbsenFingerprintController::class, 'getrequest']);
+
+    // Webhook Evolution API (MESSAGES_UPSERT) → alur sama /api/wa/incoming. Set URL di instance Evolution; opsional ?secret= jika EVOLUTION_WEBHOOK_SECRET di .env.
+    $app->post('/api/public/evolution-webhook', [EvolutionWebhookController::class, 'receive']);
 
     // Webhook pesan masuk WA (tanpa auth). WA kirim ke sini, retry sampai 200. Simpan ke tabel whatsapp (arah=masuk).
     // Cek nomor WA untuk halaman publik (daftar/lupa password), tanpa login.

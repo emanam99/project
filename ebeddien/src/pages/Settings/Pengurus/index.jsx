@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
+import { usePengurusFiturAccess } from '../../../hooks/usePengurusFiturAccess'
 import { manageUsersAPI } from '../../../services/api'
 import api from '../../../services/api'
 import ExportPengurusOffcanvas from './components/ExportPengurusOffcanvas'
@@ -36,6 +37,7 @@ const SearchAndFilterSection = memo(({
   statusOptions = [],
   kategoriOptions = [],
   lembagaOptions = [],
+  lembagaFilterDisabled = false,
   jabatanOptions = [],
   onRefresh,
   onResetFilter,
@@ -208,7 +210,9 @@ const SearchAndFilterSection = memo(({
                 <select
                   value={jabatanLembagaFilter}
                   onChange={onJabatanLembagaFilterChange}
-                  className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                  disabled={lembagaFilterDisabled}
+                  title={lembagaFilterDisabled ? 'Filter lembaga sesuai penugasan (buka di Pengaturan → Fitur jika perlu akses semua lembaga)' : undefined}
+                  className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option key="lembaga-semua" value="">Lembaga</option>
                   {(lembagaOptions || []).map((o, i) => (
@@ -344,6 +348,7 @@ const PengurusListItem = memo(({ pengurus, index, onClick, getStatusBadgeColor, 
 PengurusListItem.displayName = 'PengurusListItem'
 
 function Pengurus() {
+  const pengurusFitur = usePengurusFiturAccess()
   const [allPengurus, setAllPengurus] = useState([])
   const [filteredPengurus, setFilteredPengurus] = useState([])
   const [loading, setLoading] = useState(true)
@@ -442,6 +447,21 @@ function Pengurus() {
   }, [])
 
   const navigate = useNavigate()
+
+  const lockedJabatanLembagaId = useMemo(() => {
+    if (
+      pengurusFitur.lembagaFilterLocked &&
+      pengurusFitur.allowedLembagaIdsFilter?.length === 1
+    ) {
+      return pengurusFitur.allowedLembagaIdsFilter[0]
+    }
+    return null
+  }, [pengurusFitur.lembagaFilterLocked, pengurusFitur.allowedLembagaIdsFilter])
+
+  useEffect(() => {
+    if (lockedJabatanLembagaId == null) return
+    setJabatanLembagaFilter((prev) => (String(prev) === String(lockedJabatanLembagaId) ? prev : lockedJabatanLembagaId))
+  }, [lockedJabatanLembagaId])
 
   useEffect(() => {
     const loadLembaga = async () => {
@@ -616,7 +636,11 @@ function Pengurus() {
         lembagaCounts[id].count += 1
       })
     })
-    const lembagaOptions = Object.entries(lembagaCounts).map(([value, o]) => ({ value, label: o.nama, count: o.count })).sort((a, b) => (a.label || '').localeCompare(b.label || ''))
+    let lembagaOptions = Object.entries(lembagaCounts).map(([value, o]) => ({ value, label: o.nama, count: o.count })).sort((a, b) => (a.label || '').localeCompare(b.label || ''))
+    if (pengurusFitur.allowedLembagaIdsFilter?.length) {
+      const allow = new Set(pengurusFitur.allowedLembagaIdsFilter.map((x) => String(x)))
+      lembagaOptions = lembagaOptions.filter((o) => allow.has(String(o.value)))
+    }
 
     const dataForJabatan = base.filter(
       (p) => matchByStatus(p, statusFilter) && matchByKategori(p, kategoriLembagaFilter) && matchByLembaga(p, jabatanLembagaFilter)
@@ -648,7 +672,8 @@ function Pengurus() {
     matchByLembaga,
     matchByJabatan,
     normalizeStatus,
-    statusLabel
+    statusLabel,
+    pengurusFitur.allowedLembagaIdsFilter
   ])
 
   // Reset filter yang tidak lagi ada di opsi (setelah filter lain berubah)
@@ -799,6 +824,7 @@ const handleDownloadTemplate = useCallback(() => {
               statusOptions={statusOptions}
               kategoriOptions={kategoriOptions}
               lembagaOptions={lembagaOptions}
+              lembagaFilterDisabled={!!lockedJabatanLembagaId}
               jabatanOptions={jabatanOptions}
               onRefresh={loadAllPengurus}
               onResetFilter={handleResetFilter}

@@ -1221,6 +1221,12 @@ export const uwabaAPI = {
     return response.data
   },
 
+  /** Semua baris uwaba santri (semua tahun ajaran), GET /api/uwaba/all-rows */
+  getAllRowsForSantri: async (idSantri) => {
+    const response = await api.get(`/uwaba/all-rows?id=${encodeURIComponent(idSantri)}`)
+    return response.data
+  },
+
   saveRefresh: async (data) => {
     const response = await api.post('/uwaba/save-refresh', data)
     return response.data
@@ -2441,6 +2447,12 @@ export const manageUsersAPI = {
     return response.data
   },
 
+  /** Role yang boleh ditambahkan/dicabut oleh pengurus login (role___boleh_assign_role). */
+  getAssignableRolesList: async () => {
+    const response = await api.get('/manage-users/roles/assignable-list')
+    return response.data
+  },
+
   /** Buat baris baru di tabel role (key snake_case, label tampilan). */
   createRole: async (key, label) => {
     const response = await api.post('/manage-users/roles', { key, label })
@@ -2503,6 +2515,15 @@ export const settingsAPI = {
    */
   patchEbeddienMenuFiturItem: async (fiturId, body) => {
     const response = await api.patch(`/settings/ebeddien-menu-fitur/${fiturId}`, body)
+    return response.data
+  },
+  /** Matriks role___boleh_assign_role (super admin). */
+  getRoleBolehAssign: async () => {
+    const response = await api.get('/settings/role-boleh-assign')
+    return response.data
+  },
+  putRoleBolehAssign: async (body) => {
+    const response = await api.put('/settings/role-boleh-assign', body)
     return response.data
   },
   getFeaturesConfig: async () => {
@@ -3527,6 +3548,18 @@ export const absenLokasiAPI = {
   }
 }
 
+/** Pengaturan global absen (jadwal default, sidik jari) — absen___setting */
+export const absenSettingAPI = {
+  get: async () => {
+    const response = await api.get('/absen-setting')
+    return response.data
+  },
+  put: async (body) => {
+    const response = await api.put('/absen-setting', body)
+    return response.data
+  }
+}
+
 /** Rekap absensi pengurus (absen___pengurus) — super_admin */
 export const absenPengurusAPI = {
   getList: async (params = {}) => {
@@ -3551,6 +3584,23 @@ export const absenPengurusAPI = {
       q.set('lembaga_id', String(params.lembaga_id).trim())
     }
     const url = q.toString() ? `/absen-pengurus/rekap?${q.toString()}` : '/absen-pengurus/rekap'
+    const response = await api.get(url)
+    return response.data
+  },
+
+  /** Status tombol masuk/keluar (absen mandiri GPS) */
+  getMandiriSlot: async () => {
+    const response = await api.get('/absen-pengurus/mandiri-slot')
+    return response.data
+  },
+
+  /** Riwayat absen masuk untuk pengurus login (panel GPS) */
+  getMandiriRiwayatMasuk: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.limit != null) q.set('limit', String(params.limit))
+    const url = q.toString()
+      ? `/absen-pengurus/mandiri-riwayat-masuk?${q.toString()}`
+      : '/absen-pengurus/mandiri-riwayat-masuk'
     const response = await api.get(url)
     return response.data
   },
@@ -3817,6 +3867,28 @@ export const daerahKetuaKamarAPI = {
   },
   setStatus: async (id, status) => {
     const response = await api.patch(`/daerah-ketua-kamar/${id}/status`, { status })
+    return response.data
+  }
+}
+
+/** Catatan santri, pindah kamar, boyong cepat dari halaman Domisili — middleware tarbiyah super */
+export const tarbiyahDomisiliSantriAPI = {
+  getCatatan: async (idSantri) => {
+    const q = new URLSearchParams()
+    q.set('id_santri', String(idSantri))
+    const response = await api.get(`/tarbiyah/santri/catatan?${q.toString()}`)
+    return response.data
+  },
+  postCatatan: async (data) => {
+    const response = await api.post('/tarbiyah/santri/catatan', data)
+    return response.data
+  },
+  pindahKamar: async (data) => {
+    const response = await api.post('/tarbiyah/santri/pindah-kamar', data)
+    return response.data
+  },
+  boyongDomisili: async (data) => {
+    const response = await api.post('/tarbiyah/santri/boyong-domisili', data)
     return response.data
   }
 }

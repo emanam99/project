@@ -4,10 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\TextSanitizer;
-use App\Services\AiWhatsappBridgeService;
-use App\Services\DaftarNotifFlow;
-use App\Services\EbeddienDaftarWaFlow;
-use App\Services\WaInteractiveMenuService;
+use App\Services\WhatsAppInboundService;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -237,33 +234,6 @@ class WhatsAppController
                 $nomorTujuan = $nomorFrom;
             }
 
-            $db = Database::getInstance()->getConnection();
-
-            if ($messageId !== null && $messageId !== '') {
-                $stmt = $db->prepare('SELECT id FROM whatsapp WHERE arah = ? AND wa_message_id = ? LIMIT 1');
-                $stmt->execute(['masuk', $messageId]);
-                if ($stmt->fetch(\PDO::FETCH_ASSOC)) {
-                    return $this->json($response, ['success' => true, 'message' => 'OK'], 200);
-                }
-            }
-
-            $isiPesan = $message === '' ? '(tanpa teks)' : $message;
-            $stmt = $db->prepare(
-                'INSERT INTO whatsapp (arah, nomor_tujuan, isi_pesan, wa_message_id, tujuan, kategori, sumber, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-            );
-            $stmt->execute([
-                'masuk',
-                $nomorTujuan,
-                $isiPesan,
-                $messageId ?: null,
-                'wali_santri',
-                'incoming',
-                'api_wa',
-                'terkirim',
-            ]);
-            $id = (int) $db->lastInsertId();
-            error_log('WhatsAppController::incoming saved id=' . $id . ' from=' . $nomorTujuan);
-
             $jid = $fromJid !== '' ? $fromJid : null;
 
             $incomingIsGroup = null;
@@ -287,55 +257,19 @@ class WhatsAppController
                 }
             }
 
-            // Jika provider mengirim chat @lid, simpan LID ke kontak agar pengiriman berikutnya bisa pakai chatId @lid.
-            // Ini membantu kasus nomor sudah tersimpan tapi balasan/kirim berikutnya tidak sampai karena identitas chat berubah.
-            WhatsAppService::syncKontakLidFromIncomingMeta($nomorTujuan, $jid);
-            $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $jid);
-            $isDaftarNotif = $reply !== null && $reply !== '';
-            $replySource = $isDaftarNotif ? 'daftar_notif' : null;
-            $skipOtherIncomingFlows = $isDaftarNotif;
-            if (!$skipOtherIncomingFlows) {
-                $reply = EbeddienDaftarWaFlow::handle($nomorTujuan, $message, $jid);
-                if ($reply !== null && $reply !== '') {
-                    $replySource = 'ebeddien_daftar_wa';
-                }
-            }
-            if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
-                // AI instansi (master + terima semua): AI dulu, baru menu interaktif.
-                $reply = AiWhatsappBridgeService::tryHandle($db, $nomorTujuan, $message, $jid, $incomingIsGroup);
-                if ($reply !== null && $reply !== '') {
-                    $replySource = 'ai_whatsapp';
-                }
-            }
-            if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
-                $reply = WaInteractiveMenuService::handle($nomorTujuan, $message, $jid);
-                if ($reply !== null && $reply !== '') {
-                    $replySource = 'wa_interactive_menu';
-                }
-            }
-            if ($reply !== null && $reply !== '') {
-                $logContext = [
-                    'id_santri' => null,
-                    'id_pengurus' => null,
-                    'tujuan' => 'wali_santri',
-                    'id_pengurus_pengirim' => null,
-                    'kategori' => $replySource ?? 'custom',
-                    'sumber' => 'api_wa',
-                ];
-                error_log('WhatsAppController::incoming ' . ($replySource ?? 'auto_reply') . ' reply to ' . $nomorTujuan . ' len=' . strlen($reply) . ($jid ? ' jid=' . $jid : ''));
-                $sendResult = WhatsAppService::sendMessage($nomorTujuan, $reply, null, $logContext, $jid);
-                error_log('WhatsAppController::incoming sendMessage result: success=' . ($sendResult['success'] ? '1' : '0') . ' msg=' . ($sendResult['message'] ?? ''));
-            } else {
-                error_log('WhatsAppController::incoming: no auto reply. from=' . $nomorTujuan . ' message_preview=' . substr($message, 0, 60));
-                if (!$skipOtherIncomingFlows) {
-                    error_log(
-                        'WhatsAppController::incoming hint: Menu interaktif tidak mengembalikan teks (mati/tidak cocok). '
-                        . 'AI instansi butuh master aktif + terima semua + kuota valid (lihat log AiWhatsappBridgeService).'
-                    );
-                }
+            $res = WhatsAppInboundService::persistInboundAndRun(
+                $nomorTujuan,
+                $message,
+                $messageId,
+                $jid,
+                $incomingIsGroup,
+                'api_wa'
+            );
+            if (!empty($res['duplicate'])) {
+                return $this->json($response, ['success' => true, 'message' => 'OK'], 200);
             }
 
-            return $this->json($response, ['success' => true, 'message' => 'OK', 'id' => $id], 200);
+            return $this->json($response, ['success' => true, 'message' => 'OK', 'id' => $res['id'] ?? null], 200);
         } catch (\Throwable $e) {
             error_log('WhatsAppController::incoming ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'message' => 'Gagal menyimpan pesan masuk'], 500);

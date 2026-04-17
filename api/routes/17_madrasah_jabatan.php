@@ -29,5 +29,5 @@ return function (\Slim\App $app): void {
         $group->post('', [JabatanController::class, 'createJabatan']);
         $group->put('/{id}', [JabatanController::class, 'updateJabatan']);
         $group->delete('/{id}', [JabatanController::class, 'deleteJabatan']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::jabatanCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
 };

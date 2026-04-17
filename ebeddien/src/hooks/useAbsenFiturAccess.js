@@ -3,6 +3,20 @@ import { useAuthStore } from '../store/authStore'
 import { userHasSuperAdminAccess } from '../utils/roleAccess'
 import { ABSEN_ACTION_CODES as C } from '../config/absenFiturCodes'
 
+function collectLembagaIds(user) {
+  const s = new Set()
+  if (user?.lembaga_id != null && String(user.lembaga_id).trim() !== '') {
+    s.add(String(user.lembaga_id).trim())
+  }
+  const arr = user?.lembaga_ids
+  if (Array.isArray(arr)) {
+    arr.forEach((x) => {
+      if (x != null && String(x).trim() !== '') s.add(String(x).trim())
+    })
+  }
+  return [...s]
+}
+
 /**
  * Hak tab & lokasi halaman Absen — sumber: /me/fitur-menu.
  */
@@ -16,9 +30,21 @@ export function useAbsenFiturAccess() {
     const useApi = codes.length > 0
     const apiHasAbsenTabGranular =
       useApi && codes.some((c) => String(c).startsWith('action.absen.tab.'))
+    const apiHasAnyAbsenAction = useApi && codes.some((c) => String(c).startsWith('action.absen.'))
     const apiHasLokasiGranular =
       useApi && codes.some((c) => String(c).startsWith('action.absen.lokasi.'))
     const hasMenuAbsen = codes.includes('menu.absen')
+    const lembagaIds = collectLembagaIds(user)
+
+    const riwayatLembagaSemua =
+      isSuper ||
+      lembagaIds.length === 0 ||
+      !apiHasAnyAbsenAction ||
+      codes.includes(C.riwayatLembagaSemua)
+    const riwayatLembagaFilterLocked =
+      apiHasAnyAbsenAction && lembagaIds.length > 0 && !riwayatLembagaSemua && !isSuper
+    /** null = semua lembaga (UI); array = batasi ke id ini */
+    const allowedLembagaIdsRiwayat = riwayatLembagaSemua ? null : lembagaIds.length ? lembagaIds : null
 
     const canTab = (code, fb) => {
       if (isSuper) return true
@@ -28,9 +54,11 @@ export function useAbsenFiturAccess() {
 
     const tabRiwayat = canTab(C.tabRiwayat, () => hasMenuAbsen)
     const tabAbsen = canTab(C.tabAbsen, () => hasMenuAbsen)
+    const tabPengaturan = canTab(C.tabPengaturan, () => hasMenuAbsen)
     const tabNgabsen = canTab(C.tabNgabsen, () => hasMenuAbsen)
 
-    const noTabAccess = apiHasAbsenTabGranular && !tabRiwayat && !tabAbsen && !tabNgabsen
+    const noTabAccess =
+      apiHasAbsenTabGranular && !tabRiwayat && !tabAbsen && !tabPengaturan && !tabNgabsen
 
     // Bila ada aksi granular tab atau lokasi, hak lokasi (list/tambah/ubah/hapus) wajib eksplisit —
     // jangan fallback ke menu.absen (menghindari tombol Tambah “bocor” untuk user tab.absen saja).
@@ -41,15 +69,16 @@ export function useAbsenFiturAccess() {
     }
 
     const lokasiList = canLokasi(C.lokasiList, () => hasMenuAbsen)
-    // Selaras API canNgabsenLokasi: tab Absen/Ngabsen = boleh mandiri; lokasi.absen = mandiri tanpa tab.
+    /**
+     * Absen GPS (POST lokasi / toggle zona): wajib action.absen.lokasi.absen bila ada granular tab/lokasi.
+     * Tab Absen saja = cek status sidik/sesi (tanpa GPS).
+     */
     const lokasiAbsenMandiri =
       isSuper ||
       (!hasMenuAbsen
         ? false
         : codes.includes(C.lokasiAbsenMandiri) ||
-          (!apiHasAbsenTabGranular && !apiHasLokasiGranular) ||
-          codes.includes(C.tabAbsen) ||
-          codes.includes(C.tabNgabsen))
+          (!apiHasAbsenTabGranular && !apiHasLokasiGranular))
     const lokasiTambah = canLokasi(C.lokasiTambah, () => hasMenuAbsen)
     const lokasiUbah = canLokasi(C.lokasiUbah, () => hasMenuAbsen)
     const lokasiHapus = canLokasi(C.lokasiHapus, () => hasMenuAbsen)
@@ -66,11 +95,16 @@ export function useAbsenFiturAccess() {
 
     return {
       apiHasAbsenTabGranular,
+      apiHasAnyAbsenAction,
       apiHasLokasiGranular,
       noTabAccess,
       tabRiwayat,
       tabAbsen,
+      tabPengaturan,
       tabNgabsen,
+      riwayatLembagaSemua,
+      riwayatLembagaFilterLocked,
+      allowedLembagaIdsRiwayat,
       lokasiList,
       lokasiAbsenMandiri,
       lokasiTambah,

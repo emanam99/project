@@ -16,9 +16,11 @@ final class EvolutionApiService
         $config = require __DIR__ . '/../../config.php';
         $evo = $config['evolution_api'] ?? [];
 
+        // Sumber kebenaran: config.php (sudah mempertimbangkan APP_ENV + EVOLUTION_API_BASE_URL_LOCAL).
         return [
-            'base_url' => rtrim((string) (getenv('EVOLUTION_API_BASE_URL') ?: ($evo['base_url'] ?? '')), '/'),
-            'api_key' => (string) (getenv('EVOLUTION_API_KEY') ?: ($evo['api_key'] ?? '')),
+            'base_url' => rtrim((string) ($evo['base_url'] ?? ''), '/'),
+            'api_key' => (string) ($evo['api_key'] ?? ''),
+            'uses_local_evolution' => filter_var($evo['uses_local_evolution'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ];
     }
 
@@ -162,6 +164,31 @@ final class EvolutionApiService
     }
 
     /**
+     * Kirim teks lewat Evolution (POST /message/sendText/{instance}). Dipakai WhatsAppService saat notification_provider = evolution.
+     *
+     * @return array{ok: bool, status: int, data: mixed, message: ?string}
+     */
+    public static function sendTextToDigits(string $digits, string $text, ?string $instanceNameOverride = null): array
+    {
+        $inst = $instanceNameOverride !== null && trim($instanceNameOverride) !== ''
+            ? trim($instanceNameOverride)
+            : self::getStoredInstanceName();
+        if ($inst === '' || strlen($inst) > 120 || !preg_match('/^[a-zA-Z0-9._-]+$/', $inst)) {
+            return [
+                'ok' => false,
+                'status' => 0,
+                'data' => null,
+                'message' => 'Nama instance Evolution belum disimpan atau tidak valid (Setting → Evolution WA).',
+            ];
+        }
+
+        return self::request('POST', '/message/sendText/' . rawurlencode($inst), [
+            'number' => $digits,
+            'text' => $text,
+        ], true);
+    }
+
+    /**
      * Nama instance default dari app___settings (kosong jika belum disimpan).
      */
     public static function getStoredInstanceName(): string
@@ -179,12 +206,19 @@ final class EvolutionApiService
         $cfg = self::getConfig();
         $fromDb = self::getInstanceNameFromSettings();
 
+        $configAll = require __DIR__ . '/../../config.php';
+        $pub = rtrim((string) ($configAll['api_public_url'] ?? ''), '/');
+        $webhookUrl = $pub !== '' ? $pub . '/api/public/evolution-webhook' : '';
+
         return [
             'success' => true,
             'data' => [
                 'configured' => $cfg['base_url'] !== '' && $cfg['api_key'] !== '',
                 'base_url' => $cfg['base_url'],
+                'uses_local_evolution' => $cfg['uses_local_evolution'],
                 'instance_name' => $fromDb ?? '',
+                'inbound_webhook_url' => $webhookUrl,
+                'inbound_webhook_path' => '/api/public/evolution-webhook',
             ],
             'message' => null,
         ];

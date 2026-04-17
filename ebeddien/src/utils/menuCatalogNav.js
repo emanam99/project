@@ -1,4 +1,5 @@
 import { STATIC_FALLBACK_MENU_CATALOG_ROWS } from '../config/menuConfig'
+import { codesSetHasMenuOrHalamanAksi } from '../config/lembagaHalamanFiturCodes'
 
 /** Urutan grup di dropdown header (selaras backend / grup_label) */
 export const HEADER_NAV_GROUP_ORDER = [
@@ -37,7 +38,7 @@ export function filterCatalogMenuByUserCodes(catalogItems, fiturMenuCodes, isSup
   if (isSuperAdmin) return menus
   const codes = Array.isArray(fiturMenuCodes) ? fiturMenuCodes : []
   const set = new Set(codes.map((c) => String(c)))
-  return menus.filter((it) => it.code && set.has(String(it.code)))
+  return menus.filter((it) => it.code && codesSetHasMenuOrHalamanAksi(String(it.code), set))
 }
 
 /**

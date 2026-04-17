@@ -190,9 +190,9 @@ function LengkapiDataOffcanvas({ isOpen, onClose, selectedSantriList, uwabaPrice
     }
   }, [isOpen, selectedSantriList])
 
-  // Derive diniyah/formal string untuk kalkulator (nama lembaga atau "Tidak Sekolah")
-  const diniyahStr = formData.tidak_sekolah_diniyah ? 'Tidak Sekolah' : (lembagaDiniyahOptions.find(l => String(l.id) === String(formData.lembaga_diniyah))?.nama ?? formData.diniyah ?? '')
-  const formalStr = formData.tidak_sekolah_formal ? 'Tidak Sekolah' : (lembagaFormalOptions.find(l => String(l.id) === String(formData.lembaga_formal))?.nama ?? formData.formal ?? '')
+  // Kunci harga uwaba = lembaga.id (bukan nama); "Tidak Sekolah" tetap literal
+  const diniyahPriceKey = formData.tidak_sekolah_diniyah ? 'Tidak Sekolah' : String(formData.lembaga_diniyah ?? '').trim()
+  const formalPriceKey = formData.tidak_sekolah_formal ? 'Tidak Sekolah' : String(formData.lembaga_formal ?? '').trim()
 
   // Hitung wajib saat form berubah
   useEffect(() => {
@@ -200,14 +200,14 @@ function LengkapiDataOffcanvas({ isOpen, onClose, selectedSantriList, uwabaPrice
     const biodata = {
       status_santri: formData.status_santri,
       kategori: formData.kategori,
-      diniyah: diniyahStr,
-      formal: formalStr,
+      diniyah: diniyahPriceKey,
+      formal: formalPriceKey,
       lttq: formData.lttq,
       saudara: formData.saudara_di_pesantren
     }
     const wajib = calculateWajibFromBiodata(biodata, uwabaPrices)
     setFormData(prev => ({ ...prev, wajib }))
-  }, [formData.status_santri, formData.kategori, diniyahStr, formalStr, formData.lttq, formData.saudara_di_pesantren, uwabaPrices])
+  }, [formData.status_santri, formData.kategori, diniyahPriceKey, formalPriceKey, formData.lttq, formData.saudara_di_pesantren, uwabaPrices])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -240,8 +240,8 @@ function LengkapiDataOffcanvas({ isOpen, onClose, selectedSantriList, uwabaPrice
             kategori: formData.kategori,
             id_daerah: formData.id_daerah || undefined,
             id_kamar: formData.id_kamar || undefined,
-            diniyah: diniyahStr || '',
-            formal: formalStr || '',
+            diniyah: diniyahPriceKey || '',
+            formal: formalPriceKey || '',
             lttq: formData.lttq || '',
             saudara_di_pesantren: formData.saudara_di_pesantren || 'Tidak Ada',
             wajib: formData.wajib || 0,

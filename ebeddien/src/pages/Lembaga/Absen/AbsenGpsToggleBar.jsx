@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAbsenLokasi } from '../../../contexts/AbsenLokasiContext'
 import { geocodeAPI } from '../../../services/api'
+import { pickAlamatPratinjauFromLokasiList } from '../../../utils/absenLokasiPratinjauAlamat'
 
-export default function AbsenGpsToggleBar() {
+/**
+ * @param {{ lokasiList?: unknown[], showToggle?: boolean }} props
+ * showToggle=false: hanya pratinjau lokasi (tanpa switch) — dipakai Beranda; aktif/nonaktif GPS di halaman Absen.
+ */
+export default function AbsenGpsToggleBar({ lokasiList = [], showToggle = true }) {
   const { gpsEnabled, setGpsEnabled, coords, geoError, geoSupported } = useAbsenLokasi()
   const [alamatData, setAlamatData] = useState(null)
   const [alamatError, setAlamatError] = useState('')
@@ -30,6 +35,23 @@ export default function AbsenGpsToggleBar() {
       alamatDataRef.current = null
       setAlamatError('')
       return
+    }
+
+    const acc = Number(coords.accuracy)
+    const radiusSlackMeters = Number.isFinite(acc) && acc > 0 ? Math.min(acc, 120) : 0
+    const dariTitik = pickAlamatPratinjauFromLokasiList(lokasiList, coords.lat, coords.lng, {
+      radiusSlackMeters
+    })
+    if (dariTitik) {
+      setAlamatData(dariTitik)
+      alamatDataRef.current = dariTitik
+      setAlamatError('')
+      return
+    }
+
+    if (alamatDataRef.current?._source === 'lokasi_manual') {
+      setAlamatData(null)
+      alamatDataRef.current = null
     }
 
     if (alamatDataRef.current == null) {
@@ -73,17 +95,120 @@ export default function AbsenGpsToggleBar() {
         debounceRef.current = null
       }
     }
-  }, [gpsEnabled, geoError, coords, koordinatKey])
+  }, [gpsEnabled, geoError, coords, coords?.accuracy, koordinatKey, lokasiList])
+
+  const koordinatAlamatBlock =
+    gpsEnabled && coords && !geoError ? (
+      <div className="mt-2 space-y-1">
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+          Lat {coords.lat.toFixed(6)}, Lng {coords.lng.toFixed(6)}
+          {coords.accuracy != null && ` · ±${Math.round(coords.accuracy)} m`}
+        </p>
+        {alamatError && !alamatData && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">{alamatError}</p>
+        )}
+        {alamatData && (
+          <dl className="mt-1 grid gap-x-3 gap-y-0.5 text-xs text-gray-700 dark:text-gray-200 sm:grid-cols-2">
+            {alamatData._source === 'lokasi_manual' && (
+              <div className="sm:col-span-2 text-[11px] text-teal-700 dark:text-teal-400 mb-0.5">
+                Alamat dari data titik lokasi (radius)
+              </div>
+            )}
+            {alamatData.dusun ? (
+              <>
+                <dt className="text-gray-500 dark:text-gray-400">Dusun</dt>
+                <dd className="font-medium">{alamatData.dusun}</dd>
+              </>
+            ) : null}
+            {(alamatData.rt || alamatData.rw) && (
+              <>
+                <dt className="text-gray-500 dark:text-gray-400">RT / RW</dt>
+                <dd className="font-medium">
+                  {[alamatData.rt ? `RT ${alamatData.rt}` : '', alamatData.rw ? `RW ${alamatData.rw}` : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </dd>
+              </>
+            )}
+            {alamatData.desa ? (
+              <>
+                <dt className="text-gray-500 dark:text-gray-400">Desa/kelurahan</dt>
+                <dd className="font-medium">{alamatData.desa}</dd>
+              </>
+            ) : null}
+            {alamatData.kecamatan ? (
+              <>
+                <dt className="text-gray-500 dark:text-gray-400">Kecamatan</dt>
+                <dd className="font-medium">{alamatData.kecamatan}</dd>
+              </>
+            ) : null}
+            {alamatData.kota ? (
+              <>
+                <dt className="text-gray-500 dark:text-gray-400">Kota/kabupaten</dt>
+                <dd className="font-medium">{alamatData.kota}</dd>
+              </>
+            ) : null}
+            {alamatData.provinsi ? (
+              <>
+                <dt className="text-gray-500 dark:text-gray-400">Provinsi</dt>
+                <dd className="font-medium">{alamatData.provinsi}</dd>
+              </>
+            ) : null}
+            {!alamatData.dusun &&
+              !(alamatData.rt || alamatData.rw) &&
+              !alamatData.desa &&
+              !alamatData.kecamatan &&
+              !alamatData.kota &&
+              !alamatData.provinsi &&
+              typeof alamatData.display_name === 'string' &&
+              alamatData.display_name.trim() !== '' && (
+                <>
+                  <dt className="text-gray-500 dark:text-gray-400 sm:col-span-1">Alamat</dt>
+                  <dd className="sm:col-span-1 leading-snug">
+                    {alamatData.display_name.length > 200
+                      ? `${alamatData.display_name.slice(0, 197)}…`
+                      : alamatData.display_name}
+                  </dd>
+                </>
+              )}
+          </dl>
+        )}
+        {alamatError &&
+          alamatData &&
+          alamatData._source !== 'lokasi_manual' &&
+          !alamatData.desa &&
+          !alamatData.kecamatan &&
+          !alamatData.kota &&
+          !alamatData.provinsi && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{alamatError}</p>
+          )}
+      </div>
+    ) : null
+
+  if (showToggle === false) {
+    if (!gpsEnabled) return null
+    return (
+      <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm px-4 py-3 mb-3">
+        <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-2">Lokasi saat ini</p>
+        {!geoSupported && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">Geolokasi tidak didukung di peramban ini.</p>
+        )}
+        {gpsEnabled && geoError && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{geoError}</p>
+        )}
+        {gpsEnabled && !coords && !geoError && geoSupported && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Mencari posisi GPS…</p>
+        )}
+        {koordinatAlamatBlock}
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm px-4 py-3 mb-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Akses lokasi (GPS)</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Hanya pengguna dengan akses tab Absen yang melihat opsi ini. Setelah diaktifkan, peramban meminta izin lokasi
-            — dipakai untuk absen mandiri (GPS) di bagian bawah halaman tab ini.
-          </p>
         </div>
         <label className="inline-flex items-center gap-2 shrink-0 cursor-pointer select-none">
           <span className="text-xs text-gray-600 dark:text-gray-300">
@@ -113,63 +238,7 @@ export default function AbsenGpsToggleBar() {
       {gpsEnabled && geoError && (
         <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">{geoError}</p>
       )}
-      {gpsEnabled && coords && !geoError && (
-        <div className="mt-2 space-y-1">
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
-            Lat {coords.lat.toFixed(6)}, Lng {coords.lng.toFixed(6)}
-            {coords.accuracy != null && ` · ±${Math.round(coords.accuracy)} m`}
-          </p>
-          {alamatError && !alamatData && (
-            <p className="text-xs text-amber-600 dark:text-amber-400">{alamatError}</p>
-          )}
-          {alamatData && (
-            <dl className="mt-1 grid gap-x-3 gap-y-0.5 text-xs text-gray-700 dark:text-gray-200 sm:grid-cols-2">
-              {alamatData.desa ? (
-                <>
-                  <dt className="text-gray-500 dark:text-gray-400">Desa/kelurahan</dt>
-                  <dd className="font-medium">{alamatData.desa}</dd>
-                </>
-              ) : null}
-              {alamatData.kecamatan ? (
-                <>
-                  <dt className="text-gray-500 dark:text-gray-400">Kecamatan</dt>
-                  <dd className="font-medium">{alamatData.kecamatan}</dd>
-                </>
-              ) : null}
-              {alamatData.kota ? (
-                <>
-                  <dt className="text-gray-500 dark:text-gray-400">Kota/kabupaten</dt>
-                  <dd className="font-medium">{alamatData.kota}</dd>
-                </>
-              ) : null}
-              {alamatData.provinsi ? (
-                <>
-                  <dt className="text-gray-500 dark:text-gray-400">Provinsi</dt>
-                  <dd className="font-medium">{alamatData.provinsi}</dd>
-                </>
-              ) : null}
-              {!alamatData.desa &&
-                !alamatData.kecamatan &&
-                !alamatData.kota &&
-                !alamatData.provinsi &&
-                typeof alamatData.display_name === 'string' &&
-                alamatData.display_name.trim() !== '' && (
-                  <>
-                    <dt className="text-gray-500 dark:text-gray-400 sm:col-span-1">Alamat</dt>
-                    <dd className="sm:col-span-1 leading-snug">
-                      {alamatData.display_name.length > 200
-                        ? `${alamatData.display_name.slice(0, 197)}…`
-                        : alamatData.display_name}
-                    </dd>
-                  </>
-                )}
-            </dl>
-          )}
-          {alamatError && alamatData && !alamatData.desa && !alamatData.kecamatan && !alamatData.kota && !alamatData.provinsi && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{alamatError}</p>
-          )}
-        </div>
-      )}
+      {koordinatAlamatBlock}
     </div>
   )
 }

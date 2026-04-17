@@ -21,7 +21,7 @@ function TunggakanFormModal({ isOpen, onClose, mode, santriId, itemData, onSucce
   const [loadingLembaga, setLoadingLembaga] = useState(false)
 
   // Khusus options
-  const khususOptions = ['UJBA', 'Guru Tugas', 'KKN', 'PLP/PPL', 'Skripsi', 'Wisuda']
+  const khususOptions = ['UJBA', 'Guru Tugas', 'KKN', 'PLP/PPL', 'Skripsi', 'Wisuda', 'Ujian Kelulusan']
   
   // Lembaga formal (menggunakan tahun ajaran masehi)
   const lembagaFormal = ['PAUD', 'SMP', 'MTs', 'SMAI', 'STAI']

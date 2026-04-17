@@ -48,6 +48,8 @@ class MenuActionsFiturSeed extends AbstractSeed
         $this->seedPendaftaran($conn, $pidStmt, $ins);
         $this->seedPengeluaran($conn, $pidStmt, $ins);
         $this->seedAbsen($conn, $pidStmt, $ins);
+        $this->seedPengurus($conn, $pidStmt, $ins);
+        $this->seedLembagaHalamanAksi($conn, $pidStmt, $ins);
         $this->seedLaporanUwaba($conn, $pidStmt, $ins);
         $this->seedUgtMadrasahScope($conn, $pidStmt, $ins);
         $this->seedUgtLaporan($conn, $pidStmt, $ins);
@@ -199,6 +201,41 @@ class MenuActionsFiturSeed extends AbstractSeed
         }
     }
 
+    /**
+     * Halaman Lembaga: Santri, Rombel, Jabatan, Mapel — penugasan peran lewat Pengaturan → Fitur.
+     */
+    private function seedLembagaHalamanAksi(\PDO $conn, \PDOStatement $pidStmt, \PDOStatement $ins): void
+    {
+        $rows = [
+            ['menu.santri', 'action.santri.halaman', 'Santri · Akses halaman data', 5],
+            ['menu.rombel', 'action.rombel.halaman', 'Rombel · Akses halaman', 5],
+            ['menu.manage_jabatan', 'action.manage_jabatan.halaman', 'Jabatan · Akses halaman', 5],
+            ['menu.mapel', 'action.mapel.halaman', 'Mapel · Akses halaman', 5],
+        ];
+        foreach ($rows as $r) {
+            $parentId = $this->parentId($conn, $pidStmt, $r[0]);
+            if ($parentId === null) {
+                continue;
+            }
+            $ins->execute([$parentId, $r[1], $r[2], $r[3], 'Lembaga']);
+        }
+    }
+
+    private function seedPengurus(\PDO $conn, \PDOStatement $pidStmt, \PDOStatement $ins): void
+    {
+        $parentId = $this->parentId($conn, $pidStmt, 'menu.pengurus');
+        if ($parentId === null) {
+            return;
+        }
+        $actions = [
+            ['action.pengurus.filter.lembaga_semua', 'Pengurus · Filter semua lembaga', 8],
+            ['action.pengurus.role.assign_semua', 'Pengurus · Tugaskan semua role', 9],
+        ];
+        foreach ($actions as $a) {
+            $ins->execute([$parentId, $a[0], $a[1], $a[2], 'Lembaga']);
+        }
+    }
+
     private function seedAbsen(\PDO $conn, \PDOStatement $pidStmt, \PDOStatement $ins): void
     {
         $parentId = $this->parentId($conn, $pidStmt, 'menu.absen');
@@ -207,7 +244,9 @@ class MenuActionsFiturSeed extends AbstractSeed
         }
         $actions = [
             ['action.absen.tab.riwayat', 'Absen · Tab Riwayat', 10],
+            ['action.absen.riwayat.lembaga_semua', 'Absen · Riwayat · Akses semua lembaga', 12],
             ['action.absen.tab.absen', 'Absen · Tab Absen', 20],
+            ['action.absen.tab.pengaturan', 'Absen · Tab Pengaturan', 25],
             ['action.absen.tab.ngabsen', 'Absen · Tab Ngabsen', 30],
             ['action.absen.lokasi.list', 'Absen · Lokasi · Daftar titik', 35],
             ['action.absen.lokasi.absen', 'Absen · Lokasi · Absen mandiri (GPS)', 37],

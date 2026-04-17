@@ -19,6 +19,7 @@ import DatabaseMenuOutlet from './components/Auth/DatabaseMenuOutlet'
 import ChatAiSubRouteGuard from './components/Auth/ChatAiSubRouteGuard'
 import PendaftaranAdminSubRouteGuard from './components/Auth/PendaftaranAdminSubRouteGuard'
 import { NotificationProvider } from './contexts/NotificationContext'
+import { SantriDetailOffcanvasProvider } from './contexts/SantriDetailOffcanvasContext'
 import InstallPrompt from './components/InstallPrompt'
 import LiveSocketSync from './components/LiveSocket/LiveSocketSync'
 import { LiveSocketProvider } from './contexts/LiveSocketContext'
@@ -518,6 +519,7 @@ function App() {
 
   return (
     <NotificationProvider>
+      <SantriDetailOffcanvasProvider>
       <LiveSocketProvider>
         <ChatOffcanvasProvider>
         <ChatAiOffcanvasProvider>
@@ -1438,6 +1440,7 @@ function App() {
         </ChatAiOffcanvasProvider>
         </ChatOffcanvasProvider>
       </LiveSocketProvider>
+      </SantriDetailOffcanvasProvider>
     </NotificationProvider>
   )
 }

@@ -15,6 +15,16 @@ function parseCoord(v) {
   return Number.isFinite(n) ? n : NaN
 }
 
+/** Durasi keterlambatan: jam tanpa leading zero, menit & detik dua digit (mis. 3:32:20). */
+function formatDurasiDetikKeHms(totalDetik) {
+  const n = Math.max(0, Math.floor(Number(totalDetik)))
+  if (!Number.isFinite(n)) return '—'
+  const h = Math.floor(n / 3600)
+  const m = Math.floor((n % 3600) / 60)
+  const s = n % 60
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
 function haversineMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000
   const p1 = (lat1 * Math.PI) / 180
@@ -26,12 +36,88 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+const BULAN_SINGKAT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+/** Tanggal ringkas untuk header (selaras gaya grup tanggal tab Riwayat, lebih pendek). */
+function formatTanggalRingkas(isoYmd) {
+  if (!isoYmd || typeof isoYmd !== 'string') return '–'
+  const d = new Date(`${isoYmd.trim()}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return '–'
+  return `${d.getDate()} ${BULAN_SINGKAT[d.getMonth()]} ${d.getFullYear()}`
+}
+
+/** Pagi / Siang (dari sesi sore) / Malam */
+function sesiLabelTampilan(label) {
+  const s = String(label ?? '').trim()
+  if (s === 'Sore') return 'Siang'
+  return s || '–'
+}
+
+/** Satu baris timeline seperti tab Riwayat (hanya absen masuk terakhir sesi ini). */
+function MandiriRiwayatSatuTitik({ row }) {
+  const tepat = row.tepat_waktu === true || Number(row.telat_detik) <= 0
+  const telatDetik = Number(row.telat_detik)
+  const telatHms =
+    row.telat_hms && String(row.telat_hms).trim() !== ''
+      ? String(row.telat_hms)
+      : formatDurasiDetikKeHms(telatDetik)
+  const sumber = row.sumber_absen || 'sidik_jari'
+  const lokasiNama = row.lokasi_nama || ''
+  return (
+    <div className="mt-2.5 border-t border-gray-100 dark:border-gray-700/60 pt-2.5">
+      <p className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-2">
+        {formatTanggalRingkas(row.tanggal)}
+      </p>
+      <div className="relative flex items-start gap-3 pl-0.5">
+        <span
+          className="relative z-10 mt-1 h-3 w-3 shrink-0 rounded-full bg-teal-500 dark:bg-teal-400 ring-4 ring-teal-100 dark:ring-teal-900/50 border-2 border-white dark:border-gray-800"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1 pt-0.5">
+          <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug flex flex-wrap items-center gap-1.5">
+            {sumber === 'lokasi_gps' ? (
+              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">
+                GPS{lokasiNama ? ` · ${lokasiNama}` : ''}
+              </span>
+            ) : (
+              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                Sidik jari
+              </span>
+            )}
+            <span className="font-medium text-teal-700 dark:text-teal-300">
+              {sesiLabelTampilan(row.sesi_label)}
+            </span>
+            <span className="text-gray-500 dark:text-gray-400"> · Masuk </span>
+            <span className="font-mono tabular-nums font-medium text-gray-800 dark:text-gray-200">
+              {String(row.jam ?? '–')}
+            </span>
+            <span className="text-gray-500 dark:text-gray-500"> · </span>
+            {tepat ? (
+              <span className="text-emerald-700 dark:text-emerald-300 font-medium">Tepat waktu</span>
+            ) : (
+              <span className="text-amber-800 dark:text-amber-200 font-medium tabular-nums font-mono">
+                Terlambat {Number.isFinite(telatDetik) ? telatHms : '—'}
+              </span>
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /**
  * Absen mandiri (GPS) — dipasang di tab Absen (setelah toggle GPS).
+ * `statusOnly`: hanya status sidik/sesi (tanpa zona GPS), untuk peran dengan tab.absen tanpa lokasi.absen.
  *
- * @param {{ lokasiList: array, loadingLokasi: boolean }} props
+ * @param {{ lokasiList: array, loadingLokasi: boolean, mandiriRolePolicyOk?: boolean, statusOnly?: boolean }} props
  */
-export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
+export default function AbsenMandiriGpsPanel({
+  lokasiList,
+  loadingLokasi,
+  mandiriRolePolicyOk = true,
+  statusOnly = false
+}) {
   const user = useAuthStore((s) => s.user)
   const isSuper = userHasSuperAdminAccess(user)
   const { showNotification } = useNotification()
@@ -51,6 +137,9 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
   const [gate, setGate] = useState(null)
   const [gateReady, setGateReady] = useState(false)
   const [gateLoading, setGateLoading] = useState(false)
+  const [hasilAbsen, setHasilAbsen] = useState(null)
+  const [riwayatMasuk, setRiwayatMasuk] = useState([])
+  const [riwayatLoading, setRiwayatLoading] = useState(false)
 
   const idPengurus = user?.id_pengurus != null ? Number(user.id_pengurus) : null
 
@@ -62,19 +151,49 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
       if (res?.success && res.data) {
         setGate(res.data)
       } else {
-        setGate({ boleh_masuk: true, boleh_keluar: true, masuk_terbuka: null, slot_label: '' })
+        setGate({
+          boleh_masuk: true,
+          boleh_keluar: true,
+          masuk_terbuka: null,
+          slot_label: '',
+          mandiri_gps_tidak_tersedia: false
+        })
       }
     } catch {
-      setGate({ boleh_masuk: true, boleh_keluar: true, masuk_terbuka: null, slot_label: '' })
+      setGate({
+        boleh_masuk: true,
+        boleh_keluar: true,
+        masuk_terbuka: null,
+        slot_label: '',
+        mandiri_gps_tidak_tersedia: false
+      })
     } finally {
       setGateReady(true)
       setGateLoading(false)
     }
   }, [idPengurus])
 
+  const loadRiwayatMasuk = useCallback(async () => {
+    if (idPengurus == null || idPengurus <= 0) return
+    setRiwayatLoading(true)
+    try {
+      const res = await absenPengurusAPI.getMandiriRiwayatMasuk({ limit: 1 })
+      if (res?.success && Array.isArray(res.data)) {
+        setRiwayatMasuk(res.data)
+      } else {
+        setRiwayatMasuk([])
+      }
+    } catch {
+      setRiwayatMasuk([])
+    } finally {
+      setRiwayatLoading(false)
+    }
+  }, [idPengurus])
+
   useEffect(() => {
+    if (mandiriRolePolicyOk === false) return
     void loadGate()
-  }, [loadGate])
+  }, [loadGate, mandiriRolePolicyOk])
 
   const dalamRadius = useMemo(() => {
     if (!coords || !lokasiList.length) return []
@@ -97,6 +216,22 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
     return out
   }, [coords, lokasiList])
 
+  /** Riwayat masuk sesi berjalan (sidik jari atau GPS) — selalu dimuat agar terlihat walau di luar zona / GPS mati */
+  useEffect(() => {
+    if (mandiriRolePolicyOk === false || !gateReady) return
+    void loadRiwayatMasuk()
+  }, [gateReady, loadRiwayatMasuk, mandiriRolePolicyOk])
+
+  /** Segarkan gate & riwayat saat berganti jam/sesi tanpa reload halaman */
+  useEffect(() => {
+    if (mandiriRolePolicyOk === false) return
+    const id = window.setInterval(() => {
+      void loadGate()
+      void loadRiwayatMasuk()
+    }, 60_000)
+    return () => window.clearInterval(id)
+  }, [loadGate, loadRiwayatMasuk, mandiriRolePolicyOk])
+
   useEffect(() => {
     if (dalamRadius.length === 0) {
       setSelectedLokasiId('')
@@ -111,6 +246,13 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
 
   const submit = useCallback(
     async (status) => {
+      if (gate?.mandiri_gps_tidak_tersedia) {
+        showNotification(
+          'Absen masuk sesi ini sudah lewat sidik jari. Absen lewat aplikasi tidak dipakai — gunakan mesin sidik jari untuk absen keluar.',
+          'error'
+        )
+        return
+      }
       if (!coords) {
         showNotification('Aktifkan toggle GPS di atas halaman ini, lalu tunggu posisi terbaca', 'error')
         return
@@ -121,6 +263,7 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
       }
       const lid = selectedLokasiId ? Number(selectedLokasiId) : Number(dalamRadius[0].id)
       setBusy(true)
+      setHasilAbsen(null)
       try {
         const res = await absenPengurusAPI.postLokasi({
           latitude: coords.lat,
@@ -131,7 +274,11 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
         })
         if (res?.success) {
           showNotification(res.message || 'Absensi tercatat', 'success')
+          if (res.data && typeof res.data === 'object') {
+            setHasilAbsen(res.data)
+          }
           await loadGate()
+          await loadRiwayatMasuk()
           if (status === 'Keluar') bukaTabRiwayat()
         } else {
           showNotification(res?.message || 'Gagal mencatat', 'error')
@@ -142,10 +289,10 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
         setBusy(false)
       }
     },
-    [bukaTabRiwayat, coords, dalamRadius, loadGate, selectedLokasiId, showNotification]
+    [bukaTabRiwayat, coords, dalamRadius, gate?.mandiri_gps_tidak_tersedia, loadGate, loadRiwayatMasuk, selectedLokasiId, showNotification]
   )
 
-  if (!isSuper && !absenFitur.lokasiAbsenMandiri) {
+  if (!isSuper && !absenFitur.lokasiAbsenMandiri && !statusOnly) {
     return null
   }
 
@@ -153,13 +300,43 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
     return null
   }
 
+  if (mandiriRolePolicyOk === false) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50/90 shadow-sm dark:border-amber-800/60 dark:bg-amber-950/35 p-4">
+        <h3 className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+          {statusOnly ? 'Absen hari ini' : 'Absen mandiri (GPS)'}
+        </h3>
+        <p className="mt-2 text-sm text-amber-900 dark:text-amber-100/95">
+          {statusOnly
+            ? 'Status absen tidak dapat ditampilkan (batas peran di pengaturan absen).'
+            : 'Tidak tersedia untuk peran Anda menurut pengaturan default (batas peran). Minta admin menyesuaikan di kartu Pengaturan default absen atau memberi salah satu peran yang diizinkan.'}
+        </p>
+      </div>
+    )
+  }
+
+  if (statusOnly) {
+    return (
+      <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm p-4">
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Absen hari ini</h3>
+        {gateLoading && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">Memuat…</p>
+        )}
+        {gateReady && !riwayatLoading && riwayatMasuk[0] != null && (
+          <div className="mt-3">
+            <MandiriRiwayatSatuTitik row={riwayatMasuk[0]} />
+          </div>
+        )}
+        {gateReady && riwayatMasuk[0] == null && !riwayatLoading && (
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-3">Anda belum absen hari ini.</p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm p-4">
       <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Absen mandiri (GPS)</h3>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-        Nyalakan akses lokasi di atas, tunggu koordinat terbaca, lalu absen saat Anda berada dalam radius lokasi yang
-        aktif. Setelah berhasil, Anda bisa melihat riwayat di tab Riwayat.
-      </p>
 
       {loadingLokasi ? (
         <p className="text-sm text-gray-500 mt-4">Memuat lokasi…</p>
@@ -170,6 +347,26 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
         </p>
       ) : (
         <>
+          {gateLoading && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">Memuat status absen hari ini…</p>
+          )}
+          {gateReady && !riwayatLoading && riwayatMasuk[0] != null && (
+            <div className="mt-3">
+              <MandiriRiwayatSatuTitik row={riwayatMasuk[0]} />
+            </div>
+          )}
+          {gateReady && gate?.mandiri_gps_tidak_tersedia && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/40 px-3 py-2.5">
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                Absen aplikasi (GPS) tidak tersedia untuk sesi ini
+              </p>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
+                Absen masuk sudah tercatat lewat <span className="font-medium">sidik jari</span>. Agar tidak ganda,
+                absen lewat GPS dinonaktifkan. Untuk absen keluar, gunakan mesin sidik jari — selaras tampilan tab
+                Riwayat.
+              </p>
+            </div>
+          )}
           {!gpsEnabled && (
             <p className="text-sm text-amber-700 dark:text-amber-300 mt-3">
               Aktifkan toggle <span className="font-medium">Akses lokasi (GPS)</span> di atas untuk memulai absen
@@ -184,17 +381,6 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
           )}
           {gpsEnabled && coords && (
             <div className="mt-4 space-y-3">
-              {gateLoading && (
-                <p className="text-xs text-gray-500 dark:text-gray-400">Memuat status absen hari ini…</p>
-              )}
-              {gateReady && gate?.masuk_terbuka && (
-                <div className="rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/80 dark:bg-teal-950/40 px-3 py-2 text-sm text-teal-900 dark:text-teal-100">
-                  <span className="font-medium">Absen masuk</span> sesi{' '}
-                  <span className="font-medium">{gate.masuk_terbuka.sesi_label}</span> tercatat pukul{' '}
-                  <span className="tabular-nums font-mono">{gate.masuk_terbuka.jam?.slice(0, 8)}</span>.
-                  {gate.boleh_keluar ? ' Silakan absen keluar saat meninggalkan lokasi.' : null}
-                </div>
-              )}
               {gateReady &&
                 gate &&
                 !gate.boleh_masuk &&
@@ -258,17 +444,17 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
                     />
                   </svg>
                 </button>
-                {gateReady && gate?.boleh_masuk && (
+                {gateReady && gate?.boleh_masuk && !gate?.mandiri_gps_tidak_tersedia && (
                   <button
                     type="button"
                     disabled={busy || coordsRefreshing || dalamRadius.length === 0 || gateLoading}
                     onClick={() => submit('Masuk')}
-                    className="px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Absen masuk
                   </button>
                 )}
-                {gateReady && gate?.boleh_keluar && (
+                {gateReady && gate?.boleh_keluar && !gate?.mandiri_gps_tidak_tersedia && (
                   <button
                     type="button"
                     disabled={busy || coordsRefreshing || dalamRadius.length === 0 || gateLoading}
@@ -279,6 +465,25 @@ export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi }) {
                   </button>
                 )}
               </div>
+              {hasilAbsen && hasilAbsen.jam_catat && (
+                <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50/90 px-3 py-2.5 text-sm text-teal-950 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-50">
+                  <p className="font-semibold">Hasil absensi</p>
+                  <p className="mt-1.5 font-mono tabular-nums">
+                    Jam absen: <span className="font-semibold">{String(hasilAbsen.jam_catat)}</span>
+                  </p>
+                  {hasilAbsen.sesi_label != null && hasilAbsen.jam_mulai_sesi != null && (
+                    <p className="mt-1 text-teal-900/95 dark:text-teal-100/95">
+                      Sesi {String(hasilAbsen.sesi_label)} — jam mulai:{' '}
+                      <span className="font-mono tabular-nums font-medium">{String(hasilAbsen.jam_mulai_sesi)}</span>
+                    </p>
+                  )}
+                  {hasilAbsen.telat_label != null && (
+                    <p className="mt-1">
+                      <span className="tabular-nums">{String(hasilAbsen.telat_label)}</span>
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </>

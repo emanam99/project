@@ -179,7 +179,7 @@ class RoleHelper
         $fallback = [
             'super_admin', 'admin_uwaba', 'petugas_uwaba', 'admin_lembaga', 'admin_psb', 'petugas_psb',
             'admin_ijin', 'petugas_ijin', 'admin_umroh', 'petugas_umroh', 'admin_ugt', 'koordinator_ugt',
-            'admin_kalender', 'tarbiyah', 'wali_kelas', 'guru', 'waka_lembaga', 'ketua_lembaga',
+            'admin_kalender', 'tarbiyah', 'admin_daerah', 'kapdar', 'wakapdar', 'wali_kelas', 'guru', 'waka_lembaga', 'ketua_lembaga',
             'admin_cashless', 'petugas_cashless', 'petugas_keuangan', 'toko',
         ];
         try {

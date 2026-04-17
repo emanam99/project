@@ -9,7 +9,8 @@ import { useThemeStore } from '../../store/themeStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, getAppEnv, deepseekAPI } from '../../services/api'
 import { CHAT_AI_USAGE_HEADER_EVENT } from '../../utils/chatAiHeaderUsage'
-import { getTanggalFromAPI } from '../../utils/hijriDate'
+import { getTanggalFromAPI, getBootPenanggalanPair, persistPenanggalanHariIni } from '../../utils/hijriDate'
+import { getMasehiKeyHariIni, idbGetToday, readTodayPenanggalanSync } from '../../services/hijriPenanggalanStorage'
 import { APP_VERSION } from '../../config/version'
 import { STATIC_FALLBACK_MENU_CATALOG_ROWS } from '../../config/menuConfig'
 import { HEADER_SPECIAL_SUMMARY_GROUPS } from '../../config/headerSummaryConfig'
@@ -73,8 +74,8 @@ function Header() {
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [showSaldoDropdown, setShowSaldoDropdown] = useState(false)
   const [showAktivitasDropdown, setShowAktivitasDropdown] = useState(false)
-  const [tanggalMasehi, setTanggalMasehi] = useState('')
-  const [tanggalHijriyah, setTanggalHijriyah] = useState('')
+  const [tanggalMasehi, setTanggalMasehi] = useState(() => getBootPenanggalanPair().masehi)
+  const [tanggalHijriyah, setTanggalHijriyah] = useState(() => getBootPenanggalanPair().hijriyah)
   const [paymentData, setPaymentData] = useState({
     total: 0,
     totalKeseluruhan: 0,
@@ -109,8 +110,15 @@ function Header() {
   const [aktivitasTextVersion, setAktivitasTextVersion] = useState(0)
   const [chatAiHeaderUsage, setChatAiHeaderUsage] = useState({ today: 0, limit: 5 })
   const [openTADropdown, setOpenTADropdown] = useState(null) // 'hijriyah' | 'masehi' | null
-  const [todayKalender, setTodayKalender] = useState(null)
-  const [loadingTodayKalender, setLoadingTodayKalender] = useState(false)
+  const [todayKalender, setTodayKalender] = useState(() => {
+    const s = readTodayPenanggalanSync()
+    const iso = typeof window !== 'undefined' ? getMasehiKeyHariIni() : ''
+    if (s && iso && String(s.masehi).slice(0, 10) === iso && s.hijriyah) {
+      return { masehi: s.masehi.slice(0, 10), hijriyah: s.hijriyah }
+    }
+    return null
+  })
+  const [loadingTodayKalender, setLoadingTodayKalender] = useState(() => !readTodayPenanggalanSync()?.hijriyah)
   const [headerPhotoUrl, setHeaderPhotoUrl] = useState(null)
   const [headerUserDetail, setHeaderUserDetail] = useState(null) // nip dll dari GET /user/:id
   const headerPhotoRef = useRef(null)
@@ -409,55 +417,88 @@ function Header() {
     return `${first.action || 'Aktivitas'} · ${first.entity_type || '-'}`
   }, [aktivitasTerakhir])
 
-  // Update tanggal dari API
+  // Update tanggal dari API (cache lokal/IndexedDB diisi di getTanggalFromAPI)
   const updateTanggal = async () => {
     try {
       const { masehi, hijriyah } = await getTanggalFromAPI()
-      setTanggalMasehi(masehi)
-      setTanggalHijriyah(hijriyah)
+      setTanggalMasehi((prev) => (masehi ? masehi.slice(0, 10) : prev))
+      setTanggalHijriyah((prev) => {
+        if (hijriyah && hijriyah !== '-') return hijriyah.slice(0, 10)
+        return prev
+      })
     } catch (error) {
       console.error('Error updating tanggal:', error)
-      setTanggalMasehi('-')
-      setTanggalHijriyah('-')
     }
   }
 
-
-  // Update tanggal on mount and every minute
+  // Update tanggal on mount and every minute; isi dari IndexedDB jika mirror belum ada
   useEffect(() => {
+    let cancelled = false
+    const iso = getMasehiKeyHariIni()
+    if (!readTodayPenanggalanSync()?.hijriyah) {
+      ;(async () => {
+        const row = await idbGetToday(iso)
+        const p = row?.payload
+        if (cancelled || !p || Array.isArray(p) || !p.hijriyah || p.hijriyah === '0000-00-00') return
+        persistPenanggalanHariIni(p)
+        setTanggalMasehi((prev) => p.masehi?.slice(0, 10) || prev)
+        setTanggalHijriyah((prev) => prev || p.hijriyah.slice(0, 10))
+      })()
+    }
     updateTanggal()
-    const interval = setInterval(updateTanggal, 60000) // Update setiap 1 menit
-    return () => clearInterval(interval)
+    const interval = setInterval(updateTanggal, 60000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
   }, [])
 
-  // Load hari ini (Masehi + Hijriyah) untuk header grup Kalender
+  // Load hari ini (Masehi + Hijriyah) untuk header grup Kalender — cache dulu, lalu segarkan API
   useEffect(() => {
     if (!isKalenderGroup) {
       setTodayKalender(null)
+      setLoadingTodayKalender(false)
       return
     }
     let cancelled = false
-    setLoadingTodayKalender(true)
+    const sync = readTodayPenanggalanSync()
+    const tanggal = getMasehiKeyHariIni()
+    if (sync && String(sync.masehi).slice(0, 10) === tanggal && sync.hijriyah) {
+      setTodayKalender({ masehi: sync.masehi.slice(0, 10), hijriyah: sync.hijriyah })
+      setLoadingTodayKalender(false)
+    } else {
+      setLoadingTodayKalender(true)
+    }
+    ;(async () => {
+      const row = await idbGetToday(tanggal)
+      const p = row?.payload
+      if (cancelled || !p || Array.isArray(p)) return
+      const h = p.hijriyah
+      if (!h || h === '0000-00-00') return
+      setTodayKalender((prev) => (prev?.hijriyah ? prev : { masehi: p.masehi || tanggal, hijriyah: h }))
+      setLoadingTodayKalender(false)
+      persistPenanggalanHariIni(p)
+    })()
     const now = new Date()
-    const tanggal = now.toISOString().slice(0, 10)
     const waktu = now.toTimeString().slice(0, 8)
     kalenderAPI.get({ action: 'today', tanggal, waktu })
       .then((res) => {
         if (cancelled || !res || Array.isArray(res)) return
         if (res.hijriyah && res.hijriyah !== '0000-00-00') {
+          persistPenanggalanHariIni(res)
           setTodayKalender({ masehi: res.masehi || tanggal, hijriyah: res.hijriyah })
         } else {
-          setTodayKalender({ masehi: res.masehi || tanggal, hijriyah: null })
+          setTodayKalender((prev) => prev || { masehi: res.masehi || tanggal, hijriyah: null })
         }
       })
       .catch(() => {
-        if (!cancelled) setTodayKalender(null)
+        if (!cancelled) setTodayKalender((prev) => prev)
       })
       .finally(() => {
         if (!cancelled) setLoadingTodayKalender(false)
       })
     return () => { cancelled = true }
-  }, [location.pathname])
+  }, [location.pathname, isKalenderGroup])
 
   // Load payment data — selaras widget Beranda: aksi action.beranda.widget.pembayaran_hari_ini di matriks fitur
   const canAccessTotalPembayaran = useMemo(() => {
@@ -708,10 +749,19 @@ function Header() {
         {/* Subtitle grup Kalender: Hari ini dd-mm-yyyy M / dd-mm-yyyy H */}
         {isKalenderGroup && !loadingTodayKalender && todayKalender && (
           <p className="text-sm text-white/90 mt-0.5">
-            Hari ini {formatDateDMY(todayKalender.masehi)} M
-            {todayKalender.hijriyah && (
-              <span className="ml-1.5 font-medium">{formatDateDMY(todayKalender.hijriyah)} H</span>
-            )}
+            Hari ini{' '}
+            <motion.span
+              key={`${todayKalender.masehi}-${todayKalender.hijriyah || ''}`}
+              initial={{ opacity: 0.45, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+              className="inline"
+            >
+              {formatDateDMY(todayKalender.masehi)} M
+              {todayKalender.hijriyah && (
+                <span className="ml-1.5 font-medium">{formatDateDMY(todayKalender.hijriyah)} H</span>
+              )}
+            </motion.span>
           </p>
         )}
 
@@ -1435,13 +1485,29 @@ function Header() {
                         <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        <span className="font-mono text-xs text-gray-800 dark:text-gray-200">{tanggalMasehi}</span>
+                        <motion.span
+                          key={tanggalMasehi || 'm'}
+                          initial={{ opacity: 0.45, y: -3 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="font-mono text-xs text-gray-800 dark:text-gray-200"
+                        >
+                          {tanggalMasehi || '\u00A0'}
+                        </motion.span>
                       </div>
                       <div className="flex items-center gap-2 mt-1">
                         <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z" />
                         </svg>
-                        <span className="font-mono text-xs text-gray-800 dark:text-gray-200">{tanggalHijriyah}</span>
+                        <motion.span
+                          key={tanggalHijriyah || 'h'}
+                          initial={{ opacity: 0.45, y: -3 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="font-mono text-xs text-gray-800 dark:text-gray-200"
+                        >
+                          {tanggalHijriyah || '\u00A0'}
+                        </motion.span>
                       </div>
                     </div>
                   </div>

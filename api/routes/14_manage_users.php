@@ -26,6 +26,7 @@ return function (\Slim\App $app): void {
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::manageUsersV2Selectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::MANAGE_USERS_V2_SELECTORS)))->add(new AuthMiddleware());
 
     $app->group('/api/manage-users', function ($group) {
+        $group->get('/roles/assignable-list', [ManageUsersController::class, 'getAssignableRolesList']);
         $group->get('/roles/list', [ManageUsersController::class, 'getRolesList']);
         $group->post('/roles', [ManageUsersController::class, 'createRole']);
         $group->put('/roles/{id}', [ManageUsersController::class, 'updateRole']);

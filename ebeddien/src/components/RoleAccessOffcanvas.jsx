@@ -133,7 +133,7 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
     () => new Set(['bulan', 'hari_penting'])
   )
   const [absenAccordionOpen, setAbsenAccordionOpen] = useState(
-    () => new Set(['riwayat', 'absen', 'ngabsen'])
+    () => new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen'])
   )
   const [patchingId, setPatchingId] = useState(null)
 

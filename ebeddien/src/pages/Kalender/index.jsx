@@ -5,13 +5,21 @@ import TambahHariPentingPribadiOffcanvas from './components/TambahHariPentingPri
 import { kalenderAPI } from '../../services/api'
 import { useAuthStore } from '../../store/authStore'
 import { loadFontSettings, saveFontSettings, loadGridViewSettings, saveGridViewSettings, loadShowHariPentingMarkers, saveShowHariPentingMarkers, loadActiveTab, saveActiveTab } from './utils/kalenderStorage'
+import { idbGetToday, readTodayPenanggalanSync } from '../../services/hijriPenanggalanStorage'
 import { getTodayCache, setTodayCache } from './utils/kalenderCache'
+import { persistPenanggalanHariIni } from '../../utils/hijriDate'
 import './Kalender.css'
 
 function getInitialTodayState() {
   const tanggal = new Date().toISOString().slice(0, 10)
-  const cached = getTodayCache(tanggal)
-  return { todayInfo: cached ?? null, loadingToday: !cached }
+  const mem = getTodayCache(tanggal)
+  if (mem) return { todayInfo: mem, loadingToday: false }
+  const mirror = readTodayPenanggalanSync()
+  if (mirror && String(mirror.masehi).slice(0, 10) === tanggal && mirror.hijriyah) {
+    const info = { masehi: mirror.masehi, hijriyah: mirror.hijriyah }
+    return { todayInfo: info, loadingToday: false }
+  }
+  return { todayInfo: null, loadingToday: true }
 }
 
 export default function KalenderPage() {
@@ -34,16 +42,16 @@ export default function KalenderPage() {
 
   const loadToday = useCallback(async () => {
     const tanggal = new Date().toISOString().slice(0, 10)
-    const hasCache = !!getTodayCache(tanggal)
+    const hasCache = !!getTodayCache(tanggal) || !!readTodayPenanggalanSync()
     if (!hasCache) setLoadingToday(true)
     try {
       const waktu = new Date().toTimeString().slice(0, 8)
       const todayRes = await kalenderAPI.get({ action: 'today', tanggal, waktu })
       const data = Array.isArray(todayRes) ? null : todayRes
-      if (data) setTodayCache(tanggal, data)
+      if (data) persistPenanggalanHariIni(data)
       setTodayInfo(data)
     } catch (e) {
-      setTodayInfo(null)
+      setTodayInfo((prev) => prev)
     } finally {
       setLoadingToday(false)
     }
@@ -52,6 +60,22 @@ export default function KalenderPage() {
   useEffect(() => {
     loadToday()
   }, [loadToday])
+
+  useEffect(() => {
+    let cancelled = false
+    if (todayInfo != null) return
+    const tanggal = new Date().toISOString().slice(0, 10)
+    if (readTodayPenanggalanSync()) return
+    ;(async () => {
+      const row = await idbGetToday(tanggal)
+      const p = row?.payload
+      if (cancelled || !p || Array.isArray(p) || !p.hijriyah || p.hijriyah === '0000-00-00') return
+      setTodayInfo(p)
+      setLoadingToday(false)
+      persistPenanggalanHariIni(p)
+    })()
+    return () => { cancelled = true }
+  }, [todayInfo])
 
   useEffect(() => {
     saveFontSettings(fontSettings)

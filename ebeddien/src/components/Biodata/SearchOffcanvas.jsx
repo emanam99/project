@@ -7,11 +7,10 @@ import {
   applySantriSearchServerPayload,
   getLocalSantriSinceWatermark,
   countSantriRows,
-  removeSantriRowsByIds,
 } from '../../services/offcanvasSearchCache'
-import { useLiveSocket } from '../../contexts/LiveSocketContext'
+import { fetchSantriDeltaQuiet } from '../../services/santriIndexedDbSync'
 
-function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
+function SearchOffcanvas({ isOpen, onClose, onSelectSantri, onSelectSantriRecord, zIndex = 50 }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [santriList, setSantriList] = useState([])
   const [filteredList, setFilteredList] = useState([])
@@ -37,9 +36,6 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     lttq: '',
     gender: ''
   })
-
-  const liveCtx = useLiveSocket()
-  const socket = liveCtx?.socket ?? null
 
   // Prevent body scroll saat offcanvas terbuka
   useEffect(() => {
@@ -111,26 +107,14 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     setLoading(true)
     try {
       const result = await santriAPI.getAll()
-      if (result.success && result.data) {
-        await applySantriSearchServerPayload(result.data, false)
+      if (result.success) {
+        const data = Array.isArray(result.data) ? result.data : []
+        await applySantriSearchServerPayload(data, false)
       }
     } catch (error) {
       console.error('Error fetching santri list:', error)
     } finally {
       setLoading(false)
-    }
-  }, [])
-
-  const fetchSantriDeltaQuiet = useCallback(async () => {
-    try {
-      const since = await getLocalSantriSinceWatermark()
-      if (!since) return
-      const result = await santriAPI.getChangedSince(since)
-      if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-        await applySantriSearchServerPayload(result.data, true)
-      }
-    } catch (error) {
-      console.warn('Sinkron inkremental santri (cari santri):', error)
     }
   }, [])
 
@@ -196,8 +180,13 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     }))
   }
 
-  // Handle select santri — kirim NIS (7 digit) ke parent; jika nis kosong, pakai id yang di-pad 7 digit
+  // Handle select santri — prioritas baris penuh (untuk form yang perlu id DB); fallback NIS ke parent
   const handleSelectSantri = (santri) => {
+    if (onSelectSantriRecord) {
+      onSelectSantriRecord(santri)
+      onClose()
+      return
+    }
     if (onSelectSantri) {
       const nisAtauId = (santri.nis != null && santri.nis !== '')
         ? String(santri.nis)
@@ -230,29 +219,7 @@ function SearchOffcanvas({ isOpen, onClose, onSelectSantri, zIndex = 50 }) {
     return () => {
       cancelled = true
     }
-  }, [isOpen, fetchSantriListFull, fetchSantriDeltaQuiet])
-
-  // Socket.IO: pengguna lain mengubah data → hapus id yang di-merge + tarik delta (tanpa spinner)
-  useEffect(() => {
-    if (!socket) return
-    const onHint = async (payload) => {
-      await removeSantriRowsByIds(payload?.removed_ids)
-      await fetchSantriDeltaQuiet()
-    }
-    socket.on('santri_search_index_hint', onHint)
-    return () => {
-      socket.off('santri_search_index_hint', onHint)
-    }
-  }, [socket, fetchSantriDeltaQuiet])
-
-  // Polling ringan saat panel terbuka (cadangan jika socket atau ping PHP terlewat)
-  useEffect(() => {
-    if (!isOpen) return
-    const id = setInterval(() => {
-      fetchSantriDeltaQuiet()
-    }, 120000)
-    return () => clearInterval(id)
-  }, [isOpen, fetchSantriDeltaQuiet])
+  }, [isOpen, fetchSantriListFull])
 
   // Fetch pendaftar IDs saat checkbox dicentang atau tahun ajaran berubah
   useEffect(() => {

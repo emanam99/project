@@ -17,5 +17,5 @@ return function (\Slim\App $app): void {
         $group->post('', [KitabController::class, 'create']);
         $group->put('/{id}', [KitabController::class, 'update']);
         $group->delete('/{id}', [KitabController::class, 'delete']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::tarbiyahSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::kitabCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
 };

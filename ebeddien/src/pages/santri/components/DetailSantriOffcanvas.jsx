@@ -155,7 +155,7 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9998]"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[10010]"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -165,7 +165,7 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-gray-50 dark:bg-gray-900 shadow-2xl z-[9999] flex flex-col rounded-l-2xl overflow-hidden border-l border-gray-200 dark:border-gray-700"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-gray-50 dark:bg-gray-900 shadow-2xl z-[10011] flex flex-col rounded-l-2xl overflow-hidden border-l border-gray-200 dark:border-gray-700"
           >
         {/* Header */}
         <div className="flex-shrink-0 px-5 pt-5 pb-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
@@ -175,7 +175,7 @@ export default function DetailSantriOffcanvas({ isOpen, onClose, santriRow, onEd
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{row.nama || santri?.nama || 'Santri'}</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {santri && (
+              {santri && typeof onEdit === 'function' && (
                 <button
                   type="button"
                   onClick={handleEdit}

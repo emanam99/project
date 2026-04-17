@@ -111,6 +111,41 @@ final class EbeddienFiturAccess
         return EbeddienFiturSelectorRepository::codesForMethod('tarbiyahSuperSelectors');
     }
 
+    public static function santriCrudApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('santriCrudApiSelectors');
+    }
+
+    public static function santriByKelasApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('santriByKelasApiSelectors');
+    }
+
+    public static function rombelWaliKelasApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('rombelWaliKelasApiSelectors');
+    }
+
+    public static function jabatanCrudApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('jabatanCrudApiSelectors');
+    }
+
+    public static function mapelCrudApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('mapelCrudApiSelectors');
+    }
+
+    public static function kitabCrudApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('kitabCrudApiSelectors');
+    }
+
+    public static function tarbiyahSantriDomisiliApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('tarbiyahSantriDomisiliApiSelectors');
+    }
+
     public static function absenPengurusApiSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('absenPengurusApiSelectors');
@@ -119,6 +154,11 @@ final class EbeddienFiturAccess
     public static function absenLokasiCrudApiSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('absenLokasiCrudApiSelectors');
+    }
+
+    public static function absenSettingApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('absenSettingApiSelectors');
     }
 
     public static function absenPengurusLokasiPostSelectors(): array
@@ -159,6 +199,11 @@ final class EbeddienFiturAccess
     public static function psbStaffSuperSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('psbStaffSuperSelectors');
+    }
+
+    public static function pendaftaranSantriFilterOptionsSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('pendaftaranSantriFilterOptionsSelectors');
     }
 
     public static function dashboardLaporanIjinSelectors(): array

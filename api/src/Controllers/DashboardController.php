@@ -824,10 +824,12 @@ class DashboardController
                     s.status_santri,
                     COALESCE(d.kategori, s.kategori) AS kategori,
                     s.id_diniyah,
+                    rd.lembaga_id AS lembaga_id_diniyah,
                     ld.nama AS diniyah,
                     rd.kelas AS kelas_diniyah,
                     rd.kel AS kel_diniyah,
                     s.id_formal,
+                    rf.lembaga_id AS lembaga_id_formal,
                     lf.nama AS formal,
                     rf.kelas AS kelas_formal,
                     rf.kel AS kel_formal,
@@ -859,7 +861,7 @@ class DashboardController
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
                 LEFT JOIN uwaba sy ON s.id = sy.id_santri AND sy.tahun_ajaran = ?
-                GROUP BY s.id, s.nis, s.nama, s.ayah, s.ibu, s.gender, s.status_santri, COALESCE(d.kategori, s.kategori), s.id_diniyah, ld.nama, rd.kelas, rd.kel, s.id_formal, lf.nama, rf.kelas, rf.kel, s.lttq, s.kelas_lttq, s.kel_lttq, s.hijriyah, s.masehi, s.saudara_di_pesantren, s.id_kamar, d.id, d.daerah, dk.kamar, s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten
+                GROUP BY s.id, s.nis, s.nama, s.ayah, s.ibu, s.gender, s.status_santri, COALESCE(d.kategori, s.kategori), s.id_diniyah, rd.lembaga_id, ld.nama, rd.kelas, rd.kel, s.id_formal, rf.lembaga_id, lf.nama, rf.kelas, rf.kel, s.lttq, s.kelas_lttq, s.kel_lttq, s.hijriyah, s.masehi, s.saudara_di_pesantren, s.id_kamar, d.id, d.daerah, dk.kamar, s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten
                 ORDER BY s.id ASC
             ");
             $stmt->execute([$tahunAjaran]);
@@ -878,10 +880,12 @@ class DashboardController
                     'status_santri' => $row['status_santri'] ?? '',
                     'kategori' => $row['kategori'] ?? '',
                     'id_diniyah' => isset($row['id_diniyah']) ? (int) $row['id_diniyah'] : null,
+                    'lembaga_id_diniyah' => isset($row['lembaga_id_diniyah']) ? (string) $row['lembaga_id_diniyah'] : '',
                     'diniyah' => $row['diniyah'] ?? '',
                     'kelas_diniyah' => $row['kelas_diniyah'] ?? '',
                     'kel_diniyah' => $row['kel_diniyah'] ?? '',
                     'id_formal' => isset($row['id_formal']) ? (int) $row['id_formal'] : null,
+                    'lembaga_id_formal' => isset($row['lembaga_id_formal']) ? (string) $row['lembaga_id_formal'] : '',
                     'formal' => $row['formal'] ?? '',
                     'kelas_formal' => $row['kelas_formal'] ?? '',
                     'kel_formal' => $row['kel_formal'] ?? '',

@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\LiveDomisiliCacheNotifier;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -35,9 +36,21 @@ class DaerahKamarController
             $idDaerah = isset($params['id_daerah']) ? (int) $params['id_daerah'] : null;
             $status = $params['status'] ?? null;
 
-            $sql = "SELECT dk.*, d.kategori AS daerah_kategori, d.daerah AS daerah_nama
+            $sql = "SELECT dk.*, d.kategori AS daerah_kategori, d.daerah AS daerah_nama,
+                           ka.ketua_aktif_nama, ka.ketua_aktif_nis
                     FROM daerah___kamar dk
                     LEFT JOIN daerah d ON d.id = dk.id_daerah
+                    LEFT JOIN (
+                        SELECT dkk.id_daerah_kamar, s.nama AS ketua_aktif_nama, s.nis AS ketua_aktif_nis
+                        FROM daerah___ketua_kamar dkk
+                        INNER JOIN santri s ON s.id = dkk.id_ketua_kamar
+                        INNER JOIN (
+                            SELECT id_daerah_kamar, MAX(id) AS mx
+                            FROM daerah___ketua_kamar
+                            WHERE status = 'aktif'
+                            GROUP BY id_daerah_kamar
+                        ) z ON z.mx = dkk.id
+                    ) ka ON ka.id_daerah_kamar = dk.id
                     WHERE 1=1";
             $bind = [];
             if ($idDaerah !== null && $idDaerah > 0) {
@@ -83,9 +96,21 @@ class DaerahKamarController
             }
 
             $stmt = $this->db->prepare("
-                SELECT dk.*, d.kategori AS daerah_kategori, d.daerah AS daerah_nama
+                SELECT dk.*, d.kategori AS daerah_kategori, d.daerah AS daerah_nama,
+                       ka.ketua_aktif_nama, ka.ketua_aktif_nis
                 FROM daerah___kamar dk
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
+                LEFT JOIN (
+                    SELECT dkk.id_daerah_kamar, s.nama AS ketua_aktif_nama, s.nis AS ketua_aktif_nis
+                    FROM daerah___ketua_kamar dkk
+                    INNER JOIN santri s ON s.id = dkk.id_ketua_kamar
+                    INNER JOIN (
+                        SELECT id_daerah_kamar, MAX(id) AS mx
+                        FROM daerah___ketua_kamar
+                        WHERE status = 'aktif'
+                        GROUP BY id_daerah_kamar
+                    ) z ON z.mx = dkk.id
+                ) ka ON ka.id_daerah_kamar = dk.id
                 WHERE dk.id = ?
             ");
             $stmt->execute([$id]);
@@ -159,6 +184,8 @@ class DaerahKamarController
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_CREATE, 'daerah___kamar', (string) $newId, null, $newRow, $request);
             }
 
+            LiveDomisiliCacheNotifier::ping();
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'message' => 'Kamar berhasil ditambahkan',
@@ -218,6 +245,8 @@ class DaerahKamarController
             if ($pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'daerah___kamar', (string) $id, $old, $new, $request);
             }
+
+            LiveDomisiliCacheNotifier::ping();
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -279,6 +308,8 @@ class DaerahKamarController
             if ($new && $pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'daerah___kamar', (string) $id, $old, $new, $request);
             }
+
+            LiveDomisiliCacheNotifier::ping();
 
             return $this->jsonResponse($response, [
                 'success' => true,

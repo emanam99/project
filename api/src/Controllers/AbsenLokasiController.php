@@ -56,6 +56,57 @@ final class AbsenLokasiController
         return is_finite($f) ? $f : null;
     }
 
+    /** Alamat opsional: null jika kosong; potong ke panjang maks. */
+    private static function optStringAddr(mixed $v, int $maxLen): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+        $s = trim((string) $v);
+        if ($s === '') {
+            return null;
+        }
+        if (mb_strlen($s) > $maxLen) {
+            $s = mb_substr($s, 0, $maxLen);
+        }
+
+        return $s;
+    }
+
+    /** Baca alamat dari body (PUT) atau pertahankan nilai baris (GET). */
+    private static function addrFromBodyOrRow(array $body, array $row, string $key, int $maxLen): ?string
+    {
+        if (array_key_exists($key, $body)) {
+            return self::optStringAddr($body[$key], $maxLen);
+        }
+
+        return self::optStringAddr($row[$key] ?? null, $maxLen);
+    }
+
+    /** True jika klien mengirim minimal satu isian alamat pratinjau yang tidak kosong. */
+    private static function bodyMemintaPenyimpananAlamat(array $body): bool
+    {
+        $limits = [
+            'dusun' => 191,
+            'rt' => 32,
+            'rw' => 32,
+            'desa' => 191,
+            'kecamatan' => 191,
+            'kabupaten' => 191,
+            'provinsi' => 191,
+        ];
+        foreach ($limits as $k => $max) {
+            if (!array_key_exists($k, $body)) {
+                continue;
+            }
+            if (self::optStringAddr($body[$k], $max) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function apiHasLokasiGranular(array $user): bool
     {
         return RoleHelper::tokenUserHasAnyEbeddienFiturCodePrefix($this->db, $user, 'action.absen.lokasi.');
@@ -130,7 +181,8 @@ final class AbsenLokasiController
             || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.lokasi.ubah')
             || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.lokasi.hapus')
             || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.tab.absen')
-            || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.tab.ngabsen');
+            || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.tab.ngabsen')
+            || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.tab.pengaturan');
     }
 
     private function canTambah(array $user): bool
@@ -200,6 +252,89 @@ final class AbsenLokasiController
         }
     }
 
+    private function tableHasAlamatColumns(): bool
+    {
+        try {
+            $st = $this->db->query(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+                 AND table_name = 'absen___lokasi' AND column_name = 'dusun' LIMIT 1"
+            );
+
+            return (bool) $st->fetchColumn();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function tableHasJamColumns(): bool
+    {
+        try {
+            $st = $this->db->query(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+                 AND table_name = 'absen___lokasi' AND column_name = 'jam_mulai_pagi' LIMIT 1"
+            );
+
+            return (bool) $st->fetchColumn();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /** Untuk kolom TIME MySQL: "HH:MM" / "HH:MM:SS" → "HH:MM:SS" atau null */
+    private static function normalizeTimeSql(mixed $v): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+        $s = trim((string) $v);
+        if ($s === '') {
+            return null;
+        }
+        if (!preg_match('/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $s, $m)) {
+            return null;
+        }
+        $h = min(23, max(0, (int) $m[1]));
+        $min = min(59, max(0, (int) $m[2]));
+        $sec = isset($m[3]) ? min(59, max(0, (int) $m[3])) : 0;
+
+        return sprintf('%02d:%02d:%02d', $h, $min, $sec);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @param array<string, mixed> $row
+     */
+    private static function timeFromBodyOrRow(array $body, array $row, string $key): ?string
+    {
+        if (array_key_exists($key, $body)) {
+            $raw = $body[$key];
+            if ($raw === null || $raw === '') {
+                return null;
+            }
+
+            return self::normalizeTimeSql($raw);
+        }
+        if (!isset($row[$key]) || $row[$key] === null || $row[$key] === '') {
+            return null;
+        }
+
+        return self::normalizeTimeSql($row[$key]);
+    }
+
+    /** @param array<string, mixed> $body */
+    private static function optionalTimeFromBody(array $body, string $key): ?string
+    {
+        if (!array_key_exists($key, $body)) {
+            return null;
+        }
+        $raw = $body[$key];
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+
+        return self::normalizeTimeSql($raw);
+    }
+
     /**
      * GET /api/absen-lokasi
      */
@@ -215,7 +350,14 @@ final class AbsenLokasiController
         }
         $scope = $this->userLembagaScope($user);
         [$extraSql, $bind] = $this->scopeWhereSql($scope, 'l');
-        $sql = 'SELECT l.id, l.nama, l.latitude, l.longitude, l.radius_meter, l.id_lembaga, l.aktif, l.sort_order,
+        $addrCols = $this->tableHasAlamatColumns()
+            ? ', l.dusun, l.rt, l.rw, l.desa, l.kecamatan, l.kabupaten, l.provinsi'
+            : '';
+        $jamCols = $this->tableHasJamColumns()
+            ? ', l.jam_mulai_pagi, l.jam_mulai_sore, l.jam_mulai_malam'
+            : '';
+        $sql = 'SELECT l.id, l.nama, l.latitude, l.longitude, l.radius_meter, l.id_lembaga, l.aktif, l.sort_order'
+            . $jamCols . $addrCols . ',
                 lg.nama AS lembaga_nama
             FROM absen___lokasi l
             LEFT JOIN lembaga lg ON lg.id = l.id_lembaga
@@ -252,6 +394,13 @@ final class AbsenLokasiController
         $idLembaga = $idLembaga === '' || $idLembaga === null ? null : trim((string) $idLembaga);
         $aktif = isset($body['aktif']) ? ((int) (bool) $body['aktif']) : 1;
         $sort = isset($body['sort_order']) ? (int) $body['sort_order'] : 0;
+        $dusun = self::optStringAddr($body['dusun'] ?? null, 191);
+        $rt = self::optStringAddr($body['rt'] ?? null, 32);
+        $rw = self::optStringAddr($body['rw'] ?? null, 32);
+        $desa = self::optStringAddr($body['desa'] ?? null, 191);
+        $kecamatan = self::optStringAddr($body['kecamatan'] ?? null, 191);
+        $kabupaten = self::optStringAddr($body['kabupaten'] ?? null, 191);
+        $provinsi = self::optStringAddr($body['provinsi'] ?? null, 191);
 
         if ($nama === '' || $lat === null || $lng === null || abs($lat) > 90 || abs($lng) > 180) {
             return $this->json($response, ['success' => false, 'message' => 'nama, latitude, longitude wajib valid'], 400);
@@ -268,11 +417,69 @@ final class AbsenLokasiController
             return $this->json($response, ['success' => false, 'message' => 'Pilih lembaga untuk lokasi ini'], 400);
         }
 
-        $ins = $this->db->prepare(
-            'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
-        );
-        $ins->execute([$nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort]);
+        $hasAddr = $this->tableHasAlamatColumns();
+        if (self::bodyMemintaPenyimpananAlamat($body) && !$hasAddr) {
+            return $this->json($response, [
+                'success' => false,
+                'code' => 'absen_lokasi_alamat_migration_required',
+                'message' => 'Basis data belum punya kolom alamat titik lokasi. Jalankan migrasi Phinx di folder api '
+                    . '(php vendor/bin/phinx migrate) atau jalankan api/db/manual/absen_lokasi_alamat_pratinjau.sql di phpMyAdmin. '
+                    . 'Tanpa itu, isian alamat tidak bisa disimpan.',
+            ], 503);
+        }
+        $hasJam = $this->tableHasJamColumns();
+        $jmP = $hasJam ? self::optionalTimeFromBody($body, 'jam_mulai_pagi') : null;
+        $jmS = $hasJam ? self::optionalTimeFromBody($body, 'jam_mulai_sore') : null;
+        $jmM = $hasJam ? self::optionalTimeFromBody($body, 'jam_mulai_malam') : null;
+
+        try {
+            if ($hasAddr && $hasJam) {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order,
+                        jam_mulai_pagi, jam_mulai_sore, jam_mulai_malam,
+                        `dusun`, `rt`, `rw`, `desa`, `kecamatan`, `kabupaten`, `provinsi`)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([
+                    $nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort,
+                    $jmP, $jmS, $jmM,
+                    $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi,
+                ]);
+            } elseif ($hasAddr) {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order,
+                        `dusun`, `rt`, `rw`, `desa`, `kecamatan`, `kabupaten`, `provinsi`)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([
+                    $nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort,
+                    $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi,
+                ]);
+            } elseif ($hasJam) {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order,
+                        jam_mulai_pagi, jam_mulai_sore, jam_mulai_malam)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([
+                    $nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort,
+                    $jmP, $jmS, $jmM,
+                ]);
+            } else {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([$nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort]);
+            }
+        } catch (\Throwable $e) {
+            error_log('AbsenLokasiController::create: ' . $e->getMessage());
+
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan lokasi. Periksa migrasi basis data atau hubungi admin.',
+            ], 500);
+        }
         $id = (int) $this->db->lastInsertId();
 
         return $this->json($response, ['success' => true, 'message' => 'Lokasi disimpan', 'data' => ['id' => $id]], 201);
@@ -322,6 +529,13 @@ final class AbsenLokasiController
                 ? trim((string) $row['id_lembaga']) : null);
         $aktif = array_key_exists('aktif', $body) ? ((int) (bool) $body['aktif']) : (int) $row['aktif'];
         $sort = array_key_exists('sort_order', $body) ? (int) $body['sort_order'] : (int) $row['sort_order'];
+        $dusun = self::addrFromBodyOrRow($body, $row, 'dusun', 191);
+        $rt = self::addrFromBodyOrRow($body, $row, 'rt', 32);
+        $rw = self::addrFromBodyOrRow($body, $row, 'rw', 32);
+        $desa = self::addrFromBodyOrRow($body, $row, 'desa', 191);
+        $kecamatan = self::addrFromBodyOrRow($body, $row, 'kecamatan', 191);
+        $kabupaten = self::addrFromBodyOrRow($body, $row, 'kabupaten', 191);
+        $provinsi = self::addrFromBodyOrRow($body, $row, 'provinsi', 191);
 
         if ($nama === '' || $lat === null || $lng === null || abs($lat) > 90 || abs($lng) > 180) {
             return $this->json($response, ['success' => false, 'message' => 'nama, latitude, longitude wajib valid'], 400);
@@ -336,11 +550,72 @@ final class AbsenLokasiController
             }
         }
 
-        $upd = $this->db->prepare(
-            'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
-             id_lembaga = ?, aktif = ?, sort_order = ? WHERE id = ?'
-        );
-        $upd->execute([$nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort, $id]);
+        $hasAddr = $this->tableHasAlamatColumns();
+        if (self::bodyMemintaPenyimpananAlamat($body) && !$hasAddr) {
+            return $this->json($response, [
+                'success' => false,
+                'code' => 'absen_lokasi_alamat_migration_required',
+                'message' => 'Basis data belum punya kolom alamat titik lokasi. Jalankan migrasi Phinx di folder api '
+                    . '(php vendor/bin/phinx migrate) atau jalankan api/db/manual/absen_lokasi_alamat_pratinjau.sql di phpMyAdmin. '
+                    . 'Tanpa itu, isian alamat tidak bisa disimpan.',
+            ], 503);
+        }
+        $hasJam = $this->tableHasJamColumns();
+        $jmP = $hasJam ? self::timeFromBodyOrRow($body, $row, 'jam_mulai_pagi') : null;
+        $jmS = $hasJam ? self::timeFromBodyOrRow($body, $row, 'jam_mulai_sore') : null;
+        $jmM = $hasJam ? self::timeFromBodyOrRow($body, $row, 'jam_mulai_malam') : null;
+
+        try {
+            if ($hasAddr && $hasJam) {
+                $upd = $this->db->prepare(
+                    'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
+                     id_lembaga = ?, aktif = ?, sort_order = ?,
+                     jam_mulai_pagi = ?, jam_mulai_sore = ?, jam_mulai_malam = ?,
+                     `dusun` = ?, `rt` = ?, `rw` = ?, `desa` = ?, `kecamatan` = ?, `kabupaten` = ?, `provinsi` = ?
+                     WHERE id = ?'
+                );
+                $upd->execute([
+                    $nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort,
+                    $jmP, $jmS, $jmM,
+                    $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi, $id,
+                ]);
+            } elseif ($hasAddr) {
+                $upd = $this->db->prepare(
+                    'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
+                     id_lembaga = ?, aktif = ?, sort_order = ?,
+                     `dusun` = ?, `rt` = ?, `rw` = ?, `desa` = ?, `kecamatan` = ?, `kabupaten` = ?, `provinsi` = ?
+                     WHERE id = ?'
+                );
+                $upd->execute([
+                    $nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort,
+                    $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi, $id,
+                ]);
+            } elseif ($hasJam) {
+                $upd = $this->db->prepare(
+                    'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
+                     id_lembaga = ?, aktif = ?, sort_order = ?,
+                     jam_mulai_pagi = ?, jam_mulai_sore = ?, jam_mulai_malam = ?
+                     WHERE id = ?'
+                );
+                $upd->execute([
+                    $nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort,
+                    $jmP, $jmS, $jmM, $id,
+                ]);
+            } else {
+                $upd = $this->db->prepare(
+                    'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
+                     id_lembaga = ?, aktif = ?, sort_order = ? WHERE id = ?'
+                );
+                $upd->execute([$nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort, $id]);
+            }
+        } catch (\Throwable $e) {
+            error_log('AbsenLokasiController::update: ' . $e->getMessage());
+
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'Gagal memperbarui lokasi. Periksa migrasi basis data atau hubungi admin.',
+            ], 500);
+        }
 
         return $this->json($response, ['success' => true, 'message' => 'Lokasi diperbarui'], 200);
     }

@@ -14,9 +14,65 @@ class AppFiturController
 {
     private \PDO $db;
 
+    /** @var array<string, string> aksi halaman → kode menu induk (sidebar GET /v2/me/fitur-menu) */
+    private const LEMBAGA_HALAMAN_ACTION_TO_MENU = [
+        'action.santri.halaman' => 'menu.santri',
+        'action.rombel.halaman' => 'menu.rombel',
+        'action.manage_jabatan.halaman' => 'menu.manage_jabatan',
+        'action.mapel.halaman' => 'menu.mapel',
+    ];
+
     public function __construct()
     {
         $this->db = Database::getInstance()->getConnection();
+    }
+
+    /**
+     * Bila peran punya aksi halaman tanpa baris menu di role___fitur, sisipkan baris menu agar sidebar lengkap.
+     *
+     * @param list<array<string, mixed>> $items
+     * @param list<string> $codes
+     */
+    private function injectLembagaMenuRowsForHalamanActions(int $appId, array &$items, array &$codes): void
+    {
+        $have = [];
+        foreach ($codes as $c) {
+            $have[(string) $c] = true;
+        }
+        $toLoad = [];
+        foreach (self::LEMBAGA_HALAMAN_ACTION_TO_MENU as $act => $menuCode) {
+            if (isset($have[$act]) && !isset($have[$menuCode])) {
+                $toLoad[$menuCode] = true;
+            }
+        }
+        if ($toLoad === []) {
+            return;
+        }
+        $menuCodes = array_keys($toLoad);
+        $ph = implode(',', array_fill(0, count($menuCodes), '?'));
+        $sql = "SELECT `id`, `id_app`, `parent_id`, `type`, `code`, `label`, `path`, `icon_key`, `group_label`, `sort_order`, `meta_json`
+            FROM `app___fitur` WHERE `id_app` = ? AND `type` = 'menu' AND `code` IN ($ph) ORDER BY `sort_order` ASC, `id` ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(array_merge([$appId], $menuCodes));
+        $extra = [];
+        while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+            $meta = null;
+            if (!empty($row['meta_json'])) {
+                $decoded = json_decode((string) $row['meta_json'], true);
+                $meta = is_array($decoded) ? $decoded : null;
+            }
+            unset($row['meta_json']);
+            $row['id'] = (int) $row['id'];
+            $row['id_app'] = (int) $row['id_app'];
+            $row['parent_id'] = $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int) $row['parent_id'] : null;
+            $row['sort_order'] = (int) $row['sort_order'];
+            $row['meta'] = $meta;
+            $extra[] = $row;
+            $codes[] = (string) $row['code'];
+        }
+        if ($extra !== []) {
+            $items = array_merge($extra, $items);
+        }
     }
 
     /**
@@ -139,13 +195,15 @@ class AppFiturController
                 $items[] = $row;
             }
 
+            $this->injectLembagaMenuRowsForHalamanActions($appId, $items, $codes);
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'data' => [
                     'app' => $appPayload,
                     'role_keys' => $roleKeys,
                     'items' => $items,
-                    'codes' => $codes,
+                    'codes' => array_values(array_unique($codes)),
                 ],
             ], 200);
         } catch (\Throwable $e) {

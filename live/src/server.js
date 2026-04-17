@@ -69,6 +69,23 @@ app.post('/internal/broadcast-santri-search-hint', (req, res) => {
 });
 
 /**
+ * Dipanggil dari PHP setelah daerah/kamar/pengurus domisili berubah — klien memuat ulang snapshot IndexedDB.
+ */
+app.post('/internal/broadcast-domisili-cache-hint', (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  const keyOk =
+    LIVE_SERVER_API_KEY === '' ||
+    (typeof apiKey === 'string' && apiKey === LIVE_SERVER_API_KEY);
+  if (!keyOk) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  io.emit('domisili_cache_hint', {
+    ts: new Date().toISOString(),
+  });
+  return res.json({ success: true });
+});
+
+/**
  * Dipanggil dari PHP setelah POST /api/chat/send — kirim receive_message ke semua socket users.id terkait.
  * Body: { target_user_ids: number[], payload: object }
  */

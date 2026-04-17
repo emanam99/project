@@ -1,4 +1,25 @@
 import { getSlimApiUrl, kalenderAPI } from '../services/api'
+import { writeTodayMirror, idbPutToday } from '../services/hijriPenanggalanStorage'
+import { setTodayCache } from '../pages/Kalender/utils/kalenderCache'
+
+export { getBootPenanggalanPair, readTodayPenanggalanSync } from '../services/hijriPenanggalanStorage'
+
+/**
+ * Simpan hasil "hari ini" ke memori kalender + mirror + IndexedDB (tanpa throw).
+ * @param {object} data - respons API `today` (bukan array)
+ */
+export function persistPenanggalanHariIni(data) {
+  if (!data || Array.isArray(data)) return
+  const tanggal = String(data.masehi || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) return
+  const h = data.hijriyah
+  if (!h || h === '0000-00-00' || h === '-') return
+  try {
+    setTodayCache(tanggal, data)
+  } catch (_) {}
+  writeTodayMirror({ masehi: tanggal, hijriyah: String(h).slice(0, 10) })
+  void idbPutToday(tanggal, data)
+}
 
 /**
  * Mengambil tanggal Masehi dan Hijriyah dari API aplikasi (backend yang sama dengan kalender).
@@ -22,10 +43,14 @@ export async function getTanggalFromAPI(baseUrl) {
       return fallback
     }
     const data = await response.json()
-    return {
+    const out = {
       masehi: data.masehi || tanggalMasehi,
       hijriyah: (data.hijriyah && data.hijriyah !== '0000-00-00') ? data.hijriyah : '-'
     }
+    if (out.hijriyah !== '-') {
+      persistPenanggalanHariIni({ ...data, masehi: out.masehi, hijriyah: out.hijriyah })
+    }
+    return out
   } catch (_) {
     return fallback
   }

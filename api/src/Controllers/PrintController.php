@@ -406,19 +406,20 @@ class PrintController
                             $wajib += $uwabaPrices['status_santri'][$biodata['status_santri']][$biodata['kategori']]['wajib'] ?? 0;
                         }
 
-                        // Tambahan diniyah
-                        if ($biodata['diniyah'] && $uwabaPrices) {
-                            $wajib += $uwabaPrices['diniyah'][$biodata['diniyah']]['wajib'] ?? 0;
+                        // Tambahan diniyah / formal / LTTQ — kunci = lembaga.id (string) di uwaba-prices.json
+                        $dinKey = isset($biodata['diniyah']) ? trim((string) $biodata['diniyah']) : '';
+                        if ($dinKey !== '' && $dinKey !== '-' && $uwabaPrices) {
+                            $wajib += (int) ($uwabaPrices['diniyah'][$dinKey]['wajib'] ?? 0);
                         }
 
-                        // Tambahan formal
-                        if ($biodata['formal'] && $uwabaPrices) {
-                            $wajib += $uwabaPrices['formal'][$biodata['formal']]['wajib'] ?? 0;
+                        $forKey = isset($biodata['formal']) ? trim((string) $biodata['formal']) : '';
+                        if ($forKey !== '' && $forKey !== '-' && $uwabaPrices) {
+                            $wajib += (int) ($uwabaPrices['formal'][$forKey]['wajib'] ?? 0);
                         }
 
-                        // Tambahan LTTQ
-                        if ($biodata['lttq'] && $uwabaPrices) {
-                            $wajib += $uwabaPrices['lttq'][$biodata['lttq']]['wajib'] ?? 0;
+                        $lttqKey = isset($biodata['lttq']) ? trim((string) $biodata['lttq']) : '';
+                        if ($lttqKey !== '' && $lttqKey !== '-' && $uwabaPrices) {
+                            $wajib += (int) ($uwabaPrices['lttq'][$lttqKey]['wajib'] ?? 0);
                         }
 
                         // Diskon saudara

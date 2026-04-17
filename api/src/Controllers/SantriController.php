@@ -250,7 +250,7 @@ class SantriController
             SantriDomisiliHelper::applyKategoriFromKamar($data, $this->db);
             // Simpan kamar hanya via id_kamar (daerah/kamar legacy tidak lagi diupdate)
             $fields = [
-                'nama', 'nik', 'tempat_lahir', 'tanggal_lahir', 'gender', 'ayah', 'ibu', 'no_telpon', 'no_wa_santri', 'dusun', 'rt', 'rw', 'desa', 'kecamatan', 'kode_pos', 'kabupaten', 'provinsi',
+                'nama', 'nik', 'nisn', 'no_kk', 'kepala_keluarga', 'tempat_lahir', 'tanggal_lahir', 'gender', 'ayah', 'ibu', 'no_telpon', 'no_wa_santri', 'dusun', 'rt', 'rw', 'desa', 'kecamatan', 'kode_pos', 'kabupaten', 'provinsi',
                 'status_ayah', 'nik_ayah', 'tempat_lahir_ayah', 'tanggal_lahir_ayah', 'pekerjaan_ayah', 'pendidikan_ayah', 'penghasilan_ayah',
                 'status_ibu', 'nik_ibu', 'tempat_lahir_ibu', 'tanggal_lahir_ibu', 'pekerjaan_ibu', 'pendidikan_ibu', 'penghasilan_ibu',
                 'hubungan_wali', 'wali', 'nik_wali', 'tempat_lahir_wali', 'tanggal_lahir_wali', 'pekerjaan_wali', 'pendidikan_wali', 'penghasilan_wali', 'no_telpon_wali',

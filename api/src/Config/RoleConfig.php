@@ -36,6 +36,10 @@ class RoleConfig
         'admin_lembaga' => [],
         /** Tarbiyah: akses menu Domisili + Lembaga di eBeddien (bukan UWABA pembayaran). */
         'tarbiyah' => ['uwaba'],
+        /** Domisili/asrama: baseline sama tarbiyah; detail menu lewat Role & Akses (role___fitur). */
+        'admin_daerah' => ['uwaba'],
+        'kapdar' => ['uwaba'],
+        'wakapdar' => ['uwaba'],
         'wali_kelas' => [],
         'guru' => [],
         'waka_lembaga' => [],
@@ -99,6 +103,18 @@ class RoleConfig
             'view_reports'
         ],
         'tarbiyah' => [
+            'manage_santri',
+            'view_reports'
+        ],
+        'admin_daerah' => [
+            'manage_santri',
+            'view_reports'
+        ],
+        'kapdar' => [
+            'manage_santri',
+            'view_reports'
+        ],
+        'wakapdar' => [
             'manage_santri',
             'view_reports'
         ],
@@ -175,6 +191,9 @@ class RoleConfig
         'petugas_uwaba' => 'Petugas UWABA',
         'admin_lembaga' => 'Admin Lembaga',
         'tarbiyah' => 'Tarbiyah',
+        'admin_daerah' => 'Admin Daerah',
+        'kapdar' => 'Kapdar',
+        'wakapdar' => 'Wakapdar',
         'wali_kelas' => 'Wali Kelas',
         'guru' => 'Guru',
         'waka_lembaga' => 'Waka Lembaga',

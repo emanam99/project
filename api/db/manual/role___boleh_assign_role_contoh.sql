@@ -1,0 +1,5 @@
+-- Contoh: pengurus dengan role `admin_lembaga` (sesuaikan id dari SELECT id, `key` FROM role) hanya boleh menugaskan role `guru` dan `staff_tu`.
+-- Tanpa baris di role___boleh_assign_role untuk suatu role pemanggil = tidak dibatasi (boleh semua role).
+-- SET @id_admin_lembaga := (SELECT id FROM role WHERE `key` = 'admin_lembaga' LIMIT 1);
+-- SET @id_guru := (SELECT id FROM role WHERE `key` = 'guru' LIMIT 1);
+-- INSERT IGNORE INTO role___boleh_assign_role (role_id, assignable_role_id) VALUES (@id_admin_lembaga, @id_guru);

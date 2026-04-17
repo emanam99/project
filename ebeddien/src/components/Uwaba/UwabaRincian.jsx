@@ -63,6 +63,8 @@ function UwabaRincian({ santriId, biodata, prices }) {
     biodata?.kategori,
     biodata?.diniyah,
     biodata?.formal,
+    biodata?.lembaga_id_diniyah,
+    biodata?.lembaga_id_formal,
     biodata?.lttq,
     biodata?.saudara,
     biodata?.saudara_di_pesantren, // Juga deteksi perubahan saudara_di_pesantren
@@ -102,6 +104,8 @@ function UwabaRincian({ santriId, biodata, prices }) {
     biodata?.kategori, 
     biodata?.diniyah, 
     biodata?.formal, 
+    biodata?.lembaga_id_diniyah,
+    biodata?.lembaga_id_formal,
     biodata?.lttq, 
     biodata?.saudara,
     biodata?.saudara_di_pesantren, // Juga deteksi perubahan saudara_di_pesantren
@@ -950,6 +954,7 @@ function UwabaRincian({ santriId, biodata, prices }) {
         }}
         bulanIndex={editingBulanIndex}
         bulanData={editingBulanIndex !== null ? bulanData[editingBulanIndex] : null}
+        santriId={santriId}
         prices={prices}
         onSave={handleEditSave}
       />

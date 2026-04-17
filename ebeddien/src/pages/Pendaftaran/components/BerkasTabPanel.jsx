@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
@@ -43,7 +43,6 @@ function BerkasTabPanel({ santriId }) {
     setBerkasList,
     handlePreviewBerkas,
     handleClosePreviewBerkas,
-    downloadForPreview,
     handleGantiClickBerkas,
     handleUpdateBerkas,
     handleDeleteClickBerkas,
@@ -56,6 +55,11 @@ function BerkasTabPanel({ santriId }) {
   const [showCameraScanner, setShowCameraScanner] = useState(false)
   const [cameraImageEditorOpen, setCameraImageEditorOpen] = useState(false)
   const [cameraImageFileForEditor, setCameraImageFileForEditor] = useState(null)
+  const [thumbnailUrlById, setThumbnailUrlById] = useState({})
+  const [thumbnailLoadingById, setThumbnailLoadingById] = useState({})
+  const previewBlobCacheRef = useRef(new Map())
+  const thumbnailObjectUrlRef = useRef(new Map())
+  const prefetchingIdsRef = useRef(new Set())
 
   // KK Sama dengan Santri & berkas not available (sama seperti BiodataPendaftaran)
   const [kkSamaDenganSantri, setKkSamaDenganSantri] = useState(() => {
@@ -211,6 +215,120 @@ function BerkasTabPanel({ santriId }) {
     }
   }, [])
 
+  const isImageBerkas = useCallback((berkas) => {
+    const tipe = berkas?.tipe_file || ''
+    const nama = berkas?.nama_file || ''
+    return tipe.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(nama)
+  }, [])
+
+  const cacheBerkasBlob = useCallback(
+    async (berkas, { prefetch = false } = {}) => {
+      const idBerkas = berkas?.id
+      if (!idBerkas) return null
+
+      const cachedBlob = previewBlobCacheRef.current.get(idBerkas)
+      if (cachedBlob) return cachedBlob
+      if (prefetchingIdsRef.current.has(idBerkas)) return null
+
+      prefetchingIdsRef.current.add(idBerkas)
+      if (prefetch) {
+        setThumbnailLoadingById((prev) => ({ ...prev, [idBerkas]: true }))
+      }
+
+      try {
+        const blob = await pendaftaranAPI.downloadBerkas(idBerkas)
+        previewBlobCacheRef.current.set(idBerkas, blob)
+
+        if (isImageBerkas(berkas) && !thumbnailObjectUrlRef.current.has(idBerkas)) {
+          const objectUrl = window.URL.createObjectURL(blob)
+          thumbnailObjectUrlRef.current.set(idBerkas, objectUrl)
+          setThumbnailUrlById((prev) => ({ ...prev, [idBerkas]: objectUrl }))
+        }
+
+        return blob
+      } catch (err) {
+        if (!prefetch) {
+          showNotification('Gagal memuat preview berkas', 'error')
+        }
+        return null
+      } finally {
+        prefetchingIdsRef.current.delete(idBerkas)
+        if (prefetch) {
+          setThumbnailLoadingById((prev) => ({ ...prev, [idBerkas]: false }))
+        }
+      }
+    },
+    [isImageBerkas, showNotification]
+  )
+
+  const prefetchBerkasPreview = useCallback(
+    (berkas) => {
+      if (!berkas || !isImageBerkas(berkas)) return
+      void cacheBerkasBlob(berkas, { prefetch: true })
+    },
+    [cacheBerkasBlob, isImageBerkas]
+  )
+
+  const downloadForPreview = useCallback(
+    async (idBerkas) => {
+      const cachedBlob = previewBlobCacheRef.current.get(idBerkas)
+      if (cachedBlob) return cachedBlob
+
+      const berkas = berkasList.find((item) => item.id === idBerkas)
+      if (berkas) {
+        const result = await cacheBerkasBlob(berkas)
+        if (result) return result
+      }
+
+      const blob = await pendaftaranAPI.downloadBerkas(idBerkas)
+      previewBlobCacheRef.current.set(idBerkas, blob)
+      return blob
+    },
+    [berkasList, cacheBerkasBlob]
+  )
+
+  useEffect(() => {
+    const validIds = new Set(berkasList.map((b) => b.id))
+
+    for (const [id, url] of thumbnailObjectUrlRef.current.entries()) {
+      if (!validIds.has(id)) {
+        window.URL.revokeObjectURL(url)
+        thumbnailObjectUrlRef.current.delete(id)
+        previewBlobCacheRef.current.delete(id)
+      }
+    }
+
+    setThumbnailUrlById((prev) => {
+      const next = {}
+      Object.entries(prev).forEach(([id, url]) => {
+        if (validIds.has(Number(id)) || validIds.has(id)) {
+          next[id] = url
+        }
+      })
+      return next
+    })
+  }, [berkasList])
+
+  useEffect(() => {
+    const imageBerkas = berkasList.filter((b) => !b.status_tidak_ada && isImageBerkas(b))
+    imageBerkas.slice(0, 6).forEach((berkas) => {
+      if (!thumbnailObjectUrlRef.current.has(berkas.id)) {
+        void cacheBerkasBlob(berkas, { prefetch: true })
+      }
+    })
+  }, [berkasList, cacheBerkasBlob, isImageBerkas])
+
+  useEffect(() => {
+    return () => {
+      for (const url of thumbnailObjectUrlRef.current.values()) {
+        window.URL.revokeObjectURL(url)
+      }
+      thumbnailObjectUrlRef.current.clear()
+      previewBlobCacheRef.current.clear()
+      prefetchingIdsRef.current.clear()
+    }
+  }, [])
+
   const handleCameraImageEditorSave = useCallback(
     async (editedFile) => {
       const fileToUse = await applyCompressIfNeeded(editedFile)
@@ -279,6 +397,9 @@ function BerkasTabPanel({ santriId }) {
         toggleBerkasNotAvailable={toggleBerkasNotAvailable}
         kkSamaDenganSantri={kkSamaDenganSantri}
         toggleKkSamaDenganSantri={toggleKkSamaDenganSantri}
+        thumbnailUrlById={thumbnailUrlById}
+        thumbnailLoadingById={thumbnailLoadingById}
+        prefetchBerkasPreview={prefetchBerkasPreview}
       />
 
       <BerkasOffcanvas

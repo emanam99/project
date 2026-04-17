@@ -92,9 +92,11 @@ const dateBlockLayoutTransition = { type: 'tween', duration: 0.4, ease: [0.25, 0
 import { profilAPI, pendaftaranAPI } from '../../../services/api'
 import { buildFlatNavMenusFromFitur, iconKeyForPathFromCatalog } from '../../../utils/menuCatalogNav'
 import { getIcon } from '../../../config/menuIcons'
-import { getTanggalFromAPI } from '../../../utils/hijriDate'
+import { getTanggalFromAPI, getBootPenanggalanPair, persistPenanggalanHariIni } from '../../../utils/hijriDate'
+import { getMasehiKeyHariIni, idbGetToday, readTodayPenanggalanSync } from '../../../services/hijriPenanggalanStorage'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useSidebarStore } from '../../../store/sidebarStore'
+import BerandaAbsenSection from './BerandaAbsenSection'
 
 const BULAN_MASEHI = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const BULAN_HIJRIYAH = ['Muharram', 'Safar', "Rabiul Awal", "Rabiul Akhir", "Jumadil Awal", "Jumadil Akhir", 'Rajab', "Sya'ban", 'Ramadhan', 'Syawal', "Dzulqa'dah", 'Dzulhijjah']
@@ -247,7 +249,10 @@ export default function Beranda() {
   const [aktivitasLoading, setAktivitasLoading] = useState(false)
   const [showMenuScrollbar, setShowMenuScrollbar] = useState(false)
   const menuScrollTimeoutRef = useRef(null)
-  const [todayTanggal, setTodayTanggal] = useState({ masehi: null, hijriyah: null })
+  const [todayTanggal, setTodayTanggal] = useState(() => {
+    const b = getBootPenanggalanPair()
+    return { masehi: b.masehi, hijriyah: b.hijriyah || null }
+  })
   const [paymentHariIni, setPaymentHariIni] = useState(null)
   const [paymentHariIniLoading, setPaymentHariIniLoading] = useState(false)
   const [ringkasanKeuangan, setRingkasanKeuangan] = useState(null)
@@ -286,14 +291,41 @@ export default function Beranda() {
     return () => clearInterval(id)
   }, [])
 
-  // Tanggal hari ini (Hijriyah + Masehi)
+  // Tanggal hari ini: cache mirror/IndexedDB dulu, lalu segarkan dari API
   useEffect(() => {
     let cancelled = false
-    getTanggalFromAPI().then((res) => {
-      if (!cancelled && res) setTodayTanggal({ masehi: res.masehi || null, hijriyah: res.hijriyah || null })
-    }).catch(() => {
-      if (!cancelled) setTodayTanggal({ masehi: new Date().toISOString().slice(0, 10), hijriyah: null })
-    })
+    const iso = getMasehiKeyHariIni()
+    if (!readTodayPenanggalanSync()?.hijriyah) {
+      ;(async () => {
+        const row = await idbGetToday(iso)
+        const p = row?.payload
+        if (cancelled || !p || Array.isArray(p) || !p.hijriyah || p.hijriyah === '0000-00-00') return
+        persistPenanggalanHariIni(p)
+        setTodayTanggal((prev) => ({
+          masehi: p.masehi?.slice(0, 10) || prev.masehi || iso,
+          hijriyah: prev.hijriyah || String(p.hijriyah).slice(0, 10)
+        }))
+      })()
+    }
+    getTanggalFromAPI()
+      .then((res) => {
+        if (cancelled || !res) return
+        setTodayTanggal((prev) => ({
+          masehi: res.masehi?.slice(0, 10) || prev.masehi || iso,
+          hijriyah:
+            res.hijriyah && res.hijriyah !== '-'
+              ? String(res.hijriyah).slice(0, 10)
+              : prev.hijriyah
+        }))
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTodayTanggal((prev) => ({
+            masehi: prev.masehi || iso,
+            hijriyah: prev.hijriyah
+          }))
+        }
+      })
     return () => { cancelled = true }
   }, [])
 
@@ -479,20 +511,29 @@ export default function Beranda() {
   // Menu Beranda: HP (<768px) ≤6 jadi 1 baris; tablet & PC (≥768px) ≤17 jadi 1 baris
   const menuSingleRowThreshold = winWidth >= 768 ? 17 : 6
 
+  const hijriTampilBeranda =
+    formatDDMMMMYYYY(todayTanggal.hijriyah, BULAN_HIJRIYAH) ??
+    (todayTanggal.masehi ? <span className="text-gray-400">⋯</span> : '–')
+
   /* Konten tanggal & jam (dipakai di posisi bawah dan kanan) untuk animasi layoutId */
   const dateTimeContent = (
     <>
-      <div>
+      <motion.div
+        key={`beranda-tgl-${todayTanggal.hijriyah || 'x'}-${todayTanggal.masehi || 'y'}`}
+        initial={{ opacity: 0.55, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+      >
         <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Tanggal</p>
         <p className="text-[11px] leading-tight text-gray-700 dark:text-gray-200">
-          {formatDDMMMMYYYY(todayTanggal.hijriyah, BULAN_HIJRIYAH) ?? '–'}
+          {hijriTampilBeranda}
           <span className="text-[9px] text-teal-500/90 ml-0.5">H</span>
         </p>
         <p className="text-[11px] leading-tight text-gray-700 dark:text-gray-200">
           {formatDDMMMMYYYY(todayTanggal.masehi, BULAN_MASEHI) ?? '–'}
           <span className="text-[9px] text-teal-500/90 ml-0.5">M</span>
         </p>
-      </div>
+      </motion.div>
       <div>
         <p className="text-[10px] font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Hari & Jam</p>
         <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-tight">{getHariIndonesia(waktuSekarang)}</p>
@@ -623,7 +664,7 @@ export default function Beranda() {
                 <div className="rounded-lg bg-slate-50 dark:bg-gray-700/40 p-2.5 text-center">
                   <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Tanggal</p>
                   <p className="text-[10px] leading-tight text-gray-700 dark:text-gray-200">
-                    {formatDDMMMMYYYY(todayTanggal.hijriyah, BULAN_HIJRIYAH) ?? '–'}
+                    {hijriTampilBeranda}
                     <span className="text-[9px] text-teal-500/90 ml-0.5">H</span>
                   </p>
                   <p className="text-[10px] leading-tight text-gray-700 dark:text-gray-200">
@@ -766,6 +807,8 @@ export default function Beranda() {
           </motion.div>
         </div>
       </motion.section>
+
+      <BerandaAbsenSection />
 
       {/* Total Pendaftaran — hanya admin_psb / petugas_psb (Pendaftar, Santri Baru, Formal, Diniyah) */}
       {widgetAllowed(BERANDA_WIDGET_CODES.totalPendaftaran) && (

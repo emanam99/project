@@ -68,6 +68,17 @@ function BerkasOffcanvas({
   const [selectedFile, setSelectedFile] = useState(null)
   const [keterangan, setKeterangan] = useState('')
   const [previewUrl, setPreviewUrl] = useState(null)
+  const [closeLockedUntil, setCloseLockedUntil] = useState(0)
+
+  const canCloseOffcanvas = useCallback(() => {
+    if (imageEditorOpen) return false
+    return Date.now() >= closeLockedUntil
+  }, [imageEditorOpen, closeLockedUntil])
+
+  const requestCloseOffcanvas = useCallback(() => {
+    if (!canCloseOffcanvas()) return
+    onClose?.()
+  }, [canCloseOffcanvas, onClose])
 
   useEffect(() => {
     if (selectedFile?.type?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(selectedFile?.name || '')) {
@@ -92,7 +103,8 @@ function BerkasOffcanvas({
         setKeterangan(existingBerkas.keterangan || '')
       } else {
         const dariEditor = sessionStorage.getItem('uploadingBerkasJenis')
-        setJenisBerkas(dariEditor || defaultJenisBerkas || 'Ijazah SD Sederajat')
+        // Pilihan terbaru dari parent selalu diprioritaskan agar tidak "nyangkut" di jenis berkas sebelumnya.
+        setJenisBerkas(defaultJenisBerkas || dariEditor || 'Ijazah SD Sederajat')
         setKeterangan('')
       }
     } else if (!isOpen && !defaultFile) {
@@ -154,8 +166,9 @@ function BerkasOffcanvas({
         showNotification(existingBerkas ? 'Berkas diganti' : 'Berkas terupload', 'success')
         setSelectedFile(null)
         setKeterangan('')
+        sessionStorage.removeItem('uploadingBerkasJenis')
         onUploadSuccess?.()
-        setTimeout(() => onClose?.(), 400)
+        setTimeout(() => requestCloseOffcanvas(), 400)
       } else {
         showNotification(result.message || 'Gagal upload', 'error')
       }
@@ -169,7 +182,7 @@ function BerkasOffcanvas({
   const openCamera = () => {
     sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas)
     setShowCameraScanner?.(true)
-    onClose?.()
+    requestCloseOffcanvas()
   }
 
   const fileReady = selectedFile && selectedFile.size <= 1024 * 1024
@@ -187,7 +200,7 @@ function BerkasOffcanvas({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          onClick={onClose}
+          onClick={requestCloseOffcanvas}
           className="fixed inset-0 bg-black/40 backdrop-blur-sm"
           style={{ zIndex: backdropZ }}
         />
@@ -241,7 +254,7 @@ function BerkasOffcanvas({
                 </h2>
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={requestCloseOffcanvas}
                   className="p-2 -m-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
                   aria-label="Tutup"
                 >
@@ -327,6 +340,7 @@ function BerkasOffcanvas({
                                 onClick={() => {
                                   sessionStorage.setItem('uploadingBerkasJenis', jenisBerkas)
                                   setImageFileForEditor(selectedFile)
+                                  setCloseLockedUntil(Date.now() + 500)
                                   setImageEditorOpen(true)
                                 }}
                                 className="text-xs text-teal-600 dark:text-teal-400 hover:underline"
@@ -392,7 +406,10 @@ function BerkasOffcanvas({
         isOpen={imageEditorOpen}
         imageFile={imageFileForEditor}
         onClose={closeImageEditor}
-        onSave={handleImageEditorSave}
+        onSave={async (editedFile) => {
+          setCloseLockedUntil(Date.now() + 700)
+          await handleImageEditorSave(editedFile)
+        }}
         zIndex={editorModalZ}
       />
     </>

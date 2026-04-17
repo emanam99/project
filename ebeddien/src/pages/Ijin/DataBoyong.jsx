@@ -37,7 +37,8 @@ function DataBoyong() {
     formal: '',
     tanggal_hijriyah: '',
     tahun_hijriyah: '',
-    tahun_masehi: ''
+    tahun_masehi: '',
+    sudah_mengurusi: 1
   })
   const [selectedSantriDetail, setSelectedSantriDetail] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -148,7 +149,13 @@ function DataBoyong() {
     return [...filteredList].sort((a, b) => {
       const av = a[key] ?? ''
       const bv = b[key] ?? ''
-      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'id')
+      let cmp
+      if (key === 'sudah_mengurusi') {
+        cmp = Number(av) - Number(bv)
+      } else {
+        cmp =
+          typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'id')
+      }
       return cmp * dir
     })
   }, [filteredList, sortConfig.key, sortConfig.direction])
@@ -165,6 +172,21 @@ function DataBoyong() {
     let direction = 'asc'
     if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc'
     setSortConfig({ key, direction })
+  }
+
+  const handleToggleSudahMengurusi = async (e, row) => {
+    e.stopPropagation()
+    const next = Number(row.sudah_mengurusi) === 1 ? 0 : 1
+    try {
+      const res = await boyongAPI.update(row.id, { sudah_mengurusi: next })
+      if (res.success) {
+        setList((prev) => prev.map((r) => (r.id === row.id ? { ...r, sudah_mengurusi: next } : r)))
+      } else {
+        alert(res.message || 'Gagal memperbarui status')
+      }
+    } catch (err) {
+      alert(err.message || 'Terjadi kesalahan')
+    }
   }
 
   const SortIcon = ({ columnKey }) => {
@@ -205,6 +227,7 @@ function DataBoyong() {
       'Tanggal Hijriyah': row.tanggal_hijriyah || '',
       'Tahun Ajaran (H)': row.tahun_hijriyah || '',
       'Tahun Ajaran (M)': row.tahun_masehi || '',
+      'Sudah mengurusi': Number(row.sudah_mengurusi) === 1 ? 'Ya' : 'Belum',
       'Dibuat oleh': row.pengurus_nama || ''
     }))
     const wb = XLSX.utils.book_new()
@@ -284,7 +307,8 @@ function DataBoyong() {
       formal: '',
       tanggal_hijriyah: '',
       tahun_hijriyah: tahunAjaran,
-      tahun_masehi: tahunAjaranMasehi
+      tahun_masehi: tahunAjaranMasehi,
+      sudah_mengurusi: 1
     })
     setSelectedSantriDetail(null)
     setShowForm(true)
@@ -330,7 +354,8 @@ function DataBoyong() {
       formal: row.formal || '',
       tanggal_hijriyah: row.tanggal_hijriyah || '',
       tahun_hijriyah: row.tahun_hijriyah || tahunAjaran,
-      tahun_masehi: row.tahun_masehi || tahunAjaranMasehi
+      tahun_masehi: row.tahun_masehi || tahunAjaranMasehi,
+      sudah_mengurusi: Number(row.sudah_mengurusi) === 1 ? 1 : 0
     })
     setShowForm(true)
   }
@@ -343,7 +368,7 @@ function DataBoyong() {
     }
     setSaving(true)
     try {
-      const payload = {
+      const basePayload = {
         id_santri: parseInt(form.id_santri, 10),
         diniyah: form.diniyah || null,
         formal: form.formal || null,
@@ -351,6 +376,9 @@ function DataBoyong() {
         tahun_hijriyah: form.tahun_hijriyah || null,
         tahun_masehi: form.tahun_masehi || null
       }
+      const payload = editingId
+        ? { ...basePayload, sudah_mengurusi: Number(form.sudah_mengurusi) === 1 ? 1 : 0 }
+        : basePayload
       if (editingId) {
         const res = await boyongAPI.update(editingId, payload)
         if (res.success) {
@@ -364,6 +392,7 @@ function DataBoyong() {
                     tanggal_hijriyah: payload.tanggal_hijriyah,
                     tahun_hijriyah: payload.tahun_hijriyah,
                     tahun_masehi: payload.tahun_masehi,
+                    sudah_mengurusi: payload.sudah_mengurusi,
                     santri_nama: form.selectedSantriNama
                   }
                 : row
@@ -701,13 +730,20 @@ function DataBoyong() {
                     >
                       <span className="inline-flex items-center gap-1">Th. Masehi <SortIcon columnKey="tahun_masehi" /></span>
                     </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap cursor-pointer select-none"
+                      onClick={() => handleSort('sudah_mengurusi')}
+                      title="Surat/administrasi dari halaman ini"
+                    >
+                      <span className="inline-flex items-center gap-1">Mengurusi <SortIcon columnKey="sudah_mengurusi" /></span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                   {paginatedData.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         className="px-4 py-8 text-center text-gray-500 dark:text-gray-400 text-sm"
                       >
                         {(searchTerm || diniyahFilter || formalFilter || hijriyahFilter || adminFilter || tahunHijriyahFilter || tahunMasehiFilter)
@@ -745,6 +781,27 @@ function DataBoyong() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                           {row.tahun_masehi || '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={Number(row.sudah_mengurusi) === 1}
+                            onClick={(e) => handleToggleSudahMengurusi(e, row)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1 dark:focus:ring-offset-gray-800 ${
+                              Number(row.sudah_mengurusi) === 1 ? 'bg-teal-600' : 'bg-gray-300 dark:bg-gray-600'
+                            }`}
+                            title={Number(row.sudah_mengurusi) === 1 ? 'Sudah mengurusi' : 'Belum mengurusi'}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                                Number(row.sudah_mengurusi) === 1 ? 'translate-x-5' : 'translate-x-0.5'
+                              }`}
+                            />
+                          </button>
+                          <span className="sr-only">
+                            {Number(row.sudah_mengurusi) === 1 ? 'Sudah mengurusi' : 'Belum mengurusi'}
+                          </span>
                         </td>
                       </tr>
                     ))
@@ -1004,6 +1061,35 @@ function DataBoyong() {
                   <p className="text-gray-800 dark:text-gray-200 font-medium">
                     {optionsMasehi.find((o) => o.value === form.tahun_masehi)?.label || form.tahun_masehi || '-'}
                   </p>
+                </div>
+                <div>
+                  <span className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Sudah mengurusi (surat / administrasi)
+                  </span>
+                  {editingId ? (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={Number(form.sudah_mengurusi) === 1}
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          sudah_mengurusi: Number(f.sudah_mengurusi) === 1 ? 0 : 1
+                        }))
+                      }
+                      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                        Number(form.sudah_mengurusi) === 1 ? 'bg-teal-600' : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow transition ${
+                          Number(form.sudah_mengurusi) === 1 ? 'translate-x-5' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                  ) : (
+                    <p className="text-sm text-gray-700 dark:text-gray-300">Ya (otomatis untuk entri dari halaman ini)</p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2 pt-4">
                   <button

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { absenPengurusAPI, lembagaAPI } from '../../../services/api'
+import { buildPengeluaranLembagaFilterOptions } from '../../Keuangan/Pengeluaran/utils/lembagaFilterOptions'
 import RekapAbsenOffcanvas from '../components/RekapAbsenOffcanvas'
 
 const PAGE_LIMIT = 50
@@ -147,7 +148,10 @@ function AbsenRow({ row, isLast }) {
   )
 }
 
-export default function AbsenRiwayatTab() {
+export default function AbsenRiwayatTab({
+  allowedLembagaIdsRiwayat = null,
+  riwayatLembagaFilterLocked = false
+}) {
   const [searchParams, setSearchParams] = useSearchParams()
   const rekapOpen = searchParams.get(REKAP_SEARCH_KEY) === '1'
 
@@ -182,9 +186,17 @@ export default function AbsenRiwayatTab() {
   const [searchInput, setSearchInput] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
   const [lembagaId, setLembagaId] = useState('')
-  const [lembagaOptions, setLembagaOptions] = useState([])
+  const [lembagaRows, setLembagaRows] = useState([])
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
+
+  const lembagaFilterDisabled =
+    riwayatLembagaFilterLocked && allowedLembagaIdsRiwayat?.length === 1
+
+  const lembagaSelectOptions = useMemo(
+    () => buildPengeluaranLembagaFilterOptions(lembagaRows, allowedLembagaIdsRiwayat),
+    [lembagaRows, allowedLembagaIdsRiwayat]
+  )
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(searchInput.trim()), 350)
@@ -196,12 +208,25 @@ export default function AbsenRiwayatTab() {
     lembagaAPI.getAll().then((res) => {
       if (cancelled) return
       const raw = res?.data ?? res
-      setLembagaOptions(Array.isArray(raw) ? raw : [])
+      setLembagaRows(Array.isArray(raw) ? raw : [])
     }).catch(() => {
-      if (!cancelled) setLembagaOptions([])
+      if (!cancelled) setLembagaRows([])
     })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (riwayatLembagaFilterLocked && allowedLembagaIdsRiwayat?.length === 1) {
+      setLembagaId(allowedLembagaIdsRiwayat[0])
+    }
+  }, [riwayatLembagaFilterLocked, allowedLembagaIdsRiwayat])
+
+  useEffect(() => {
+    if (allowedLembagaIdsRiwayat == null || allowedLembagaIdsRiwayat.length === 0) return
+    if (lembagaId && !allowedLembagaIdsRiwayat.includes(lembagaId)) {
+      setLembagaId(allowedLembagaIdsRiwayat.length === 1 ? allowedLembagaIdsRiwayat[0] : '')
+    }
+  }, [allowedLembagaIdsRiwayat, lembagaId])
 
   const fetchPage = useCallback(async (isLoadMore, currentOffset) => {
     const off = isLoadMore ? currentOffset : 0
@@ -253,8 +278,8 @@ export default function AbsenRiwayatTab() {
 
   const handleResetFilter = useCallback(() => {
     setSearchInput('')
-    setLembagaId('')
-  }, [])
+    if (!lembagaFilterDisabled) setLembagaId('')
+  }, [lembagaFilterDisabled])
 
   return (
     <>
@@ -313,12 +338,17 @@ export default function AbsenRiwayatTab() {
                   <select
                     value={lembagaId}
                     onChange={(e) => setLembagaId(e.target.value)}
-                    className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                    disabled={lembagaFilterDisabled}
+                    title={
+                      lembagaFilterDisabled
+                        ? 'Filter lembaga mengikuti akses peran Anda'
+                        : undefined
+                    }
+                    className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 disabled:opacity-60"
                   >
-                    <option value="">Lembaga</option>
-                    {lembagaOptions.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.nama || l.id}
+                    {lembagaSelectOptions.map((o) => (
+                      <option key={o.value || '_all'} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </select>

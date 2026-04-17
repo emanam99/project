@@ -152,6 +152,57 @@ class UwabaController
     }
 
     /**
+     * GET /api/uwaba/all-rows?id= — Semua baris uwaba santri (semua tahun ajaran), untuk agregasi wajib/json.
+     * Urutan: tahun_ajaran ASC, id ASC (iterasi terakhir menang dedupe nominal sama).
+     */
+    public function getAllUwabaRowsBySantri(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            $idParam = $queryParams['id'] ?? '';
+
+            $idSantri = SantriHelper::resolveId($this->db, $idParam);
+            if ($idSantri === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Santri tidak ditemukan',
+                    'data' => [],
+                ], 404);
+            }
+
+            $stmtCheckTable = $this->db->prepare("SHOW TABLES LIKE 'uwaba'");
+            $stmtCheckTable->execute();
+            if ($stmtCheckTable->rowCount() === 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tabel uwaba tidak ditemukan',
+                    'data' => [],
+                ], 404);
+            }
+
+            $stmt = $this->db->prepare(
+                'SELECT id, tahun_ajaran, id_bulan, bulan, wajib, JSON_UNQUOTE(json) AS json_data '
+                . 'FROM uwaba WHERE id_santri = ? ORDER BY tahun_ajaran ASC, id ASC'
+            );
+            $stmt->execute([$idSantri]);
+            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $data,
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Get all uwaba rows error: ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Database error: ' . $e->getMessage(),
+                'data' => [],
+            ], 500);
+        }
+    }
+
+    /**
      * GET /api/uwaba/test-santri-count - Test untuk menghitung santri
      */
     public function testSantriCount(Request $request, Response $response): Response

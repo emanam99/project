@@ -79,10 +79,10 @@ function UwabaDataSantri() {
     
     return dataSantri.map(santri => {
       const biodata = {
-        status_santri: santri.status,
+        status_santri: santri.status_santri || santri.status,
         kategori: santri.kategori,
-        diniyah: santri.diniyah,
-        formal: santri.formal,
+        diniyah: santri.lembaga_id_diniyah || santri.diniyah,
+        formal: santri.lembaga_id_formal || santri.formal,
         lttq: santri.lttq,
         saudara_di_pesantren: santri.saudara_di_pesantren
       }

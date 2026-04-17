@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Config\RolePolicyResolver;
 use App\Database;
 use App\Helpers\PengurusHelper;
+use App\Helpers\RoleBolehAssignHelper;
 use App\Helpers\RoleHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -42,6 +43,156 @@ class ManageUsersController
         return 'Data akun sudah dipakai';
     }
 
+    private const FITUR_PENGURUS_FILTER_LEMBAGA_SEMUA = 'action.pengurus.filter.lembaga_semua';
+
+    /**
+     * Ruang lingkup lembaga untuk GET /api/manage-users: super / aksi semua / role tanpa batas / union lembaga penugasan.
+     *
+     * @return null|list<string> null = tanpa filter tambahan; [] = tidak ada akses; non-empty = batasi baris pengurus
+     */
+    private function resolvePengurusListLembagaScopeIds(Request $request): ?array
+    {
+        $user = $request->getAttribute('user');
+        if (!\is_array($user)) {
+            return [];
+        }
+        if (RoleHelper::tokenHasAnyRoleKey($user, ['super_admin'])) {
+            return null;
+        }
+        if (RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, self::FITUR_PENGURUS_FILTER_LEMBAGA_SEMUA)) {
+            return null;
+        }
+        $pid = RoleHelper::getPengurusIdFromPayload($user);
+        if ($pid === null || $pid <= 0) {
+            return [];
+        }
+        $scope = RoleHelper::computeLembagaAccessUnion($pid);
+        if ($scope['lembaga_scope_all']) {
+            return null;
+        }
+        $allowed = $scope['lembaga_ids'];
+        if ($allowed === []) {
+            return [];
+        }
+
+        return \array_values($allowed);
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     *
+     * @return array{clause: string, params: list<mixed>}
+     */
+    private function buildPengurusLembagaScopeWhere(int $viewerPengurusId, array $scopeIds): array
+    {
+        $placeholders = implode(',', array_fill(0, \count($scopeIds), '?'));
+        $clause = "(
+            p.id = ?
+            OR EXISTS (
+                SELECT 1 FROM pengurus___jabatan pj_sc
+                INNER JOIN jabatan j_sc ON pj_sc.jabatan_id = j_sc.id
+                WHERE pj_sc.pengurus_id = p.id AND pj_sc.status = 'aktif'
+                AND COALESCE(pj_sc.lembaga_id, j_sc.lembaga_id) IN ({$placeholders})
+            )
+            OR EXISTS (
+                SELECT 1 FROM pengurus___role pr_sc
+                WHERE pr_sc.pengurus_id = p.id
+                AND pr_sc.lembaga_id IS NOT NULL AND TRIM(pr_sc.lembaga_id) != ''
+                AND pr_sc.lembaga_id IN ({$placeholders})
+            )
+        )";
+        $params = \array_merge([$viewerPengurusId], $scopeIds, $scopeIds);
+
+        return ['clause' => $clause, 'params' => $params];
+    }
+
+    private function pengurusTargetVisibleInScope(Request $request, string $targetPengurusId): bool
+    {
+        $scopeIds = $this->resolvePengurusListLembagaScopeIds($request);
+        if ($scopeIds === null) {
+            return true;
+        }
+        if ($scopeIds === []) {
+            return false;
+        }
+        $user = $request->getAttribute('user');
+        $viewer = RoleHelper::getPengurusIdFromPayload(\is_array($user) ? $user : []);
+        if ($viewer !== null && (string) $viewer === (string) $targetPengurusId) {
+            return true;
+        }
+        $w = $this->buildPengurusLembagaScopeWhere((int) $viewer, $scopeIds);
+        $sql = 'SELECT 1 FROM pengurus p WHERE p.id = ? AND ' . $w['clause'] . ' LIMIT 1';
+        $params = \array_merge([$targetPengurusId], $w['params']);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * @return Response|null Response 403 jika tidak boleh mengelola pengurus ini
+     */
+    private function denyIfNoPengurusLembagaAccess(Request $request, Response $response, string $pengurusIdResolved): ?Response
+    {
+        if ($this->pengurusTargetVisibleInScope($request, $pengurusIdResolved)) {
+            return null;
+        }
+
+        return $this->jsonResponse($response, [
+            'success' => false,
+            'message' => 'Anda tidak memiliki akses ke data pengurus ini.',
+        ], 403);
+    }
+
+    /**
+     * Penegakan role___boleh_assign_role (+ bypass action.pengurus.role.assign_semua / super_admin).
+     *
+     * @param list<int|string> $roleIds
+     *
+     * @return Response|null
+     */
+    private function denyIfRoleIdsNotAssignable(Request $request, Response $response, array $roleIds): ?Response
+    {
+        $normalized = [];
+        foreach ($roleIds as $x) {
+            $rid = (int) $x;
+            if ($rid > 0) {
+                $normalized[$rid] = true;
+            }
+        }
+        $ids = array_keys($normalized);
+        if ($ids === []) {
+            return null;
+        }
+        $user = $request->getAttribute('user');
+        if (!\is_array($user)) {
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Tidak terautentikasi',
+            ], 401);
+        }
+        $allowed = RoleBolehAssignHelper::resolveAssignableRoleIds($this->db, $user);
+        if ($allowed === []) {
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Anda tidak memiliki wewenang mengubah penugasan role.',
+            ], 403);
+        }
+        if ($allowed === null) {
+            return null;
+        }
+        foreach ($ids as $rid) {
+            if (!RoleBolehAssignHelper::roleIdAllowed($allowed, $rid)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Salah satu role tidak boleh ditugaskan atau dicabut menurut kebijakan lembaga.',
+                ], 403);
+            }
+        }
+
+        return null;
+    }
+
     /**
      * GET /api/manage-users - Get all users with pagination and filters
      */
@@ -62,6 +213,36 @@ class ManageUsersController
             $lembagaKategoriFilter = isset($queryParams['lembaga_kategori']) ? trim($queryParams['lembaga_kategori']) : '';
             $jabatanIdFilter = isset($queryParams['jabatan_id']) ? (int)$queryParams['jabatan_id'] : 0;
             $roleIdFilter = isset($queryParams['role_id']) ? (int)$queryParams['role_id'] : 0;
+
+            $scopeIds = $this->resolvePengurusListLembagaScopeIds($request);
+            if (\is_array($scopeIds) && $scopeIds === []) {
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'data' => [
+                        'users' => [],
+                        'pagination' => [
+                            'current_page' => $page,
+                            'per_page' => $limit,
+                            'total' => 0,
+                            'total_pages' => 0,
+                        ],
+                    ],
+                ], 200);
+            }
+            if (\is_array($scopeIds) && $scopeIds !== [] && $jabatanLembagaFilter !== '' && !\in_array($jabatanLembagaFilter, $scopeIds, true)) {
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'data' => [
+                        'users' => [],
+                        'pagination' => [
+                            'current_page' => $page,
+                            'per_page' => $limit,
+                            'total' => 0,
+                            'total_pages' => 0,
+                        ],
+                    ],
+                ], 200);
+            }
             
             // Build WHERE clause
             $whereConditions = [];
@@ -88,8 +269,27 @@ class ManageUsersController
             
             // Filter kategori lembaga (pengurus yang punya jabatan/lembaga dengan kategori tersebut)
             if ($lembagaKategoriFilter !== '') {
-                $whereConditions[] = "EXISTS (SELECT 1 FROM pengurus___jabatan pj2 INNER JOIN jabatan j2 ON pj2.jabatan_id = j2.id LEFT JOIN lembaga l2 ON l2.id = COALESCE(pj2.lembaga_id, j2.lembaga_id) WHERE pj2.pengurus_id = p.id AND pj2.status = 'aktif' AND l2.kategori = ?)";
-                $params[] = $lembagaKategoriFilter;
+                if (\is_array($scopeIds) && $scopeIds !== []) {
+                    $phKat = implode(',', array_fill(0, \count($scopeIds), '?'));
+                    $whereConditions[] = "EXISTS (SELECT 1 FROM pengurus___jabatan pj2 INNER JOIN jabatan j2 ON pj2.jabatan_id = j2.id LEFT JOIN lembaga l2 ON l2.id = COALESCE(pj2.lembaga_id, j2.lembaga_id) WHERE pj2.pengurus_id = p.id AND pj2.status = 'aktif' AND l2.kategori = ? AND l2.id IN ({$phKat}))";
+                    $params[] = $lembagaKategoriFilter;
+                    foreach ($scopeIds as $sid) {
+                        $params[] = $sid;
+                    }
+                } else {
+                    $whereConditions[] = "EXISTS (SELECT 1 FROM pengurus___jabatan pj2 INNER JOIN jabatan j2 ON pj2.jabatan_id = j2.id LEFT JOIN lembaga l2 ON l2.id = COALESCE(pj2.lembaga_id, j2.lembaga_id) WHERE pj2.pengurus_id = p.id AND pj2.status = 'aktif' AND l2.kategori = ?)";
+                    $params[] = $lembagaKategoriFilter;
+                }
+            }
+
+            if (\is_array($scopeIds) && $scopeIds !== []) {
+                $user = $request->getAttribute('user');
+                $viewer = RoleHelper::getPengurusIdFromPayload(\is_array($user) ? $user : []);
+                $wScope = $this->buildPengurusLembagaScopeWhere((int) $viewer, $scopeIds);
+                $whereConditions[] = $wScope['clause'];
+                foreach ($wScope['params'] as $wp) {
+                    $params[] = $wp;
+                }
             }
             
             // Filter jabatan (pengurus yang punya jabatan ini)
@@ -354,6 +554,19 @@ class ManageUsersController
             } elseif ($normalizedStatus === 'tidak aktif') {
                 $normalizedStatus = 'inactive';
             }
+
+            if (isset($data['roles']) && \is_array($data['roles']) && $data['roles'] !== []) {
+                $createRoleIds = [];
+                foreach ($data['roles'] as $roleData) {
+                    if (isset($roleData['role_id']) && $roleData['role_id'] !== '' && $roleData['role_id'] !== null) {
+                        $createRoleIds[] = (int) $roleData['role_id'];
+                    }
+                }
+                $denyCreateRoles = $this->denyIfRoleIdsNotAssignable($request, $response, $createRoleIds);
+                if ($denyCreateRoles !== null) {
+                    return $denyCreateRoles;
+                }
+            }
             
             // Insert pengurus: id AUTO_INCREMENT, nip dari input atau hasil generate (transaksi sudah aktif bila NIP di-generate)
             try {
@@ -462,6 +675,11 @@ class ManageUsersController
                     'message' => 'User tidak ditemukan'
                 ], 404);
             }
+
+            $denyUpd = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($denyUpd !== null) {
+                return $denyUpd;
+            }
             
             // Ambil id_user untuk update email/whatsapp/password di tabel users
             $idUserStmt = $this->db->prepare("SELECT id_user FROM pengurus WHERE id = ?");
@@ -558,6 +776,28 @@ class ManageUsersController
             
             // Handle roles update (array of roles)
             if (isset($data['roles']) && is_array($data['roles'])) {
+                $oldStmt = $this->db->prepare('SELECT DISTINCT role_id FROM pengurus___role WHERE pengurus_id = ?');
+                $oldStmt->execute([$userId]);
+                $oldRoleIdSet = [];
+                while ($or = $oldStmt->fetch(\PDO::FETCH_ASSOC)) {
+                    $oldRoleIdSet[(int) ($or['role_id'] ?? 0)] = true;
+                }
+                unset($oldRoleIdSet[0]);
+                $newRoleIdSet = [];
+                foreach ($data['roles'] as $roleData) {
+                    if (isset($roleData['role_id']) && $roleData['role_id'] !== '' && $roleData['role_id'] !== null) {
+                        $newRoleIdSet[(int) $roleData['role_id']] = true;
+                    }
+                }
+                unset($newRoleIdSet[0]);
+                $removed = \array_diff(\array_keys($oldRoleIdSet), \array_keys($newRoleIdSet));
+                $added = \array_diff(\array_keys($newRoleIdSet), \array_keys($oldRoleIdSet));
+                $deltaRoleIds = \array_merge($removed, $added);
+                $denyDelta = $this->denyIfRoleIdsNotAssignable($request, $response, $deltaRoleIds);
+                if ($denyDelta !== null) {
+                    return $denyDelta;
+                }
+
                 // Get current user from request for id_admin
                 $currentUser = $request->getAttribute('user');
                 $idAdmin = $currentUser['user_id'] ?? $userId;
@@ -639,6 +879,11 @@ class ManageUsersController
                     'success' => false,
                     'message' => 'User tidak ditemukan'
                 ], 404);
+            }
+
+            $denyDel = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($denyDel !== null) {
+                return $denyDel;
             }
             
             // Prevent deleting super_admin (salah satu dari banyak role pengurus target)
@@ -724,6 +969,11 @@ class ManageUsersController
                     'success' => false,
                     'message' => 'User tidak ditemukan'
                 ], 404);
+            }
+
+            $deny = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($deny !== null) {
+                return $deny;
             }
             
             // Get all roles data from pengurus___role
@@ -822,6 +1072,68 @@ class ManageUsersController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data roles: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/manage-users/roles/assignable-list — role yang boleh ditambahkan/dicabut oleh pengurus login (role___boleh_assign_role).
+     */
+    public function getAssignableRolesList(Request $request, Response $response): Response
+    {
+        try {
+            $user = $request->getAttribute('user');
+            if (!\is_array($user)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tidak terautentikasi',
+                ], 401);
+            }
+
+            $allowed = RoleBolehAssignHelper::resolveAssignableRoleIds($this->db, $user);
+            if ($allowed === null) {
+                $stmt = $this->db->prepare('SELECT id, `key`, label FROM `role` ORDER BY id ASC');
+                $stmt->execute();
+                $roles = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'data' => $roles,
+                    'meta' => [
+                        'assignment_restricted' => false,
+                    ],
+                ], 200);
+            }
+            if ($allowed === []) {
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'data' => [],
+                    'meta' => [
+                        'assignment_restricted' => true,
+                        'assignable_role_ids' => [],
+                    ],
+                ], 200);
+            }
+
+            $placeholders = implode(',', array_fill(0, \count($allowed), '?'));
+            $stmt = $this->db->prepare("SELECT id, `key`, label FROM `role` WHERE id IN ({$placeholders}) ORDER BY id ASC");
+            $stmt->execute($allowed);
+            $roles = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $roles,
+                'meta' => [
+                    'assignment_restricted' => true,
+                    'assignable_role_ids' => $allowed,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('ManageUsersController::getAssignableRolesList ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil daftar role: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -1043,6 +1355,16 @@ class ManageUsersController
                     'message' => 'User tidak ditemukan'
                 ], 404);
             }
+
+            $denyRole = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($denyRole !== null) {
+                return $denyRole;
+            }
+
+            $denyAssign = $this->denyIfRoleIdsNotAssignable($request, $response, [(int) $roleId]);
+            if ($denyAssign !== null) {
+                return $denyAssign;
+            }
             
             // Check if role already exists for this user
             $checkRoleStmt = $this->db->prepare("SELECT id FROM pengurus___role WHERE pengurus_id = ? AND role_id = ?");
@@ -1106,15 +1428,26 @@ class ManageUsersController
             if (is_numeric($pengurusRoleId)) {
                 $pengurusRoleId = (int)$pengurusRoleId;
             }
+
+            $denyRmRole = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($denyRmRole !== null) {
+                return $denyRmRole;
+            }
             
             // Check if role exists
-            $checkStmt = $this->db->prepare("SELECT id FROM pengurus___role WHERE id = ? AND pengurus_id = ?");
+            $checkStmt = $this->db->prepare('SELECT id, role_id FROM pengurus___role WHERE id = ? AND pengurus_id = ?');
             $checkStmt->execute([$pengurusRoleId, $userId]);
-            if (!$checkStmt->fetch()) {
+            $prRow = $checkStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$prRow) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Role tidak ditemukan'
                 ], 404);
+            }
+
+            $denyRmAssignable = $this->denyIfRoleIdsNotAssignable($request, $response, [(int) ($prRow['role_id'] ?? 0)]);
+            if ($denyRmAssignable !== null) {
+                return $denyRmAssignable;
             }
             
             // Delete role
@@ -1176,6 +1509,11 @@ class ManageUsersController
                     'success' => false,
                     'message' => 'User tidak ditemukan'
                 ], 404);
+            }
+
+            $denyJab = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($denyJab !== null) {
+                return $denyJab;
             }
             
             // Check if jabatan exists
@@ -1258,6 +1596,11 @@ class ManageUsersController
             if (is_numeric($pengurusJabatanId)) {
                 $pengurusJabatanId = (int)$pengurusJabatanId;
             }
+
+            $denyRmJab = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($denyRmJab !== null) {
+                return $denyRmJab;
+            }
             
             // Check if jabatan exists
             $checkStmt = $this->db->prepare("SELECT id FROM pengurus___jabatan WHERE id = ? AND pengurus_id = ?");
@@ -1323,6 +1666,11 @@ class ManageUsersController
             }
             $userId = $userIdResolved;
             $pengurusJabatanId = (int) $pengurusJabatanId;
+
+            $denyJabSt = $this->denyIfNoPengurusLembagaAccess($request, $response, (string) $userId);
+            if ($denyJabSt !== null) {
+                return $denyJabSt;
+            }
 
             $checkStmt = $this->db->prepare("SELECT id FROM pengurus___jabatan WHERE id = ? AND pengurus_id = ?");
             $checkStmt->execute([$pengurusJabatanId, $userId]);

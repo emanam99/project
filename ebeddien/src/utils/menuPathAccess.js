@@ -1,5 +1,13 @@
 import { UGT_LAPORAN_ACTION_CODES } from '../config/ugtLaporanFiturCodes'
 
+/** Rute halaman Lembaga + aksi akses selain menu induk */
+const LEMBAGA_HALAMAN_PATH_ACTIONS = [
+  { prefix: '/santri', action: 'action.santri.halaman' },
+  { prefix: '/rombel', action: 'action.rombel.halaman' },
+  { prefix: '/manage-jabatan', action: 'action.manage_jabatan.halaman' },
+  { prefix: '/mapel', action: 'action.mapel.halaman' }
+]
+
 const UGT_LAPORAN_PATH_TO_TAB = {
   '/ugt/laporan/koordinator': UGT_LAPORAN_ACTION_CODES.tabKoordinator,
   '/ugt/laporan/gt': UGT_LAPORAN_ACTION_CODES.tabGt,
@@ -78,6 +86,14 @@ export function canAccessPathByFitur(pathname, fiturMenuCodes) {
     const apiHasTabs = codes.some((c) => String(c).startsWith('action.ugt.laporan.tab.'))
     if (apiHasTabs) return codes.includes(tabCode)
     return codesMatchAnyMenuCandidate(p, codes)
+  }
+
+  const base = norm.endsWith('/') && norm.length > 1 ? norm.slice(0, -1) : norm
+  for (const { prefix, action } of LEMBAGA_HALAMAN_PATH_ACTIONS) {
+    if (base === prefix || base.startsWith(`${prefix}/`)) {
+      if (codes.includes(action)) return true
+      return codesMatchAnyMenuCandidate(p, codes)
+    }
   }
 
   return codesMatchAnyMenuCandidate(p, codes)

@@ -19,7 +19,7 @@ final class LegacyRouteRoleDefinitions
             LegacyRouteRoleKeys::FINANCE_MENUS => ['admin_uwaba', 'admin_lembaga', 'petugas_keuangan', 'super_admin'],
             LegacyRouteRoleKeys::SUPER_ADMIN_MENUS => ['super_admin'],
             LegacyRouteRoleKeys::UGT_MENUS => ['admin_ugt', 'koordinator_ugt', 'super_admin'],
-            LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS => ['super_admin', 'tarbiyah'],
+            LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS => ['super_admin', 'tarbiyah', 'admin_daerah', 'kapdar', 'wakapdar'],
             LegacyRouteRoleKeys::KALENDER_GOOGLE_STAFF_SELECTORS => ['admin_kalender', 'super_admin'],
             LegacyRouteRoleKeys::PSB_STAFF_SUPER_SELECTORS => ['admin_psb', 'petugas_psb', 'super_admin', 'santri'],
             LegacyRouteRoleKeys::PSB_ADMIN_SUPER_SELECTORS => ['admin_psb', 'super_admin'],
@@ -43,10 +43,10 @@ final class LegacyRouteRoleDefinitions
             LegacyRouteRoleKeys::IJIN_BOYONG_SELECTORS => ['admin_ijin', 'super_admin'],
             LegacyRouteRoleKeys::MANAGE_USERS_V2_SELECTORS => ['super_admin', 'admin_cashless'],
             LegacyRouteRoleKeys::MANAGE_USERS_LEGACY_SELECTORS => ['super_admin', 'admin_ugt', 'tarbiyah'],
-            LegacyRouteRoleKeys::LEMBAGA_GET_SELECTORS => ['super_admin', 'admin_uwaba', 'admin_lembaga', 'tarbiyah'],
+            LegacyRouteRoleKeys::LEMBAGA_GET_SELECTORS => ['super_admin', 'admin_uwaba', 'admin_lembaga', 'tarbiyah', 'admin_daerah', 'kapdar', 'wakapdar'],
             LegacyRouteRoleKeys::LEMBAGA_WRITE_SELECTORS => ['super_admin', 'tarbiyah'],
-            LegacyRouteRoleKeys::ALAMAT_LIST_SELECTORS => ['admin_ugt', 'super_admin', 'tarbiyah'],
-            LegacyRouteRoleKeys::PENGURUS_LIST_SELECTORS => ['admin_ugt', 'super_admin', 'admin_uwaba', 'tarbiyah'],
+            LegacyRouteRoleKeys::ALAMAT_LIST_SELECTORS => ['admin_ugt', 'super_admin', 'tarbiyah', 'admin_daerah', 'kapdar', 'wakapdar'],
+            LegacyRouteRoleKeys::PENGURUS_LIST_SELECTORS => ['admin_ugt', 'super_admin', 'admin_uwaba', 'tarbiyah', 'admin_daerah', 'kapdar', 'wakapdar'],
         ];
     }
 

@@ -301,7 +301,7 @@ final class AiWhatsappBridgeService
         }
 
         $instansiPeek = AiWaInstansiSettingsService::getSettings($db);
-        if (!empty($instansiPeek['ai_wa_aktif'])) {
+        if (!empty($instansiPeek['ai_wa_aktif']) && WhatsAppService::getNotificationProvider() === 'wa_sendiri') {
             WhatsAppService::wakeWaServerThrottled(90);
         }
 

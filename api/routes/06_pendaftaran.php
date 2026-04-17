@@ -10,10 +10,14 @@ use App\Middleware\EbeddienFiturMiddleware;
 use App\Controllers\PendaftaranController;
 
 return function (\Slim\App $app): void {
+    // Opsi filter halaman Santri (kategori → daerah, kamar) — termasuk action.santri.halaman tanpa menu PSB penuh
     $app->group('/api/pendaftaran', function ($group) {
         $group->get('/kategori-options', [PendaftaranController::class, 'getKategoriOptions']);
         $group->get('/daerah-options', [PendaftaranController::class, 'getDaerahOptions']);
         $group->get('/kamar-options', [PendaftaranController::class, 'getKamarOptions']);
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::pendaftaranSantriFilterOptionsSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::PSB_STAFF_SUPER_SELECTORS)))->add(new AuthMiddleware());
+
+    $app->group('/api/pendaftaran', function ($group) {
         $group->get('/rombel-options', [PendaftaranController::class, 'getRombelOptions']);
         $group->get('/lembaga-options', [PendaftaranController::class, 'getLembagaOptions']);
         $group->get('/kelas-options', [PendaftaranController::class, 'getKelasOptions']);

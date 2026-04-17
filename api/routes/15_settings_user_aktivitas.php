@@ -29,6 +29,8 @@ return function (\Slim\App $app): void {
         $group->get('/ebeddien-menu-fitur', [SettingsController::class, 'getEbeddienMenuFitur']);
         $group->put('/ebeddien-menu-fitur', [SettingsController::class, 'putEbeddienMenuFitur']);
         $group->patch('/ebeddien-menu-fitur/{fiturId}', [SettingsController::class, 'patchEbeddienMenuFiturItem']);
+        $group->get('/role-boleh-assign', [SettingsController::class, 'getRoleBolehAssign']);
+        $group->put('/role-boleh-assign', [SettingsController::class, 'putRoleBolehAssign']);
         $group->get('/features-config', [SettingsController::class, 'getFeaturesConfig']);
         $group->get('/notification-config', [SettingsController::class, 'getNotificationConfig']);
         $group->put('/notification-config', [SettingsController::class, 'saveNotificationConfig']);

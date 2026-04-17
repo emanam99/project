@@ -77,6 +77,21 @@ if (strlen($jwtSecret) < 32 && (env('APP_ENV') === 'production')) {
     );
 }
 
+// Evolution API: jika APP_ENV=local|development dan EVOLUTION_API_BASE_URL_LOCAL diisi → pakai URL itu (Evolution di mesin dev).
+// Deploy (production/staging): set hanya EVOLUTION_API_BASE_URL mis. https://evo.alutsmani.id — LOCAL diabaikan.
+$appEnvForEvo = strtolower((string) env('APP_ENV', 'production'));
+$evoRemoteBase = rtrim((string) env('EVOLUTION_API_BASE_URL', ''), '/');
+$evoLocalBase = rtrim(trim((string) env('EVOLUTION_API_BASE_URL_LOCAL', '')), '/');
+$evoUseLocal = ($evoLocalBase !== '' && in_array($appEnvForEvo, ['local', 'development'], true));
+$evoEffectiveBase = $evoUseLocal ? $evoLocalBase : $evoRemoteBase;
+$evoEffectiveKey = (string) env('EVOLUTION_API_KEY', '');
+if ($evoUseLocal) {
+    $evoLocalKey = trim((string) env('EVOLUTION_API_KEY_LOCAL', ''));
+    if ($evoLocalKey !== '') {
+        $evoEffectiveKey = $evoLocalKey;
+    }
+}
+
 return [
     // Versi backend (API) saat ini — dipakai endpoint GET /api/version dan tampilan frontend (uwaba BACKEND_VERSION)
     'api_version' => '2.6.8',
@@ -136,11 +151,13 @@ return [
         'api_key' => env('WATZAP_API_KEY', ''),
         'number_key' => env('WATZAP_NUMBER_KEY', 'ALL'),
     ],
-    // Evolution API v2 — koneksi WA (QR) lewat instance; dipakai halaman Setting → Evolution WA. Set EVOLUTION_API_BASE_URL + EVOLUTION_API_KEY di .env.
+    // Evolution API v2 — koneksi WA (QR) lewat instance; dipakai halaman Setting → Evolution WA.
+    // Lokal: APP_ENV=local|development + EVOLUTION_API_BASE_URL_LOCAL. Produksi: EVOLUTION_API_BASE_URL (+ optional EVOLUTION_API_KEY_LOCAL jika key lokal beda).
     // Dokumentasi: https://doc.evolution-api.com/v2/en/get-started/introduction
     'evolution_api' => [
-        'base_url' => rtrim((string) env('EVOLUTION_API_BASE_URL', ''), '/'),
-        'api_key' => env('EVOLUTION_API_KEY', ''),
+        'base_url' => $evoEffectiveBase,
+        'api_key' => $evoEffectiveKey,
+        'uses_local_evolution' => $evoUseLocal,
     ],
     // Live server (Socket.IO): API key untuk simpan pesan chat ke tabel chat. Set LIVE_SERVER_API_KEY di .env (sama dengan live/.env).
     // LIVE_SERVER_URL: asal HTTP server live (contoh http://127.0.0.1:3004) untuk broadcast hint indeks santri dari PHP.

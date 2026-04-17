@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { geocodeAPI } from '../../../services/api'
+import { pickAlamatPratinjauFromLokasiList } from '../../../utils/absenLokasiPratinjauAlamat'
+import { SESI_LIST, fallbackJadwalDefault } from '../../../utils/absenJadwal'
 
 const transition = { type: 'tween', duration: 0.22, ease: [0.32, 0.72, 0, 1] }
 
@@ -27,7 +29,10 @@ export default function AbsenLokasiOffcanvas({
   canDelete,
   isEdit,
   scopeAll,
-  lembagaPilihan
+  lembagaPilihan,
+  lokasiList = [],
+  editingId = null,
+  jadwalDefault = fallbackJadwalDefault()
 }) {
   const [geoBusy, setGeoBusy] = useState(false)
   const [geoErr, setGeoErr] = useState('')
@@ -95,6 +100,30 @@ export default function AbsenLokasiOffcanvas({
       setPreviewErr('')
       return
     }
+
+    const formOverride = {
+      latitude: form.latitude,
+      longitude: form.longitude,
+      radius_meter: form.radius_meter,
+      dusun: form.dusun,
+      rt: form.rt,
+      rw: form.rw,
+      desa: form.desa,
+      kecamatan: form.kecamatan,
+      kabupaten: form.kabupaten,
+      provinsi: form.provinsi
+    }
+    const dariTitik = pickAlamatPratinjauFromLokasiList(lokasiList, parsed.lat, parsed.lng, {
+      excludeId: editingId,
+      formOverride
+    })
+    if (dariTitik) {
+      setPreview(dariTitik)
+      setPreviewLoading(false)
+      setPreviewErr('')
+      return
+    }
+
     setPreviewLoading(true)
     setPreviewErr('')
     debounceRef.current = setTimeout(() => {
@@ -125,7 +154,21 @@ export default function AbsenLokasiOffcanvas({
         debounceRef.current = null
       }
     }
-  }, [isOpen, form.latitude, form.longitude])
+  }, [
+    isOpen,
+    form.latitude,
+    form.longitude,
+    form.radius_meter,
+    form.dusun,
+    form.rt,
+    form.rw,
+    form.desa,
+    form.kecamatan,
+    form.kabupaten,
+    form.provinsi,
+    lokasiList,
+    editingId
+  ])
 
   const disabledForm = !canEdit || saving || deleting
   const showDelete = isEdit && canDelete
@@ -214,15 +257,105 @@ export default function AbsenLokasiOffcanvas({
                   />
                 </div>
               </div>
+              <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/30 p-3 space-y-2">
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-200">Alamat untuk pratinjau (opsional)</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
+                  Diisi jika hasil geocode salah. Jika koordinat berada dalam radius salah satu titik (termasuk titik ini)
+                  dan titik punya isian di bawah, pratinjau memakai data titik, bukan geocode.
+                </p>
+                <div className="grid grid-cols-1 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-0.5">Dusun</label>
+                    <input
+                      value={form.dusun ?? ''}
+                      disabled={disabledForm}
+                      onChange={(e) => setForm((f) => ({ ...f, dusun: e.target.value }))}
+                      className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-0.5">RT</label>
+                      <input
+                        value={form.rt ?? ''}
+                        disabled={disabledForm}
+                        onChange={(e) => setForm((f) => ({ ...f, rt: e.target.value }))}
+                        className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-0.5">RW</label>
+                      <input
+                        value={form.rw ?? ''}
+                        disabled={disabledForm}
+                        onChange={(e) => setForm((f) => ({ ...f, rw: e.target.value }))}
+                        className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-0.5">Desa / kelurahan</label>
+                    <input
+                      value={form.desa ?? ''}
+                      disabled={disabledForm}
+                      onChange={(e) => setForm((f) => ({ ...f, desa: e.target.value }))}
+                      className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-0.5">Kecamatan</label>
+                    <input
+                      value={form.kecamatan ?? ''}
+                      disabled={disabledForm}
+                      onChange={(e) => setForm((f) => ({ ...f, kecamatan: e.target.value }))}
+                      className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-0.5">Kabupaten / kota</label>
+                    <input
+                      value={form.kabupaten ?? ''}
+                      disabled={disabledForm}
+                      onChange={(e) => setForm((f) => ({ ...f, kabupaten: e.target.value }))}
+                      className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-300 mb-0.5">Provinsi</label>
+                    <input
+                      value={form.provinsi ?? ''}
+                      disabled={disabledForm}
+                      onChange={(e) => setForm((f) => ({ ...f, provinsi: e.target.value }))}
+                      className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+              </div>
               {(previewLoading || preview || previewErr) && (
                 <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40 p-3 text-xs space-y-1">
                   <p className="font-medium text-gray-700 dark:text-gray-200">Pratinjau wilayah</p>
+                  {preview?._source === 'lokasi_manual' && (
+                    <p className="text-[11px] text-teal-700 dark:text-teal-400">Sumber: data titik lokasi (radius)</p>
+                  )}
                   {previewLoading && <p className="text-gray-500">Memuat…</p>}
                   {!previewLoading && previewErr && (
                     <p className="text-amber-600 dark:text-amber-400">{previewErr}</p>
                   )}
                   {!previewLoading && preview && (
                     <ul className="space-y-0.5 text-gray-700 dark:text-gray-200">
+                      {preview.dusun ? (
+                        <li>
+                          <span className="text-gray-500 dark:text-gray-400">Dusun:</span> {preview.dusun}
+                        </li>
+                      ) : null}
+                      {(preview.rt || preview.rw) && (
+                        <li>
+                          <span className="text-gray-500 dark:text-gray-400">RT / RW:</span>{' '}
+                          {[preview.rt ? `RT ${preview.rt}` : '', preview.rw ? `RW ${preview.rw}` : '']
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </li>
+                      )}
                       {preview.desa ? (
                         <li>
                           <span className="text-gray-500 dark:text-gray-400">Desa/kelurahan:</span> {preview.desa}
@@ -243,7 +376,13 @@ export default function AbsenLokasiOffcanvas({
                           <span className="text-gray-500 dark:text-gray-400">Provinsi:</span> {preview.provinsi}
                         </li>
                       ) : null}
-                      {!preview.desa && !preview.kecamatan && !preview.kota && !preview.provinsi && preview.display_name ? (
+                      {!preview.desa &&
+                        !preview.kecamatan &&
+                        !preview.kota &&
+                        !preview.provinsi &&
+                        !preview.dusun &&
+                        !(preview.rt || preview.rw) &&
+                        preview.display_name ? (
                         <li className="text-gray-600 dark:text-gray-300 leading-snug">{preview.display_name}</li>
                       ) : null}
                     </ul>
@@ -304,6 +443,36 @@ export default function AbsenLokasiOffcanvas({
                   onChange={(e) => setForm((f) => ({ ...f, sort_order: e.target.value }))}
                   className="w-full text-sm border rounded-lg px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 disabled:opacity-60"
                 />
+              </div>
+
+              <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/30 p-3 space-y-2">
+                <p className="text-xs font-medium text-gray-800 dark:text-gray-200">Jadwal (opsional)</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
+                  Kosongkan untuk memakai pengaturan default (Pagi {jadwalDefault.pagi.mulai} / Sore {jadwalDefault.sore.mulai}{' '}
+                  / Malam {jadwalDefault.malam.mulai}).
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {SESI_LIST.map((sesi) => (
+                    <div
+                      key={sesi.key}
+                      className="rounded-md border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/80 p-2"
+                    >
+                      <p className="mb-1.5 text-[11px] font-medium text-gray-700 dark:text-gray-300">{sesi.label}</p>
+                      <div>
+                        <label className="mb-0.5 block text-[10px] text-gray-500 dark:text-gray-400">Jam mulai</label>
+                        <input
+                          type="time"
+                          disabled={disabledForm}
+                          value={form[sesi.mulaiField] ?? ''}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, [sesi.mulaiField]: e.target.value }))
+                          }
+                          className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-2 flex-shrink-0">

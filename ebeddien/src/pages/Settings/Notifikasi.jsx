@@ -7,6 +7,7 @@ import { notificationConfigAPI, kontakAPI } from '../../services/api'
 
 const PROVIDERS = [
   { value: 'wa_sendiri', label: 'WA server sendiri', description: 'Pakai koneksi WhatsApp yang dikelola di halaman WhatsApp (scan QR, multi-session).' },
+  { value: 'evolution', label: 'Evolution API', description: 'Pakai Evolution (mis. evo.alutsmani.id). Webhook pesan masuk + kirim balasan lewat instance yang sama — atur di Setting → Evolution WA.' },
   { value: 'watzap', label: 'WatZap', description: 'Pakai layanan WatZap (api.watzap.id). Kelola device & kirim pesan dari halaman WatZap.' }
 ]
 
@@ -76,7 +77,8 @@ export default function Notifikasi() {
       .then((res) => {
         if (cancelled) return
         if (res?.success && res?.data?.provider) {
-          setProvider(res.data.provider === 'watzap' ? 'watzap' : 'wa_sendiri')
+          const p = res.data.provider
+          setProvider(['watzap', 'evolution', 'wa_sendiri'].includes(p) ? p : 'wa_sendiri')
         }
       })
       .catch((err) => {
@@ -514,7 +516,20 @@ export default function Notifikasi() {
                     </Link>
                   </>
                 )}
+                {provider === 'evolution' && (
+                  <>
+                    <span className="text-gray-300 dark:text-gray-600">·</span>
+                    <Link to="/settings/evolution-wa" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
+                      Evolution WA (webhook & instance) →
+                    </Link>
+                  </>
+                )}
               </div>
+              {provider === 'evolution' && (
+                <div className="px-4 pb-4 text-xs text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3 -mt-px">
+                  Untuk Chat AI lewat WA: di panel Evolution set webhook instance (event <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">MESSAGES_UPSERT</code>) ke URL yang ditampilkan di halaman Evolution WA. Di sini pilih provider <strong>Evolution API</strong> agar balasan dikirim lewat Evolution, bukan server Node WA lama.
+                </div>
+              )}
               <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
                 <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Tes Alert Error WA</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">

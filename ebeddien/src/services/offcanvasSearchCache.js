@@ -1,5 +1,6 @@
 import Dexie, { liveQuery } from 'dexie'
 
+/** Satu cache lokal untuk semua UI daftar/cari santri (bukan ganda per halaman). */
 const SANTRI_LEGACY_LIST_KEY = 'santri_all_v1'
 
 class OffcanvasSearchCacheDB extends Dexie {

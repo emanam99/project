@@ -13,6 +13,7 @@ use App\Controllers\PaymentController;
 return function (\Slim\App $app): void {
     $app->group('/api/uwaba', function ($group) {
         $group->get('', [UwabaController::class, 'getUwaba']);
+        $group->get('/all-rows', [UwabaController::class, 'getAllUwabaRowsBySantri']);
         $group->get('/test-santri-count', [UwabaController::class, 'testSantriCount']);
         $group->get('/status-santri-options', [UwabaController::class, 'getStatusSantriOptions']);
         $group->get('/all-data', [UwabaController::class, 'getAllData']);

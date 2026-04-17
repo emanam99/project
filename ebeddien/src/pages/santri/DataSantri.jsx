@@ -1,13 +1,20 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { santriAPI, pendaftaranAPI } from '../../services/api'
+import { santriAPI, pendaftaranAPI, lembagaAPI } from '../../services/api'
+import {
+  subscribeSantriRowsOrdered,
+  applySantriSearchServerPayload,
+  getLocalSantriSinceWatermark,
+  countSantriRows,
+} from '../../services/offcanvasSearchCache'
+import { fetchSantriDeltaQuiet } from '../../services/santriIndexedDbSync'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import ExportSantriOffcanvas from './components/ExportSantriOffcanvas'
-import DetailSantriOffcanvas from './components/DetailSantriOffcanvas'
-import EditSantriOffcanvas from './components/EditSantriOffcanvas'
+import { useSantriDetailOffcanvas } from '../../contexts/SantriDetailOffcanvasContext'
 
 function DataSantri() {
+  const { openSantriDetail } = useSantriDetailOffcanvas()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [santriList, setSantriList] = useState([])
@@ -33,29 +40,43 @@ function DataSantri() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
   const [isExportOffcanvasOpen, setIsExportOffcanvasOpen] = useState(false)
-  const [detailOffcanvasRow, setDetailOffcanvasRow] = useState(null)
-  const [editSantri, setEditSantri] = useState(null)
   const closeExportOffcanvas = useOffcanvasBackClose(isExportOffcanvasOpen, () => setIsExportOffcanvasOpen(false))
-  const closeDetailOffcanvas = useOffcanvasBackClose(!!detailOffcanvasRow, () => setDetailOffcanvasRow(null))
-  const closeEditOffcanvas = useOffcanvasBackClose(!!editSantri, () => setEditSantri(null))
+  const [lembagaRows, setLembagaRows] = useState([])
 
   const sameLembaga = (a, b) => (a != null && b != null && String(a) === String(b))
 
-  // Dynamic unique values untuk filter (dengan count)
-  const dynamicUniqueLembaga = useMemo(() => {
-    let filtered = santriList
-    if (statusSantriFilter) filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
-    if (kategoriFilter) filtered = filtered.filter(s => (s.kategori || '') === kategoriFilter)
-    if (daerahFilter) filtered = filtered.filter(s => (s.daerah || '') === daerahFilter)
-    if (kamarFilter) filtered = filtered.filter(s => (s.kamar || '') === kamarFilter)
-    const allLembaga = [...new Set([...filtered.map(s => s.diniyah), ...filtered.map(s => s.formal)].filter(Boolean))]
-    const counts = allLembaga.map(val => ({
-      value: val,
-      count: filtered.filter(s => sameLembaga(s.diniyah, val) || sameLembaga(s.formal, val)).length
-    }))
-    return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
-  }, [santriList, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter])
+  useEffect(() => {
+    let cancelled = false
+    lembagaAPI.getAll().then((res) => {
+      if (cancelled) return
+      if (res?.success && Array.isArray(res.data)) setLembagaRows(res.data)
+      else setLembagaRows([])
+    }).catch(() => {
+      if (!cancelled) setLembagaRows([])
+    })
+    return () => { cancelled = true }
+  }, [])
 
+  const lembagaMasterFilterOptions = useMemo(() => {
+    const rows = Array.isArray(lembagaRows) ? lembagaRows : []
+    return rows
+      .map((l) => {
+        const id = String(l.id)
+        const count = santriList.filter(
+          (s) => sameLembaga(s.diniyah, id) || sameLembaga(s.formal, id)
+        ).length
+        const nama = l.nama != null && String(l.nama).trim() !== '' ? String(l.nama) : id
+        return { value: id, label: `${nama} (${count})`, count }
+      })
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [lembagaRows, santriList])
+
+  useEffect(() => {
+    const valid = new Set(['', ...lembagaMasterFilterOptions.map((o) => o.value)])
+    if (lembagaFilter && !valid.has(lembagaFilter)) setLembagaFilter('')
+  }, [lembagaFilter, lembagaMasterFilterOptions])
+
+  // Dynamic unique values untuk filter (dengan count)
   const dynamicUniqueStatusSantri = useMemo(() => {
     let filtered = santriList
     if (lembagaFilter) filtered = filtered.filter(s => sameLembaga(s.diniyah, lembagaFilter) || sameLembaga(s.formal, lembagaFilter))
@@ -244,19 +265,14 @@ function DataSantri() {
     setFilteredList(filtered)
   }, [searchQuery, santriList, lembagaFilter, kelasFilter, kelFilter, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter, tidakDiniyahFilter, tidakFormalFilter, sortConfig])
 
-  useEffect(() => {
-    loadSantriData()
-  }, [])
-
-  const loadSantriData = async () => {
+  const fetchSantriListFull = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
       const result = await santriAPI.getAll()
       if (result.success) {
-        const data = result.data || []
-        setSantriList(data)
-        setFilteredList(data)
+        const data = Array.isArray(result.data) ? result.data : []
+        await applySantriSearchServerPayload(data, false)
         setCurrentPage(1)
       } else {
         setError(result.message || 'Gagal memuat data santri')
@@ -267,7 +283,44 @@ function DataSantri() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const sub = subscribeSantriRowsOrdered(setSantriList)
+    return () => sub.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const n = await countSantriRows()
+      if (cancelled) return
+      if (n === 0) {
+        await fetchSantriListFull()
+        return
+      }
+      setLoading(false)
+      const since = await getLocalSantriSinceWatermark()
+      if (cancelled) return
+      if (!since) {
+        await fetchSantriListFull()
+        return
+      }
+      await fetchSantriDeltaQuiet()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [fetchSantriListFull])
+
+  const loadSantriData = fetchSantriListFull
+
+  const openDetailForRow = useCallback(
+    (santri) => {
+      openSantriDetail(santri, { onEditSaved: loadSantriData })
+    },
+    [openSantriDetail, loadSantriData]
+  )
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
@@ -450,8 +503,10 @@ function DataSantri() {
                             className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                           >
                             <option value="">Lembaga</option>
-                            {dynamicUniqueLembaga.map(item => (
-                              <option key={item.value} value={item.value}>{String(item.value)} ({item.count})</option>
+                            {lembagaMasterFilterOptions.map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.label}
+                              </option>
                             ))}
                           </select>
                           <AnimatePresence mode="wait">
@@ -748,10 +803,10 @@ function DataSantri() {
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.3, delay: index * 0.02 }}
-                          onClick={() => setDetailOffcanvasRow(santri)}
+                          onClick={() => openDetailForRow(santri)}
                           role="button"
                           tabIndex={0}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailOffcanvasRow(santri) } }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetailForRow(santri) } }}
                           className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150 cursor-pointer"
                         >
                           {selectionMode && (
@@ -850,27 +905,6 @@ function DataSantri() {
                 isOpen={isExportOffcanvasOpen}
                 onClose={() => setIsExportOffcanvasOpen(false)}
                 filteredData={exportData}
-              />,
-              document.body
-            )}
-            {createPortal(
-              <DetailSantriOffcanvas
-                isOpen={!!detailOffcanvasRow}
-                onClose={closeDetailOffcanvas}
-                santriRow={detailOffcanvasRow}
-                onEdit={(santriData) => {
-                  setDetailOffcanvasRow(null)
-                  setEditSantri(santriData || detailOffcanvasRow)
-                }}
-              />,
-              document.body
-            )}
-            {createPortal(
-              <EditSantriOffcanvas
-                isOpen={!!editSantri}
-                onClose={closeEditOffcanvas}
-                santri={editSantri}
-                onSaved={() => loadSantriData()}
               />,
               document.body
             )}

@@ -9,7 +9,9 @@ import EbeddienFiturSelectorsPanel from '../../components/EbeddienFiturSelectors
 import PengeluaranFiturTabAccordions from '../../components/PengeluaranFiturTabAccordions'
 import KalenderPengaturanFiturTabAccordions from '../../components/KalenderPengaturanFiturTabAccordions'
 import AbsenFiturTabAccordions from '../../components/AbsenFiturTabAccordions'
+import PengurusFiturTabAccordions from '../../components/PengurusFiturTabAccordions'
 import { PENGELUARAN_MENU_CODE } from '../../config/pengeluaranFiturCodes'
+import { PENGURUS_MENU_CODE } from '../../config/pengurusFiturCodes'
 import { KALENDER_PENGATURAN_MENU_CODE } from '../../config/kalenderFiturCodes'
 import { ABSEN_MENU_CODE } from '../../config/absenFiturCodes'
 
@@ -350,8 +352,9 @@ export default function Fitur() {
     () => new Set(['bulan', 'hari_penting'])
   )
   const [absenAccordionOpen, setAbsenAccordionOpen] = useState(
-    () => new Set(['riwayat', 'absen', 'ngabsen'])
+    () => new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen'])
   )
+  const [pengurusAccordionOpen, setPengurusAccordionOpen] = useState(() => new Set(['aksi', 'matriks']))
 
   const closeOffcanvas = useOffcanvasBackClose(selectedFiturId != null, () => setSelectedFiturId(null))
 
@@ -407,6 +410,8 @@ export default function Fitur() {
     })
     setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft']))
     setKalenderPengaturanAccordionOpen(new Set(['bulan', 'hari_penting']))
+    setAbsenAccordionOpen(new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen']))
+    setPengurusAccordionOpen(new Set(['aksi', 'matriks']))
   }, [searchQuery, filteredForest])
 
   const toggleExpand = useCallback((id) => {
@@ -500,7 +505,8 @@ export default function Fitur() {
                 Ketuk baris untuk membuka panel kanan: ubah label, icon key, grup sidebar, urutan (kolom di database), dan
                 centang role. Menu yang punya sub-fitur (aksi) bisa dibentangkan lewat tombol di kiri jumlah role. Untuk menu
                 Pengeluaran, aksi dikelompokkan dalam tiga accordion (tab Rencana, Pengeluaran, Draft); untuk Pengaturan
-                Kalender, dua accordion (tab Bulan dan Hari penting). Setiap baris tetap satu aksi di database.
+                Kalender, dua accordion (tab Bulan dan Hari penting); untuk Pengurus, dua accordion (aksi halaman dan matriks
+                penugasan role). Setiap baris aksi tetap satu baris di database.
               </p>
             </div>
 
@@ -611,6 +617,32 @@ export default function Fitur() {
                                       openKeys={absenAccordionOpen}
                                       onToggleKey={(key) => {
                                         setAbsenAccordionOpen((prev) => {
+                                          const next = new Set(prev)
+                                          if (next.has(key)) next.delete(key)
+                                          else next.add(key)
+                                          return next
+                                        })
+                                      }}
+                                      renderRow={(child, _tabKey, rowIdx) => (
+                                        <FiturTreeRow
+                                          key={child.id}
+                                          node={child}
+                                          index={rowIdx ?? 0}
+                                          depth={1}
+                                          expanded={false}
+                                          onToggleExpand={toggleExpand}
+                                          onSelect={(id) => setSelectedFiturId(id)}
+                                          showGroupLabel={false}
+                                          hasChildRows={false}
+                                        />
+                                      )}
+                                    />
+                                  ) : node.code === PENGURUS_MENU_CODE ? (
+                                    <PengurusFiturTabAccordions
+                                      children={kids}
+                                      openKeys={pengurusAccordionOpen}
+                                      onToggleKey={(key) => {
+                                        setPengurusAccordionOpen((prev) => {
                                           const next = new Set(prev)
                                           if (next.has(key)) next.delete(key)
                                           else next.add(key)

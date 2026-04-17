@@ -28,11 +28,11 @@ return function (\Slim\App $app): void {
         $group->get('/user/list-super-admin-uwaba', [UserController::class, 'getSuperAdminAndUwabaUsers']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::userListUwabaNotifySelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::USER_LIST_UWABA_NOTIFY_SELECTORS)))->add(new AuthMiddleware());
 
-    // Data santri — admin_psb, petugas_psb, super_admin
+    // Data santri — PSB + tarbiyah lembaga + aksi action.santri|rombel.halaman
     $app->group('/api', function ($group) {
         $group->get('/santri', [SantriController::class, 'getAllSantri']);
         $group->post('/santri', [SantriController::class, 'updateSantri']);
-    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::psbTarbiyahSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::PSB_TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::santriCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::PSB_TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
 
     // Profil total pembayaran & syahriah — staff UWABA
     $app->group('/api', function ($group) {

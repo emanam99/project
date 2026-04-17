@@ -17,6 +17,9 @@ const PENGHASILAN_OPTIONS = ['Di bawah 1 juta', '1 - 2 juta', '2 - 3 juta', '3 -
 const emptyForm = {
   nama: '',
   nik: '',
+  nisn: '',
+  no_kk: '',
+  kepala_keluarga: '',
   tempat_lahir: '',
   tanggal_lahir: '',
   gender: '',
@@ -90,6 +93,9 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
             ...emptyForm,
             nama: d.nama || '',
             nik: d.nik || '',
+            nisn: d.nisn || '',
+            no_kk: d.no_kk || '',
+            kepala_keluarga: d.kepala_keluarga || '',
             tempat_lahir: d.tempat_lahir || '',
             tanggal_lahir: d.tanggal_lahir || '',
             gender: d.gender || '',
@@ -191,6 +197,9 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
         id: idSantri,
         nama: formData.nama,
         nik: formData.nik || null,
+        nisn: formData.nisn || null,
+        no_kk: formData.no_kk || null,
+        kepala_keluarga: formData.kepala_keluarga || null,
         tempat_lahir: formData.tempat_lahir || null,
         tanggal_lahir: formData.tanggal_lahir || null,
         gender: formData.gender || null,
@@ -266,7 +275,7 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[10000]"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[10020]"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -276,7 +285,7 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-gray-50 dark:bg-gray-900 shadow-2xl z-[10001] flex flex-col rounded-l-2xl overflow-hidden border-l border-gray-200 dark:border-gray-700"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-gray-50 dark:bg-gray-900 shadow-2xl z-[10021] flex flex-col rounded-l-2xl overflow-hidden border-l border-gray-200 dark:border-gray-700"
           >
         {/* Header */}
         <div className="flex-shrink-0 px-5 pt-5 pb-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
@@ -328,12 +337,45 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved }
                       <input type="text" value={formData.nik} onChange={(e) => handleChange('nik', e.target.value.replace(/\D/g, '').slice(0, 16))} className={inputClass} maxLength={16} />
                     </div>
                     <div>
+                      <label className={labelClass}>NISN</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.nisn}
+                        onChange={(e) => handleChange('nisn', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className={inputClass}
+                        maxLength={10}
+                        placeholder="10 digit"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>No. KK</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.no_kk}
+                        onChange={(e) => handleChange('no_kk', e.target.value.replace(/\D/g, '').slice(0, 16))}
+                        className={inputClass}
+                        maxLength={16}
+                      />
+                    </div>
+                    <div>
                       <label className={labelClass}>Jenis Kelamin</label>
                       <select value={formData.gender} onChange={(e) => handleChange('gender', e.target.value)} className={inputClass}>
                         <option value="">Pilih</option>
                         <option value="Laki-laki">Laki-laki</option>
                         <option value="Perempuan">Perempuan</option>
                       </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={labelClass}>Kepala keluarga</label>
+                      <input
+                        type="text"
+                        value={formData.kepala_keluarga}
+                        onChange={(e) => handleChange('kepala_keluarga', e.target.value)}
+                        className={inputClass}
+                        placeholder="Nama di KK"
+                      />
                     </div>
                     <div>
                       <label className={labelClass}>Tempat Lahir</label>

@@ -11,7 +11,7 @@ import {
   formatKeteranganPembayaran,
   compareBiodata
 } from '../../../utils/uwabaCalculator'
-import UwabaEditModal from './UwabaEditModal'
+import UwabaEditOffcanvas from './UwabaEditOffcanvas'
 import UnifiedPaymentOffcanvas from './UnifiedPaymentOffcanvas'
 import UwabaPrintOffcanvas from './UwabaPrintOffcanvas'
 
@@ -63,6 +63,8 @@ function UwabaRincian({ santriId, biodata, prices }) {
     biodata?.kategori,
     biodata?.diniyah,
     biodata?.formal,
+    biodata?.lembaga_id_diniyah,
+    biodata?.lembaga_id_formal,
     biodata?.lttq,
     biodata?.saudara,
     biodata?.saudara_di_pesantren, // Juga deteksi perubahan saudara_di_pesantren
@@ -102,6 +104,8 @@ function UwabaRincian({ santriId, biodata, prices }) {
     biodata?.kategori, 
     biodata?.diniyah, 
     biodata?.formal, 
+    biodata?.lembaga_id_diniyah,
+    biodata?.lembaga_id_formal,
     biodata?.lttq, 
     biodata?.saudara,
     biodata?.saudara_di_pesantren, // Juga deteksi perubahan saudara_di_pesantren
@@ -941,8 +945,8 @@ function UwabaRincian({ santriId, biodata, prices }) {
         </ul>
       </div>
       
-      {/* Edit Modal */}
-      <UwabaEditModal
+      {/* Edit Uwaba — offcanvas kanan */}
+      <UwabaEditOffcanvas
         isOpen={showEditModal}
         onClose={() => {
           setShowEditModal(false)
@@ -950,6 +954,7 @@ function UwabaRincian({ santriId, biodata, prices }) {
         }}
         bulanIndex={editingBulanIndex}
         bulanData={editingBulanIndex !== null ? bulanData[editingBulanIndex] : null}
+        santriId={santriId}
         prices={prices}
         onSave={handleEditSave}
       />

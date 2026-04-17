@@ -20,7 +20,7 @@ function ImportKhusus() {
   const [success, setSuccess] = useState('')
 
   // Khusus options yang diizinkan
-  const khususOptions = ['UJBA', 'Guru Tugas', 'KKN', 'PLP/PPL', 'Skripsi', 'Wisuda']
+  const khususOptions = ['UJBA', 'Guru Tugas', 'KKN', 'PLP/PPL', 'Skripsi', 'Wisuda', 'Ujian Kelulusan']
   
   // Lembaga options
   const lembagaOptions = [

@@ -992,7 +992,7 @@ class SettingsController
     }
 
     /**
-     * GET /api/settings/notification-config - Provider notifikasi WA: wa_sendiri | watzap. Hanya super_admin.
+     * GET /api/settings/notification-config - Provider notifikasi WA: wa_sendiri | watzap | evolution. Hanya super_admin.
      */
     public function getNotificationConfig(Request $request, Response $response): Response
     {
@@ -1008,7 +1008,7 @@ class SettingsController
             $stmt->execute();
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             $provider = ($row && isset($row['value']) && trim((string) $row['value']) !== '') ? trim((string) $row['value']) : 'wa_sendiri';
-            if ($provider !== 'watzap') {
+            if (!\in_array($provider, ['watzap', 'evolution', 'wa_sendiri'], true)) {
                 $provider = 'wa_sendiri';
             }
             return $this->jsonResponse($response, [
@@ -1026,14 +1026,14 @@ class SettingsController
     }
 
     /**
-     * PUT /api/settings/notification-config - Simpan provider: wa_sendiri | watzap. Hanya super_admin.
+     * PUT /api/settings/notification-config - Simpan provider: wa_sendiri | watzap | evolution. Hanya super_admin.
      */
     public function saveNotificationConfig(Request $request, Response $response): Response
     {
         try {
             $body = (array) $request->getParsedBody();
             $provider = isset($body['provider']) ? trim((string) $body['provider']) : '';
-            if ($provider !== 'watzap') {
+            if (!\in_array($provider, ['watzap', 'evolution', 'wa_sendiri'], true)) {
                 $provider = 'wa_sendiri';
             }
 
@@ -1237,6 +1237,151 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menjalankan tes alert error',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/settings/role-boleh-assign — daftar role + pasangan (role___boleh_assign_role). Super admin.
+     */
+    public function getRoleBolehAssign(Request $request, Response $response): Response
+    {
+        try {
+            $rolesStmt = $this->db->query('SELECT `id`, `key`, `label` FROM `role` ORDER BY `id` ASC');
+            $roles = array_map(static function ($r) {
+                return [
+                    'id' => (int) ($r['id'] ?? 0),
+                    'key' => (string) ($r['key'] ?? ''),
+                    'label' => (string) ($r['label'] ?? ''),
+                ];
+            }, $rolesStmt->fetchAll(\PDO::FETCH_ASSOC));
+
+            $pairs = [];
+            $pStmt = $this->db->query(
+                'SELECT r.`id`, r.`role_id`, r.`assignable_role_id`, '
+                . 'g.`key` AS `granting_key`, g.`label` AS `granting_label`, '
+                . 'a.`key` AS `assignable_key`, a.`label` AS `assignable_label` '
+                . 'FROM `role___boleh_assign_role` r '
+                . 'INNER JOIN `role` g ON g.`id` = r.`role_id` '
+                . 'INNER JOIN `role` a ON a.`id` = r.`assignable_role_id` '
+                . 'ORDER BY r.`role_id` ASC, r.`assignable_role_id` ASC'
+            );
+            foreach ($pStmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $pairs[] = [
+                    'id' => (int) ($row['id'] ?? 0),
+                    'role_id' => (int) ($row['role_id'] ?? 0),
+                    'assignable_role_id' => (int) ($row['assignable_role_id'] ?? 0),
+                    'granting_key' => (string) ($row['granting_key'] ?? ''),
+                    'granting_label' => (string) ($row['granting_label'] ?? ''),
+                    'assignable_key' => (string) ($row['assignable_key'] ?? ''),
+                    'assignable_label' => (string) ($row['assignable_label'] ?? ''),
+                ];
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'roles' => $roles,
+                    'pairs' => $pairs,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getRoleBolehAssign ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal memuat matriks penugasan role. Pastikan migrasi tabel role___boleh_assign_role sudah dijalankan.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/settings/role-boleh-assign — body: { pairs: [ { role_id, assignable_role_id } ] }. Mengganti seluruh isi tabel. Super admin.
+     */
+    public function putRoleBolehAssign(Request $request, Response $response): Response
+    {
+        try {
+            $body = (array) $request->getParsedBody();
+            $pairsIn = $body['pairs'] ?? null;
+            if (!\is_array($pairsIn)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Body wajib berisi pairs (array).',
+                ], 400);
+            }
+
+            $normalized = [];
+            $seen = [];
+            foreach ($pairsIn as $p) {
+                if (!\is_array($p)) {
+                    continue;
+                }
+                $rid = (int) ($p['role_id'] ?? 0);
+                $aid = (int) ($p['assignable_role_id'] ?? 0);
+                if ($rid <= 0 || $aid <= 0) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Setiap pasangan wajib memiliki role_id dan assignable_role_id yang valid.',
+                    ], 400);
+                }
+                $k = $rid . ':' . $aid;
+                if (isset($seen[$k])) {
+                    continue;
+                }
+                $seen[$k] = true;
+                $normalized[] = ['role_id' => $rid, 'assignable_role_id' => $aid];
+            }
+
+            $roleCheck = $this->db->prepare('SELECT 1 FROM `role` WHERE `id` = ? LIMIT 1');
+            foreach ($normalized as $row) {
+                $roleCheck->execute([$row['role_id']]);
+                if (!$roleCheck->fetchColumn()) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Role penugas tidak ditemukan: id ' . $row['role_id'],
+                    ], 400);
+                }
+                $roleCheck->execute([$row['assignable_role_id']]);
+                if (!$roleCheck->fetchColumn()) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Role yang boleh ditugaskan tidak ditemukan: id ' . $row['assignable_role_id'],
+                    ], 400);
+                }
+            }
+
+            $this->db->beginTransaction();
+            try {
+                $this->db->exec('DELETE FROM `role___boleh_assign_role`');
+                if ($normalized !== []) {
+                    $ins = $this->db->prepare(
+                        'INSERT INTO `role___boleh_assign_role` (`role_id`, `assignable_role_id`) VALUES (?, ?)'
+                    );
+                    foreach ($normalized as $row) {
+                        $ins->execute([$row['role_id'], $row['assignable_role_id']]);
+                    }
+                }
+                $this->db->commit();
+            } catch (\Throwable $e) {
+                $this->db->rollBack();
+                throw $e;
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Matriks penugasan role disimpan.',
+                'data' => [
+                    'count' => \count($normalized),
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::putRoleBolehAssign ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan matriks penugasan role.',
                 'error' => $e->getMessage(),
             ], 500);
         }
