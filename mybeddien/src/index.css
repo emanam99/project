@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@config "../tailwind.config.js";
 
 /* Agar dark mode pakai class .dark di <html>, bukan hanya prefers-color-scheme */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -21,7 +22,7 @@ body {
   min-height: 100vh;
 }
 
-/* Login — selaras eBeddien */
+/* Login — biru langit cerah / biru gelap modern */
 @keyframes login-gradient-shift {
   0%,
   100% {
@@ -35,11 +36,11 @@ body {
 .login-bg-gradient {
   background: linear-gradient(
     135deg,
-    #f0fdfa 0%,
-    #ccfbf1 25%,
-    #e0f2fe 50%,
-    #f0fdfa 75%,
-    #ccfbf1 100%
+    #f0f9ff 0%,
+    #e0f2fe 22%,
+    #dbeafe 50%,
+    #f0f9ff 78%,
+    #e0f2fe 100%
   );
   background-size: 400% 400%;
   animation: login-gradient-shift 12s ease infinite;
@@ -47,11 +48,11 @@ body {
 .dark .login-bg-gradient {
   background: linear-gradient(
     135deg,
-    #134e4a 0%,
-    #115e59 25%,
-    #0f766e 50%,
-    #134e4a 75%,
-    #164e47 100%
+    #0f172a 0%,
+    #172554 22%,
+    #1e3a8a 48%,
+    #1e293b 72%,
+    #0f172a 100%
   );
   background-size: 400% 400%;
   animation: login-gradient-shift 14s ease infinite;
@@ -61,11 +62,10 @@ body {
   .dark .login-bg-gradient {
     background: linear-gradient(
       135deg,
-      #111827 0%,
-      #0f172a 25%,
-      #0c0a0e 50%,
-      #0f172a 75%,
-      #111827 100%
+      #0f172a 0%,
+      #1e293b 30%,
+      #172554 55%,
+      #0c1222 100%
     );
     background-size: 400% 400%;
     animation: login-gradient-shift 14s ease infinite;
@@ -74,26 +74,26 @@ body {
 
 .login-card-glow {
   box-shadow:
-    0 0 0 1px rgba(20, 184, 166, 0.08),
+    0 0 0 1px rgba(14, 165, 233, 0.1),
     0 25px 50px -12px rgba(0, 0, 0, 0.08),
-    0 0 80px -20px rgba(20, 184, 166, 0.25);
+    0 0 80px -20px rgba(56, 189, 248, 0.22);
 }
 .dark .login-card-glow {
   box-shadow:
-    0 0 0 1px rgba(45, 212, 191, 0.1),
-    0 25px 50px -12px rgba(0, 0, 0, 0.4),
-    0 0 60px -15px rgba(45, 212, 191, 0.15);
+    0 0 0 1px rgba(56, 189, 248, 0.12),
+    0 25px 50px -12px rgba(0, 0, 0, 0.45),
+    0 0 60px -15px rgba(37, 99, 235, 0.18);
 }
 
 .login-btn-glow:hover {
-  box-shadow: 0 0 30px -5px rgba(20, 184, 166, 0.5);
+  box-shadow: 0 0 30px -5px rgba(14, 165, 233, 0.45);
 }
 .dark .login-btn-glow:hover {
-  box-shadow: 0 0 30px -5px rgba(45, 212, 191, 0.4);
+  box-shadow: 0 0 30px -5px rgba(59, 130, 246, 0.35);
 }
 
 .login-panel-left {
-  background-color: #0f766e;
+  background-color: #0369a1;
 }
 .login-panel-pattern {
   opacity: 0.08;
@@ -102,4 +102,58 @@ body {
 }
 .dark .login-panel-pattern {
   opacity: 0.06;
+}
+
+/* Scrollbar tipis sidebar — pola eBeddien */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.3s ease;
+}
+
+.sidebar-scroll:hover,
+.sidebar-scroll.scrollbar-visible {
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+}
+
+.dark .sidebar-scroll:hover,
+.dark .sidebar-scroll.scrollbar-visible {
+  scrollbar-color: rgba(107, 114, 128, 0.5) transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 3px;
+  transition:
+    background-color 0.3s ease,
+    opacity 0.3s ease;
+}
+
+.sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.sidebar-scroll.scrollbar-visible::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.4);
+}
+
+.sidebar-scroll:hover::-webkit-scrollbar-thumb:hover,
+.sidebar-scroll.scrollbar-visible::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.6);
+}
+
+.dark .sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.dark .sidebar-scroll.scrollbar-visible::-webkit-scrollbar-thumb {
+  background-color: rgba(107, 114, 128, 0.4);
+}
+
+.dark .sidebar-scroll:hover::-webkit-scrollbar-thumb:hover,
+.dark .sidebar-scroll.scrollbar-visible::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 114, 128, 0.6);
 }

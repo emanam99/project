@@ -132,6 +132,13 @@ export function userHasIjinBoyongNavAccess(user) {
   return userHasSuperAdminAccess(user) || userMatchesAnyAllowedRole(user, ['admin_ijin'])
 }
 
+/** Grup menu Wirid (Nailul Murod) — khusus admin_wirid (bukan super_admin: itu lewat bar UWABA + menu lengkap). */
+export function userHasWiridNavAccess(user) {
+  if (!user) return false
+  if (userHasSuperAdminAccess(user)) return true
+  return userMatchesAnyAllowedRole(user, ['admin_wirid'])
+}
+
 /**
  * Cocok untuk daftar role route + fallback permission (JWT.permissions dari DB/RoleConfig).
  * Dipakai RoleRoute guard & menu expanded requiresRole.

@@ -70,15 +70,9 @@ export function useAbsenFiturAccess() {
 
     const lokasiList = canLokasi(C.lokasiList, () => hasMenuAbsen)
     /**
-     * Absen GPS (POST lokasi / toggle zona): wajib action.absen.lokasi.absen bila ada granular tab/lokasi.
-     * Tab Absen saja = cek status sidik/sesi (tanpa GPS).
+     * Tampilkan zona GPS + tombol absen mandiri: cukup punya tab «Absen» (bukan aksi lokasi.absen terpisah).
      */
-    const lokasiAbsenMandiri =
-      isSuper ||
-      (!hasMenuAbsen
-        ? false
-        : codes.includes(C.lokasiAbsenMandiri) ||
-          (!apiHasAbsenTabGranular && !apiHasLokasiGranular))
+    const lokasiAbsenMandiri = isSuper || tabAbsen
     const lokasiTambah = canLokasi(C.lokasiTambah, () => hasMenuAbsen)
     const lokasiUbah = canLokasi(C.lokasiUbah, () => hasMenuAbsen)
     const lokasiHapus = canLokasi(C.lokasiHapus, () => hasMenuAbsen)

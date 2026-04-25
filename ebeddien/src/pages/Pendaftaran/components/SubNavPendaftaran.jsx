@@ -5,6 +5,7 @@ const SubNavPendaftaran = () => {
   const access = usePendaftaranFiturAccess()
   const tabs = [
     { path: '/pendaftaran/item', label: 'Item', end: true, can: access.routeItem },
+    { path: '/pendaftaran/item/rekap', label: 'Rekap', can: access.routeItem },
     { path: '/pendaftaran/item/set', label: 'Item Set', can: access.routeManageItemSet },
     { path: '/pendaftaran/item/kondisi', label: 'Kondisi', can: access.routeManageKondisi },
     { path: '/pendaftaran/item/registrasi', label: 'Registrasi', can: access.routeKondisiRegistrasi },

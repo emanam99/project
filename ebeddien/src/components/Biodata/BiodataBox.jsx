@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { santriAPI, chatAPI, pendaftaranAPI } from '../../services/api'
+import { loadSantriBiodataWithCache } from '../../services/santriBiodataLoad'
+import { putSantriBiodataFromApi, subscribeSantriBiodataByDbId } from '../../services/offcanvasSearchCache'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
 import { checkWhatsAppNumber } from '../../utils/whatsappCheck'
@@ -22,6 +24,8 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
   const [isCheckingPhone, setIsCheckingPhone] = useState(false)
   const [focusedField, setFocusedField] = useState(null)
   const [kategoriOptions, setKategoriOptions] = useState([])
+  /** Biodata dari cache lokal (offline / fallback) */
+  const [localBiodataOnly, setLocalBiodataOnly] = useState(false)
   const [daerahOptions, setDaerahOptions] = useState([])
   const [kamarOptions, setKamarOptions] = useState([])
   const [lembagaDiniyahOptions, setLembagaDiniyahOptions] = useState([])
@@ -35,8 +39,35 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
 
   const formRef = useRef(null)
   const isUserTypingRef = useRef(false) // Flag untuk track apakah user sedang mengetik
+  const hasChangesRef = useRef(false)
   const updateUrlTimeoutRef = useRef(null) // Track timeout untuk debounce update URL
   const onSantriChangeTimeoutRef = useRef(null) // Track timeout untuk debounce onSantriChange
+
+  useEffect(() => {
+    hasChangesRef.current = hasChanges
+  }, [hasChanges])
+
+  // Realtime: update form saat cache IndexedDB berubah (user lain / sinkron), kecuali sedang mengedit
+  useEffect(() => {
+    if (!biodata?.id) return
+    const sid = Number(biodata.id)
+    if (!Number.isFinite(sid) || sid <= 0) return
+    const sub = subscribeSantriBiodataByDbId(sid, (next) => {
+      if (!next || hasChangesRef.current) return
+      setBiodata(next)
+      setOriginalData({ ...next })
+      setHasChanges(false)
+      setLocalBiodataOnly(false)
+      if (onSantriChange) {
+        const nisForDisplay =
+          next.nis != null && next.nis !== ''
+            ? String(next.nis)
+            : String(next.id ?? '').padStart(7, '0')
+        onSantriChange({ ...next, nis: nisForDisplay, id: nisForDisplay })
+      }
+    })
+    return () => sub.unsubscribe()
+  }, [biodata?.id, onSantriChange])
 
   // Helper function untuk mendapatkan className label berdasarkan focused state
   const getLabelClassName = (fieldName) => {
@@ -116,48 +147,71 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
     return /^\d{7}$/.test(String(id ?? '').trim())
   }
 
-  // Fetch data santri berdasarkan ID
+  // Fetch data santri: cache IndexedDB dulu (bila ada), lalu /santri?id= — realtime lewat subscribe di atas
   const fetchSantriData = async (id) => {
     if (!isValidSantriId(id)) {
       setBiodata(null)
       setOriginalData(null)
       setHasChanges(false)
+      setLocalBiodataOnly(false)
       if (onSantriChange) onSantriChange(null)
       return
     }
 
     setLoading(true)
+    setLocalBiodataOnly(false)
+    let showedCache = false
     try {
-      const result = await santriAPI.getById(id)
-      
-      if (result.success && result.data) {
-        const data = result.data
+      const r = await loadSantriBiodataWithCache(id, {
+        onCache: (data) => {
+          showedCache = true
+          setBiodata(data)
+          setOriginalData({ ...data })
+          setHasChanges(false)
+          if (onSantriChange) {
+            const nisForDisplay =
+              data.nis != null && data.nis !== ''
+                ? String(data.nis)
+                : String(data.id ?? id).padStart(7, '0')
+            onSantriChange({ ...data, nis: nisForDisplay, id: nisForDisplay })
+          }
+          loadRiwayatCount(id)
+          setLoading(false)
+        },
+      })
+      if (r.success && r.data) {
+        const data = r.data
         setBiodata(data)
         setOriginalData({ ...data })
         setHasChanges(false)
-        // Kirim ke parent dengan id untuk tampilan/URL = NIS (7 digit), bukan id numerik DB
+        setLocalBiodataOnly(!!(r.fromCache && (r.offline || !!r.message)))
         if (onSantriChange) {
-          const nisForDisplay = (data.nis != null && data.nis !== '') ? String(data.nis) : String(data.id ?? id).padStart(7, '0')
+          const nisForDisplay =
+            data.nis != null && data.nis !== ''
+              ? String(data.nis)
+              : String(data.id ?? id).padStart(7, '0')
           onSantriChange({ ...data, nis: nisForDisplay, id: nisForDisplay })
         }
-        // Load riwayat count
         loadRiwayatCount(id)
       } else {
         setBiodata(null)
         setOriginalData(null)
         setHasChanges(false)
+        setLocalBiodataOnly(false)
         if (onSantriChange) onSantriChange(null)
-        showNotification('Data santri tidak ditemukan', 'error')
+        if (r.message) showNotification(r.message, 'error')
+        else showNotification('Data santri tidak ditemukan', 'error')
       }
     } catch (error) {
       console.error('Error fetching santri data:', error)
       setBiodata(null)
       setOriginalData(null)
       setHasChanges(false)
+      setLocalBiodataOnly(false)
       if (onSantriChange) onSantriChange(null)
       showNotification('Gagal mengambil data santri', 'error')
     } finally {
-      setLoading(false)
+      if (!showedCache) setLoading(false)
     }
   }
 
@@ -462,6 +516,10 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
       if (result.success) {
         setOriginalData({ ...biodata })
         setHasChanges(false)
+        setLocalBiodataOnly(false)
+        void santriAPI.getById(santriId).then((r) => {
+          if (r?.success && r.data) void putSantriBiodataFromApi(r.data)
+        })
         // Update parent component dengan biodata terbaru
         if (onSantriChange) {
           onSantriChange({ ...biodata, nis: santriId, id: santriId })
@@ -587,6 +645,11 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md h-full flex flex-col overflow-hidden relative">
+      {localBiodataOnly && (
+        <div className="flex-shrink-0 px-2 py-1.5 text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-100 border-b border-amber-200/80 dark:border-amber-800/60">
+          Menampilkan biodata dari penyimpanan lokal (akses offline atau server tidak terjangkau). Akan disegarkan otomatis saat sinkron.
+        </div>
+      )}
       {/* Header dengan NIS Input dan Tombol - Fixed (tidak ikut scroll) */}
       <div className="flex-shrink-0 bg-gray-200 dark:bg-gray-700/50 p-2 border-b-2 border-gray-300 dark:border-gray-600">
         {/* NIS Input, Tombol Simpan, dan Tombol Cari */}

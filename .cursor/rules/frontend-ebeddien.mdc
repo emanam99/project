@@ -1,0 +1,13 @@
+---
+description: Frontend ebeddien — React, Vite, Tailwind
+globs: ebeddien/**/*.{js,jsx}
+alwaysApply: false
+---
+
+# ebeddien (React + Vite)
+
+- Komponen fungsional, hooks untuk logika yang dipakai ulang; ikuti struktur folder halaman yang ada.
+- Akses API lewat layanan terpusat (`services/api.js` atau pola setara); jangan hardcode URL panjang tersebar.
+- **Tailwind**: ikuti utilitas dan varian `dark:` yang sudah dipakai di halaman serupa.
+- Offcanvas / modal: gunakan pola & hook back-close yang sudah ada di komponen sejenis.
+- UI: konsisten spacing, tipografi, dan warna dengan komponen Layout/Header yang ada.

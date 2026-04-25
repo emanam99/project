@@ -9,7 +9,9 @@ namespace App\Helpers;
 final class LiveSantriIndexNotifier
 {
     /**
-     * @param array{removed_ids?: int[]} $payload removed_ids: id santri yang dihapus dari DB (mis. setelah merge) agar klien bersihkan IndexedDB
+     * @param array{removed_ids?: int[], removed_registrasi_ids?: int[]} $payload
+     *   - removed_ids: id santri yang dihapus (merge / hapus di tabel santri)
+     *   - removed_registrasi_ids: id psb___registrasi yang dihapus (hapus registrasi / merge konflik) agar cache Data Pendaftar lokal rapi
      */
     public static function ping(array $payload = []): void
     {
@@ -25,6 +27,9 @@ final class LiveSantriIndexNotifier
         $body = [];
         if (!empty($payload['removed_ids']) && is_array($payload['removed_ids'])) {
             $body['removed_ids'] = array_values(array_filter(array_map('intval', $payload['removed_ids']), static fn ($id) => $id > 0));
+        }
+        if (!empty($payload['removed_registrasi_ids']) && is_array($payload['removed_registrasi_ids'])) {
+            $body['removed_registrasi_ids'] = array_values(array_filter(array_map('intval', $payload['removed_registrasi_ids']), static fn ($id) => $id > 0));
         }
 
         $json = json_encode($body, JSON_UNESCAPED_UNICODE);

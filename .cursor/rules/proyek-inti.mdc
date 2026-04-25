@@ -1,0 +1,25 @@
+---
+description: Standar umum monorepo htdocs — bahasa, ruang lingkup, hemat konteks
+alwaysApply: true
+---
+
+# Proyek inti
+
+## Bahasa
+- Jawab pengguna dalam **Bahasa Indonesia**, jelas dan ringkas.
+
+## Ruang lingkup & diff
+- Kerjakan hanya yang diminta; hindari refactor menyeluruh atau file tidak terkait.
+- Ikuti gaya penamaan, struktur folder, dan pola yang sudah ada di repo.
+- Jangan menambah dokumentasi markdown kecuali diminta.
+
+## Hemat token / konteks
+- Jangan baca ulang file besar secara utuh bila cukup potongan relevan.
+- Utamakan `@file` / folder sempit; hindari men-scan seluruh repo tanpa perlu.
+- Satu pesan = satu tujuan; hindari mengulang konteks panjang yang sama.
+
+## Referensi kode
+- Saat menampilkan kode yang ada di repo, gunakan format kutipan blok dengan path + nomor baris sesuai aturan Cursor.
+
+## Lingkungan
+- Ini lingkungan nyata: jalankan perintah yang relevan sendiri jika perlu, jangan hanya menginstruksikan pengguna.

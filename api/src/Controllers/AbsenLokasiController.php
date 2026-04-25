@@ -280,6 +280,20 @@ final class AbsenLokasiController
         }
     }
 
+    private function tableHasJamTelatColumns(): bool
+    {
+        try {
+            $st = $this->db->query(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+                 AND table_name = 'absen___lokasi' AND column_name = 'jam_telat_pagi' LIMIT 1"
+            );
+
+            return (bool) $st->fetchColumn();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     /** Untuk kolom TIME MySQL: "HH:MM" / "HH:MM:SS" → "HH:MM:SS" atau null */
     private static function normalizeTimeSql(mixed $v): ?string
     {
@@ -353,8 +367,12 @@ final class AbsenLokasiController
         $addrCols = $this->tableHasAlamatColumns()
             ? ', l.dusun, l.rt, l.rw, l.desa, l.kecamatan, l.kabupaten, l.provinsi'
             : '';
-        $jamCols = $this->tableHasJamColumns()
-            ? ', l.jam_mulai_pagi, l.jam_mulai_sore, l.jam_mulai_malam'
+        $hasJam = $this->tableHasJamColumns();
+        $hasTelat = $hasJam && $this->tableHasJamTelatColumns();
+        $jamCols = $hasJam
+            ? ($hasTelat
+                ? ', l.jam_mulai_pagi, l.jam_telat_pagi, l.jam_mulai_sore, l.jam_telat_sore, l.jam_mulai_malam, l.jam_telat_malam'
+                : ', l.jam_mulai_pagi, l.jam_mulai_sore, l.jam_mulai_malam')
             : '';
         $sql = 'SELECT l.id, l.nama, l.latitude, l.longitude, l.radius_meter, l.id_lembaga, l.aktif, l.sort_order'
             . $jamCols . $addrCols . ',
@@ -428,12 +446,28 @@ final class AbsenLokasiController
             ], 503);
         }
         $hasJam = $this->tableHasJamColumns();
+        $hasJamTelat = $hasJam && $this->tableHasJamTelatColumns();
         $jmP = $hasJam ? self::optionalTimeFromBody($body, 'jam_mulai_pagi') : null;
         $jmS = $hasJam ? self::optionalTimeFromBody($body, 'jam_mulai_sore') : null;
         $jmM = $hasJam ? self::optionalTimeFromBody($body, 'jam_mulai_malam') : null;
+        $jtP = $hasJamTelat ? self::optionalTimeFromBody($body, 'jam_telat_pagi') : null;
+        $jtS = $hasJamTelat ? self::optionalTimeFromBody($body, 'jam_telat_sore') : null;
+        $jtM = $hasJamTelat ? self::optionalTimeFromBody($body, 'jam_telat_malam') : null;
 
         try {
-            if ($hasAddr && $hasJam) {
+            if ($hasAddr && $hasJam && $hasJamTelat) {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order,
+                        jam_mulai_pagi, jam_telat_pagi, jam_mulai_sore, jam_telat_sore, jam_mulai_malam, jam_telat_malam,
+                        `dusun`, `rt`, `rw`, `desa`, `kecamatan`, `kabupaten`, `provinsi`)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([
+                    $nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort,
+                    $jmP, $jtP, $jmS, $jtS, $jmM, $jtM,
+                    $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi,
+                ]);
+            } elseif ($hasAddr && $hasJam) {
                 $ins = $this->db->prepare(
                     'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order,
                         jam_mulai_pagi, jam_mulai_sore, jam_mulai_malam,
@@ -454,6 +488,16 @@ final class AbsenLokasiController
                 $ins->execute([
                     $nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort,
                     $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi,
+                ]);
+            } elseif ($hasJam && $hasJamTelat) {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___lokasi (nama, latitude, longitude, radius_meter, id_lembaga, aktif, sort_order,
+                        jam_mulai_pagi, jam_telat_pagi, jam_mulai_sore, jam_telat_sore, jam_mulai_malam, jam_telat_malam)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([
+                    $nama, $lat, $lng, $radius, $idLembaga, $aktif, $sort,
+                    $jmP, $jtP, $jmS, $jtS, $jmM, $jtM,
                 ]);
             } elseif ($hasJam) {
                 $ins = $this->db->prepare(
@@ -561,12 +605,29 @@ final class AbsenLokasiController
             ], 503);
         }
         $hasJam = $this->tableHasJamColumns();
+        $hasJamTelat = $hasJam && $this->tableHasJamTelatColumns();
         $jmP = $hasJam ? self::timeFromBodyOrRow($body, $row, 'jam_mulai_pagi') : null;
         $jmS = $hasJam ? self::timeFromBodyOrRow($body, $row, 'jam_mulai_sore') : null;
         $jmM = $hasJam ? self::timeFromBodyOrRow($body, $row, 'jam_mulai_malam') : null;
+        $jtP = $hasJamTelat ? self::timeFromBodyOrRow($body, $row, 'jam_telat_pagi') : null;
+        $jtS = $hasJamTelat ? self::timeFromBodyOrRow($body, $row, 'jam_telat_sore') : null;
+        $jtM = $hasJamTelat ? self::timeFromBodyOrRow($body, $row, 'jam_telat_malam') : null;
 
         try {
-            if ($hasAddr && $hasJam) {
+            if ($hasAddr && $hasJam && $hasJamTelat) {
+                $upd = $this->db->prepare(
+                    'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
+                     id_lembaga = ?, aktif = ?, sort_order = ?,
+                     jam_mulai_pagi = ?, jam_telat_pagi = ?, jam_mulai_sore = ?, jam_telat_sore = ?, jam_mulai_malam = ?, jam_telat_malam = ?,
+                     `dusun` = ?, `rt` = ?, `rw` = ?, `desa` = ?, `kecamatan` = ?, `kabupaten` = ?, `provinsi` = ?
+                     WHERE id = ?'
+                );
+                $upd->execute([
+                    $nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort,
+                    $jmP, $jtP, $jmS, $jtS, $jmM, $jtM,
+                    $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi, $id,
+                ]);
+            } elseif ($hasAddr && $hasJam) {
                 $upd = $this->db->prepare(
                     'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
                      id_lembaga = ?, aktif = ?, sort_order = ?,
@@ -589,6 +650,17 @@ final class AbsenLokasiController
                 $upd->execute([
                     $nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort,
                     $dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi, $id,
+                ]);
+            } elseif ($hasJam && $hasJamTelat) {
+                $upd = $this->db->prepare(
+                    'UPDATE absen___lokasi SET nama = ?, latitude = ?, longitude = ?, radius_meter = ?,
+                     id_lembaga = ?, aktif = ?, sort_order = ?,
+                     jam_mulai_pagi = ?, jam_telat_pagi = ?, jam_mulai_sore = ?, jam_telat_sore = ?, jam_mulai_malam = ?, jam_telat_malam = ?
+                     WHERE id = ?'
+                );
+                $upd->execute([
+                    $nama, $lat, $lng, $radius, $idLembagaNew, $aktif, $sort,
+                    $jmP, $jtP, $jmS, $jtS, $jmM, $jtM, $id,
                 ]);
             } elseif ($hasJam) {
                 $upd = $this->db->prepare(

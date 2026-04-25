@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import * as XLSX from 'xlsx'
 import { boyongAPI, dashboardAPI, santriAPI, kalenderAPI } from '../../services/api'
+import { getCachedSantriList, subscribeSantriRowsOrdered } from '../../services/offcanvasSearchCache'
 import { getBulanName, BULAN_HIJRI } from '../Kalender/utils/bulanHijri'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import SearchOffcanvas from '../../components/Biodata/SearchOffcanvas'
@@ -77,8 +78,20 @@ function DataBoyong() {
       }
     } catch (err) {
       console.error('Load santri:', err)
+      const rows = await getCachedSantriList()
+      if (rows?.length) {
+        setSantriOptions(rows)
+        setFullSantriList(rows)
+      }
     }
   }
+
+  useEffect(() => {
+    const sub = subscribeSantriRowsOrdered((rows) => {
+      if (rows.length) setFullSantriList(rows)
+    })
+    return () => sub.unsubscribe()
+  }, [])
 
   useEffect(() => {
     loadBoyong()

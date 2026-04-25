@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { pendaftaranAPI } from '../../../services/api'
@@ -23,6 +23,11 @@ function DetailBerkasOffcanvas({ isOpen, onClose, idSantri, namaPendaftar, onSuc
   const [berkasToReplace, setBerkasToReplace] = useState(null)
   const [defaultJenisForUpload, setDefaultJenisForUpload] = useState(null)
   const [togglingTidakAdaId, setTogglingTidakAdaId] = useState(null) // jenisBerkas string saat toggle
+  const [thumbnailUrlById, setThumbnailUrlById] = useState({})
+  const [thumbnailLoadingById, setThumbnailLoadingById] = useState({})
+  const previewBlobCacheRef = useRef(new Map())
+  const thumbnailObjectUrlRef = useRef(new Map())
+  const prefetchingIdsRef = useRef(new Set())
 
   const JENIS_BERKAS_OPTIONS = [
     'Ijazah SD Sederajat',
@@ -72,12 +77,131 @@ function DetailBerkasOffcanvas({ isOpen, onClose, idSantri, namaPendaftar, onSuc
       setShowDeleteModal(false)
       setBerkasToDelete(null)
       setBerkasToReplace(null)
+      for (const url of thumbnailObjectUrlRef.current.values()) {
+        window.URL.revokeObjectURL(url)
+      }
+      thumbnailObjectUrlRef.current.clear()
+      previewBlobCacheRef.current.clear()
+      prefetchingIdsRef.current.clear()
+      setThumbnailUrlById({})
+      setThumbnailLoadingById({})
     }
   }, [isOpen, idSantri])
 
+  const isImageBerkas = useCallback((berkas) => {
+    const tipe = berkas?.tipe_file || ''
+    const nama = berkas?.nama_file || ''
+    return tipe.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(nama)
+  }, [])
+
+  const cacheBerkasBlob = useCallback(
+    async (berkas, { prefetch = false } = {}) => {
+      const idBerkas = berkas?.id
+      if (!idBerkas) return null
+
+      const cachedBlob = previewBlobCacheRef.current.get(idBerkas)
+      if (cachedBlob) return cachedBlob
+      if (prefetchingIdsRef.current.has(idBerkas)) return null
+
+      prefetchingIdsRef.current.add(idBerkas)
+      if (prefetch) {
+        setThumbnailLoadingById((prev) => ({ ...prev, [idBerkas]: true }))
+      }
+
+      try {
+        const blob = await pendaftaranAPI.downloadBerkas(idBerkas)
+        previewBlobCacheRef.current.set(idBerkas, blob)
+
+        if (isImageBerkas(berkas) && !thumbnailObjectUrlRef.current.has(idBerkas)) {
+          const objectUrl = window.URL.createObjectURL(blob)
+          thumbnailObjectUrlRef.current.set(idBerkas, objectUrl)
+          setThumbnailUrlById((prev) => ({ ...prev, [idBerkas]: objectUrl }))
+        }
+
+        return blob
+      } catch (err) {
+        if (!prefetch) {
+          showNotification('Gagal memuat preview berkas', 'error')
+        }
+        return null
+      } finally {
+        prefetchingIdsRef.current.delete(idBerkas)
+        if (prefetch) {
+          setThumbnailLoadingById((prev) => ({ ...prev, [idBerkas]: false }))
+        }
+      }
+    },
+    [isImageBerkas, showNotification]
+  )
+
+  const prefetchBerkasPreview = useCallback(
+    (berkas) => {
+      if (!berkas || !isImageBerkas(berkas)) return
+      void cacheBerkasBlob(berkas, { prefetch: true })
+    },
+    [cacheBerkasBlob, isImageBerkas]
+  )
+
+  useEffect(() => {
+    const validIds = new Set(berkasList.map((b) => b.id))
+    for (const [id, url] of thumbnailObjectUrlRef.current.entries()) {
+      if (!validIds.has(id)) {
+        window.URL.revokeObjectURL(url)
+        thumbnailObjectUrlRef.current.delete(id)
+        previewBlobCacheRef.current.delete(id)
+      }
+    }
+    setThumbnailUrlById((prev) => {
+      const next = {}
+      Object.entries(prev).forEach(([id, url]) => {
+        if (validIds.has(Number(id)) || validIds.has(id)) {
+          next[id] = url
+        } else if (url) {
+          window.URL.revokeObjectURL(url)
+        }
+      })
+      return next
+    })
+  }, [berkasList])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const imageBerkas = berkasList.filter((b) => !b.status_tidak_ada && isImageBerkas(b))
+    imageBerkas.slice(0, 6).forEach((berkas) => {
+      if (!thumbnailObjectUrlRef.current.has(berkas.id)) {
+        void cacheBerkasBlob(berkas, { prefetch: true })
+      }
+    })
+  }, [isOpen, berkasList, cacheBerkasBlob, isImageBerkas])
+
+  useEffect(() => {
+    return () => {
+      for (const url of thumbnailObjectUrlRef.current.values()) {
+        window.URL.revokeObjectURL(url)
+      }
+      thumbnailObjectUrlRef.current.clear()
+      previewBlobCacheRef.current.clear()
+      prefetchingIdsRef.current.clear()
+    }
+  }, [])
+
   const handlePreview = (berkas) => setPreviewFile(berkas)
   const handleClosePreview = () => setPreviewFile(null)
-  const handleDownloadForPreview = (idBerkas) => pendaftaranAPI.downloadBerkas(idBerkas)
+  const handleDownloadForPreview = useCallback(
+    async (idBerkas) => {
+      const cachedBlob = previewBlobCacheRef.current.get(idBerkas)
+      if (cachedBlob) return cachedBlob
+      const berkas = berkasList.find((item) => item.id === idBerkas)
+      if (berkas) {
+        const result = await cacheBerkasBlob(berkas)
+        if (result) return result
+      }
+      const blob = await pendaftaranAPI.downloadBerkas(idBerkas)
+      previewBlobCacheRef.current.set(idBerkas, blob)
+      return blob
+    },
+    [berkasList, cacheBerkasBlob]
+  )
 
   const openUpload = (jenisBerkas = null) => {
     setBerkasToReplace(null)
@@ -259,6 +383,13 @@ function DetailBerkasOffcanvas({ isOpen, onClose, idSantri, namaPendaftar, onSuc
                 {JENIS_BERKAS_OPTIONS.map((jenisBerkas) => {
                   const existingBerkas = berkasMap.get(jenisBerkas)
                   const isNotAvailable = existingBerkas?.status_tidak_ada == 1
+                  const isImageFile = Boolean(
+                    existingBerkas &&
+                      (existingBerkas.tipe_file?.startsWith('image/') ||
+                        /\.(jpg|jpeg|png|gif|webp)$/i.test(existingBerkas.nama_file || ''))
+                  )
+                  const thumbnailUrl = existingBerkas ? thumbnailUrlById[existingBerkas.id] : null
+                  const thumbnailLoading = existingBerkas ? thumbnailLoadingById[existingBerkas.id] : false
                   return (
                     <div key={jenisBerkas}>
                       <div
@@ -270,6 +401,11 @@ function DetailBerkasOffcanvas({ isOpen, onClose, idSantri, namaPendaftar, onSuc
                             : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
                         }`}
                         onClick={existingBerkas && !isNotAvailable ? () => handlePreview(existingBerkas) : undefined}
+                        onMouseEnter={
+                          existingBerkas && !isNotAvailable && isImageFile
+                            ? () => prefetchBerkasPreview(existingBerkas)
+                            : undefined
+                        }
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
@@ -315,17 +451,54 @@ function DetailBerkasOffcanvas({ isOpen, onClose, idSantri, namaPendaftar, onSuc
                             )}
                           </div>
                           {!isNotAvailable && existingBerkas ? (
-                            <div className="flex items-center gap-2 flex-wrap mt-1 ml-7">
-                              {existingBerkas.tipe_file && (
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getFileTypeColor(existingBerkas.tipe_file, existingBerkas.nama_file)}`}>
-                                  {getFileTypeLabel(existingBerkas.tipe_file, existingBerkas.nama_file)}
-                                </span>
+                            <div className="mt-2 ml-7 flex items-start gap-3">
+                              {isImageFile && (
+                                <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center justify-center flex-shrink-0">
+                                  {thumbnailUrl ? (
+                                    <img
+                                      src={thumbnailUrl}
+                                      alt={existingBerkas.jenis_berkas}
+                                      className="w-full h-full object-cover"
+                                      loading="lazy"
+                                    />
+                                  ) : thumbnailLoading ? (
+                                    <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <svg
+                                      className="w-5 h-5 text-gray-400"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth="2"
+                                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"
+                                      />
+                                    </svg>
+                                  )}
+                                </div>
                               )}
-                              {existingBerkas.ukuran_file != null && (
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  {formatFileSize(existingBerkas.ukuran_file)}
-                                </span>
-                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {existingBerkas.tipe_file && (
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-xs font-medium ${getFileTypeColor(
+                                        existingBerkas.tipe_file,
+                                        existingBerkas.nama_file
+                                      )}`}
+                                    >
+                                      {getFileTypeLabel(existingBerkas.tipe_file, existingBerkas.nama_file)}
+                                    </span>
+                                  )}
+                                  {existingBerkas.ukuran_file != null && (
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                      {formatFileSize(existingBerkas.ukuran_file)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           ) : !isNotAvailable ? (
                             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-7">Belum diupload</p>

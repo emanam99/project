@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\KalenderHelper;
+use App\Helpers\LiveIjinNotifier;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -101,6 +102,12 @@ class IjinController
             if ($newIjin && $idPengurus) {
                 UserAktivitasLogger::log(null, $idPengurus, UserAktivitasLogger::ACTION_CREATE, 'santri___ijin', $id, null, $newIjin, $request);
             }
+
+            LiveIjinNotifier::ping([
+                'id_santri' => (int) $data['id_santri'],
+                'tahun_ajaran' => (string) $data['tahun_ajaran'],
+                'action' => 'create',
+            ]);
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -210,14 +217,20 @@ class IjinController
             $stmt->execute($params);
             $user = $request->getAttribute('user');
             $idPengurus = $user['user_id'] ?? $user['id'] ?? null;
-            if ($idPengurus) {
-                $stmtNew = $this->db->prepare("SELECT * FROM santri___ijin WHERE id = ?");
-                $stmtNew->execute([$id]);
-                $newIjin = $stmtNew->fetch(\PDO::FETCH_ASSOC);
-                if ($newIjin) {
-                    UserAktivitasLogger::log(null, $idPengurus, UserAktivitasLogger::ACTION_UPDATE, 'santri___ijin', $id, $oldIjin, $newIjin, $request);
-                }
+            $stmtNew = $this->db->prepare("SELECT * FROM santri___ijin WHERE id = ?");
+            $stmtNew->execute([$id]);
+            $newIjin = $stmtNew->fetch(\PDO::FETCH_ASSOC);
+            if ($idPengurus && $newIjin) {
+                UserAktivitasLogger::log(null, $idPengurus, UserAktivitasLogger::ACTION_UPDATE, 'santri___ijin', $id, $oldIjin, $newIjin, $request);
             }
+            $pingTa = (string) (($newIjin['tahun_ajaran'] ?? null) !== null && (string) $newIjin['tahun_ajaran'] !== ''
+                ? $newIjin['tahun_ajaran']
+                : ($oldIjin['tahun_ajaran'] ?? ''));
+            LiveIjinNotifier::ping([
+                'id_santri' => (int) ($oldIjin['id_santri'] ?? 0),
+                'tahun_ajaran' => $pingTa,
+                'action' => 'update',
+            ]);
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -261,6 +274,13 @@ class IjinController
             $stmt->execute([$id]);
             if ($stmt->rowCount() > 0 && $idPengurus) {
                 UserAktivitasLogger::log(null, $idPengurus, UserAktivitasLogger::ACTION_DELETE, 'santri___ijin', $id, $oldIjin, null, $request);
+            }
+            if ($stmt->rowCount() > 0) {
+                LiveIjinNotifier::ping([
+                    'id_santri' => (int) ($oldIjin['id_santri'] ?? 0),
+                    'tahun_ajaran' => (string) ($oldIjin['tahun_ajaran'] ?? ''),
+                    'action' => 'delete',
+                ]);
             }
 
             return $this->jsonResponse($response, [
@@ -340,6 +360,12 @@ class IjinController
                     UserAktivitasLogger::log(null, $idPengurus, UserAktivitasLogger::ACTION_UPDATE, 'santri___ijin', $id, $oldIjin, $newIjin, $request);
                 }
             }
+
+            LiveIjinNotifier::ping([
+                'id_santri' => (int) ($oldIjin['id_santri'] ?? 0),
+                'tahun_ajaran' => (string) ($oldIjin['tahun_ajaran'] ?? ''),
+                'action' => 'markKembali',
+            ]);
 
             return $this->jsonResponse($response, [
                 'success' => true,

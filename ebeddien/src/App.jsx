@@ -19,9 +19,11 @@ import DatabaseMenuOutlet from './components/Auth/DatabaseMenuOutlet'
 import ChatAiSubRouteGuard from './components/Auth/ChatAiSubRouteGuard'
 import PendaftaranAdminSubRouteGuard from './components/Auth/PendaftaranAdminSubRouteGuard'
 import { NotificationProvider } from './contexts/NotificationContext'
+import { GlobalSyncOutboxProvider } from './contexts/GlobalSyncOutboxContext'
 import { SantriDetailOffcanvasProvider } from './contexts/SantriDetailOffcanvasContext'
 import InstallPrompt from './components/InstallPrompt'
 import LiveSocketSync from './components/LiveSocket/LiveSocketSync'
+import GlobalSyncOutboxBridge from './services/ijinOutbox/GlobalSyncOutboxBridge'
 import { LiveSocketProvider } from './contexts/LiveSocketContext'
 import GlobalChatNotifier from './components/Chat/GlobalChatNotifier'
 import ChatOffcanvasHost from './components/Chat/ChatOffcanvasHost'
@@ -41,6 +43,7 @@ const DashboardUmroh = lazy(() => import('./pages/Umroh/DashboardUmroh'))
 const DashboardPendaftaran = lazy(() => import('./pages/Pendaftaran/DashboardPendaftaran'))
 const Pendaftaran = lazy(() => import('./pages/Pendaftaran/index.jsx'))
 const PendaftaranItem = lazy(() => import('./pages/Pendaftaran/Item'))
+const ItemRekap = lazy(() => import('./pages/Pendaftaran/ItemRekap'))
 const PendaftaranItemLayout = lazy(() => import('./pages/Pendaftaran/PendaftaranItemLayout'))
 const PendaftaranData = lazy(() => import('./pages/Pendaftaran/PendaftaranData'))
 const DataPendaftar = lazy(() => import('./pages/Pendaftaran/DataPendaftar'))
@@ -86,6 +89,7 @@ const AktivitasTahunAjaran = lazy(() => import('./pages/Keuangan/Aktivitas/Aktiv
 const Lembaga = lazy(() => import('./pages/Settings/Lembaga'))
 const AbsenPage = lazy(() => import('./pages/Lembaga/Absen'))
 const Kitab = lazy(() => import('./pages/Settings/Kitab'))
+const NailulMurod = lazy(() => import('./pages/Wirid/NailulMurod'))
 const Mapel = lazy(() => import('./pages/Settings/Mapel'))
 const Rombel = lazy(() => import('./pages/Settings/Rombel'))
 const ManageJabatan = lazy(() => import('./pages/Settings/ManageJabatan'))
@@ -519,12 +523,14 @@ function App() {
 
   return (
     <NotificationProvider>
+      <GlobalSyncOutboxProvider>
       <SantriDetailOffcanvasProvider>
       <LiveSocketProvider>
         <ChatOffcanvasProvider>
         <ChatAiOffcanvasProvider>
         <InstallPrompt />
         <LiveSocketSync />
+        <GlobalSyncOutboxBridge />
         <GlobalChatNotifier />
         <Routes>
       {/* Public Routes */}
@@ -866,6 +872,14 @@ function App() {
                   }
                 />
                 <Route
+                  path="rekap"
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <ItemRekap />
+                    </Suspense>
+                  }
+                />
+                <Route
                   path="set"
                   element={
                     <Suspense fallback={<PageLoader />}>
@@ -1096,6 +1110,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Kitab />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/wirid/nailul-murod"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <NailulMurod />
                 </Suspense>
               }
             />
@@ -1441,6 +1463,7 @@ function App() {
         </ChatOffcanvasProvider>
       </LiveSocketProvider>
       </SantriDetailOffcanvasProvider>
+      </GlobalSyncOutboxProvider>
     </NotificationProvider>
   )
 }

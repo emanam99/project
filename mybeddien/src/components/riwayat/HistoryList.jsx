@@ -23,7 +23,7 @@ export default function HistoryList({ items, formatDateFunc, emptyMessage }) {
             >
               {p.via || 'Cash'}
             </span>
-            <span className="text-sm font-semibold text-teal-600 dark:text-teal-400">
+            <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">
               {formatCurrency(p.nominal)}
             </span>
           </div>

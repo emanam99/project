@@ -16,6 +16,7 @@ import { useSantriDetailOffcanvas } from '../../contexts/SantriDetailOffcanvasCo
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useAuthStore } from '../../store/authStore'
 import { userHasSuperAdminAccess } from '../../utils/roleAccess'
+import { getCachedSantriList, filterSantriRowsByRombelId, subscribeSantriRowsOrdered } from '../../services/offcanvasSearchCache'
 import OffcanvasPindahRombel from '../../components/Modal/OffcanvasPindahRombel'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import PrintAbsenOffcanvas from './components/PrintAbsenOffcanvas'
@@ -447,7 +448,10 @@ function Rombel() {
       const res = await santriAPI.getByRombelId(rid)
       if (res?.success && Array.isArray(res.data)) setSantriOffcanvasList(res.data)
     } catch (_) {
-      /* abaikan */
+      try {
+        const rows = await getCachedSantriList()
+        if (rows?.length) setSantriOffcanvasList(filterSantriRowsByRombelId(rows, rid))
+      } catch (__) { /* abaikan */ }
     }
   }, [santriOffcanvasRombel?.id])
 
@@ -515,11 +519,31 @@ function Rombel() {
       }
     } catch (err) {
       console.error('Error loading santri by rombel:', err)
-      showNotification('Gagal memuat daftar santri', 'error')
+      try {
+        const rows = await getCachedSantriList()
+        if (rows?.length) {
+          setSantriOffcanvasList(filterSantriRowsByRombelId(rows, rombel.id))
+          showNotification('Daftar santri dari data lokal (sinkron terakhir).', 'info')
+        } else {
+          showNotification('Gagal memuat daftar santri', 'error')
+        }
+      } catch (_) {
+        showNotification('Gagal memuat daftar santri', 'error')
+      }
     } finally {
       setSantriOffcanvasLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!santriOffcanvasOpen || santriOffcanvasRombel?.id == null) return
+    const rid = santriOffcanvasRombel.id
+    const sub = subscribeSantriRowsOrdered((rows) => {
+      if (!rows.length) return
+      setSantriOffcanvasList(filterSantriRowsByRombelId(rows, rid))
+    })
+    return () => sub.unsubscribe()
+  }, [santriOffcanvasOpen, santriOffcanvasRombel?.id])
 
   const handleCloseSantriOffcanvas = useOffcanvasBackClose(santriOffcanvasOpen, () => {
     setSantriOffcanvasOpen(false)

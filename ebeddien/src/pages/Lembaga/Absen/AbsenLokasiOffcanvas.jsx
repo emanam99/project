@@ -448,8 +448,9 @@ export default function AbsenLokasiOffcanvas({
               <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/30 p-3 space-y-2">
                 <p className="text-xs font-medium text-gray-800 dark:text-gray-200">Jadwal (opsional)</p>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
-                  Kosongkan untuk memakai pengaturan default (Pagi {jadwalDefault.pagi.mulai} / Sore {jadwalDefault.sore.mulai}{' '}
-                  / Malam {jadwalDefault.malam.mulai}).
+                  Kosongkan jadwal di sini agar memakai default: Pagi {jadwalDefault.pagi.mulai} (telat {jadwalDefault.pagi.telat}
+                  ) / Sore {jadwalDefault.sore.mulai} (telat {jadwalDefault.sore.telat}) / Malam {jadwalDefault.malam.mulai} (
+                  telat {jadwalDefault.malam.telat}).
                 </p>
                 <div className="grid gap-3 sm:grid-cols-3">
                   {SESI_LIST.map((sesi) => (
@@ -458,17 +459,29 @@ export default function AbsenLokasiOffcanvas({
                       className="rounded-md border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/80 p-2"
                     >
                       <p className="mb-1.5 text-[11px] font-medium text-gray-700 dark:text-gray-300">{sesi.label}</p>
-                      <div>
-                        <label className="mb-0.5 block text-[10px] text-gray-500 dark:text-gray-400">Jam mulai</label>
-                        <input
-                          type="time"
-                          disabled={disabledForm}
-                          value={form[sesi.mulaiField] ?? ''}
-                          onChange={(e) =>
-                            setForm((f) => ({ ...f, [sesi.mulaiField]: e.target.value }))
-                          }
-                          className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-60"
-                        />
+                      <div className="space-y-1.5">
+                        <div>
+                          <label className="mb-0.5 block text-[10px] text-gray-500 dark:text-gray-400">Jam mulai</label>
+                          <input
+                            type="time"
+                            disabled={disabledForm}
+                            value={form[sesi.mulaiField] ?? ''}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, [sesi.mulaiField]: e.target.value }))
+                            }
+                            className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-60"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-0.5 block text-[10px] text-gray-500 dark:text-gray-400">Telat setelah</label>
+                          <input
+                            type="time"
+                            disabled={disabledForm}
+                            value={form[sesi.telatField] ?? ''}
+                            onChange={(e) => setForm((f) => ({ ...f, [sesi.telatField]: e.target.value }))}
+                            className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-60"
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}

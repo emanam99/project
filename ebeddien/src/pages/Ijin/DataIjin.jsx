@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { dashboardAPI } from '../../services/api'
+import { getCachedSantriList } from '../../services/offcanvasSearchCache'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import BulkEditOffcanvas from './components/BulkEditOffcanvas'
@@ -12,6 +13,7 @@ import PrintMultipleModal from './components/PrintMultipleModal'
 import PrintMultipleOffcanvas from './components/PrintMultipleOffcanvas'
 import PrintDataModal from './components/PrintDataModal'
 import PrintDataOffcanvas from './components/PrintDataOffcanvas'
+import { EBEDDIEN_IJIN_HINT, ijinHintMatches } from '../../services/ijinLiveEvents'
 
 function DataIjin() {
   const { tahunAjaran } = useTahunAjaranStore()
@@ -109,10 +111,12 @@ function DataIjin() {
     loadData()
   }, [tahunAjaran])
 
-  const loadData = async () => {
-    setLoading(true)
-    setError('')
-    
+  const loadData = async (opts = {}) => {
+    const quiet = opts?.quiet === true
+    if (!quiet) {
+      setLoading(true)
+      setError('')
+    }
     try {
       const result = await dashboardAPI.getDataSantri(tahunAjaran)
       
@@ -121,17 +125,46 @@ function DataIjin() {
         setDataSantri(newData)
         return newData
       } else {
-        setError(result.message || 'Gagal memuat data santri')
+        if (!quiet) {
+          setError(result.message || 'Gagal memuat data santri')
+        }
         return []
       }
     } catch (err) {
       console.error('Error loading data santri:', err)
-      setError(err.message || 'Terjadi kesalahan saat memuat data')
+      try {
+        const rows = await getCachedSantriList()
+        if (rows?.length) {
+          setDataSantri(rows)
+          if (!quiet) setError('')
+          return rows
+        }
+      } catch (_) { /* abaikan */ }
+      if (!quiet) {
+        setError(err.message || 'Terjadi kesalahan saat memuat data')
+      }
       return []
     } finally {
-      setLoading(false)
+      if (!quiet) {
+        setLoading(false)
+      }
     }
   }
+
+  const loadDataRef = useRef(loadData)
+  loadDataRef.current = loadData
+  const tahunAjaranRef = useRef(tahunAjaran)
+  tahunAjaranRef.current = tahunAjaran
+
+  useEffect(() => {
+    const onHint = (e) => {
+      const d = e?.detail || {}
+      if (!ijinHintMatches(d, null, tahunAjaranRef.current)) return
+      void loadDataRef.current({ quiet: true })
+    }
+    window.addEventListener(EBEDDIEN_IJIN_HINT, onHint)
+    return () => window.removeEventListener(EBEDDIEN_IJIN_HINT, onHint)
+  }, [])
 
   const handleSort = (key) => {
     let direction = 'asc'

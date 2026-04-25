@@ -38,6 +38,8 @@ class RoleConfig
         'tarbiyah' => ['uwaba'],
         /** Domisili/asrama: baseline sama tarbiyah; detail menu lewat Role & Akses (role___fitur). */
         'admin_daerah' => ['uwaba'],
+        /** Admin Domisili: baseline akses app; menu/aksi lewat Role & Akses. */
+        'admin_domisili' => ['uwaba'],
         'kapdar' => ['uwaba'],
         'wakapdar' => ['uwaba'],
         'wali_kelas' => [],
@@ -56,7 +58,8 @@ class RoleConfig
         'koordinator_ugt' => ['uwaba'],
         /** Hanya modul keuangan eBeddien; scope lembaga lewat pengurus___role. */
         'petugas_keuangan' => [],
-        'santri' => ['mybeddian']
+        'santri' => ['mybeddian'],
+        'admin_wirid' => ['uwaba'],
     ];
 
     /**
@@ -107,6 +110,10 @@ class RoleConfig
             'view_reports'
         ],
         'admin_daerah' => [
+            'manage_santri',
+            'view_reports'
+        ],
+        'admin_domisili' => [
             'manage_santri',
             'view_reports'
         ],
@@ -179,7 +186,10 @@ class RoleConfig
             'manage_finance',
             'view_reports',
         ],
-        'santri' => []
+        'santri' => [],
+        'admin_wirid' => [
+            'view_reports',
+        ],
     ];
 
     /**
@@ -192,6 +202,7 @@ class RoleConfig
         'admin_lembaga' => 'Admin Lembaga',
         'tarbiyah' => 'Tarbiyah',
         'admin_daerah' => 'Admin Daerah',
+        'admin_domisili' => 'Admin Domisili',
         'kapdar' => 'Kapdar',
         'wakapdar' => 'Wakapdar',
         'wali_kelas' => 'Wali Kelas',
@@ -212,6 +223,7 @@ class RoleConfig
         'santri' => 'Santri',
         /** Token JWT saat pengurus punya lebih dari satu role (bukan baris di tabel role). */
         'multi_role' => 'Beberapa role',
+        'admin_wirid' => 'Admin Wirid',
     ];
 
     /**

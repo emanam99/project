@@ -169,7 +169,7 @@ export default function Daftar() {
                 </div>
               )}
               {successMessage && (
-                <div className="text-green-600 dark:text-green-400 text-sm bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-xl">
+                <div className="text-primary-600 dark:text-primary-400 text-sm bg-primary-50 dark:bg-primary-900/20 px-3 py-2 rounded-xl">
                   {successMessage}
                 </div>
               )}

@@ -15,6 +15,7 @@ export const PENDAFTARAN_ACTION_CODES = {
 /** path absolut → kode aksi route admin (sub-rute Item bersarang di /pendaftaran/item/...) */
 export const PENDAFTARAN_ADMIN_PATH_TO_CODE = {
   '/pendaftaran/item': 'action.pendaftaran.route.item',
+  '/pendaftaran/item/rekap': 'action.pendaftaran.route.item',
   '/pendaftaran/item/set': 'action.pendaftaran.route.manage_item_set',
   '/pendaftaran/item/kondisi': 'action.pendaftaran.route.manage_kondisi',
   '/pendaftaran/item/registrasi': 'action.pendaftaran.route.kondisi_registrasi',

@@ -86,7 +86,7 @@ export default function PwaInstallPrompt() {
         >
           <div className="rounded-2xl shadow-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 overflow-hidden">
             <div className="p-4 flex items-start gap-3">
-              <div className="shrink-0 w-12 h-12 rounded-xl bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center overflow-hidden">
+              <div className="shrink-0 w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center overflow-hidden">
                 {!iconError ? (
                   <img
                     src={getGambarUrl('icon/mybeddien.png')}
@@ -95,7 +95,7 @@ export default function PwaInstallPrompt() {
                     onError={() => setIconError(true)}
                   />
                 ) : (
-                  <span className="w-10 h-10 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-sm">M</span>
+                  <span className="w-10 h-10 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-sm">M</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
@@ -108,7 +108,7 @@ export default function PwaInstallPrompt() {
                     type="button"
                     onClick={handleInstall}
                     disabled={isInstalling}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-70 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-70 transition-colors"
                   >
                     {isInstalling ? 'Memasang…' : 'Pasang'}
                   </button>

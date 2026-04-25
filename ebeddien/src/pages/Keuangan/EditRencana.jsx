@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
@@ -14,7 +14,12 @@ import * as XLSX from 'xlsx'
 import Modal from '../../components/Modal/Modal'
 import WaNotifRecipientChecklist from './Pengeluaran/components/WaNotifRecipientChecklist'
 
-function EditRencana() {
+function EditRencana({
+  embedded = false,
+  embeddedPsbRows = null,
+  onEmbeddedClose,
+  onEmbeddedSubmitted
+} = {}) {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
@@ -22,6 +27,16 @@ function EditRencana() {
   const { showNotification } = useNotification()
   const pengeluaranFitur = usePengeluaranFiturAccess()
   const isCreateMode = !id || id === 'create'
+  const isPsbSetorMode = useMemo(
+    () =>
+      Boolean(
+        embedded &&
+          isCreateMode &&
+          Array.isArray(embeddedPsbRows) &&
+          embeddedPsbRows.length > 0
+      ),
+    [embedded, isCreateMode, embeddedPsbRows]
+  )
   const [loading, setLoading] = useState(!isCreateMode)
   const [saving, setSaving] = useState(false)
   const [rencana, setRencana] = useState(null)
@@ -116,7 +131,11 @@ function EditRencana() {
     if (isCreateMode) {
       if (!pengeluaranFitur.rencanaBuat) {
         showNotification('Anda tidak memiliki akses membuat rencana pengeluaran', 'error')
-        navigate('/pengeluaran')
+        if (embedded) {
+          onEmbeddedClose?.()
+        } else {
+          navigate('/pengeluaran')
+        }
       }
       return
     }
@@ -124,7 +143,11 @@ function EditRencana() {
     const ok = rencana.ket === 'draft' ? pengeluaranFitur.draftEdit : pengeluaranFitur.rencanaEdit
     if (!ok) {
       showNotification('Anda tidak memiliki akses mengedit rencana ini', 'error')
-      navigate('/pengeluaran')
+      if (embedded) {
+        onEmbeddedClose?.()
+      } else {
+        navigate('/pengeluaran')
+      }
     }
   }, [
     pengeluaranFitur.apiHasPengeluaran,
@@ -135,8 +158,41 @@ function EditRencana() {
     loading,
     rencana,
     navigate,
-    showNotification
+    showNotification,
+    embedded,
+    onEmbeddedClose
   ])
+
+  const applyEmbeddedPsbRows = useCallback(() => {
+    if (!isCreateMode || !embedded || !Array.isArray(embeddedPsbRows) || embeddedPsbRows.length === 0) {
+      return
+    }
+    const rows = embeddedPsbRows
+    setFormData((prev) => ({
+      ...prev,
+      keterangan: `Setor item PSB (${rows.length} item)`,
+      kategori: 'Setoran',
+      details: rows.map((r) => {
+        const cb = Number(r.count_terbayar ?? 0)
+        const cs = Number(r.jumlah_setor ?? r.count_setor ?? 0)
+        const sisa = Math.max(0, cb - cs)
+        const jumlah = sisa > 0 ? sisa : 1
+        return {
+          id_psb_item: r.id,
+          item: r.nama_item || r.item || '',
+          harga: String(Number(r.harga_standar ?? 0)),
+          jumlah,
+          isNew: true,
+          rejected: false,
+          alasan_penolakan: ''
+        }
+      })
+    }))
+  }, [isCreateMode, embedded, embeddedPsbRows])
+
+  useEffect(() => {
+    applyEmbeddedPsbRows()
+  }, [applyEmbeddedPsbRows])
 
   useEffect(() => {
     if (!isCreateMode) {
@@ -784,6 +840,15 @@ function EditRencana() {
       }
     }
 
+    if (isPsbSetorMode) {
+      for (const detail of activeDetails) {
+        if (!detail.id_psb_item) {
+          showNotification('Setiap baris setor harus terhubung ke item PSB', 'error')
+          return
+        }
+      }
+    }
+
     if (isDraft && !allowSaveAsDraft) {
       showNotification('Anda tidak memiliki akses menyimpan sebagai draft', 'error')
       return
@@ -823,21 +888,49 @@ function EditRencana() {
       let response
       let rencanaId = null
       if (isCreateMode) {
-        response = await pengeluaranAPI.createRencana(payload)
+        if (isPsbSetorMode) {
+          response = await pengeluaranAPI.createRencanaFromPsbItemSetor({
+            keterangan: formData.keterangan.trim(),
+            kategori: formData.kategori || null,
+            lembaga: formData.lembaga || null,
+            sumber_uang: formData.sumber_uang || 'Cash',
+            hijriyah: formData.hijriyah || null,
+            tahun_ajaran: formData.tahun_ajaran || null,
+            status: isDraft ? 'draft' : 'pending',
+            psb_items: activeDetails.map((d) => ({
+              id_psb_item: d.id_psb_item,
+              harga: parseFloat(d.harga) || 0,
+              jumlah: parseInt(d.jumlah, 10) || 1
+            }))
+          })
+        } else {
+          response = await pengeluaranAPI.createRencana(payload)
+        }
         if (response.success) {
           rencanaId = response.data?.id || null
-          showNotification(isDraft ? 'Draft berhasil disimpan' : 'Rencana berhasil dibuat', 'success')
-          
-          // Upload pending files jika ada
+          if (embedded && isPsbSetorMode && rencanaId) {
+            showNotification(
+              isDraft ? 'Draft tersimpan. Anda tetap di halaman rekap.' : 'Rencana diajukan. Anda tetap di halaman rekap.',
+              'success'
+            )
+          } else {
+            showNotification(isDraft ? 'Draft berhasil disimpan' : 'Rencana berhasil dibuat', 'success')
+          }
+
           if (pendingFiles.length > 0 && rencanaId) {
             await uploadPendingFiles(rencanaId)
           }
-          
-          // Notifikasi WA/PWA di backend & tanpa menahan navigasi
+
           if (!isDraft) {
             void sendNotificationsToSelectedAdmins(rencanaId).catch(() => {})
           }
-          navigate(isDraft ? '/pengeluaran?tab=draft' : '/pengeluaran')
+
+          if (embedded && isPsbSetorMode && rencanaId) {
+            onEmbeddedSubmitted?.()
+            onEmbeddedClose?.()
+          } else {
+            navigate(isDraft ? '/pengeluaran?tab=draft' : '/pengeluaran')
+          }
         } else {
           showNotification(response.message || 'Gagal membuat rencana', 'error')
         }
@@ -1101,6 +1194,8 @@ function EditRencana() {
                     <option value="Listrik">Listrik</option>
                     <option value="Wifi">Wifi</option>
                     <option value="Langganan">Langganan</option>
+                    <option value="Rapat">Rapat</option>
+                    <option value="Setoran">Setoran</option>
                     <option value="lainnya">Lainnya</option>
                   </select>
                 </div>
@@ -1183,33 +1278,39 @@ function EditRencana() {
                 </div>
               </div>
 
-              <div className="mb-6">
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={downloadTemplate}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Template
-                  </button>
-                  <label className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm cursor-pointer">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    Import
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".xlsx,.xls"
-                      onChange={handleImport}
-                      className="hidden"
-                    />
-                  </label>
+              {!isPsbSetorMode ? (
+                <div className="mb-6">
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadTemplate}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Template
+                    </button>
+                    <label className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm cursor-pointer">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      Import
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleImport}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                  Jumlah per baris diisi otomatis dari selisih count terbayar (baris lunas) − jumlah yang sudah di setor (qty); minimal 1 jika selisih ≤ 0.
+                </p>
+              )}
 
               {/* Detail Items */}
               <div className="mb-4">
@@ -1245,7 +1346,12 @@ function EditRencana() {
                               }`}
                               placeholder="Nama item"
                               required={!detail.rejected}
-                              disabled={detail.rejected}
+                              disabled={detail.rejected || (isPsbSetorMode && Boolean(detail.id_psb_item))}
+                              title={
+                                isPsbSetorMode && detail.id_psb_item
+                                  ? 'Nama item mengikuti master PSB'
+                                  : undefined
+                              }
                             />
                           </div>
                           <div className="col-span-1 sm:col-span-3">
@@ -1328,7 +1434,7 @@ function EditRencana() {
                             {detail.rejected ? 'Batal' : 'Tolak'}
                           </button>
                         )}
-                        {detail.isNew && (
+                        {detail.isNew && !isPsbSetorMode && (
                           <button
                             type="button"
                             onClick={() => handleRemoveDetail(index)}
@@ -1342,17 +1448,18 @@ function EditRencana() {
                   ))}
                 </div>
 
-                {/* Tombol Tambah Item - Dipindah ke bawah list */}
-                <button
-                  type="button"
-                  onClick={handleAddDetail}
-                  className="w-full mt-3 px-4 py-2.5 border-2 border-dashed border-teal-300 dark:border-teal-700 rounded-lg text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 dark:text-teal-400 flex items-center justify-center gap-2 transition-colors text-sm font-medium"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span>Tambah Item Baru</span>
-                </button>
+                {!isPsbSetorMode ? (
+                  <button
+                    type="button"
+                    onClick={handleAddDetail}
+                    className="w-full mt-3 px-4 py-2.5 border-2 border-dashed border-teal-300 dark:border-teal-700 rounded-lg text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 dark:text-teal-400 flex items-center justify-center gap-2 transition-colors text-sm font-medium"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Tambah Item Baru</span>
+                  </button>
+                ) : null}
               </div>
             </form>
 
@@ -1537,7 +1644,7 @@ function EditRencana() {
               <div className="flex gap-2 justify-end mt-6 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => navigate('/pengeluaran')}
+                  onClick={() => (embedded ? onEmbeddedClose?.() : navigate('/pengeluaran'))}
                   className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                 >
                   Batal

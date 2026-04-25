@@ -619,7 +619,9 @@ function AktivitasTahunAjaran() {
       'Acara': { label: 'Acara', color: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200' },
       'Pengadaan': { label: 'Pengadaan', color: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' },
       'Perbaikan': { label: 'Perbaikan', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-      'ATK': { label: 'ATK', color: 'bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-200' }
+      'ATK': { label: 'ATK', color: 'bg-lime-100 text-lime-800 dark:bg-lime-900 dark:text-lime-200' },
+      'Rapat': { label: 'Rapat', color: 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200' },
+      'Setoran': { label: 'Setoran', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' }
     }
 
     const kategoriInfo = kategoriMap[kategori] || { label: kategori, color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200' }

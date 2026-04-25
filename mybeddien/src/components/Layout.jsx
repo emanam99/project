@@ -1,70 +1,37 @@
-import { useNavigate } from 'react-router-dom'
 import AnimatedOutlet from './AnimatedOutlet'
-import { useAuthStore } from '../store/authStore'
-import { useTheme } from '../contexts/ThemeContext'
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
 import PwaInstallPrompt from './PwaInstallPrompt'
+import AppHeader from './layout/AppHeader'
+
+/** Pola titik halus (sama ide dengan eBeddien Layout) */
+const BG_PATTERN =
+  "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"
 
 export default function Layout() {
-  const navigate = useNavigate()
-  const { user, logout } = useAuthStore()
-  const { theme, toggleTheme } = useTheme()
-  const displayName = user?.nama || user?.username || 'Santri'
-  const isDark = theme === 'dark'
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login', { replace: true })
-  }
-
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
-      {/* Sidebar: hanya tampil di PC (md ke atas) */}
-      <Sidebar />
+    <div className="flex h-screen max-h-screen min-h-0 overflow-hidden relative w-full">
+      <div className="absolute inset-0 bg-linear-to-br from-primary-50 via-white to-primary-100 dark:from-gray-900 dark:via-slate-900 dark:to-slate-950 pointer-events-none">
+        <div
+          className="absolute inset-0 opacity-[0.06] dark:opacity-[0.09]"
+          style={{ backgroundImage: BG_PATTERN }}
+          aria-hidden
+        />
+        <div className="absolute top-0 right-0 w-80 h-80 bg-primary-200/25 dark:bg-primary-800/20 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4" aria-hidden />
+        <div className="absolute bottom-0 left-0 w-72 h-72 bg-primary-300/20 dark:bg-primary-700/15 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4" aria-hidden />
+        <div className="absolute top-1/2 left-1/2 w-56 h-56 bg-primary-400/10 dark:bg-primary-600/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" aria-hidden />
+      </div>
 
-      {/* Area utama: header + konten */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Header: muncul di semua halaman */}
-        <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm shrink-0">
-          <h1 className="text-lg font-semibold text-teal-700 dark:text-teal-400 tracking-tight">
-            myBeddien
-          </h1>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              aria-label={isDark ? 'Mode terang' : 'Mode gelap'}
-              title={isDark ? 'Gunakan mode terang' : 'Gunakan mode gelap'}
-            >
-              {isDark ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
-            <span className="text-sm text-gray-600 dark:text-gray-300 truncate max-w-[120px] sm:max-w-[180px]" title={displayName}>
-              {displayName}
-            </span>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 border border-gray-300 dark:border-gray-600 rounded-lg hover:border-red-300 dark:hover:border-red-800 transition-colors"
-            >
-              Keluar
-            </button>
-          </div>
-        </header>
+      <div className="relative z-10 flex flex-1 min-h-0 min-w-0 w-full">
+        <Sidebar />
 
-        {/* Main content: relative agar animasi geser (AnimatedOutlet) posisi absolute berjalan benar */}
-        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-16 md:pb-0 relative">
-          <AnimatedOutlet />
-        </main>
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+          <AppHeader />
+
+          <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:pb-0 relative px-2 sm:px-3">
+            <AnimatedOutlet />
+          </main>
+        </div>
       </div>
 
       <BottomNav />

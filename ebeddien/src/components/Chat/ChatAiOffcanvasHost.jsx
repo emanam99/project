@@ -51,7 +51,7 @@ export default function ChatAiOffcanvasHost() {
             role="dialog"
             aria-modal="true"
             aria-label="eBeddien"
-            className="fixed top-0 right-0 bottom-0 z-[221] flex w-full max-w-md flex-col bg-gray-100 shadow-2xl dark:bg-gray-900"
+            className="fixed top-0 right-0 bottom-0 z-[221] flex w-full max-w-sm flex-col bg-gray-100 shadow-2xl dark:bg-gray-900"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}

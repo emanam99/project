@@ -18,7 +18,7 @@ final class AbsenSettingController
     private PDO $db;
 
     /** @var list<string> */
-    private const KEYS = ['jadwal_default', 'sidik_jari_default', 'akses_absen_mandiri'];
+    private const KEYS = ['jadwal_default', 'sidik_jari_default'];
 
     public function __construct()
     {
@@ -139,7 +139,7 @@ final class AbsenSettingController
     /**
      * @param array<string, mixed> $in
      *
-     * @return array{pagi: array{mulai: string}, sore: array{mulai: string}, malam: array{mulai: string}}
+     * @return array{pagi: array{mulai: string, telat: string}, sore: array{mulai: string, telat: string}, malam: array{mulai: string, telat: string}}
      */
     private function normalizeJadwalDefault(array $in): array
     {
@@ -150,7 +150,11 @@ final class AbsenSettingController
             if ($mulai === null) {
                 throw new \InvalidArgumentException('Jadwal ' . $sesi . ': mulai wajib (format HH:MM)');
             }
-            $out[$sesi] = ['mulai' => $mulai];
+            $telat = self::normalizeHm($sub['telat'] ?? null);
+            if ($telat === null) {
+                $telat = $mulai;
+            }
+            $out[$sesi] = ['mulai' => $mulai, 'telat' => $telat];
         }
 
         return $out;
@@ -173,40 +177,6 @@ final class AbsenSettingController
             'ikut_jadwal_default' => $ikut,
             'toleransi_telat_menit' => $tol,
         ];
-    }
-
-    /**
-     * Pembatas tambahan absen mandiri GPS: kosong = tidak filter peran (perilaku fitur seperti biasa).
-     *
-     * @return array{role_keys: list<string>}
-     */
-    private function normalizeAksesAbsenMandiri(array $in): array
-    {
-        $keys = $in['role_keys'] ?? [];
-        if (!is_array($keys)) {
-            $keys = [];
-        }
-        $validKeys = [];
-        try {
-            $st = $this->db->query('SELECT `key` FROM `role`');
-            while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
-                $k = str_replace(' ', '_', strtolower(trim((string) ($row['key'] ?? ''))));
-                if ($k !== '') {
-                    $validKeys[$k] = true;
-                }
-            }
-        } catch (\Throwable $e) {
-            $validKeys = [];
-        }
-        $out = [];
-        foreach ($keys as $k) {
-            $k = str_replace(' ', '_', strtolower(trim((string) $k)));
-            if ($k !== '' && isset($validKeys[$k])) {
-                $out[] = $k;
-            }
-        }
-
-        return ['role_keys' => array_values(array_unique($out))];
     }
 
     /**
@@ -238,28 +208,6 @@ final class AbsenSettingController
                 $data[$k] = [];
             }
         }
-        if (!isset($data['akses_absen_mandiri']['role_keys']) || !is_array($data['akses_absen_mandiri']['role_keys'])) {
-            $data['akses_absen_mandiri'] = ['role_keys' => []];
-        }
-
-        /** @var list<array{key: string, label: string}> $roleOptions */
-        $roleOptions = [];
-        try {
-            $st = $this->db->query('SELECT `key`, `label` FROM `role` ORDER BY `label` ASC');
-            while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
-                $rk = str_replace(' ', '_', strtolower(trim((string) ($row['key'] ?? ''))));
-                if ($rk === '') {
-                    continue;
-                }
-                $roleOptions[] = [
-                    'key' => $rk,
-                    'label' => (string) ($row['label'] ?? $rk),
-                ];
-            }
-        } catch (\Throwable $e) {
-            $roleOptions = [];
-        }
-        $data['role_options_mandiri'] = $roleOptions;
 
         return $this->json($response, ['success' => true, 'data' => $data], 200);
     }
@@ -299,14 +247,6 @@ final class AbsenSettingController
                 }
                 $norm = $this->normalizeSidikDefault($sd);
                 $upsert->execute(['sidik_jari_default', json_encode($norm, JSON_UNESCAPED_UNICODE)]);
-            }
-            if (array_key_exists('akses_absen_mandiri', $body)) {
-                $am = $body['akses_absen_mandiri'];
-                if (!is_array($am)) {
-                    return $this->json($response, ['success' => false, 'message' => 'akses_absen_mandiri harus objek'], 400);
-                }
-                $norm = $this->normalizeAksesAbsenMandiri($am);
-                $upsert->execute(['akses_absen_mandiri', json_encode($norm, JSON_UNESCAPED_UNICODE)]);
             }
         } catch (\InvalidArgumentException $e) {
             return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 400);

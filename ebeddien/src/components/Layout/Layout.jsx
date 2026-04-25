@@ -10,6 +10,7 @@ import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { WhatsAppTemplateContext } from '../../contexts/WhatsAppTemplateContext'
 import WhatsAppTemplateOffcanvas from '../WhatsAppTemplateOffcanvas'
 import PasskeyPromptModal from '../Auth/PasskeyPromptModal'
+import GlobalAntreanAccessButton from './GlobalAntreanAccessButton'
 
 const headerTransition = { type: 'tween', duration: 0.35, ease: [0.4, 0, 0.2, 1] }
 
@@ -133,6 +134,8 @@ function Layout() {
             <Header />
           </motion.div>
         ) : null}
+
+        {hideHeader && location.pathname !== '/beranda' ? <GlobalAntreanAccessButton /> : null}
         
         {/* Area main tidak di-scroll; hanya konten di dalam halaman (mis. kotak biodata) yang scroll */}
         <main

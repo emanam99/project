@@ -1,6 +1,6 @@
-# Deploy ebeddien/daftar/mybeddian ke Hostinger - pilih staging/production, pilih Frontend (ebeddien/daftar/mybeddian)/API, lalu upload
+# Deploy ebeddien/daftar/mybeddien ke Hostinger - pilih staging/production, pilih Frontend (ebeddien/daftar/mybeddien)/API, lalu upload
 # Cara pakai: jalankan dari folder htdocs di PowerShell: .\deploy.ps1
-# - Frontend: pilih ebeddien, daftar, dan/atau mybeddian → build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddian2/mybeddian
+# - Frontend: pilih ebeddien, daftar, dan/atau mybeddien → build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddien2/mybeddien
 # - API: upload isi folder api (production only)
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +11,7 @@ $SSH_HOST   = "145.223.108.9"
 $SSH_PORT   = 65002
 $TAR_FILE         = "ebeddien-dist.tar"
 $DAFTAR_TAR       = "daftar-dist.tar"
-$MYBEDDIAN_TAR    = "mybeddian-dist.tar"
+$MYBEDDIEN_TAR    = "mybeddien-dist.tar"
 $API_TAR          = "api-dist.tar"
 
 # --- Pilih target: Staging (ebeddien2/api2) atau Production (ebeddien/api) ---
@@ -32,23 +32,23 @@ $gambarBase = "https://alutsmani.id/gambar"
 if ($isStaging) {
     $REMOTE_PATH           = "domains/alutsmani.id/public_html/ebeddien2"
     $REMOTE_DAFTAR_PATH    = "domains/alutsmani.id/public_html/daftar2"
-    $REMOTE_MYBEDDIAN_PATH = "domains/alutsmani.id/public_html/mybeddian2"
+    $REMOTE_MYBEDDIEN_PATH = "domains/alutsmani.id/public_html/mybeddien2"
     $REMOTE_API_PATH       = "domains/alutsmani.id/public_html/api2"
     $envLabel              = "staging"
     $apiUrl                = "https://api2.alutsmani.id/api"
 } else {
     $REMOTE_PATH           = "domains/alutsmani.id/public_html/ebeddien"
     $REMOTE_DAFTAR_PATH    = "domains/alutsmani.id/public_html/daftar"
-    $REMOTE_MYBEDDIAN_PATH = "domains/alutsmani.id/public_html/mybeddian"
+    $REMOTE_MYBEDDIEN_PATH = "domains/alutsmani.id/public_html/mybeddien"
     $REMOTE_API_PATH       = "domains/alutsmani.id/public_html/api"
     $envLabel              = "production"
     $apiUrl                = "https://api.alutsmani.id/api"
 }
 
-# --- Pilih scope: Frontend (ebeddien/daftar) / API / Keduanya ---
+# --- Pilih scope: Frontend (ebeddien/daftar/mybeddien) / API / Keduanya ---
 Write-Host ""
 Write-Host "  Deploy apa?" -ForegroundColor White
-Write-Host '    1) Frontend saja   - build + upload (pilih ebeddien/daftar nanti)' -ForegroundColor Cyan
+Write-Host '    1) Frontend saja   - build + upload (pilih ebeddien/daftar/mybeddien nanti)' -ForegroundColor Cyan
 Write-Host '    2) API saja        - upload api (hanya file production)' -ForegroundColor Magenta
 Write-Host '    3) Frontend + API  - keduanya' -ForegroundColor Green
 Write-Host ""
@@ -60,17 +60,17 @@ if ($scope -notmatch '^[123]$') {
 $doFrontend = $scope -eq "1" -or $scope -eq "3"
 $doApi      = $scope -eq "2" -or $scope -eq "3"
 
-# --- Jika Frontend: pilih ebeddien, daftar, dan/atau mybeddian ---
+# --- Jika Frontend: pilih ebeddien, daftar, dan/atau mybeddien ---
 $doEbeddien  = $false
 $doDaftar    = $false
-$doMybeddian = $false
+$doMybeddien = $false
 if ($doFrontend) {
     Write-Host ""
     Write-Host "  Frontend mana?" -ForegroundColor White
     Write-Host '    1) ebeddien saja  - build + upload ke ebeddien2/ebeddien' -ForegroundColor Cyan
     Write-Host '    2) daftar saja    - build + upload ke daftar2/daftar' -ForegroundColor Yellow
-    Write-Host '    3) mybeddian saja - build + upload ke mybeddian2/mybeddian' -ForegroundColor Magenta
-    Write-Host '    4) ketiganya      - ebeddien, daftar, dan mybeddian' -ForegroundColor Green
+    Write-Host '    3) mybeddien saja - build + upload ke mybeddien2/mybeddien' -ForegroundColor Magenta
+    Write-Host '    4) ketiganya      - ebeddien, daftar, dan mybeddien' -ForegroundColor Green
     Write-Host ""
     $front = Read-Host '  Masukkan pilihan (1, 2, 3, atau 4)'
     if ($front -notmatch '^[1234]$') {
@@ -78,7 +78,7 @@ if ($doFrontend) {
     }
     $doEbeddien  = $front -eq "1" -or $front -eq "4"
     $doDaftar    = $front -eq "2" -or $front -eq "4"
-    $doMybeddian = $front -eq "3" -or $front -eq "4"
+    $doMybeddien = $front -eq "3" -or $front -eq "4"
 }
 
 # --- Jika API: tanya migrasi & seed sekali di depan (supaya tidak interupsi di tengah proses) ---
@@ -92,17 +92,17 @@ if ($doApi) {
 }
 
 Write-Host ""
-Write-Host "  Target: $envLabel | ebeddien: $doEbeddien | daftar: $doDaftar | mybeddian: $doMybeddian | API: $doApi" -ForegroundColor Cyan
+Write-Host "  Target: $envLabel | ebeddien: $doEbeddien | daftar: $doDaftar | mybeddien: $doMybeddien | API: $doApi" -ForegroundColor Cyan
 if ($doApi) {
     Write-Host "  Migrasi: $(if ($runMigrations -eq 'y' -or $runMigrations -eq 'Y') { 'ya' } else { 'tidak' }) | Seed: $(if ($runSeeds -eq 'y' -or $runSeeds -eq 'Y') { 'ya' } else { 'tidak' })" -ForegroundColor Cyan
 }
 Write-Host ""
 
-# --- Script di root htdocs; folder ebeddien, daftar, mybeddian, api ada di bawahnya ---
+# --- Script di root htdocs; folder ebeddien, daftar, mybeddien, api ada di bawahnya ---
 $scriptDir     = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
 $ebeddienDir   = Join-Path $scriptDir "ebeddien"
 $daftarDir     = Join-Path $scriptDir "daftar"
-$mybeddianDir  = Join-Path $scriptDir "mybeddian"
+$mybeddienDir  = Join-Path $scriptDir "mybeddien"
 $apiPath       = Join-Path $scriptDir "api"
 
 # ========== FRONTEND (ebeddien) ==========
@@ -194,37 +194,37 @@ if ($doDaftar) {
     Write-Host "[Frontend daftar] Selesai." -ForegroundColor Green
 }
 
-# ========== FRONTEND (mybeddian) ==========
-if ($doMybeddian) {
-    if (-not (Test-Path $mybeddianDir)) {
-        Write-Error "Folder mybeddian tidak ditemukan: $mybeddianDir"
+# ========== FRONTEND (mybeddien) ==========
+if ($doMybeddien) {
+    if (-not (Test-Path $mybeddienDir)) {
+        Write-Error "Folder mybeddien tidak ditemukan: $mybeddienDir"
     }
-    Set-Location $mybeddianDir
-    $envPath = Join-Path $mybeddianDir ".env"
+    Set-Location $mybeddienDir
+    $envPath = Join-Path $mybeddienDir ".env"
     if (-not (Test-Path $envPath)) {
-        Write-Error "File .env tidak ditemukan di folder mybeddian."
+        Write-Error "File .env tidak ditemukan di folder mybeddien."
     }
     $envContent = Get-Content $envPath -Raw -Encoding UTF8
     $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=$apiUrl"
     $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=$envLabel"
     $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=$gambarBase"
     [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
-    Write-Host "[Frontend mybeddian] .env diset ke $envLabel" -ForegroundColor Gray
+    Write-Host "[Frontend mybeddien] .env diset ke $envLabel" -ForegroundColor Gray
 
-    Write-Host "[Frontend mybeddian] Build..." -ForegroundColor Cyan
+    Write-Host "[Frontend mybeddien] Build..." -ForegroundColor Cyan
     npm run build
     if (-not (Test-Path "dist")) {
-        Write-Error "Folder dist tidak ada setelah build mybeddian."
+        Write-Error "Folder dist tidak ada setelah build mybeddien."
     }
 
-    Write-Host "[Frontend mybeddian] Buat arsip tar..." -ForegroundColor Cyan
-    $tarPath = Join-Path $mybeddianDir $MYBEDDIAN_TAR
+    Write-Host "[Frontend mybeddien] Buat arsip tar..." -ForegroundColor Cyan
+    $tarPath = Join-Path $mybeddienDir $MYBEDDIEN_TAR
     if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
     tar -cf $tarPath -C dist .
 
-    Write-Host "[Frontend mybeddian] Upload + ekstrak di server..." -ForegroundColor Cyan
-    scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_MYBEDDIAN_PATH}/"
-    $extractCmd = 'cd ' + $REMOTE_MYBEDDIAN_PATH + ' && tar --warning=no-timestamp -xf ' + $MYBEDDIAN_TAR + ' && rm -f ' + $MYBEDDIAN_TAR
+    Write-Host "[Frontend mybeddien] Upload + ekstrak di server..." -ForegroundColor Cyan
+    scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_MYBEDDIEN_PATH}/"
+    $extractCmd = 'cd ' + $REMOTE_MYBEDDIEN_PATH + ' && tar --warning=no-timestamp -xf ' + $MYBEDDIEN_TAR + ' && rm -f ' + $MYBEDDIEN_TAR
     ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd
 
     Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
@@ -234,9 +234,9 @@ if ($doMybeddian) {
     $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=development"
     $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=/gambar"
     [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
-    Write-Host "[Frontend mybeddian] .env dikembalikan ke local." -ForegroundColor Gray
+    Write-Host "[Frontend mybeddien] .env dikembalikan ke local." -ForegroundColor Gray
 
-    Write-Host "[Frontend mybeddian] Selesai." -ForegroundColor Green
+    Write-Host "[Frontend mybeddien] Selesai." -ForegroundColor Green
 }
 
 # ========== API (isi folder api - production only) ==========
@@ -368,9 +368,9 @@ if ($doDaftar) {
     $url = if ($isStaging) { "https://daftar2.alutsmani.id" } else { "https://daftar.alutsmani.id" }
     Write-Host "Frontend daftar:    $url" -ForegroundColor Green
 }
-if ($doMybeddian) {
-    $url = if ($isStaging) { "https://mybeddian2.alutsmani.id" } else { "https://mybeddian.alutsmani.id" }
-    Write-Host "Frontend mybeddian: $url" -ForegroundColor Green
+if ($doMybeddien) {
+    $url = if ($isStaging) { "https://mybeddien2.alutsmani.id" } else { "https://mybeddien.alutsmani.id" }
+    Write-Host "Frontend mybeddien: $url" -ForegroundColor Green
 }
 if ($doApi) {
     $apiUrlBase = if ($isStaging) { "https://api2.alutsmani.id" } else { "https://api.alutsmani.id" }

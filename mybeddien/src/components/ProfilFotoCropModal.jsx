@@ -289,7 +289,7 @@ export default function ProfilFotoCropModal({ file, onConfirm, onCancel }) {
           <button
             type="button"
             onClick={handleConfirm}
-            className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium"
+            className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium"
           >
             Simpan
           </button>

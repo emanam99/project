@@ -48,7 +48,9 @@ app.get('/admin/online', (req, res) => {
 /**
  * Dipanggil dari PHP (SantriController / Pendaftaran / Boyong) setelah data santri berubah.
  * Header: X-API-Key = LIVE_SERVER_API_KEY (wajib jika key di-set di .env).
- * Body JSON opsional: { removed_ids?: number[] } — id yang dihapus di server (mis. merge santri).
+ * Body JSON opsional:
+ *  - removed_ids: id santri yang dihapus
+ *  - removed_registrasi_ids: id psb___registrasi yang dihapus (cache Data Pendaftar)
  */
 app.post('/internal/broadcast-santri-search-hint', (req, res) => {
   const apiKey = req.headers['x-api-key'];
@@ -61,9 +63,13 @@ app.post('/internal/broadcast-santri-search-hint', (req, res) => {
   const removed = Array.isArray(req.body?.removed_ids)
     ? req.body.removed_ids.map((n) => parseInt(String(n), 10)).filter((n) => n > 0)
     : [];
+  const removedReg = Array.isArray(req.body?.removed_registrasi_ids)
+    ? req.body.removed_registrasi_ids.map((n) => parseInt(String(n), 10)).filter((n) => n > 0)
+    : [];
   io.emit('santri_search_index_hint', {
     ts: new Date().toISOString(),
     removed_ids: removed,
+    removed_registrasi_ids: removedReg,
   });
   return res.json({ success: true });
 });
@@ -71,6 +77,34 @@ app.post('/internal/broadcast-santri-search-hint', (req, res) => {
 /**
  * Dipanggil dari PHP setelah daerah/kamar/pengurus domisili berubah — klien memuat ulang snapshot IndexedDB.
  */
+/**
+ * Dipanggil dari PHP (IjinController) setelah create/update/delete/mark kembali ijin.
+ * Body JSON opsional: { id_santri?: number, tahun_ajaran?: string, action?: string }
+ */
+app.post('/internal/broadcast-ijin-hint', (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  const keyOk =
+    LIVE_SERVER_API_KEY === '' ||
+    (typeof apiKey === 'string' && apiKey === LIVE_SERVER_API_KEY);
+  if (!keyOk) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  const idSantri = req.body?.id_santri != null ? parseInt(String(req.body.id_santri), 10) : null;
+  const tahunAjaran =
+    req.body?.tahun_ajaran != null && String(req.body.tahun_ajaran).trim() !== ''
+      ? String(req.body.tahun_ajaran).trim()
+      : null;
+  const action = typeof req.body?.action === 'string' && req.body.action.trim() !== '' ? req.body.action.trim() : null;
+  const payload = {
+    ts: new Date().toISOString(),
+    id_santri: Number.isFinite(idSantri) && idSantri > 0 ? idSantri : null,
+    tahun_ajaran: tahunAjaran,
+    action,
+  };
+  io.emit('ijin_data_hint', payload);
+  return res.json({ success: true });
+});
+
 app.post('/internal/broadcast-domisili-cache-hint', (req, res) => {
   const apiKey = req.headers['x-api-key'];
   const keyOk =

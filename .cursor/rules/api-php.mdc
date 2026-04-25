@@ -1,0 +1,13 @@
+---
+description: Konvensi backend PHP / Slim di folder api
+globs: api/**/*.php
+alwaysApply: false
+---
+
+# API (`api/`)
+
+- Ikuti pola **route** + **controller** + **service** yang sudah dipakai di file sejenis di dekat perubahan.
+- Migrasi DB: nama file timestamp + isi idempotent / aman diulang sesuai pola repo.
+- Jangan mengubah kontrak endpoint publik tanpa alasan eksplisit; pertahankan bentuk JSON respons yang dipakai frontend.
+- Sanitasi input dan otorisasi role/fitur mengikuti helper & middleware yang sudah ada (`RoleHelper`, middleware CSRF, dll.).
+- Hindari `error_log` berlebihan untuk data sensitif; gunakan pola logging yang sudah dipakai di controller serupa.

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
@@ -13,6 +13,13 @@ import BulkEditPendaftarOffcanvas from './components/BulkEditPendaftarOffcanvas'
 import DetailBerkasOffcanvas from './components/DetailBerkasOffcanvas'
 import RiwayatChatOffcanvas from './components/RiwayatChatOffcanvas'
 import { useWhatsAppCheck } from './components/hooks/useWhatsAppCheck'
+import {
+  makePendaftarScopeKey,
+  getPendaftarListOrdered,
+  applyPendaftarServerPayload,
+  getLocalPendaftarSinceWatermark,
+  subscribePendaftarListForScope,
+} from '../../services/pendaftarListCache'
 
 /** Selaras backend (r.daftar_formal / r.daftar_diniyah). Kolom `formal`/`diniyah` di API bisa isi rombel santri, bukan pilihan registrasi. */
 function registrasiFormalLembagaId(p) {
@@ -26,6 +33,10 @@ function DataPendaftar() {
   const navigate = useNavigate()
   const { showNotification } = useNotification()
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
+  const pendaftarScopeKey = useMemo(
+    () => makePendaftarScopeKey(tahunAjaran, tahunAjaranMasehi),
+    [tahunAjaran, tahunAjaranMasehi]
+  )
   const { user, getEffectiveLembagaId } = useAuthStore()
   const effectiveLembagaId = getEffectiveLembagaId?.() ?? user?.lembaga_id ?? null
   const lembagaScopeAll = user?.lembaga_scope_all === true
@@ -38,6 +49,9 @@ function DataPendaftar() {
   }, [user?.lembaga_ids, effectiveLembagaId])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  /** Daftar dari cache IndexedDB (offline / server gagal) */
+  const [listDariLokal, setListDariLokal] = useState(false)
+  const skipLiveQueryRef = useRef(true)
   const [pendaftarList, setPendaftarList] = useState([])
   const [filteredList, setFilteredList] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -328,6 +342,27 @@ function DataPendaftar() {
   }, [lembagaScopeAll, scopedLembagaIds.join('|')])
 
   useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        'ebeddien_pendaftar_scope',
+        JSON.stringify({ hijriyah: tahunAjaran, masehi: tahunAjaranMasehi })
+      )
+    } catch (_) { /* abaikan */ }
+  }, [tahunAjaran, tahunAjaranMasehi])
+
+  useEffect(() => {
+    skipLiveQueryRef.current = true
+  }, [tahunAjaran, tahunAjaranMasehi])
+
+  useEffect(() => {
+    const sub = subscribePendaftarListForScope(pendaftarScopeKey, (list) => {
+      if (skipLiveQueryRef.current) return
+      setPendaftarList(list)
+    })
+    return () => sub.unsubscribe()
+  }, [pendaftarScopeKey])
+
+  useEffect(() => {
     loadPendaftarData()
   }, [tahunAjaran, tahunAjaranMasehi])
 
@@ -536,18 +571,59 @@ function DataPendaftar() {
     setFilteredList(filtered)
   }, [searchQuery, pendaftarList, statusPendaftarFilter, formalFilter, diniyahFilter, keteranganStatusFilter, gelombangFilter, statusSantriFilter, statusMuridFilter, sortConfig, isSuperAdmin, applyScopedLembagaToRows])
 
-  const loadPendaftarData = async () => {
+  /** @param {boolean} [forceFull] — true = muat ulang penuh dari server (bersihkan cache scope, akhiri baris usang) */
+  const loadPendaftarData = async (forceFull = false) => {
+    skipLiveQueryRef.current = true
     setLoading(true)
     setError('')
-    
+    setListDariLokal(false)
+
+    const h = tahunAjaran
+    const m = tahunAjaranMasehi
+    const scopeKey = makePendaftarScopeKey(h, m)
     try {
-      // Gunakan tahun ajaran langsung dari store (header)
-      const result = await pendaftaranAPI.getAllPendaftar(tahunAjaran, tahunAjaranMasehi)
-      
+      sessionStorage.setItem('ebeddien_pendaftar_scope', JSON.stringify({ hijriyah: h, masehi: m }))
+    } catch (_) { /* abaikan */ }
+
+    let hadCache = false
+    try {
+      const cached = await getPendaftarListOrdered(scopeKey)
+      if (cached.length) {
+        hadCache = true
+        setPendaftarList(cached)
+        setError('')
+        setLoading(false)
+      }
+    } catch (_) { /* abaikan */ }
+
+    const online = typeof navigator === 'undefined' || navigator.onLine !== false
+    if (!online) {
+      if (hadCache) {
+        setListDariLokal(true)
+      } else {
+        setError('Tidak ada koneksi dan belum ada data pendaftar tersimpan lokal untuk filter ini.')
+      }
+      skipLiveQueryRef.current = false
+      setLoading(false)
+      return
+    }
+
+    try {
+      const since = forceFull ? null : await getLocalPendaftarSinceWatermark(scopeKey)
+      const incremental = !forceFull && since != null && since !== ''
+      const result = await pendaftaranAPI.getAllPendaftar(h, m, incremental ? since : undefined)
+
       if (result.success) {
-        setPendaftarList(result.data || [])
-        setFilteredList(result.data || [])
-        setCurrentPage(1) // Reset ke halaman 1 saat data baru dimuat
+        const rows = result.data || []
+        await applyPendaftarServerPayload(scopeKey, rows, incremental)
+        const list = await getPendaftarListOrdered(scopeKey)
+        setPendaftarList(list)
+        setCurrentPage(1)
+        setListDariLokal(false)
+        setError('')
+      } else if (hadCache) {
+        setListDariLokal(true)
+        setError('')
       } else {
         setError(result.message || 'Gagal memuat data pendaftar')
       }
@@ -555,11 +631,22 @@ function DataPendaftar() {
       console.error('Error loading pendaftar data:', err)
       if (err.response?.status === 429) {
         const msg = err.response?.data?.message || 'Terlalu banyak permintaan. Coba lagi dalam beberapa menit.'
-        setError(msg)
+        if (hadCache) {
+          setListDariLokal(true)
+          setError('')
+          showNotification(msg, 'warning')
+        } else {
+          setError(msg)
+        }
+      } else if (hadCache) {
+        setListDariLokal(true)
+        setError('')
+        showNotification('Memakai data lokal; server tidak terjangkau.', 'info')
       } else {
         setError(err.message || 'Terjadi kesalahan saat memuat data')
       }
     } finally {
+      skipLiveQueryRef.current = false
       setLoading(false)
     }
   }
@@ -789,6 +876,11 @@ function DataPendaftar() {
           >
             {/* Search & Filter - tetap di atas, tidak ikut scroll */}
             <div className="mb-4 flex-shrink-0">
+              {listDariLokal && (
+                <div className="mb-3 text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-100 border border-amber-200/80 dark:border-amber-800/60 rounded-lg px-3 py-2">
+                  Menampilkan data pendaftar dari penyimpanan lokal. Daftar akan disegarkan saat koneksi kembali atau setelah sinkron.
+                </div>
+              )}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
                 {/* Search Input dengan tombol di kanan */}
                 <div className="relative pb-2 px-4 pt-3">
@@ -823,9 +915,10 @@ function DataPendaftar() {
                         )}
                       </button>
                       <button
-                        onClick={loadPendaftarData}
+                        type="button"
+                        onClick={() => loadPendaftarData(true)}
                         className="bg-blue-100 hover:bg-blue-200 dark:bg-blue-700 dark:hover:bg-blue-600 text-blue-700 dark:text-blue-300 p-1.5 rounded text-xs transition-colors pointer-events-auto"
-                        title="Refresh"
+                        title="Segarkan penuh dari server"
                         disabled={loading}
                       >
                         <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">

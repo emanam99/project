@@ -116,6 +116,8 @@ const SearchAndFilterRencana = memo(({
                   <option value="Listrik">Listrik</option>
                   <option value="Wifi">Wifi</option>
                   <option value="Langganan">Langganan</option>
+                  <option value="Rapat">Rapat</option>
+                  <option value="Setoran">Setoran</option>
                   <option value="lainnya">Lainnya</option>
                 </select>
                 <select

@@ -452,4 +452,24 @@ final class EbeddienFiturAccessDefinitions
             ['menu.kalender.pengaturan']
         );
     }
+
+    /** Menu grup Wirid — Nailul Murod */
+    public static function wiridMenus(): array
+    {
+        return [
+            'menu.wirid.nailul_murod',
+        ];
+    }
+
+    /**
+     * GET/POST/PUT/DELETE /api/wirid-nailul-murod.
+     * Admin yang mengelola konten: admin_wirid + super_admin.
+     */
+    public static function wiridNailulMurodApiSelectors(): array
+    {
+        return self::merge(
+            self::wiridMenus(),
+            self::superAdminMenus()
+        );
+    }
 }

@@ -43,6 +43,8 @@ class RoleSeed extends AbstractSeed
         [29, 'admin_daerah', 'Admin Daerah'],
         [30, 'kapdar', 'Kapdar'],
         [31, 'wakapdar', 'Wakapdar'],
+        [32, 'admin_domisili', 'Admin Domisili'],
+        [33, 'admin_wirid', 'Admin Wirid'],
     ];
 
     public function run(): void

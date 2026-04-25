@@ -77,7 +77,7 @@ export default function UbahPassword() {
   if (valid === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-teal-500 border-t-transparent" />
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary-500 border-t-transparent" />
       </div>
     )
   }
@@ -104,7 +104,7 @@ export default function UbahPassword() {
           <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">
             {hint}
           </p>
-          <a href="/login" className="inline-block py-2 px-4 rounded-xl bg-teal-600 text-white font-medium hover:bg-teal-700">
+          <a href="/login" className="inline-block py-2 px-4 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700">
             Ke halaman Login
           </a>
         </motion.div>
@@ -129,7 +129,7 @@ export default function UbahPassword() {
               value={passwordBaru}
               onChange={(e) => setPasswordBaru(e.target.value)}
               placeholder="Minimal 6 karakter"
-              className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               autoComplete="new-password"
             />
           </div>
@@ -140,7 +140,7 @@ export default function UbahPassword() {
               value={konfirmasi}
               onChange={(e) => setKonfirmasi(e.target.value)}
               placeholder="Ulangi password baru"
-              className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               autoComplete="new-password"
             />
           </div>
@@ -148,7 +148,7 @@ export default function UbahPassword() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-teal-600 text-white font-semibold hover:bg-teal-700 disabled:opacity-50 transition-colors"
+            className="w-full py-3 rounded-xl bg-primary-600 text-white font-semibold hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             {loading ? 'Menyimpan...' : 'Simpan password'}
           </button>

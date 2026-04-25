@@ -1,16 +1,18 @@
-import { useNavigate, useLocation } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
 
 const navItemsSantri = [
   { path: '/', label: 'Beranda', icon: HomeIcon },
-  { path: '/biodata', label: 'Biodata', icon: BiodataIcon },
-  { path: '/riwayat-pembayaran', label: 'Pembayaran', icon: RiwayatPembayaranIcon },
+  { path: '/santri/biodata', label: 'Biodata', icon: BiodataIcon },
+  { path: '/santri/riwayat-pembayaran', label: 'Pembayaran', icon: RiwayatPembayaranIcon },
   { path: '/profil', label: 'Profil', icon: ProfilIcon },
 ]
 
 const navItemsToko = [
   { path: '/', label: 'Beranda', icon: HomeIcon },
   { path: '/toko', label: 'Toko', icon: TokoIcon },
+  { path: '/toko/barang', label: 'Barang', icon: BarangIcon },
   { path: '/profil', label: 'Profil', icon: ProfilIcon },
 ]
 
@@ -54,33 +56,81 @@ function TokoIcon({ className }) {
   )
 }
 
+function BarangIcon({ className }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+    </svg>
+  )
+}
+
+function pathActive(pathname, path) {
+  if (path === '/') return pathname === '/'
+  if (path === '/santri/riwayat-pembayaran') return pathname === path || pathname.startsWith('/santri/riwayat-pembayaran/')
+  if (path === '/toko/barang') return pathname === path || pathname.startsWith('/toko/barang')
+  if (path === '/toko') return pathname === '/toko'
+  return pathname === path || pathname.startsWith(`${path}/`)
+}
+
 export default function BottomNav() {
-  const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuthStore()
   const hasToko = user?.has_toko === true
   const isTokoOnly = hasToko && !user?.santri_id
-  const navItems = isTokoOnly ? navItemsToko : (hasToko ? [...navItemsSantri, { path: '/toko', label: 'Toko', icon: TokoIcon }] : navItemsSantri)
+  const navItems = isTokoOnly
+    ? navItemsToko
+    : hasToko
+      ? [...navItemsSantri, { path: '/toko', label: 'Toko', icon: TokoIcon }, { path: '/toko/barang', label: 'Barang', icon: BarangIcon }]
+      : navItemsSantri
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 flex items-center justify-around py-2 px-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-area-pb">
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-100 flex items-stretch justify-around bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.35)]"
+      style={{
+        height: '64px',
+        paddingBottom: 'env(safe-area-inset-bottom, 0)',
+      }}
+      aria-label="Menu utama"
+    >
       {navItems.map((item) => {
-        const isActive = location.pathname === item.path
+        const isActive = pathActive(location.pathname, item.path)
         const Icon = item.icon
         return (
-          <button
-            key={item.path}
-            type="button"
-            onClick={() => navigate(item.path)}
-            className={`flex flex-col items-center justify-center gap-1 min-w-[72px] py-2 px-3 rounded-xl transition-colors ${
-              isActive
-                ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+          <NavLink
+            key={`${item.path}-${item.label}`}
+            to={item.path}
+            className={`relative flex flex-1 flex-col items-center justify-center py-1.5 px-1 min-w-0 transition-colors duration-300 ${
+              isActive ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'
             }`}
           >
-            <Icon className="w-6 h-6 shrink-0" />
-            <span className="text-xs font-medium">{item.label}</span>
-          </button>
+            <AnimatePresence>
+              {isActive && (
+                <motion.div
+                  key="pill"
+                  initial={{ scale: 0.85, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.85, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+                  className="absolute inset-x-1.5 top-0 bottom-0 bg-primary-50 dark:bg-primary-900/25 rounded-t-2xl pointer-events-none"
+                  style={{ zIndex: 0 }}
+                />
+              )}
+            </AnimatePresence>
+            <motion.div
+              animate={{ scale: isActive ? 1.12 : 1, y: isActive ? -2 : 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 26 }}
+              className="relative z-10 mb-0.5"
+            >
+              <Icon className="w-6 h-6" />
+            </motion.div>
+            <motion.span
+              animate={{ fontSize: isActive ? '0.625rem' : '0.5625rem', fontWeight: isActive ? 600 : 500 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 26 }}
+              className="relative z-10 text-center leading-tight max-w-full truncate px-0.5"
+            >
+              {item.label}
+            </motion.span>
+          </NavLink>
         )
       })}
     </nav>

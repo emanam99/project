@@ -260,4 +260,14 @@ final class EbeddienFiturAccess
     {
         return EbeddienFiturSelectorRepository::codesForMethod('kalenderPengaturanHariPentingSelectors');
     }
+
+    public static function wiridMenus(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('wiridMenus');
+    }
+
+    public static function wiridNailulMurodApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('wiridNailulMurodApiSelectors');
+    }
 }

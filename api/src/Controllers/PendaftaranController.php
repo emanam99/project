@@ -44,6 +44,48 @@ class PendaftaranController
     }
 
     /**
+     * Membalikkan GROUP_CONCAT dari getItemRekap (CHAR(30) antar kolom, 0x1f antar baris rencana).
+     * Format baris: id, keterangan, ket_rencana, fase ('rencana' | 'pengeluaran') — field ke-4 opsional (data lama).
+     *
+     * @return list<array{id:int,keterangan:string,ket:string,fase:?string}>
+     */
+    private static function parseItemRekapRencanaSetorBlob(?string $blob): array
+    {
+        if ($blob === null || $blob === '') {
+            return [];
+        }
+        $sepRow = "\x1F";
+        $sepCol = "\x1E";
+        $out = [];
+        foreach (explode($sepRow, $blob) as $line) {
+            if ($line === '') {
+                continue;
+            }
+            $parts = explode($sepCol, $line, 4);
+            if (\count($parts) < 3) {
+                continue;
+            }
+            $rid = (int) $parts[0];
+            if ($rid <= 0) {
+                continue;
+            }
+            $fase = null;
+            if (\count($parts) >= 4) {
+                $f = trim((string) $parts[3]);
+                $fase = ($f === 'pengeluaran' || $f === 'rencana') ? $f : null;
+            }
+            $out[] = [
+                'id' => $rid,
+                'keterangan' => (string) $parts[1],
+                'ket' => (string) $parts[2],
+                'fase' => $fase,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * GET /api/pendaftaran/kategori-options - Daftar kategori dari tabel daerah (distinct).
      * Tidak terpengaruh status_santri; dipakai untuk dropdown kategori di form pendaftaran.
      */
@@ -4130,6 +4172,220 @@ class PendaftaranController
     }
 
     /**
+     * GET /api/pendaftaran/item-rekap - Rekap pemakaian item pada detail registrasi
+     */
+    public function getItemRekap(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            $kategori = $queryParams['kategori'] ?? null;
+            $search = $queryParams['search'] ?? null;
+            $tahunHijriyah = isset($queryParams['tahun_hijriyah']) ? trim((string) $queryParams['tahun_hijriyah']) : '';
+            $tahunMasehi = isset($queryParams['tahun_masehi']) ? trim((string) $queryParams['tahun_masehi']) : '';
+
+            $rdJoin = "LEFT JOIN psb___registrasi_detail rd ON rd.id_item = i.id";
+            $rdJoinParams = [];
+
+            if ($tahunHijriyah !== '' || $tahunMasehi !== '') {
+                $rdJoin .= " AND EXISTS (
+                    SELECT 1
+                    FROM psb___registrasi r
+                    WHERE r.id = rd.id_registrasi";
+
+                if ($tahunHijriyah !== '' && $tahunMasehi !== '') {
+                    $rdJoin .= " AND (r.tahun_hijriyah = ? OR r.tahun_masehi = ?)";
+                    $rdJoinParams[] = $tahunHijriyah;
+                    $rdJoinParams[] = $tahunMasehi;
+                } elseif ($tahunHijriyah !== '') {
+                    $rdJoin .= " AND r.tahun_hijriyah = ?";
+                    $rdJoinParams[] = $tahunHijriyah;
+                } elseif ($tahunMasehi !== '') {
+                    $rdJoin .= " AND r.tahun_masehi = ?";
+                    $rdJoinParams[] = $tahunMasehi;
+                }
+
+                $rdJoin .= ")";
+            }
+
+            $setorJoinSql = "
+                LEFT JOIN (
+                    SELECT s.id_psb_item,
+                        COALESCE(SUM(s.jumlah), 0) AS jumlah_setor,
+                        COALESCE(SUM(s.nominal), 0) AS total_nominal_setor,
+                        COALESCE(SUM(CASE WHEN peng.id IS NULL THEN s.jumlah ELSE 0 END), 0) AS jumlah_setor_rencana,
+                        COALESCE(SUM(CASE WHEN peng.id IS NULL THEN s.nominal ELSE 0 END), 0) AS nominal_setor_rencana,
+                        COALESCE(SUM(CASE WHEN peng.id IS NOT NULL THEN s.jumlah ELSE 0 END), 0) AS jumlah_setor_pengeluaran,
+                        COALESCE(SUM(CASE WHEN peng.id IS NOT NULL THEN s.nominal ELSE 0 END), 0) AS nominal_setor_pengeluaran
+                    FROM item___setor s
+                    INNER JOIN pengeluaran___rencana_detail rd_st ON rd_st.id = s.id_rencana_detail
+                    INNER JOIN pengeluaran___rencana r_st ON r_st.id = rd_st.id_pengeluaran_rencana
+                    LEFT JOIN pengeluaran peng ON peng.id_rencana = r_st.id
+                    WHERE 1=1";
+            $setorJoinParams = [];
+            if ($tahunHijriyah !== '' && $tahunMasehi !== '') {
+                $setorJoinSql .= " AND (r_st.tahun_ajaran = ? OR r_st.tahun_ajaran = ?)";
+                $setorJoinParams[] = $tahunHijriyah;
+                $setorJoinParams[] = $tahunMasehi;
+            } elseif ($tahunHijriyah !== '') {
+                $setorJoinSql .= " AND r_st.tahun_ajaran = ?";
+                $setorJoinParams[] = $tahunHijriyah;
+            } elseif ($tahunMasehi !== '') {
+                $setorJoinSql .= " AND r_st.tahun_ajaran = ?";
+                $setorJoinParams[] = $tahunMasehi;
+            }
+            $setorJoinSql .= "
+                    GROUP BY s.id_psb_item
+                ) st ON st.id_psb_item = i.id";
+
+            $setorListJoinSql = "
+                LEFT JOIN (
+                    SELECT s2.id_psb_item,
+                        GROUP_CONCAT(
+                            DISTINCT CONCAT_WS(CHAR(30),
+                                r2.id,
+                                REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(r2.keterangan, ''), '\n', ' '), '\r', ' '), CHAR(30), ' '), CHAR(31), ' '),
+                                IFNULL(r2.ket, ''),
+                                IF(peng2.id IS NULL, 'rencana', 'pengeluaran')
+                            )
+                            ORDER BY r2.id SEPARATOR 0x1f
+                        ) AS rencana_setor_blob
+                    FROM item___setor s2
+                    INNER JOIN pengeluaran___rencana_detail rd2 ON rd2.id = s2.id_rencana_detail
+                    INNER JOIN pengeluaran___rencana r2 ON r2.id = rd2.id_pengeluaran_rencana
+                    LEFT JOIN pengeluaran peng2 ON peng2.id_rencana = r2.id
+                    WHERE 1=1";
+            if ($tahunHijriyah !== '' && $tahunMasehi !== '') {
+                $setorListJoinSql .= " AND (r2.tahun_ajaran = ? OR r2.tahun_ajaran = ?)";
+            } elseif ($tahunHijriyah !== '') {
+                $setorListJoinSql .= " AND r2.tahun_ajaran = ?";
+            } elseif ($tahunMasehi !== '') {
+                $setorListJoinSql .= " AND r2.tahun_ajaran = ?";
+            }
+            $setorListJoinSql .= "
+                    GROUP BY s2.id_psb_item
+                ) rsi ON rsi.id_psb_item = i.id";
+
+            $sql = "SELECT
+                        i.id,
+                        i.item AS nama_item,
+                        i.item,
+                        i.kategori,
+                        i.urutan,
+                        i.harga AS harga_standar,
+                        COUNT(rd.id) AS jumlah_terpakai,
+                        SUM(CASE WHEN COALESCE(rd.nominal, 0) > 0 THEN 1 ELSE 0 END) AS count_terbayar,
+                        SUM(CASE WHEN rd.status_ambil = 'sudah_ambil' THEN 1 ELSE 0 END) AS count_sudah_diambil,
+                        COALESCE(SUM(CASE WHEN COALESCE(rd.nominal, 0) > 0 THEN rd.nominal ELSE 0 END), 0) AS total_harga_terbayar,
+                        COALESCE(SUM(COALESCE(NULLIF(rd.nominal, 0), i.harga, 0)), 0) AS total_harga_terpakai,
+                        COALESCE(MAX(st.jumlah_setor), 0) AS jumlah_setor,
+                        COALESCE(MAX(st.total_nominal_setor), 0) AS total_nominal_setor,
+                        COALESCE(MAX(st.jumlah_setor_rencana), 0) AS jumlah_setor_rencana,
+                        COALESCE(MAX(st.nominal_setor_rencana), 0) AS nominal_setor_rencana,
+                        COALESCE(MAX(st.jumlah_setor_pengeluaran), 0) AS jumlah_setor_pengeluaran,
+                        COALESCE(MAX(st.nominal_setor_pengeluaran), 0) AS nominal_setor_pengeluaran,
+                        MAX(rsi.rencana_setor_blob) AS rencana_setor_blob
+                    FROM psb___item i
+                    {$rdJoin}
+                    {$setorJoinSql}
+                    {$setorListJoinSql}
+                    WHERE 1=1";
+
+            $params = array_merge($rdJoinParams, $setorJoinParams, $setorJoinParams);
+
+            if ($kategori && $kategori !== '') {
+                $sql .= " AND i.kategori = ?";
+                $params[] = $kategori;
+            }
+
+            if ($search && $search !== '') {
+                $sql .= " AND (i.item LIKE ? OR CAST(i.id AS CHAR) LIKE ?)";
+                $searchParam = "%{$search}%";
+                $params[] = $searchParam;
+                $params[] = $searchParam;
+            }
+
+            $sql .= " GROUP BY i.id, i.item, i.kategori, i.urutan, i.harga
+                      ORDER BY COALESCE(i.urutan, 0) ASC, i.item ASC";
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $totalPemakaian = 0;
+            $totalTerbayar = 0;
+            $totalSudahDiambil = 0;
+            $totalHargaTerbayar = 0;
+            $totalHargaTerpakai = 0;
+            $totalJumlahSetor = 0;
+            $totalNominalSetor = 0;
+            $totalJumlahSetorRencana = 0;
+            $totalNominalSetorRencana = 0;
+            $totalJumlahSetorPengeluaran = 0;
+            $totalNominalSetorPengeluaran = 0;
+            foreach ($data as &$row) {
+                $row['jumlah_terpakai'] = (int) ($row['jumlah_terpakai'] ?? 0);
+                $row['count_terbayar'] = (int) ($row['count_terbayar'] ?? 0);
+                $row['count_sudah_diambil'] = (int) ($row['count_sudah_diambil'] ?? 0);
+                $row['total_harga_terbayar'] = (int) ($row['total_harga_terbayar'] ?? 0);
+                $row['total_harga_terpakai'] = (int) ($row['total_harga_terpakai'] ?? 0);
+                $row['jumlah_setor'] = (int) ($row['jumlah_setor'] ?? 0);
+                $row['total_nominal_setor'] = (int) round((float) ($row['total_nominal_setor'] ?? 0));
+                $row['jumlah_setor_rencana'] = (int) ($row['jumlah_setor_rencana'] ?? 0);
+                $row['nominal_setor_rencana'] = (int) round((float) ($row['nominal_setor_rencana'] ?? 0));
+                $row['jumlah_setor_pengeluaran'] = (int) ($row['jumlah_setor_pengeluaran'] ?? 0);
+                $row['nominal_setor_pengeluaran'] = (int) round((float) ($row['nominal_setor_pengeluaran'] ?? 0));
+                $row['harga_standar'] = isset($row['harga_standar']) ? (int) $row['harga_standar'] : 0;
+                $row['rencana_setor_list'] = self::parseItemRekapRencanaSetorBlob($row['rencana_setor_blob'] ?? null);
+                unset($row['rencana_setor_blob']);
+
+                $totalPemakaian += $row['jumlah_terpakai'];
+                $totalTerbayar += $row['count_terbayar'];
+                $totalSudahDiambil += $row['count_sudah_diambil'];
+                $totalHargaTerbayar += $row['total_harga_terbayar'];
+                $totalHargaTerpakai += $row['total_harga_terpakai'];
+                $totalJumlahSetor += $row['jumlah_setor'];
+                $totalNominalSetor += $row['total_nominal_setor'];
+                $totalJumlahSetorRencana += $row['jumlah_setor_rencana'];
+                $totalNominalSetorRencana += $row['nominal_setor_rencana'];
+                $totalJumlahSetorPengeluaran += $row['jumlah_setor_pengeluaran'];
+                $totalNominalSetorPengeluaran += $row['nominal_setor_pengeluaran'];
+            }
+            unset($row);
+
+            $categorySql = "SELECT DISTINCT kategori FROM psb___item WHERE kategori IS NOT NULL AND kategori != '' ORDER BY kategori ASC";
+            $categoryStmt = $this->db->prepare($categorySql);
+            $categoryStmt->execute();
+            $categories = $categoryStmt->fetchAll(\PDO::FETCH_COLUMN);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $data,
+                'categories' => $categories,
+                'summary' => [
+                    'total_item' => count($data),
+                    'total_pemakaian' => $totalPemakaian,
+                    'total_terbayar' => $totalTerbayar,
+                    'total_sudah_diambil' => $totalSudahDiambil,
+                    'total_harga_terbayar' => $totalHargaTerbayar,
+                    'total_harga_terpakai' => $totalHargaTerpakai,
+                    'total_jumlah_setor' => $totalJumlahSetor,
+                    'total_nominal_setor' => $totalNominalSetor,
+                    'total_jumlah_setor_rencana' => $totalJumlahSetorRencana,
+                    'total_nominal_setor_rencana' => $totalNominalSetorRencana,
+                    'total_jumlah_setor_pengeluaran' => $totalJumlahSetorPengeluaran,
+                    'total_nominal_setor_pengeluaran' => $totalNominalSetorPengeluaran
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            error_log("Get item rekap error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil rekap item: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * POST /api/pendaftaran/add-item-to-detail - Tambahkan item ke registrasi_detail
      */
     public function addItemToDetail(Request $request, Response $response): Response
@@ -6360,6 +6616,13 @@ class PendaftaranController
                 $params[] = $tahunMasehi;
             }
 
+            $lembagaIdFilter = isset($queryParams['lembaga_id']) ? trim((string) $queryParams['lembaga_id']) : '';
+            if ($lembagaIdFilter !== '') {
+                $whereConditions[] = '(TRIM(COALESCE(CAST(r.daftar_formal AS CHAR), \'\')) = ? OR TRIM(COALESCE(CAST(r.daftar_diniyah AS CHAR), \'\')) = ?)';
+                $params[] = $lembagaIdFilter;
+                $params[] = $lembagaIdFilter;
+            }
+
             $whereClause = count($whereConditions) > 0 ? "WHERE " . implode(" AND ", $whereConditions) : "";
 
             // Total pendaftar
@@ -6509,6 +6772,31 @@ class PendaftaranController
                 error_log("Get dashboard diniyah breakdown: " . $e->getMessage());
             }
 
+            // Perbandingan gender (Laki-laki / Perempuan), COALESCE registrasi + biodata santri
+            $genderLaki = 0;
+            $genderPerempuan = 0;
+            $genderTidakDiketahui = 0;
+            try {
+                $sqlGender = "SELECT 
+                    COUNT(DISTINCT CASE 
+                        WHEN UPPER(LEFT(TRIM(COALESCE(NULLIF(TRIM(r.gender), ''), NULLIF(TRIM(s.gender), ''))), 1)) = 'L' 
+                        THEN r.id_santri END) AS gender_laki,
+                    COUNT(DISTINCT CASE 
+                        WHEN UPPER(LEFT(TRIM(COALESCE(NULLIF(TRIM(r.gender), ''), NULLIF(TRIM(s.gender), ''))), 1)) = 'P' 
+                        THEN r.id_santri END) AS gender_perempuan
+                    FROM psb___registrasi r
+                    INNER JOIN santri s ON s.id = r.id_santri
+                    $whereClause";
+                $stmtGender = $this->db->prepare($sqlGender);
+                $stmtGender->execute($params);
+                $genderRow = $stmtGender->fetch(\PDO::FETCH_ASSOC);
+                $genderLaki = (int) ($genderRow['gender_laki'] ?? 0);
+                $genderPerempuan = (int) ($genderRow['gender_perempuan'] ?? 0);
+                $genderTidakDiketahui = max(0, $totalPendaftar - $genderLaki - $genderPerempuan);
+            } catch (\PDOException $e) {
+                error_log("Get dashboard gender breakdown: " . $e->getMessage());
+            }
+
             return $this->jsonResponse($response, [
                 'success' => true,
                 'data' => [
@@ -6519,7 +6807,13 @@ class PendaftaranController
                     'total_bulan_ini' => $totalBulanIni,
                     'total_hari_ini' => $totalHariIni,
                     'formal_breakdown' => $formalBreakdown,
-                    'diniyah_breakdown' => $diniyahBreakdown
+                    'diniyah_breakdown' => $diniyahBreakdown,
+                    'gender' => [
+                        'laki_laki' => $genderLaki,
+                        'perempuan' => $genderPerempuan,
+                        'tidak_diketahui' => $genderTidakDiketahui,
+                        'total' => $totalPendaftar,
+                    ],
                 ]
             ], 200);
 
@@ -6537,7 +6831,13 @@ class PendaftaranController
                         'total_bulan_ini' => 0,
                         'total_hari_ini' => 0,
                         'formal_breakdown' => [],
-                        'diniyah_breakdown' => []
+                        'diniyah_breakdown' => [],
+                        'gender' => [
+                            'laki_laki' => 0,
+                            'perempuan' => 0,
+                            'tidak_diketahui' => 0,
+                            'total' => 0,
+                        ],
                     ]
                 ], 200);
             }
@@ -6722,6 +7022,14 @@ class PendaftaranController
                         $params[] = $p;
                     }
                 }
+            }
+
+            // Sinkron inkremental: hanya baris psb___registrasi yang dibuat/diubah setelah watermark (klien IndexedDB)
+            $since = isset($queryParams['since']) ? trim((string) $queryParams['since']) : '';
+            if ($since !== '') {
+                $whereConditions[] = '((r.tanggal_update IS NOT NULL AND r.tanggal_update > ?) OR (r.tanggal_update IS NULL AND r.tanggal_dibuat > ?))';
+                $params[] = $since;
+                $params[] = $since;
             }
 
             $whereClause = count($whereConditions) > 0 ? "WHERE " . implode(" AND ", $whereConditions) : "";
@@ -6986,7 +7294,8 @@ class PendaftaranController
 
             return $this->jsonResponse($response, [
                 'success' => true,
-                'data' => $formattedData
+                'data' => $formattedData,
+                'incremental' => $since !== '',
             ], 200);
 
         } catch (\Exception $e) {
@@ -7184,6 +7493,20 @@ class PendaftaranController
 
                 $this->db->commit();
 
+                $idRegsNotify = array_values(array_filter(array_map('intval', $idRegistrasiList), function ($x) {
+                    return (int) $x > 0;
+                }));
+                $santriRemovedNotify = [];
+                if ($hapusDiTabelSantri && count($santriIds) > 0) {
+                    $santriRemovedNotify = array_values(array_filter(array_map('intval', $santriIds), function ($x) {
+                        return (int) $x > 0;
+                    }));
+                }
+                LiveSantriIndexNotifier::ping([
+                    'removed_ids' => $santriRemovedNotify,
+                    'removed_registrasi_ids' => $idRegsNotify,
+                ]);
+
                 $message = count($idRegistrasiList) . ' registrasi berhasil dihapus';
                 if ($hapusDiTabelSantri) {
                     $message .= ' beserta data santri terkait';
@@ -7371,6 +7694,8 @@ class PendaftaranController
             $this->db->beginTransaction();
 
             try {
+                $removedRegistrasiIdsFromMerge = [];
+
                 // 1. Update semua registrasi dari id_santri_sekunder ke id_santri_utama
                 // Cek dulu apakah ada konflik (registrasi dengan tahun yang sama)
                 $sqlCheckConflict = "SELECT r1.id as id_utama, r2.id as id_sekunder, r1.tahun_hijriyah, r1.tahun_masehi
@@ -7386,6 +7711,9 @@ class PendaftaranController
                 if (count($conflicts) > 0) {
                     // Ada konflik, hapus registrasi sekunder yang konflik
                     $conflictIds = array_column($conflicts, 'id_sekunder');
+                    $removedRegistrasiIdsFromMerge = array_values(array_filter(array_map('intval', $conflictIds), function ($x) {
+                        return (int) $x > 0;
+                    }));
                     $placeholders = implode(',', array_fill(0, count($conflictIds), '?'));
                     
                     // Hapus detail dan transaksi dari registrasi yang konflik
@@ -7464,7 +7792,10 @@ class PendaftaranController
 
                 $this->db->commit();
 
-                LiveSantriIndexNotifier::ping(['removed_ids' => [$idSantriSekunder]]);
+                LiveSantriIndexNotifier::ping([
+                    'removed_ids' => [$idSantriSekunder],
+                    'removed_registrasi_ids' => $removedRegistrasiIdsFromMerge,
+                ]);
 
                 return $this->jsonResponse($response, [
                     'success' => true,

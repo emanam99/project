@@ -689,6 +689,7 @@ $errorMiddleware->setErrorHandler(
 (require __DIR__ . '/../routes/30_ugt_laporan_gt.php')($app);
 (require __DIR__ . '/../routes/31_ugt_laporan_pjgt.php')($app);
 (require __DIR__ . '/../routes/32_app_fitur.php')($app);
+(require __DIR__ . '/../routes/33_wirid_nailul_murod.php')($app);
 
 // Catch-all untuk 404
 $app->map(['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], '/{routes:.+}', function (Request $request, Response $response) {

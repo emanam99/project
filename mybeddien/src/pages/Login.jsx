@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../store/authStore'
 import { authAPI } from '../services/api'
 import { APP_VERSION } from '../config/version'
@@ -119,30 +119,33 @@ export default function Login() {
         <motion.button
           type="button"
           onClick={toggleTheme}
-          className="flex items-center justify-center w-10 h-10 rounded-full text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors"
+          className="flex items-center justify-center w-10 h-10 rounded-full text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-gray-100 dark:hover:bg-gray-700/80 transition-colors"
           style={{ perspective: '120px' }}
           whileTap={{ scale: 0.92 }}
-          aria-label="Ganti tema terang atau gelap"
+          aria-label={isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
         >
           <span className="relative w-5 h-5 block">
-            <svg
-              className="absolute inset-0 m-auto w-5 h-5 text-amber-400 hidden dark:block"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <svg
-              className="absolute inset-0 m-auto w-5 h-5 dark:hidden"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={isDark ? 'dark' : 'light'}
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ rotateY: -90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: 90, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                {isDark ? (
+                  <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+              </motion.span>
+            </AnimatePresence>
           </span>
         </motion.button>
       </div>
@@ -162,32 +165,49 @@ export default function Login() {
             className="relative p-4 md:p-10 md:rounded-3xl md:bg-white/90 md:dark:bg-gray-800/90 md:backdrop-blur-xl md:border md:border-white/40 md:dark:border-gray-600/40 md:login-card-glow"
           >
             <div className="md:hidden text-center mb-8" style={{ perspective: '800px' }}>
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-                className="inline-block"
-              >
-                <motion.img
-                  src={getGambarUrl('/icon/mybeddienlogo.png')}
-                  alt=""
-                  className="max-w-[100px] w-auto h-12 mx-auto mb-2 object-contain dark:drop-shadow-md"
-                  whileHover={{ scale: 1.03 }}
-                />
-                {/* Selaras varian Tailwind dark: — hindari isDark React yang bisa selisih satu frame */}
-                <div className="relative mx-auto flex h-10 w-[min(100%,200px)] items-center justify-center">
-                  <img
-                    src={getGambarUrl('/icon/mybeddientext.png')}
-                    alt="myBeddien"
-                    className="max-h-10 w-auto max-w-full object-contain dark:hidden"
-                  />
-                  <img
-                    src={getGambarUrl('/icon/mybeddientextputih.png')}
-                    alt=""
-                    className="max-h-10 w-auto max-w-full object-contain hidden dark:block"
-                  />
-                </div>
-              </motion.div>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={isDark ? 'dark' : 'light'}
+                  className="inline-block"
+                  initial={{ rotateY: -90, opacity: 0 }}
+                  animate={{ rotateY: 0, opacity: 1 }}
+                  exit={{ rotateY: 90, opacity: 0 }}
+                  transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+                  style={{ transformStyle: 'preserve-3d' }}
+                >
+                  {isDark ? (
+                    <>
+                      <motion.img
+                        src={getGambarUrl('/icon/mybeddienlogo.png')}
+                        alt="myBeddien"
+                        className="max-w-[100px] w-auto h-12 mx-auto mb-2 object-contain drop-shadow-md"
+                        whileHover={{ scale: 1.03 }}
+                      />
+                      <motion.img
+                        src={getGambarUrl('/icon/mybeddientextputih.png')}
+                        alt="myBeddien"
+                        className="max-w-[120px] w-auto h-10 mx-auto object-contain"
+                        whileHover={{ scale: 1.03 }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <motion.img
+                        src={getGambarUrl('/icon/mybeddienlogo.png')}
+                        alt="myBeddien"
+                        className="max-w-[100px] w-auto h-12 mx-auto mb-2 object-contain"
+                        whileHover={{ scale: 1.03 }}
+                      />
+                      <motion.img
+                        src={getGambarUrl('/icon/mybeddientexthitam.png')}
+                        alt="myBeddien"
+                        className="max-w-[120px] w-auto h-10 mx-auto object-contain"
+                        whileHover={{ scale: 1.03 }}
+                      />
+                    </>
+                  )}
+                </motion.div>
+              </AnimatePresence>
               <div className="flex justify-center gap-1.5 mt-3 text-xs text-gray-500 dark:text-gray-400">
                 <span className="font-mono">v{APP_VERSION}</span>
               </div>
@@ -288,7 +308,7 @@ export default function Login() {
                 disabled={loading}
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
-                className="w-full py-3.5 rounded-xl font-semibold text-white bg-linear-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow"
+                className="w-full py-3.5 rounded-xl font-semibold text-white bg-linear-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-60 disabled:cursor-not-allowed transition-all login-btn-glow shadow-md hover:shadow-lg"
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -319,30 +339,33 @@ export default function Login() {
         <motion.button
           type="button"
           onClick={toggleTheme}
-          className="flex flex-col items-center justify-center gap-0.5 text-gray-600 dark:text-gray-300 hover:text-teal-600 dark:hover:text-teal-400 active:opacity-80"
+          className="flex flex-col items-center justify-center gap-0.5 text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 active:opacity-80"
           style={{ perspective: '140px' }}
           whileTap={{ scale: 0.96 }}
-          aria-label="Ganti tema terang atau gelap"
+          aria-label={isDark ? 'Ganti ke mode terang' : 'Ganti ke mode gelap'}
         >
           <span className="relative w-7 h-7 block">
-            <svg
-              className="absolute inset-0 m-auto w-7 h-7 text-amber-400 hidden dark:block"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            <svg
-              className="absolute inset-0 m-auto w-7 h-7 dark:hidden"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={isDark ? 'dark' : 'light'}
+                className="absolute inset-0 flex items-center justify-center"
+                initial={{ rotateY: -90, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                exit={{ rotateY: 90, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                {isDark ? (
+                  <svg className="w-7 h-7 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                )}
+              </motion.span>
+            </AnimatePresence>
           </span>
           <span className="text-[10px] font-medium leading-tight">Tema</span>
         </motion.button>

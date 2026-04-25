@@ -1,10 +1,10 @@
-/** @typedef {{ mulai: string }} JadwalSesi */
+/** @typedef {{ mulai: string, telat: string }} JadwalSesi */
 /** @typedef {{ pagi: JadwalSesi, sore: JadwalSesi, malam: JadwalSesi }} JadwalTigaSesi */
 
 export const SESI_LIST = [
-  { key: 'pagi', label: 'Pagi', mulaiField: 'jam_mulai_pagi' },
-  { key: 'sore', label: 'Sore', mulaiField: 'jam_mulai_sore' },
-  { key: 'malam', label: 'Malam', mulaiField: 'jam_mulai_malam' }
+  { key: 'pagi', label: 'Pagi', mulaiField: 'jam_mulai_pagi', telatField: 'jam_telat_pagi' },
+  { key: 'sore', label: 'Sore', mulaiField: 'jam_mulai_sore', telatField: 'jam_telat_sore' },
+  { key: 'malam', label: 'Malam', mulaiField: 'jam_mulai_malam', telatField: 'jam_telat_malam' }
 ]
 
 /** Konversi waktu MySQL / string → "HH:MM" untuk input type="time" */
@@ -21,9 +21,9 @@ export function mysqlTimeToInput(v) {
 /** @returns {JadwalTigaSesi} */
 export function fallbackJadwalDefault() {
   return {
-    pagi: { mulai: '06:00' },
-    sore: { mulai: '15:00' },
-    malam: { mulai: '19:00' }
+    pagi: { mulai: '06:00', telat: '06:00' },
+    sore: { mulai: '15:00', telat: '15:00' },
+    malam: { mulai: '19:00', telat: '19:00' }
   }
 }
 
@@ -40,7 +40,10 @@ export function normalizeJadwalDefault(raw) {
     if (!sub || typeof sub !== 'object') return d
     const m = /** @type {Record<string, unknown>} */ (sub)
     const mulai = typeof m.mulai === 'string' && m.mulai.trim() ? m.mulai.trim() : d.mulai
-    return { mulai: mysqlTimeToInput(mulai) || mulai }
+    const mulaiN = mysqlTimeToInput(mulai) || mulai
+    const rawTelat = typeof m.telat === 'string' && m.telat.trim() ? m.telat.trim() : ''
+    const telatN = rawTelat ? mysqlTimeToInput(rawTelat) || rawTelat : mulaiN
+    return { mulai: mulaiN, telat: telatN }
   }
   return {
     pagi: sesi('pagi'),
@@ -68,13 +71,22 @@ export function normalizeSidikDefault(raw) {
  */
 export function effectiveJadwalSesi(row, sesi, def) {
   const mulaiRow = row[sesi.mulaiField]
+  const telatRow = row[sesi.telatField]
   const d = def[sesi.key]
   const mulai =
     mulaiRow != null && String(mulaiRow).trim() !== ''
       ? mysqlTimeToInput(mulaiRow)
       : mysqlTimeToInput(d.mulai)
+  const mulaiEf = mulai || '—'
+  const telatDariJadwalDefault = mysqlTimeToInput(d.telat) || mulaiEf
+  const telat =
+    telatRow != null && String(telatRow).trim() !== ''
+      ? mysqlTimeToInput(telatRow)
+      : telatDariJadwalDefault
   return {
-    mulai: mulai || '—',
-    mulaiDariDefault: mulaiRow == null || String(mulaiRow).trim() === ''
+    mulai: mulaiEf,
+    telat: telat || '—',
+    mulaiDariDefault: mulaiRow == null || String(mulaiRow).trim() === '',
+    telatDariDefault: telatRow == null || String(telatRow).trim() === ''
   }
 }

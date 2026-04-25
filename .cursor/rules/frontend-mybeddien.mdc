@@ -1,0 +1,12 @@
+---
+description: Frontend mybeddien — React, Vite, Tailwind v4 + theme
+globs: mybeddien/**/*.{js,jsx}
+alwaysApply: false
+---
+
+# mybeddien (React + Vite)
+
+- `src/index.css` memakai **`@config "../tailwind.config.js"`** — palet `primary-*` (biru langit / biru dalam); jangan hapus `@config`.
+- Tema gelap: kelas `dark` di `<html>` + `useHtmlDarkClass` / `ThemeContext` mengikuti pola yang sudah ada di login.
+- Endpoint santri tetap memakai prefix **`/api/mybeddian`** dan identifier app backend yang ada; ubah hanya jika migrasi API disepakati.
+- PWA: perubahan di `vite.config.js` (workbox / manifest) — uji `npm run build` bila menyentuh plugin PWA.

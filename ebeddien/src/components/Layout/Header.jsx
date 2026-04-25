@@ -23,6 +23,7 @@ import {
   labelForPathFromMenuCatalog,
   matchHeaderRoute
 } from '../../utils/menuCatalogNav'
+import HeaderAntreanMenuItem from './HeaderAntreanMenuItem'
 
 function Header() {
   const AKTIVITAS_CACHE_KEY_PREFIX = 'headerAktivitasTerakhir_'
@@ -1383,6 +1384,8 @@ function Header() {
                   </svg>
                   Profil
                 </button>
+
+                <HeaderAntreanMenuItem onOpenPanel={() => setShowUserDropdown(false)} />
                 
                 {/* Theme Toggle */}
                 <div className="w-full text-left px-4 py-2 flex items-center gap-2">

@@ -6,32 +6,16 @@ import {
 } from '../../../utils/absenJadwal'
 
 /**
- * roleOptionsMandiri null = belum dari API (simpan tidak mengirim akses_absen_mandiri).
- *
  * @param {{
  *   jadwalDefault: import('../../../utils/absenJadwal').JadwalTigaSesi,
  *   sidikDefault: { ikut_jadwal_default: boolean, toleransi_telat_menit: number },
- *   aksesMandiriDefault?: { role_keys: string[] },
- *   roleOptionsMandiri?: { key: string, label: string }[] | null,
  *   canEdit: boolean,
- *   onSave: (payload: {
- *     jadwal_default?: object,
- *     sidik_jari_default?: object,
- *     akses_absen_mandiri?: { role_keys: string[] }
- *   }) => Promise<void>
+ *   onSave: (payload: { jadwal_default?: object, sidik_jari_default?: object }) => Promise<void>
  * }} props
  */
-export default function AbsenDefaultSettingsCard({
-  jadwalDefault,
-  sidikDefault,
-  aksesMandiriDefault,
-  roleOptionsMandiri,
-  canEdit,
-  onSave
-}) {
+export default function AbsenDefaultSettingsCard({ jadwalDefault, sidikDefault, canEdit, onSave }) {
   const [jd, setJd] = useState(() => fallbackJadwalDefault())
   const [sd, setSd] = useState(() => normalizeSidikDefault(null))
-  const [mandiriRoles, setMandiriRoles] = useState(() => new Set())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -42,32 +26,11 @@ export default function AbsenDefaultSettingsCard({
     setSd(normalizeSidikDefault(sidikDefault))
   }, [sidikDefault])
 
-  useEffect(() => {
-    const keys = aksesMandiriDefault?.role_keys
-    setMandiriRoles(new Set(Array.isArray(keys) ? keys : []))
-  }, [aksesMandiriDefault])
-
-  const toggleMandiriRole = (key) => {
-    if (!canEdit || saving) return
-    const k = String(key).trim()
-    if (!k) return
-    setMandiriRoles((prev) => {
-      const next = new Set(prev)
-      if (next.has(k)) next.delete(k)
-      else next.add(k)
-      return next
-    })
-  }
-
   const handleSave = async () => {
     if (!canEdit || saving) return
     setSaving(true)
     try {
-      const payload = { jadwal_default: jd, sidik_jari_default: sd }
-      if (roleOptionsMandiri != null) {
-        payload.akses_absen_mandiri = { role_keys: Array.from(mandiriRoles) }
-      }
-      await onSave(payload)
+      await onSave({ jadwal_default: jd, sidik_jari_default: sd })
     } finally {
       setSaving(false)
     }
@@ -97,55 +60,34 @@ export default function AbsenDefaultSettingsCard({
                 className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-600 dark:bg-gray-900/40"
               >
                 <p className="mb-2 text-xs font-medium capitalize text-gray-800 dark:text-gray-200">{sesi}</p>
-                <div>
-                  <label className="mb-0.5 block text-[11px] text-gray-600 dark:text-gray-400">Jam mulai sesi</label>
-                  <input
-                    type="time"
-                    disabled={!canEdit || saving}
-                    value={jd[sesi].mulai}
-                    onChange={(e) => updateSesi(sesi, 'mulai', e.target.value)}
-                    className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-60"
-                  />
+                <div className="space-y-2">
+                  <div>
+                    <label className="mb-0.5 block text-[11px] text-gray-600 dark:text-gray-400">Jam mulai sesi</label>
+                    <input
+                      type="time"
+                      disabled={!canEdit || saving}
+                      value={jd[sesi].mulai}
+                      onChange={(e) => updateSesi(sesi, 'mulai', e.target.value)}
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-60"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[11px] text-gray-600 dark:text-gray-400">
+                      Dianggap telat setelah
+                    </label>
+                    <input
+                      type="time"
+                      disabled={!canEdit || saving}
+                      value={jd[sesi].telat}
+                      onChange={(e) => updateSesi(sesi, 'telat', e.target.value)}
+                      className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 disabled:opacity-60"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
-
-        {roleOptionsMandiri != null && (
-          <div className="rounded-lg border border-gray-200 bg-white/60 p-3 dark:border-gray-600 dark:bg-gray-900/30">
-            <p className="mb-1 text-xs font-medium text-gray-800 dark:text-gray-200">
-              Siapa yang boleh absen mandiri (GPS)
-            </p>
-            <p className="mb-3 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
-              Opsional. Kosongkan semua centang agar tidak memfilter peran — siapa pun yang sudah memenuhi aturan fitur
-              (menu Absen + aksi) tetap bisa seperti biasa. Centang peran untuk <span className="font-medium">membatasi</span>{' '}
-              hanya peran tersebut (user harus punya minimal satu peran yang dicentang).
-            </p>
-            <div className="max-h-36 space-y-1.5 overflow-y-auto pr-1">
-              {roleOptionsMandiri.length === 0 ? (
-                <p className="text-xs text-gray-500 dark:text-gray-400">Tidak ada daftar peran.</p>
-              ) : (
-                roleOptionsMandiri.map((r) => (
-                  <label
-                    key={r.key}
-                    className={`flex cursor-pointer items-center gap-2 rounded border border-transparent px-1 py-0.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${!canEdit ? 'cursor-default opacity-80' : ''}`}
-                  >
-                    <input
-                      type="checkbox"
-                      disabled={!canEdit || saving}
-                      checked={mandiriRoles.has(r.key)}
-                      onChange={() => toggleMandiriRole(r.key)}
-                      className="rounded border-gray-300"
-                    />
-                    <span className="text-sm text-gray-800 dark:text-gray-200">{r.label}</span>
-                    <span className="font-mono text-[10px] text-gray-400">{r.key}</span>
-                  </label>
-                ))
-              )}
-            </div>
-          </div>
-        )}
 
         <div className="rounded-lg border border-dashed border-gray-300 p-3 dark:border-gray-600">
           <p className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">Sidik jari (default)</p>

@@ -1,0 +1,240 @@
+/* Label dropdown font (Quill Snow) */
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='false']::before { content: 'Default'; }
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='amiri']::before,
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='amiri']::before { content: 'Amiri (ayat)'; font-family: 'Amiri', Georgia, serif; }
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='lateef']::before,
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='lateef']::before { content: 'Lateef (wirid)'; font-family: 'Lateef', serif; }
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='scheherazade']::before,
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='scheherazade']::before { content: 'Scheherazade (wirid)'; font-family: 'Scheherazade New', serif; }
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='inter']::before,
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='inter']::before { content: 'Inter (arti)'; font-family: 'Inter', system-ui, sans-serif; }
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-item[data-value='roboto']::before,
+.nm-quill .ql-snow .ql-picker.ql-font .ql-picker-label[data-value='roboto']::before { content: 'Roboto (arti)'; font-family: 'Roboto', system-ui, sans-serif; }
+
+/* Kelas font di editor (selaras Quill) */
+.nm-quill .ql-font-amiri { font-family: 'Amiri', Georgia, 'Times New Roman', serif; font-size: 1.1rem; }
+.nm-quill .ql-font-lateef { font-family: 'Lateef', 'Scheherazade New', serif; font-size: 1.2rem; line-height: 1.85; }
+.nm-quill .ql-font-scheherazade { font-family: 'Scheherazade New', 'Lateef', serif; font-size: 1.1rem; line-height: 1.85; }
+.nm-quill .ql-font-inter { font-family: 'Inter', 'Roboto', system-ui, sans-serif; }
+.nm-quill .ql-font-roboto { font-family: 'Roboto', 'Inter', system-ui, sans-serif; }
+
+.nm-quill .ql-editor { min-height: 12rem; }
+.nm-quill .ql-container { font-size: 1rem; }
+.nm-quill.nm-quill-arti .ql-editor { min-height: 8rem; }
+
+/* Toolbar editor tetap terlihat; konten panjang di-scroll di area editor. */
+.nm-quill .ql-toolbar.ql-snow {
+  position: sticky;
+  top: -1rem;
+  z-index: 12;
+  background: #fff;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-color: rgb(229 231 235);
+  box-shadow: 0 1px 0 0 rgb(229 231 235), 0 3px 8px -6px rgba(15, 23, 42, 0.35);
+}
+.dark .nm-quill .ql-toolbar.ql-snow {
+  background: rgb(31 41 55);
+  border-color: rgb(75 85 99);
+  border-bottom-color: rgb(75 85 99);
+  box-shadow: 0 1px 0 0 rgb(75 85 99), 0 3px 8px -6px rgba(0, 0, 0, 0.55);
+}
+.nm-quill .ql-container.ql-snow {
+  border-bottom-left-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
+/* Toolbar modern ala ribbon: grup tombol jelas & rapi (seperti Office modern). */
+.nm-quill .ql-toolbar.ql-snow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.625rem;
+}
+.nm-quill .ql-toolbar.ql-snow .ql-formats {
+  margin-right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid rgb(229 231 235);
+  border-radius: 0.6rem;
+  background: rgb(249 250 251);
+}
+.dark .nm-quill .ql-toolbar.ql-snow .ql-formats {
+  border-color: rgb(75 85 99);
+  background: rgb(55 65 81 / 0.55);
+}
+
+.nm-quill .ql-toolbar.ql-snow button,
+.nm-quill .ql-toolbar.ql-snow .ql-picker-label {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-expanded .ql-picker-label,
+.nm-quill .ql-toolbar.ql-snow button:hover,
+.nm-quill .ql-toolbar.ql-snow .ql-picker-label:hover {
+  background: rgb(241 245 249);
+}
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker.ql-expanded .ql-picker-label,
+.dark .nm-quill .ql-toolbar.ql-snow button:hover,
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker-label:hover {
+  background: rgb(75 85 99 / 0.7);
+}
+
+.nm-quill .ql-toolbar.ql-snow button.ql-active,
+.nm-quill .ql-toolbar.ql-snow .ql-picker-label.ql-active {
+  color: rgb(13 148 136);
+  background: rgb(204 251 241);
+}
+.dark .nm-quill .ql-toolbar.ql-snow button.ql-active,
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker-label.ql-active {
+  color: rgb(45 212 191);
+  background: rgb(19 78 74 / 0.65);
+}
+
+.nm-quill .ql-toolbar.ql-snow .ql-picker {
+  color: inherit;
+}
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-font,
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-header {
+  min-width: 9.5rem;
+}
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-font .ql-picker-label,
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-header .ql-picker-label {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0 1.65rem 0 0.55rem;
+  border: 1px solid rgb(209 213 219);
+  background: #fff;
+}
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker.ql-font .ql-picker-label,
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker.ql-header .ql-picker-label {
+  border-color: rgb(75 85 99);
+  background: rgb(31 41 55);
+}
+
+/* Perbaikan dark mode: dropdown option select font/header tidak lagi putih. */
+.nm-quill .ql-toolbar.ql-snow .ql-picker-options {
+  border-radius: 0.6rem;
+  border: 1px solid rgb(209 213 219);
+  background: #fff;
+  box-shadow: 0 10px 24px -12px rgba(15, 23, 42, 0.35);
+  overflow: hidden;
+}
+.nm-quill .ql-toolbar.ql-snow .ql-picker-item {
+  color: rgb(31 41 55);
+  padding: 0.35rem 0.6rem;
+}
+.nm-quill .ql-toolbar.ql-snow .ql-picker-item:hover,
+.nm-quill .ql-toolbar.ql-snow .ql-picker-item.ql-selected {
+  background: rgb(241 245 249);
+  color: rgb(15 23 42);
+}
+
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker-options {
+  border-color: rgb(75 85 99);
+  background: rgb(31 41 55);
+  box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.75);
+}
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker-item {
+  color: rgb(229 231 235);
+}
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker-item:hover,
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker-item.ql-selected {
+  background: rgb(55 65 81);
+  color: rgb(243 244 246);
+}
+
+/* Panel warna jangan keluar layar kanan pada mobile/offcanvas. */
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-color .ql-picker-options,
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-background .ql-picker-options {
+  left: auto;
+  right: 0;
+  max-width: min(16rem, calc(100vw - 1rem));
+  max-height: min(14rem, calc(100vh - 8rem));
+  overflow: auto;
+}
+
+/* Swatch tanpa warna (null/default) untuk color & background. */
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-color .ql-picker-item:not([data-value]),
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-background .ql-picker-item:not([data-value]) {
+  position: relative;
+  background: repeating-linear-gradient(135deg, #fff 0 4px, #f3f4f6 4px 8px);
+  border: 1px solid rgb(209 213 219);
+}
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker.ql-color .ql-picker-item:not([data-value]),
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker.ql-background .ql-picker-item:not([data-value]) {
+  background: repeating-linear-gradient(135deg, #111827 0 4px, #1f2937 4px 8px);
+  border-color: rgb(75 85 99);
+}
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-color .ql-picker-item:not([data-value])::after,
+.nm-quill .ql-toolbar.ql-snow .ql-picker.ql-background .ql-picker-item:not([data-value])::after {
+  content: '×';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgb(220 38 38);
+}
+
+/* Rapikan keterbacaan label select pada mode terang/gelap. */
+.nm-quill .ql-toolbar.ql-snow .ql-picker-label::before {
+  white-space: nowrap;
+  line-height: 1;
+}
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker.ql-font .ql-picker-label,
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker.ql-header .ql-picker-label,
+.dark .nm-quill .ql-toolbar.ql-snow .ql-picker-label::before {
+  color: rgb(229 231 235);
+}
+
+/* Pratinjau baca: font sama seperti rekomendasi */
+.nm-preview-isi { font-size: 1.05rem; }
+.nm-preview-isi :where(.ql-font-amiri) { font-family: 'Amiri', Georgia, serif; }
+.nm-preview-isi :where(.ql-font-lateef) { font-family: 'Lateef', serif; }
+.nm-preview-isi :where(.ql-font-scheherazade) { font-family: 'Scheherazade New', serif; }
+.nm-preview-arti { font-size: 0.95rem; }
+.nm-preview-arti :where(.ql-font-inter) { font-family: 'Inter', system-ui, sans-serif; }
+.nm-preview-arti :where(.ql-font-roboto) { font-family: 'Roboto', system-ui, sans-serif; }
+
+/* Samakan rendering preview dengan Quill (align, list, indent, direction, dsb). */
+.nm-preview-isi.ql-editor,
+.nm-preview-arti.ql-editor {
+  padding: 0;
+  line-height: 1.65;
+  white-space: normal;
+}
+
+/*
+ * Default Quill: .ql-direction-rtl { text-align: inherit; } + handler yang memaksa align ke kanan
+ * saat pilih RTL — selesaikan tampilan agar align (kiri/tengah/kanan/justify) bebas, tidak
+ * tercampur dengan hanya Arah baca. Arah: tanpa class ql-align-* = mulai (logical start).
+ */
+.nm-quill .ql-editor .ql-direction-rtl:not([class*='ql-align']) {
+  text-align: start;
+}
+.nm-quill .ql-editor .ql-direction-rtl.ql-align-center,
+.nm-preview-isi .ql-direction-rtl.ql-align-center,
+.nm-preview-arti .ql-direction-rtl.ql-align-center {
+  text-align: center;
+}
+.nm-quill .ql-editor .ql-direction-rtl.ql-align-right,
+.nm-preview-isi .ql-direction-rtl.ql-align-right,
+.nm-preview-arti .ql-direction-rtl.ql-align-right {
+  text-align: right;
+}
+.nm-quill .ql-editor .ql-direction-rtl.ql-align-justify,
+.nm-preview-isi .ql-direction-rtl.ql-align-justify,
+.nm-preview-arti .ql-direction-rtl.ql-align-justify {
+  text-align: justify;
+}

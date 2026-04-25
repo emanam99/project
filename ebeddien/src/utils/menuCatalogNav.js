@@ -9,6 +9,7 @@ export const HEADER_NAV_GROUP_ORDER = [
   'UGT',
   'Keuangan',
   'Ijin',
+  'Wirid',
   'Kalender',
   'Cashless',
   'Setting',

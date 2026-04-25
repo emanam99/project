@@ -69,7 +69,7 @@ export default function UbahUsername() {
   if (valid === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-teal-500 border-t-transparent" />
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary-500 border-t-transparent" />
       </div>
     )
   }
@@ -88,7 +88,7 @@ export default function UbahUsername() {
           </p>
           <a
             href="/login"
-            className="inline-block py-2 px-4 rounded-xl bg-teal-600 text-white font-medium hover:bg-teal-700"
+            className="inline-block py-2 px-4 rounded-xl bg-primary-600 text-white font-medium hover:bg-primary-700"
           >
             Ke halaman Login
           </a>
@@ -115,7 +115,7 @@ export default function UbahUsername() {
               value={usernameBaru}
               onChange={(e) => setUsernameBaru(e.target.value)}
               placeholder="Min 5 karakter, tanpa spasi"
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               autoComplete="username"
             />
           </div>
@@ -126,7 +126,7 @@ export default function UbahUsername() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Masukkan password yang benar untuk verifikasi"
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               autoComplete="current-password"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Password harus benar (sama dengan yang dipakai login).</p>
@@ -135,7 +135,7 @@ export default function UbahUsername() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-teal-600 text-white font-semibold hover:bg-teal-700 disabled:opacity-50 transition-colors"
+            className="w-full py-3 rounded-xl bg-primary-600 text-white font-semibold hover:bg-primary-700 disabled:opacity-50 transition-colors"
           >
             {loading ? 'Menyimpan...' : 'Simpan username'}
           </button>

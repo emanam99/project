@@ -13,7 +13,6 @@ import {
   normalizeSidikDefault,
   fallbackJadwalDefault
 } from '../../../utils/absenJadwal'
-import { normalizeAksesMandiriFromApi } from '../../../utils/mandiriAkses'
 import AbsenLokasiOffcanvas from './AbsenLokasiOffcanvas'
 import AbsenDefaultSettingsCard from './AbsenDefaultSettingsCard'
 
@@ -45,7 +44,10 @@ const emptyForm = {
   provinsi: '',
   jam_mulai_pagi: '',
   jam_mulai_sore: '',
-  jam_mulai_malam: ''
+  jam_mulai_malam: '',
+  jam_telat_pagi: '',
+  jam_telat_sore: '',
+  jam_telat_malam: ''
 }
 
 export default function AbsenPengaturanTab() {
@@ -67,9 +69,6 @@ export default function AbsenPengaturanTab() {
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [jadwalDefault, setJadwalDefault] = useState(() => fallbackJadwalDefault())
   const [sidikDefault, setSidikDefault] = useState(() => normalizeSidikDefault(null))
-  const [aksesMandiri, setAksesMandiri] = useState(() => ({ role_keys: [] }))
-  const [roleOptionsMandiri, setRoleOptionsMandiri] = useState(null)
-
   const isSuper = userHasSuperAdminAccess(user)
   const scopeAll = isSuper || user?.lembaga_scope_all === true
   const lembagaPilihan = useMemo(() => {
@@ -134,7 +133,7 @@ export default function AbsenPengaturanTab() {
       const ring = lokasiAlamatRingkas(r)
       const jamBits = SESI_LIST.flatMap((sesi) => {
         const e = effectiveJadwalSesi(r, sesi, jadwalDefault)
-        return [e.mulai]
+        return [e.mulai, e.telat]
       })
       const hay = [
         r.nama,
@@ -215,9 +214,6 @@ export default function AbsenPengaturanTab() {
         if (cancelled || !res?.success || !res.data) return
         setJadwalDefault(normalizeJadwalDefault(res.data.jadwal_default))
         setSidikDefault(normalizeSidikDefault(res.data.sidik_jari_default))
-        setAksesMandiri(normalizeAksesMandiriFromApi(res.data))
-        const ro = res.data.role_options_mandiri
-        setRoleOptionsMandiri(Array.isArray(ro) ? ro : [])
       } catch {
         /* fallback state sudah di initial */
       }
@@ -260,7 +256,14 @@ export default function AbsenPengaturanTab() {
 
   const jamFieldsToBody = (f) => {
     const o = {}
-    const keys = ['jam_mulai_pagi', 'jam_mulai_sore', 'jam_mulai_malam']
+    const keys = [
+      'jam_mulai_pagi',
+      'jam_mulai_sore',
+      'jam_mulai_malam',
+      'jam_telat_pagi',
+      'jam_telat_sore',
+      'jam_telat_malam'
+    ]
     keys.forEach((k) => {
       const v = f[k]
       o[k] = v == null || String(v).trim() === '' ? null : String(v).trim()
@@ -287,7 +290,10 @@ export default function AbsenPengaturanTab() {
       provinsi: r.provinsi != null ? String(r.provinsi) : '',
       jam_mulai_pagi: mysqlTimeToInput(r.jam_mulai_pagi),
       jam_mulai_sore: mysqlTimeToInput(r.jam_mulai_sore),
-      jam_mulai_malam: mysqlTimeToInput(r.jam_mulai_malam)
+      jam_mulai_malam: mysqlTimeToInput(r.jam_mulai_malam),
+      jam_telat_pagi: mysqlTimeToInput(r.jam_telat_pagi),
+      jam_telat_sore: mysqlTimeToInput(r.jam_telat_sore),
+      jam_telat_malam: mysqlTimeToInput(r.jam_telat_malam)
     })
     setOffcanvasOpen(true)
   }
@@ -378,13 +384,6 @@ export default function AbsenPengaturanTab() {
         showNotification(res.message || 'Pengaturan disimpan', 'success')
         if (payload.jadwal_default) setJadwalDefault(normalizeJadwalDefault(payload.jadwal_default))
         if (payload.sidik_jari_default) setSidikDefault(normalizeSidikDefault(payload.sidik_jari_default))
-        if (payload.akses_absen_mandiri) {
-          setAksesMandiri({
-            role_keys: Array.isArray(payload.akses_absen_mandiri.role_keys)
-              ? [...payload.akses_absen_mandiri.role_keys]
-              : []
-          })
-        }
       } else {
         showNotification(res?.message || 'Gagal menyimpan pengaturan', 'error')
       }
@@ -410,14 +409,13 @@ export default function AbsenPengaturanTab() {
     <div className="space-y-4">
       <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Pengaturan</h2>
       <p className="text-sm text-gray-600 dark:text-gray-400">
-        Jadwal default, titik lokasi absen GPS, dan siapa yang boleh absen mandiri.
+        Jadwal default dan titik lokasi absen GPS. Siapa pun yang memiliki aksi tab «Absen» dapat memakai absen mandiri
+        (GPS) bila diizinkan di Pengaturan → Fitur.
       </p>
       {absenFitur.lokasiKelolaTerlihat && (
         <AbsenDefaultSettingsCard
           jadwalDefault={jadwalDefault}
           sidikDefault={sidikDefault}
-          aksesMandiriDefault={aksesMandiri}
-          roleOptionsMandiri={roleOptionsMandiri}
           canEdit={absenFitur.lokasiUbah}
           onSave={savePengaturanDefault}
         />
@@ -630,16 +628,23 @@ export default function AbsenPengaturanTab() {
                           <div className="flex flex-wrap gap-1.5 text-[10px] text-gray-600 dark:text-gray-400">
                             {SESI_LIST.map((sesi) => {
                               const e = effectiveJadwalSesi(r, sesi, jadwalDefault)
+                              const defBit =
+                                (e.mulaiDariDefault ? 'm' : '') + (e.telatDariDefault ? 't' : '')
                               return (
                                 <span
                                   key={sesi.key}
-                                  title={`${sesi.label}: jam mulai ${e.mulai}`}
+                                  title={`${sesi.label}: mulai ${e.mulai}, telat setelah ${e.telat}`}
                                   className="inline-flex max-w-full items-center gap-0.5 rounded-md border border-amber-200/90 bg-amber-50/90 px-1.5 py-0.5 font-medium text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/35 dark:text-amber-100"
                                 >
                                   <span className="shrink-0">{sesi.label}</span>
-                                  <span className="min-w-0 truncate font-mono tabular-nums">mulai {e.mulai}</span>
-                                  {e.mulaiDariDefault && (
-                                    <span className="text-[9px] text-amber-700/90 dark:text-amber-300/90" title="Dari pengaturan default">
+                                  <span className="min-w-0 truncate font-mono tabular-nums text-[10px]">
+                                    {e.mulai} → telat {e.telat}
+                                  </span>
+                                  {defBit !== '' && (
+                                    <span
+                                      className="text-[9px] text-amber-700/90 dark:text-amber-300/90"
+                                      title="Sebagian dari pengaturan default"
+                                    >
                                       ·def
                                     </span>
                                   )}

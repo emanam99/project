@@ -13,7 +13,9 @@ namespace App\Support;
  *   pagi  : 00:00 sampai sebelum 12:00 (12 malam → 12 siang)
  *   sore  : 12:00 sampai sebelum 18:00 (12 siang → 6 sore)
  *   malam : 18:00 sampai sebelum 24:00 (6 sore → 12 malam)
- * - Per pengurus, per hari, per sesi: banyak tap/duplikat mesin = dihitung 1.
+ * - Per pengurus, per hari: penjodohan masuk–keluar mengikuti urutan waktu (FIFO) antar tap; rekap & gate mandiri
+ *   memakai model yang konsisten. Batas baca “hari yang sama” mengikuti tanggal kalender; tidak memanjangkan
+ *   “keluar” sesi malam ke hari berikutnya.
  */
 final class AbsenPengurusSession
 {

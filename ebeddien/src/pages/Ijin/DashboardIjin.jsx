@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { ijinAPI } from '../../services/api'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
+import { EBEDDIEN_IJIN_HINT, ijinHintMatches } from '../../services/ijinLiveEvents'
 
 function DashboardIjin() {
   const { tahunAjaran } = useTahunAjaranStore()
@@ -13,25 +14,48 @@ function DashboardIjin() {
     loadDashboardData()
   }, [tahunAjaran])
 
-  const loadDashboardData = async () => {
-    setLoading(true)
-    setError('')
-    
+  const loadDashboardData = async (opts = {}) => {
+    const quiet = opts?.quiet === true
+    if (!quiet) {
+      setLoading(true)
+      setError('')
+    }
     try {
       const result = await ijinAPI.getDashboard(tahunAjaran)
       
       if (result.success) {
         setDashboardData(result.data)
       } else {
-        setError(result.message || 'Gagal memuat data dashboard')
+        if (!quiet) {
+          setError(result.message || 'Gagal memuat data dashboard')
+        }
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err)
-      setError(err.message || 'Terjadi kesalahan saat memuat data')
+      if (!quiet) {
+        setError(err.message || 'Terjadi kesalahan saat memuat data')
+      }
     } finally {
-      setLoading(false)
+      if (!quiet) {
+        setLoading(false)
+      }
     }
   }
+
+  const loadDashboardRef = useRef(loadDashboardData)
+  loadDashboardRef.current = loadDashboardData
+  const tahunAjaranRef = useRef(tahunAjaran)
+  tahunAjaranRef.current = tahunAjaran
+
+  useEffect(() => {
+    const onHint = (e) => {
+      const d = e?.detail || {}
+      if (!ijinHintMatches(d, null, tahunAjaranRef.current)) return
+      void loadDashboardRef.current({ quiet: true })
+    }
+    window.addEventListener(EBEDDIEN_IJIN_HINT, onHint)
+    return () => window.removeEventListener(EBEDDIEN_IJIN_HINT, onHint)
+  }, [])
 
   const formatNumber = (value) => {
     if (!value && value !== 0) return '0'

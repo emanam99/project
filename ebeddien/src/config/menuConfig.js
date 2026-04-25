@@ -12,6 +12,7 @@ export const GROUP_ORDER = [
   'Keuangan',
   'Umroh',
   'Ijin',
+  'Wirid',
   'Kalender',
   'Kalender Pesantren',
   'Domisili',

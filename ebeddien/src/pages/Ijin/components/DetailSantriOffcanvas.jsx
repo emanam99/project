@@ -1,9 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { ijinAPI, santriAPI, kalenderAPI } from '../../../services/api'
+import {
+  getIjinSnapshot,
+  mergeIjinListWithOutbox,
+  saveIjinSnapshot,
+  tryIjinCreate,
+  tryIjinDelete,
+  tryIjinMarkKembali,
+  tryIjinUpdate
+} from '../../../services/ijinOutbox/ijinOutboxService'
+import { EBEDDIEN_IJIN_HINT, ijinHintMatches } from '../../../services/ijinLiveEvents'
 import { PickDateHijri, formatHijriDateDisplay, compareHijriYmd } from '../../../components/PickDateHijri'
 import PrintIjinOffcanvas from './PrintIjinOffcanvas'
 import PrintIjinPulanganOffcanvas from './PrintIjinPulanganOffcanvas'
@@ -76,6 +86,7 @@ function DetailSantriOffcanvas({ isOpen, onClose, santri, onSuccess }) {
   const [editingIjin, setEditingIjin] = useState(null)
   const [masehiPreview, setMasehiPreview] = useState({ dari: '', sampai: '', perpanjang: '' })
   const [markingKembaliId, setMarkingKembaliId] = useState(null)
+  const loadIjinListRef = useRef(() => {})
 
   useEffect(() => {
     if (isOpen && santri) {
@@ -116,25 +127,54 @@ function DetailSantriOffcanvas({ isOpen, onClose, santri, onSuccess }) {
     setEditingIjin(null)
   }
 
-  const loadIjinList = async () => {
+  const loadIjinList = async (opts = {}) => {
+    const quiet = opts?.quiet === true
     if (!santri?.id) return
 
-    setLoadingIjin(true)
+    if (!quiet) setLoadingIjin(true)
     try {
       const result = await ijinAPI.get(santri.id, tahunAjaran)
-      
+
       if (result.success) {
-        setIjinList(result.data || [])
+        const base = result.data || []
+        await saveIjinSnapshot(santri.id, tahunAjaran, base)
+        const merged = await mergeIjinListWithOutbox(santri.id, tahunAjaran, base)
+        setIjinList(merged)
       } else {
-        showNotification(result.message || 'Gagal memuat data ijin', 'error')
+        const snap = await getIjinSnapshot(santri.id, tahunAjaran)
+        const merged = await mergeIjinListWithOutbox(santri.id, tahunAjaran, snap?.rows || [])
+        setIjinList(merged)
+        showNotification(result.message || 'Gagal memuat data ijin; menampilkan cache lokal', 'error')
       }
     } catch (error) {
       console.error('Error loading ijin list:', error)
-      showNotification('Gagal memuat data ijin', 'error')
+      const snap = await getIjinSnapshot(santri.id, tahunAjaran)
+      const merged = await mergeIjinListWithOutbox(santri.id, tahunAjaran, snap?.rows || [])
+      setIjinList(merged)
+      if (!merged.length) {
+        showNotification('Gagal memuat data ijin (tanpa cache)', 'error')
+      } else {
+        showNotification('Memakai data ijin tersimpan lokal + antrean', 'error')
+      }
     } finally {
-      setLoadingIjin(false)
+      if (!quiet) {
+        setLoadingIjin(false)
+      }
     }
   }
+
+  loadIjinListRef.current = loadIjinList
+
+  useEffect(() => {
+    const onHint = (e) => {
+      if (!isOpen || !santri?.id) return
+      const detail = e?.detail || {}
+      if (!ijinHintMatches(detail, santri.id, tahunAjaran)) return
+      void loadIjinListRef.current({ quiet: true })
+    }
+    window.addEventListener(EBEDDIEN_IJIN_HINT, onHint)
+    return () => window.removeEventListener(EBEDDIEN_IJIN_HINT, onHint)
+  }, [isOpen, santri?.id, tahunAjaran])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -152,22 +192,31 @@ function DetailSantriOffcanvas({ isOpen, onClose, santri, onSuccess }) {
     setLoading(true)
     try {
       const result = editingIjin
-        ? await ijinAPI.update(editingIjin.id, {
-            id_santri: santri.id,
-            ...formData
-          })
-        : await ijinAPI.create({
-            id_santri: santri.id,
-            ...formData
-          })
+        ? await tryIjinUpdate(
+            editingIjin.id,
+            santri.id,
+            formData.tahun_ajaran,
+            { id_santri: santri.id, ...formData },
+            santri.nama
+          )
+        : await tryIjinCreate(santri.id, formData.tahun_ajaran, { id_santri: santri.id, ...formData }, santri.nama)
 
       if (result.success) {
-        showNotification(
-          editingIjin ? 'Data ijin berhasil diupdate' : 'Data ijin berhasil ditambahkan',
-          'success'
-        )
+        if (result.offline) {
+          showNotification(
+            editingIjin
+              ? 'Perubahan disimpan di antrean; akan disinkronkan saat online'
+              : 'Ijin disimpan di antrean; akan disinkronkan saat online',
+            'info'
+          )
+        } else {
+          showNotification(
+            editingIjin ? 'Data ijin berhasil diupdate' : 'Data ijin berhasil ditambahkan',
+            'success'
+          )
+        }
         resetForm()
-        loadIjinList() // Hanya reload list ijin di offcanvas, tidak reload tabel utama
+        void loadIjinList()
       } else {
         showNotification(result.message || 'Gagal menyimpan data ijin', 'error')
       }
@@ -198,11 +247,19 @@ function DetailSantriOffcanvas({ isOpen, onClose, santri, onSuccess }) {
 
     setLoading(true)
     try {
-      const result = await ijinAPI.delete(ijin.id)
+      const result = await tryIjinDelete(ijin.id, santri.id, tahunAjaran, santri.nama)
 
       if (result.success) {
-        showNotification('Data ijin berhasil dihapus', 'success')
-        loadIjinList() // Hanya reload list ijin di offcanvas, tidak reload tabel utama
+        if (result.offline) {
+          if (result.cancelled) {
+            showNotification('Tambah ijin dibatalkan (belum terkirim)', 'info')
+          } else {
+            showNotification('Penghapusan di antrean; akan disinkronkan saat online', 'info')
+          }
+        } else {
+          showNotification('Data ijin berhasil dihapus', 'success')
+        }
+        void loadIjinList()
       } else {
         showNotification(result.message || 'Gagal menghapus data ijin', 'error')
       }
@@ -217,9 +274,9 @@ function DetailSantriOffcanvas({ isOpen, onClose, santri, onSuccess }) {
   const handleMarkKembali = async (ijinRow, set) => {
     setMarkingKembaliId(ijinRow.id)
     try {
-      const result = await ijinAPI.markKembali(ijinRow.id, set)
+      const result = await tryIjinMarkKembali(ijinRow.id, set, santri.id, tahunAjaran, santri.nama)
       if (result.success) {
-        const tanggal = result.data?.tanggal_kembali ?? null
+        const tanggal = result.tanggal_kembali ?? result.data?.tanggal_kembali ?? null
         setIjinList((prev) =>
           prev.map((row) =>
             row.id === ijinRow.id ? { ...row, tanggal_kembali: tanggal } : row
@@ -228,10 +285,17 @@ function DetailSantriOffcanvas({ isOpen, onClose, santri, onSuccess }) {
         setEditingIjin((prev) =>
           prev && prev.id === ijinRow.id ? { ...prev, tanggal_kembali: tanggal } : prev
         )
-        showNotification(
-          set ? 'Tanggal kembali (Masehi) dicatat' : 'Status kembali dibatalkan',
-          'success'
-        )
+        if (result.offline) {
+          showNotification(
+            set ? 'Tanggal kembali di antrean; disinkronkan nanti' : 'Status kembali (antrean; disinkronkan nanti)',
+            'info'
+          )
+        } else {
+          showNotification(
+            set ? 'Tanggal kembali (Masehi) dicatat' : 'Status kembali dibatalkan',
+            'success'
+          )
+        }
       } else {
         showNotification(result.message || 'Gagal memperbarui tanggal kembali', 'error')
       }

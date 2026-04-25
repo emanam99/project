@@ -193,7 +193,7 @@ class PengeluaranController
 
             // Validasi kategori
             if ($kategori !== null) {
-                $validKategori = ['Bisyaroh', 'Acara', 'Pengadaan', 'Perbaikan', 'ATK', 'lainnya', 'Listrik', 'Wifi', 'Langganan'];
+                $validKategori = ['Bisyaroh', 'Acara', 'Pengadaan', 'Perbaikan', 'ATK', 'lainnya', 'Listrik', 'Wifi', 'Langganan', 'Rapat', 'Setoran'];
                 if (!in_array($kategori, $validKategori)) {
                     return $this->jsonResponse($response, [
                         'success' => false,
@@ -320,6 +320,207 @@ class PengeluaranController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal membuat rencana: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/pengeluaran/rencana/psb-item-setor — Buat rencana dari item PSB + catat item___setor per baris detail.
+     *
+     * Body: sama seperti create rencana (keterangan, kategori, lembaga, sumber_uang, hijriyah, tahun_ajaran, status),
+     * plus psb_items: [ { id_psb_item, harga?, jumlah? } ]
+     */
+    public function createRencanaFromPsbItemSetor(Request $request, Response $response): Response
+    {
+        try {
+            $data = $request->getParsedBody();
+            $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            $user = $request->getAttribute('user');
+            $userArr = is_array($user) ? $user : [];
+
+            $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
+            $keterangan = $data['keterangan'] ?? '';
+            $kategori = $data['kategori'] ?? null;
+            $lembaga = $data['lembaga'] ?? null;
+            $sumberUang = $data['sumber_uang'] ?? 'Cash';
+            $hijriyah = $data['hijriyah'] ?? null;
+            $tahunAjaran = $data['tahun_ajaran'] ?? null;
+            $psbItems = $data['psb_items'] ?? [];
+
+            if (empty($keterangan)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Keterangan wajib diisi',
+                ], 400);
+            }
+
+            if (empty($psbItems) || !is_array($psbItems)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Daftar item PSB (psb_items) wajib diisi',
+                ], 400);
+            }
+
+            if ($kategori !== null) {
+                $validKategori = ['Bisyaroh', 'Acara', 'Pengadaan', 'Perbaikan', 'ATK', 'lainnya', 'Listrik', 'Wifi', 'Langganan', 'Rapat', 'Setoran'];
+                if (!in_array($kategori, $validKategori, true)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Kategori tidak valid',
+                    ], 400);
+                }
+            }
+
+            $status = $data['status'] ?? 'pending';
+            if (!in_array($status, ['pending', 'draft'], true)) {
+                $status = 'pending';
+            }
+
+            $actionCode = $status === 'draft'
+                ? 'action.pengeluaran.rencana.simpan_draft'
+                : 'action.pengeluaran.rencana.simpan';
+            $denyA = $this->pengeluaranDenyUnlessAction($request, $response, $actionCode);
+            if ($denyA !== null) {
+                return $denyA;
+            }
+            $denyL = $this->assertRencanaLembagaRow($request, $response, $lembaga !== null ? (string) $lembaga : null, 'rencana');
+            if ($denyL !== null) {
+                return $denyL;
+            }
+            if (RoleHelper::tokenPengeluaranApplyLembagaScope($this->db, $userArr, 'rencana')) {
+                $lid = $lembaga !== null && $lembaga !== '' ? trim((string) $lembaga) : '';
+                if ($lid === '') {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Lembaga wajib dipilih sesuai akses Anda',
+                    ], 400);
+                }
+            }
+
+            $itemRows = [];
+            $stmtItem = $this->db->prepare('SELECT id, item, harga FROM psb___item WHERE id = ? LIMIT 1');
+            foreach ($psbItems as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $idPsb = (int) ($row['id_psb_item'] ?? 0);
+                if ($idPsb <= 0) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'id_psb_item tidak valid',
+                    ], 400);
+                }
+                $stmtItem->execute([$idPsb]);
+                $pi = $stmtItem->fetch(\PDO::FETCH_ASSOC);
+                if (!$pi) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Item PSB tidak ditemukan (id ' . $idPsb . ')',
+                    ], 404);
+                }
+                $hargaStandar = floatval($pi['harga'] ?? 0);
+                $hargaInput = isset($row['harga']) && $row['harga'] !== '' && $row['harga'] !== null
+                    ? floatval($row['harga'])
+                    : $hargaStandar;
+                $jumlah = isset($row['jumlah']) ? max(1, (int) $row['jumlah']) : 1;
+                $itemRows[] = [
+                    'id_psb_item' => $idPsb,
+                    'nama' => trim((string) ($pi['item'] ?? '')),
+                    'harga' => $hargaInput,
+                    'jumlah' => $jumlah,
+                ];
+            }
+
+            if ($itemRows === []) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tidak ada item PSB yang valid',
+                ], 400);
+            }
+
+            $namaCount = [];
+            foreach ($itemRows as $r) {
+                $n = $r['nama'];
+                $namaCount[$n] = ($namaCount[$n] ?? 0) + 1;
+            }
+            foreach ($itemRows as &$r) {
+                if (($namaCount[$r['nama']] ?? 0) > 1) {
+                    $r['nama'] = $r['nama'] . ' (PSB #' . $r['id_psb_item'] . ')';
+                }
+            }
+            unset($r);
+
+            $detailNames = array_column($itemRows, 'nama');
+            if (count($detailNames) !== count(array_unique($detailNames))) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Nama item bentrok setelah normalisasi; sesuaikan pilihan item.',
+                ], 400);
+            }
+
+            $this->db->beginTransaction();
+            try {
+                $totalNominal = 0.0;
+                foreach ($itemRows as $r) {
+                    $totalNominal += floatval($r['harga']) * (int) $r['jumlah'];
+                }
+
+                $sqlRencana = 'INSERT INTO pengeluaran___rencana (keterangan, kategori, lembaga, sumber_uang, id_admin, nominal, hijriyah, tahun_ajaran, ket)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                $stmtRencana = $this->db->prepare($sqlRencana);
+                $stmtRencana->execute([$keterangan, $kategori, $lembaga, $sumberUang, $idAdmin, $totalNominal, $hijriyah, $tahunAjaran, $status]);
+                $idRencana = (int) $this->db->lastInsertId();
+
+                $sqlDetail = 'INSERT INTO pengeluaran___rencana_detail
+                             (id_pengeluaran_rencana, item, harga, jumlah, nominal, versi, id_admin, rejected)
+                             VALUES (?, ?, ?, ?, ?, 1, ?, 0)';
+                $stmtDetail = $this->db->prepare($sqlDetail);
+                $sqlSetor = 'INSERT INTO item___setor (id_psb_item, id_rencana_detail, jumlah, harga, nominal, id_admin)
+                             VALUES (?, ?, ?, ?, ?, ?)';
+                $stmtSetor = $this->db->prepare($sqlSetor);
+
+                foreach ($itemRows as $r) {
+                    $harga = floatval($r['harga']);
+                    $jumlah = (int) $r['jumlah'];
+                    $nominal = $harga * $jumlah;
+                    $stmtDetail->execute([$idRencana, $r['nama'], $harga, $jumlah, $nominal, $idAdmin]);
+                    $idDetail = (int) $this->db->lastInsertId();
+                    $stmtSetor->execute([$r['id_psb_item'], $idDetail, $jumlah, $harga, $nominal, $idAdmin]);
+                }
+
+                $this->db->commit();
+
+                $stmtR = $this->db->prepare('SELECT * FROM pengeluaran___rencana WHERE id = ?');
+                $stmtR->execute([$idRencana]);
+                $newRencana = $stmtR->fetch(\PDO::FETCH_ASSOC);
+                if ($newRencana) {
+                    UserAktivitasLogger::log(null, $idAdmin, UserAktivitasLogger::ACTION_CREATE, 'pengeluaran___rencana', (string) $idRencana, null, $newRencana, $request);
+                }
+
+                if ($status === 'draft') {
+                    $this->scheduleNotifOnDraftSaved(
+                        $idRencana,
+                        $lembaga !== null ? (string) $lembaga : null,
+                        $idAdmin !== null ? (int) $idAdmin : null,
+                        (string) $keterangan,
+                        false
+                    );
+                }
+
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'message' => 'Rencana dari setor item PSB berhasil dibuat',
+                    'data' => ['id' => $idRencana],
+                ], 201);
+            } catch (\Exception $e) {
+                $this->db->rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            error_log('Create rencana PSB item setor error: ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal membuat rencana: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -932,7 +1133,7 @@ class PengeluaranController
                     }
                     if ($kategori !== null) {
                         // Validasi kategori
-                        $validKategori = ['Bisyaroh', 'Acara', 'Pengadaan', 'Perbaikan', 'ATK', 'lainnya', 'Listrik', 'Wifi', 'Langganan'];
+                        $validKategori = ['Bisyaroh', 'Acara', 'Pengadaan', 'Perbaikan', 'ATK', 'lainnya', 'Listrik', 'Wifi', 'Langganan', 'Rapat', 'Setoran'];
                         if (!in_array($kategori, $validKategori)) {
                             $this->db->rollBack();
                             return $this->jsonResponse($response, [
@@ -3539,7 +3740,7 @@ class PengeluaranController
             // Update kategori
             if (isset($data['kategori'])) {
                 $kategori = $data['kategori'] ? $data['kategori'] : null;
-                $validKategori = ['Bisyaroh', 'Acara', 'Pengadaan', 'Perbaikan', 'ATK', 'lainnya', 'Listrik', 'Wifi', 'Langganan'];
+                $validKategori = ['Bisyaroh', 'Acara', 'Pengadaan', 'Perbaikan', 'ATK', 'lainnya', 'Listrik', 'Wifi', 'Langganan', 'Rapat', 'Setoran'];
                 if ($kategori !== null && !in_array($kategori, $validKategori)) {
                     return $this->jsonResponse($response, [
                         'success' => false,

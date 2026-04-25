@@ -108,16 +108,11 @@ function MandiriRiwayatSatuTitik({ row }) {
 
 /**
  * Absen mandiri (GPS) — dipasang di tab Absen (setelah toggle GPS).
- * `statusOnly`: hanya status sidik/sesi (tanpa zona GPS), untuk peran dengan tab.absen tanpa lokasi.absen.
+ * `statusOnly`: hanya status sidik/sesi (tanpa zona GPS), untuk tampilan ringkas.
  *
- * @param {{ lokasiList: array, loadingLokasi: boolean, mandiriRolePolicyOk?: boolean, statusOnly?: boolean }} props
+ * @param {{ lokasiList: array, loadingLokasi: boolean, statusOnly?: boolean }} props
  */
-export default function AbsenMandiriGpsPanel({
-  lokasiList,
-  loadingLokasi,
-  mandiriRolePolicyOk = true,
-  statusOnly = false
-}) {
+export default function AbsenMandiriGpsPanel({ lokasiList, loadingLokasi, statusOnly = false }) {
   const user = useAuthStore((s) => s.user)
   const isSuper = userHasSuperAdminAccess(user)
   const { showNotification } = useNotification()
@@ -191,9 +186,8 @@ export default function AbsenMandiriGpsPanel({
   }, [idPengurus])
 
   useEffect(() => {
-    if (mandiriRolePolicyOk === false) return
     void loadGate()
-  }, [loadGate, mandiriRolePolicyOk])
+  }, [loadGate])
 
   const dalamRadius = useMemo(() => {
     if (!coords || !lokasiList.length) return []
@@ -218,19 +212,18 @@ export default function AbsenMandiriGpsPanel({
 
   /** Riwayat masuk sesi berjalan (sidik jari atau GPS) — selalu dimuat agar terlihat walau di luar zona / GPS mati */
   useEffect(() => {
-    if (mandiriRolePolicyOk === false || !gateReady) return
+    if (!gateReady) return
     void loadRiwayatMasuk()
-  }, [gateReady, loadRiwayatMasuk, mandiriRolePolicyOk])
+  }, [gateReady, loadRiwayatMasuk])
 
   /** Segarkan gate & riwayat saat berganti jam/sesi tanpa reload halaman */
   useEffect(() => {
-    if (mandiriRolePolicyOk === false) return
     const id = window.setInterval(() => {
       void loadGate()
       void loadRiwayatMasuk()
     }, 60_000)
     return () => window.clearInterval(id)
-  }, [loadGate, loadRiwayatMasuk, mandiriRolePolicyOk])
+  }, [loadGate, loadRiwayatMasuk])
 
   useEffect(() => {
     if (dalamRadius.length === 0) {
@@ -292,27 +285,12 @@ export default function AbsenMandiriGpsPanel({
     [bukaTabRiwayat, coords, dalamRadius, gate?.mandiri_gps_tidak_tersedia, loadGate, loadRiwayatMasuk, selectedLokasiId, showNotification]
   )
 
-  if (!isSuper && !absenFitur.lokasiAbsenMandiri && !statusOnly) {
+  if (!isSuper && !absenFitur.tabAbsen && !statusOnly) {
     return null
   }
 
   if (idPengurus == null || idPengurus <= 0) {
     return null
-  }
-
-  if (mandiriRolePolicyOk === false) {
-    return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50/90 shadow-sm dark:border-amber-800/60 dark:bg-amber-950/35 p-4">
-        <h3 className="text-sm font-semibold text-amber-950 dark:text-amber-100">
-          {statusOnly ? 'Absen hari ini' : 'Absen mandiri (GPS)'}
-        </h3>
-        <p className="mt-2 text-sm text-amber-900 dark:text-amber-100/95">
-          {statusOnly
-            ? 'Status absen tidak dapat ditampilkan (batas peran di pengaturan absen).'
-            : 'Tidak tersedia untuk peran Anda menurut pengaturan default (batas peran). Minta admin menyesuaikan di kartu Pengaturan default absen atau memberi salah satu peran yang diizinkan.'}
-        </p>
-      </div>
-    )
   }
 
   if (statusOnly) {
@@ -459,9 +437,20 @@ export default function AbsenMandiriGpsPanel({
                     type="button"
                     disabled={busy || coordsRefreshing || dalamRadius.length === 0 || gateLoading}
                     onClick={() => submit('Keluar')}
+                    title={
+                      gate?.masuk_terbuka?.sesi_label
+                        ? `Menutup absen masuk sesi ${sesiLabelTampilan(gate.masuk_terbuka.sesi_label)}`
+                        : 'Absen keluar'
+                    }
                     className="px-4 py-2 rounded-lg text-sm font-medium border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Absen keluar
+                    {(() => {
+                      const mt = gate?.masuk_terbuka
+                      if (!mt?.sesi_label || !gate?.slot_label) return 'Absen keluar'
+                      const a = sesiLabelTampilan(mt.sesi_label)
+                      const b = sesiLabelTampilan(gate.slot_label)
+                      return a !== b ? `Absen keluar · ${a}` : 'Absen keluar'
+                    })()}
                   </button>
                 )}
               </div>
@@ -475,6 +464,16 @@ export default function AbsenMandiriGpsPanel({
                     <p className="mt-1 text-teal-900/95 dark:text-teal-100/95">
                       Sesi {String(hasilAbsen.sesi_label)} — jam mulai:{' '}
                       <span className="font-mono tabular-nums font-medium">{String(hasilAbsen.jam_mulai_sesi)}</span>
+                      {hasilAbsen.jam_batas_telat != null &&
+                        String(hasilAbsen.jam_batas_telat) !== String(hasilAbsen.jam_mulai_sesi) && (
+                          <>
+                            <span className="mx-1">·</span>
+                            <span className="text-teal-800/90 dark:text-teal-200/90">dianggap telat setelah</span>{' '}
+                            <span className="font-mono tabular-nums font-medium">
+                              {String(hasilAbsen.jam_batas_telat)}
+                            </span>
+                          </>
+                        )}
                     </p>
                   )}
                   {hasilAbsen.telat_label != null && (

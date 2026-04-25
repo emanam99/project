@@ -73,4 +73,6 @@ final class LegacyRouteRoleKeys
     public const ALAMAT_LIST_SELECTORS = 'alamatListSelectors';
 
     public const PENGURUS_LIST_SELECTORS = 'pengurusListSelectors';
+
+    public const WIRID_NAILUL_MUROD_SELECTORS = 'wiridNailulMurodSelectors';
 }

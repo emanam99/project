@@ -21,6 +21,7 @@ export const useAuthStore = create((set) => ({
         has_toko: user.has_toko ?? false,
         toko_id: user.toko_id ?? null,
         toko_nama: user.toko_nama ?? '',
+        grup_akses: Array.isArray(user.grup_akses) ? user.grup_akses : [],
       }
       localStorage.setItem('user_data', JSON.stringify(normalizedUser))
       set({ token, user: normalizedUser, isAuthenticated: true })
@@ -62,6 +63,11 @@ export const useAuthStore = create((set) => ({
           has_toko: u.has_toko ?? stored?.has_toko ?? false,
           toko_id: u.toko_id ?? stored?.toko_id ?? null,
           toko_nama: u.toko_nama ?? stored?.toko_nama ?? '',
+          grup_akses: Array.isArray(u.grup_akses)
+            ? u.grup_akses
+            : Array.isArray(stored?.grup_akses)
+              ? stored.grup_akses
+              : [],
         }
         localStorage.setItem('user_data', JSON.stringify(user))
         set({ token, user, isAuthenticated: true })

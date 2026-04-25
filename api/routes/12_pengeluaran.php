@@ -26,6 +26,7 @@ return function (\Slim\App $app): void {
         $group->post('/rencana/notif-wa', [PengeluaranController::class, 'sendRencanaNotifWa']);
         $group->get('/rencana/wa-wake', [PengeluaranController::class, 'getRencanaWaWake']);
         $group->post('/rencana', [PengeluaranController::class, 'createRencana']);
+        $group->post('/rencana/psb-item-setor', [PengeluaranController::class, 'createRencanaFromPsbItemSetor']);
         $group->get('/rencana', [PengeluaranController::class, 'getRencanaList']);
         $group->post('/rencana/{id}/komentar', [PengeluaranController::class, 'createKomentar']);
         $group->get('/rencana/{id}/komentar', [PengeluaranController::class, 'getKomentar']);

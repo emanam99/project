@@ -505,7 +505,7 @@ export default function BayarOffcanvas({
         <div className="flex flex-col md:grid md:grid-cols-2 md:grid-rows-1 flex-1 min-h-0 overflow-hidden" style={{ minHeight: 0 }}>
           <div className="hidden md:block relative overflow-hidden" style={{ minHeight: 200 }}>
             <img src={getGambarUrl('/icon-2.png')} alt="" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-teal-800/50" />
+            <div className="absolute inset-0 bg-primary-800/50" />
           </div>
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
@@ -526,11 +526,11 @@ export default function BayarOffcanvas({
 
               {!vaInfo && (
                 <div className="flex items-center justify-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  <div className={ipaymuStep >= 1 ? 'text-teal-600' : ''}><span className="inline-flex w-6 h-6 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 font-semibold">{ipaymuStep > 1 ? '✓' : '1'}</span> Nominal</div>
+                  <div className={ipaymuStep >= 1 ? 'text-primary-600' : ''}><span className="inline-flex w-6 h-6 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 font-semibold">{ipaymuStep > 1 ? '✓' : '1'}</span> Nominal</div>
                   <div className="h-0.5 w-8 bg-gray-300 dark:bg-gray-600" />
-                  <div className={ipaymuStep >= 2 ? 'text-teal-600' : ''}><span className="inline-flex w-6 h-6 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 font-semibold">{ipaymuStep > 2 ? '✓' : '2'}</span> Metode</div>
+                  <div className={ipaymuStep >= 2 ? 'text-primary-600' : ''}><span className="inline-flex w-6 h-6 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 font-semibold">{ipaymuStep > 2 ? '✓' : '2'}</span> Metode</div>
                   <div className="h-0.5 w-8 bg-gray-300 dark:bg-gray-600" />
-                  <div className={ipaymuStep >= 3 ? 'text-teal-600' : ''}><span className="inline-flex w-6 h-6 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 font-semibold">3</span> Bayar</div>
+                  <div className={ipaymuStep >= 3 ? 'text-primary-600' : ''}><span className="inline-flex w-6 h-6 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 font-semibold">3</span> Bayar</div>
                 </div>
               )}
 
@@ -547,7 +547,7 @@ export default function BayarOffcanvas({
                     value={ipaymuAmount}
                     onChange={handleAmountInput}
                     placeholder="Masukkan nominal"
-                    className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-teal-500 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100 text-right font-mono text-lg"
+                    className="w-full p-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:border-primary-500 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100 text-right font-mono text-lg"
                   />
                 </motion.div>
               )}
@@ -555,7 +555,7 @@ export default function BayarOffcanvas({
               {!vaInfo && ipaymuStep === 2 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
                   <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">Pilih Metode Pembayaran</h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Nominal: <strong className="text-teal-600">Rp {ipaymuAmount || '0'}</strong></p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Nominal: <strong className="text-primary-600">Rp {ipaymuAmount || '0'}</strong></p>
                   <div className="border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
                     <button type="button" onClick={() => handleAccordionToggle('va')} className="w-full px-4 py-3 flex items-center justify-between bg-white dark:bg-gray-700/50">
                       <div className="flex items-center gap-2"><BankIcon bank="bca" className="h-7" /><span className="font-medium">Virtual Account (VA)</span></div>
@@ -564,8 +564,8 @@ export default function BayarOffcanvas({
                     {openAccordion === 'va' && (
                       <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-600 flex flex-col gap-2">
                         {VA_CHANNELS.map((ch) => (
-                          <button key={ch.value} type="button" onClick={() => handleChannelSelect(ch.value)} className={`px-3 py-2.5 text-sm rounded-lg border-2 flex items-center gap-3 w-full text-left ${paymentChannel === ch.value ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20' : 'border-gray-300 dark:border-gray-600'}`}>
-                            {paymentChannel === ch.value ? <span className="w-5 h-5 rounded-full bg-teal-500 text-white flex items-center justify-center">✓</span> : <span className="w-5 h-5 rounded-full border-2 border-gray-400" />}
+                          <button key={ch.value} type="button" onClick={() => handleChannelSelect(ch.value)} className={`px-3 py-2.5 text-sm rounded-lg border-2 flex items-center gap-3 w-full text-left ${paymentChannel === ch.value ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600'}`}>
+                            {paymentChannel === ch.value ? <span className="w-5 h-5 rounded-full bg-primary-500 text-white flex items-center justify-center">✓</span> : <span className="w-5 h-5 rounded-full border-2 border-gray-400" />}
                             <span className="flex-1 font-medium">{ch.label}</span>
                             <BankIcon bank={ch.value} className="h-8" />
                           </button>
@@ -587,7 +587,7 @@ export default function BayarOffcanvas({
                           <img src={getGambarUrl('/logo/shopee-pay.png')} alt="ShopeePay" className="h-9 w-auto max-w-[90px] object-contain object-center" />
                           <img src={getGambarUrl('/logo/ovo.png')} alt="OVO" className="h-9 w-auto max-w-[90px] object-contain object-center" />
                         </div>
-                        {paymentMethod === 'qris' && <p className="text-xs text-teal-600 mt-1">✓ QRIS dipilih</p>}
+                        {paymentMethod === 'qris' && <p className="text-xs text-primary-600 mt-1">✓ QRIS dipilih</p>}
                       </div>
                     )}
                   </div>
@@ -599,8 +599,8 @@ export default function BayarOffcanvas({
                     {openAccordion === 'cstore' && (
                       <div className="p-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-600 flex flex-col gap-2">
                         {CSTORE_CHANNELS.map((ch) => (
-                          <button key={ch.value} type="button" onClick={() => handleChannelSelect(ch.value)} className={`px-3 py-2.5 text-sm rounded-lg border-2 flex items-center gap-3 w-full text-left ${paymentChannel === ch.value ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20' : 'border-gray-300 dark:border-gray-600'}`}>
-                            {paymentChannel === ch.value ? <span className="w-5 h-5 rounded-full bg-teal-500 text-white flex items-center justify-center">✓</span> : <span className="w-5 h-5 rounded-full border-2 border-gray-400" />}
+                          <button key={ch.value} type="button" onClick={() => handleChannelSelect(ch.value)} className={`px-3 py-2.5 text-sm rounded-lg border-2 flex items-center gap-3 w-full text-left ${paymentChannel === ch.value ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600'}`}>
+                            {paymentChannel === ch.value ? <span className="w-5 h-5 rounded-full bg-primary-500 text-white flex items-center justify-center">✓</span> : <span className="w-5 h-5 rounded-full border-2 border-gray-400" />}
                             <span className="flex-1 font-medium">{ch.label}</span>
                             <CStoreIcon store={ch.value} className="h-8" />
                           </button>
@@ -622,13 +622,13 @@ export default function BayarOffcanvas({
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-                    className="w-20 h-20 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center mx-auto mb-5 ring-4 ring-emerald-200/50 dark:ring-emerald-800/50"
+                    className="w-20 h-20 rounded-full bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center mx-auto mb-5 ring-4 ring-primary-200/50 dark:ring-primary-800/50"
                   >
                     <motion.svg
                       initial={{ pathLength: 0 }}
                       animate={{ pathLength: 1 }}
                       transition={{ delay: 0.2, duration: 0.4 }}
-                      className="w-10 h-10 text-emerald-600 dark:text-emerald-400"
+                      className="w-10 h-10 text-primary-600 dark:text-primary-400"
                       fill="none"
                       stroke="currentColor"
                       strokeWidth={2.5}
@@ -642,14 +642,14 @@ export default function BayarOffcanvas({
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Pembayaran Sukses</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Transaksi berhasil diproses.</p>
                   {successCountdown !== null && successCountdown > 0 && (
-                    <p className="text-sm text-teal-600 dark:text-teal-400 mt-3 font-medium">
+                    <p className="text-sm text-primary-600 dark:text-primary-400 mt-3 font-medium">
                       Menutup dalam {successCountdown} detik...
                     </p>
                   )}
                   <button
                     type="button"
                     onClick={() => { setVaInfo(null); setTransactionStatus(null); setSuccessCountdown(null); goToStep(1); onSuccess?.(); onClose() }}
-                    className="mt-4 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium"
+                    className="mt-4 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium"
                   >
                     Tutup sekarang
                   </button>
@@ -670,7 +670,7 @@ export default function BayarOffcanvas({
                         {countdownRemaining != null && <div className="text-sm font-mono text-blue-600 dark:text-blue-400 mt-1">Kadaluwarsa: {Math.floor(countdownRemaining / 3600)}:{String(Math.floor((countdownRemaining % 3600) / 60)).padStart(2, '0')}:{String(countdownRemaining % 60).padStart(2, '0')}</div>}
                       </div>
                       {vaInfo.session_id && (
-                        <button type="button" onClick={handleManualCheckStatus} disabled={isCheckingStatus} className="p-2 rounded-lg bg-teal-100 dark:bg-teal-900/50 text-teal-600" title="Cek status">
+                        <button type="button" onClick={handleManualCheckStatus} disabled={isCheckingStatus} className="p-2 rounded-lg bg-primary-100 dark:bg-primary-900/50 text-primary-600" title="Cek status">
                           {isCheckingStatus ? <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                         </button>
                       )}
@@ -679,19 +679,19 @@ export default function BayarOffcanvas({
                   <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                     <div className="flex justify-between text-sm mb-1"><span className="text-gray-600 dark:text-gray-400">Nominal</span><span className="font-semibold text-gray-900 dark:text-gray-100">Rp {(vaInfo.amount ?? 0).toLocaleString('id-ID')}</span></div>
                     {(vaInfo.admin_fee != null && vaInfo.admin_fee > 0) && <div className="flex justify-between text-sm mb-1"><span className="text-gray-600 dark:text-gray-400">Biaya admin</span><span className="font-semibold text-gray-900 dark:text-gray-100">Rp {(vaInfo.admin_fee ?? 0).toLocaleString('id-ID')}</span></div>}
-                    <div className="flex justify-between text-sm pt-2 border-t border-gray-200 dark:border-gray-600"><span className="font-semibold text-gray-800 dark:text-gray-200">Total</span><span className="font-bold text-teal-600 dark:text-teal-400">Rp {(vaInfo.total ?? vaInfo.amount ?? 0).toLocaleString('id-ID')}</span></div>
+                    <div className="flex justify-between text-sm pt-2 border-t border-gray-200 dark:border-gray-600"><span className="font-semibold text-gray-800 dark:text-gray-200">Total</span><span className="font-bold text-primary-600 dark:text-primary-400">Rp {(vaInfo.total ?? vaInfo.amount ?? 0).toLocaleString('id-ID')}</span></div>
                   </div>
                   {vaInfo.va_number && (
-                    <div className="p-4 rounded-lg bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800">
+                    <div className="p-4 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800">
                       <div className="flex items-center justify-between gap-3 mb-2">
-                        <span className="text-sm font-medium text-teal-700 dark:text-teal-300">Bayar via {vaInfo.bank || (vaInfo.payment_method === 'cstore' ? 'Convenience Store' : 'Virtual Account')}</span>
+                        <span className="text-sm font-medium text-primary-700 dark:text-primary-300">Bayar via {vaInfo.bank || (vaInfo.payment_method === 'cstore' ? 'Convenience Store' : 'Virtual Account')}</span>
                         <span className="shrink-0">
                           {vaInfo.payment_method === 'va' && <BankIcon bank={vaInfo.payment_channel || 'bca'} className="h-10" />}
                           {vaInfo.payment_method === 'cstore' && <CStoreIcon store={vaInfo.payment_channel || 'alfamart'} className="h-10" />}
                         </span>
                       </div>
-                      <div className="font-mono text-lg font-bold text-teal-800 dark:text-teal-200 break-all">{vaInfo.va_number}</div>
-                      <button type="button" onClick={() => { navigator.clipboard?.writeText(vaInfo.va_number); onNotify(vaInfo.payment_method === 'cstore' ? 'Kode pembayaran disalin' : 'Nomor VA disalin', 'success') }} className="mt-2 text-sm text-teal-600 dark:text-teal-400 hover:underline">Salin</button>
+                      <div className="font-mono text-lg font-bold text-primary-800 dark:text-primary-200 break-all">{vaInfo.va_number}</div>
+                      <button type="button" onClick={() => { navigator.clipboard?.writeText(vaInfo.va_number); onNotify(vaInfo.payment_method === 'cstore' ? 'Kode pembayaran disalin' : 'Nomor VA disalin', 'success') }} className="mt-2 text-sm text-primary-600 dark:text-primary-400 hover:underline">Salin</button>
                     </div>
                   )}
                   {vaInfo.payment_method === 'cstore' && vaInfo.va_number && (
@@ -738,7 +738,7 @@ export default function BayarOffcanvas({
                   {vaInfo.qr_code && getQrImageSrc(vaInfo.qr_code) && (
                     <div className="p-4 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-center">
                       <div className="flex items-center justify-center gap-2 mb-2">
-                        <span className="text-sm font-medium text-teal-700 dark:text-teal-300">Bayar via {vaInfo.payment_method === 'qris' ? 'QRIS' : (vaInfo.bank || '')}</span>
+                        <span className="text-sm font-medium text-primary-700 dark:text-primary-300">Bayar via {vaInfo.payment_method === 'qris' ? 'QRIS' : (vaInfo.bank || '')}</span>
                         <span className="shrink-0">{vaInfo.payment_method === 'qris' && <QRISIcon className="h-8" />}</span>
                       </div>
                       <img src={getQrImageSrc(vaInfo.qr_code)} alt="QR Pembayaran" className="w-full max-w-[200px] h-auto mx-auto rounded" onError={(e) => { const fallback = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(vaInfo.qr_code)}`; if (e.target.src !== fallback) e.target.src = fallback; else e.target.style.display = 'none'; }} />
@@ -769,18 +769,18 @@ export default function BayarOffcanvas({
                               onNotify('Gagal mengunduh gambar QR', 'error')
                             }
                           }}
-                          className="mt-3 px-4 py-2 text-sm font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/50 inline-flex items-center gap-2"
+                          className="mt-3 px-4 py-2 text-sm font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/50 inline-flex items-center gap-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                           Unduh gambar QR
                         </button>
                       )}
-                      <div className="text-sm text-teal-600 dark:text-teal-400 mt-2">{vaInfo.payment_method === 'qris' ? 'QRIS' : (vaInfo.bank || '')}</div>
+                      <div className="text-sm text-primary-600 dark:text-primary-400 mt-2">{vaInfo.payment_method === 'qris' ? 'QRIS' : (vaInfo.bank || '')}</div>
                     </div>
                   )}
                   {vaInfo.payment_url && (
                     <div className="flex gap-2">
-                      <a href={vaInfo.payment_url} target="_blank" rel="noopener noreferrer" className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium text-center">Buka Halaman Bayar</a>
+                      <a href={vaInfo.payment_url} target="_blank" rel="noopener noreferrer" className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-center">Buka Halaman Bayar</a>
                       <button type="button" onClick={() => setShowCancelModal(true)} className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg font-medium">Batal</button>
                     </div>
                   )}
@@ -805,20 +805,20 @@ export default function BayarOffcanvas({
                   <button
                     type="button"
                     onClick={() => { const amount = parseFloat(ipaymuAmount.replace(/\./g, '')) || 0; if (!amount || amount < 20000) { onNotify('Minimal Rp 20.000', 'error'); return } if (kurang > 0 && amount > kurang) { onNotify('Tidak boleh melebihi sisa kurang', 'error'); return } setStepDirection(1); goToStep(2) }}
-                    className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium"
+                    className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium"
                   >Selanjutnya</button>
                 </>
               )}
               {!vaInfo && ipaymuStep === 2 && (
                 <>
                   <button type="button" onClick={() => { setStepDirection(-1); goToStep(1) }} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg font-medium">Kembali</button>
-                  <button type="button" onClick={() => { if (!paymentMethod) { onNotify('Pilih metode pembayaran', 'error'); return } if (paymentMethod === 'va' && !paymentChannel) { onNotify('Pilih bank', 'error'); return } if (paymentMethod === 'cstore' && !paymentChannel) { onNotify('Pilih merchant', 'error'); return } setStepDirection(1); goToStep(3) }} className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium">Selanjutnya</button>
+                  <button type="button" onClick={() => { if (!paymentMethod) { onNotify('Pilih metode pembayaran', 'error'); return } if (paymentMethod === 'va' && !paymentChannel) { onNotify('Pilih bank', 'error'); return } if (paymentMethod === 'cstore' && !paymentChannel) { onNotify('Pilih merchant', 'error'); return } setStepDirection(1); goToStep(3) }} className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium">Selanjutnya</button>
                 </>
               )}
               {!vaInfo && ipaymuStep === 3 && (
                 <>
                   <button type="button" onClick={() => { setStepDirection(-1); goToStep(2) }} className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg font-medium">Kembali</button>
-                  <button type="button" onClick={handleIPaymuPayment} disabled={processingIPaymu} className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">{processingIPaymu ? 'Memproses...' : 'Bayar'}</button>
+                  <button type="button" onClick={handleIPaymuPayment} disabled={processingIPaymu} className="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">{processingIPaymu ? 'Memproses...' : 'Bayar'}</button>
                 </>
               )}
             </div>

@@ -93,6 +93,7 @@ class AppFiturMenuSeed extends AbstractSeed
             ['path' => '/dashboard-ijin', 'label' => 'Dashboard', 'iconKey' => 'dashboard', 'group' => 'Ijin'],
             ['path' => '/ijin/data-ijin', 'label' => 'Data Ijin', 'iconKey' => 'documentText', 'group' => 'Ijin'],
             ['path' => '/ijin/data-boyong', 'label' => 'Data Boyong', 'iconKey' => 'arrowRight', 'group' => 'Ijin'],
+            ['path' => '/wirid/nailul-murod', 'label' => 'Nailul Murod', 'iconKey' => 'documentText', 'group' => 'Wirid'],
             ['path' => '/kalender', 'label' => 'Kalender', 'iconKey' => 'calendar', 'group' => 'Kalender'],
             ['path' => '/kalender/hari-penting', 'label' => 'Hari Penting', 'iconKey' => 'star', 'group' => 'Kalender'],
             ['path' => '/converter', 'label' => 'Converter', 'iconKey' => 'arrows', 'group' => 'Kalender'],

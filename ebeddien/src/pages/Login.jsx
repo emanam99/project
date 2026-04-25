@@ -7,6 +7,7 @@ import { useThemeStore } from '../store/themeStore'
 import { authAPI } from '../services/api'
 import { APP_VERSION } from '../config/version'
 import { getGambarUrl } from '../config/images'
+import { canAccessPathByFitur } from '../utils/menuPathAccess'
 import {
   getStoredLoginUsername,
   setStoredLoginUsername,
@@ -32,6 +33,16 @@ const itemVariants = {
   }
 }
 
+const ALWAYS_ALLOWED_POST_LOGIN_PATHS = [
+  '/beranda',
+  '/profil',
+  '/semua-menu',
+  '/chat',
+  '/chat-ai',
+  '/kalender',
+  '/kalender/hari-penting',
+]
+
 export function LoginFormCard() {
   const [username, setUsername] = useState(() => getStoredLoginUsername())
   const [password, setPassword] = useState('')
@@ -46,6 +57,30 @@ export function LoginFormCard() {
   const { setAuth, setPasskeyPromptOpen } = useAuthStore()
   const { theme } = useThemeStore()
   const navigate = useNavigate()
+
+  const resolvePostLoginRedirect = async (redirectUrl) => {
+    const raw = typeof redirectUrl === 'string' ? redirectUrl.trim() : ''
+    if (!raw || !raw.startsWith('/')) return '/beranda'
+    const pathOnly = raw.split('?')[0]
+
+    // Rute workspace dasar memang terbuka untuk semua user login.
+    if (
+      ALWAYS_ALLOWED_POST_LOGIN_PATHS.includes(pathOnly) ||
+      pathOnly.startsWith('/profil/') ||
+      pathOnly.startsWith('/chat-ai/')
+    ) {
+      return raw
+    }
+
+    // Rute modul lain wajib lolos cek fitur-menu dari DB.
+    try {
+      const res = await authAPI.getMyFiturMenu({ app_key: 'ebeddien', types: 'menu,action' })
+      const codes = Array.isArray(res?.data?.codes) ? res.data.codes : []
+      return canAccessPathByFitur(pathOnly, codes) ? raw : '/beranda'
+    } catch (_) {
+      return '/beranda'
+    }
+  }
 
   // Saat tema berubah: trigger animasi flip logo + input menutup lalu membuka
   useEffect(() => {
@@ -135,7 +170,8 @@ export function LoginFormCard() {
         }
         setAuth(response.data.token, user, response.data.refresh_token ?? null)
         setStoredLoginUsername(u)
-        navigate(response.data.redirect_url || '/beranda')
+        const nextPath = await resolvePostLoginRedirect(response.data.redirect_url)
+        navigate(nextPath)
       } else {
         setError(response.message || 'Login passkey gagal')
       }
@@ -172,7 +208,8 @@ export function LoginFormCard() {
         if (response.data?.show_passkey_prompt) {
           setPasskeyPromptOpen(true)
         }
-        navigate(response.data.redirect_url || '/beranda')
+        const nextPath = await resolvePostLoginRedirect(response.data.redirect_url)
+        navigate(nextPath)
       } else {
         setError(response.message || 'Login gagal')
       }

@@ -71,18 +71,14 @@ class AbsenPengurusController
     }
 
     /**
-     * Absen mandiri: FIFO masuk↔keluar per sesi (pagi/sore/malam) secara terpisah.
-     * Sesi sore tidak menunggu keluar dari sesi pagi; tombol masuk/keluar mengikuti sesi jam server saat ini.
-     *
-     * @return array{
-     *   tanggal:string,
-     *   slot_sekarang:string,
-     *   slot_label:string,
-     *   boleh_masuk:bool,
-     *   boleh_keluar:bool,
-     *   masuk_terbuka: array{id:int,jam:string,sesi:string,sesi_label:string,sumber_absen?:string,lokasi_nama?:string}|null,
-     *   mandiri_gps_tidak_tersedia:bool
-     * }
+     * Absen mandiri: penjodohan masuk↔keluar satu antrian FIFO (kronologis) sehari, selaras rekap/attachKeluarPairing.
+     * - Hanya peristiwa s/d "sekarang" di hari yang sama; tidak ada pengejaran keluar hari lalu lewat batas tengah malam
+     *   (hari berikutnya berdiri sendiri; masuk_telat malam ke pagi esok tidak diterapkan di sini).
+     * - Tombol Keluar: pasangkan absen masuk terbuka paling dulu waktu, boleh dari sesi sebelum jam sibuk hari yang sama
+     *   (mis. pagi belum keluar, jam sudah siang: tetap tampil Keluar utk pagi, bukan Masuk siang).
+     * - Masuk sesi Sore: tidak tampil jika masuk Pagi hari yg sama masih “terbuka”.
+     * - Masuk Malam: boleh walau Pagi belum keluar, selama tidak ada masuk Sore yg belum ditutup (boleh “loncat” Pagi
+     *   bila hanya sesi yg tengah, sore, yg ditiadakan).
      */
     private function computeMandiriAbsenGate(int $idPengurus, int $nowUnix): array
     {
@@ -91,64 +87,77 @@ class AbsenPengurusController
         $slotLabel = AbsenPengurusSession::sesiLabelIndonesia($slotSekarang);
 
         $events = $this->fetchMasukKeluarEventsForCalendarDay($idPengurus, $tanggal);
-        $queues = [
-            AbsenPengurusSession::SLOT_PAGI => [],
-            AbsenPengurusSession::SLOT_SORE => [],
-            AbsenPengurusSession::SLOT_MALAM => [],
-        ];
+        /** @var list<array<string, mixed>> $tertundaMasuk (FIFO) */
+        $tertundaMasuk = [];
         foreach ($events as $e) {
             $ts = AbsenPengurusSession::resolveDisplayUnixTs($e);
-            if ($ts === null) {
-                continue;
-            }
-            $slotEv = AbsenPengurusSession::sessionSlotForUnixTs($ts);
-            if (!isset($queues[$slotEv])) {
+            if ($ts === null || $ts > $nowUnix) {
                 continue;
             }
             $isMasuk = AbsenPengurusSession::isMasukStatus($e['status'] ?? null);
             $isKeluar = AbsenPengurusSession::isKeluarStatus($e['status'] ?? null);
             if ($isMasuk) {
-                $queues[$slotEv][] = $e;
-            } elseif ($isKeluar && $queues[$slotEv] !== []) {
-                array_shift($queues[$slotEv]);
+                $tertundaMasuk[] = $e;
+            } elseif ($isKeluar && $tertundaMasuk !== []) {
+                array_shift($tertundaMasuk);
             }
         }
 
-        $openQueue = $queues[$slotSekarang];
-        $masukTerbuka = null;
-        if ($openQueue !== []) {
-            $open = $openQueue[0];
+        $hitungBukaPerSlotPemicu = [AbsenPengurusSession::SLOT_PAGI => 0, AbsenPengurusSession::SLOT_SORE => 0, AbsenPengurusSession::SLOT_MALAM => 0];
+        foreach ($tertundaMasuk as $ev) {
+            $tOpen = AbsenPengurusSession::resolveDisplayUnixTs($ev);
+            if ($tOpen === null) {
+                continue;
+            }
+            $s = AbsenPengurusSession::sessionSlotForUnixTs($tOpen);
+            if (isset($hitungBukaPerSlotPemicu[$s])) {
+                ++$hitungBukaPerSlotPemicu[$s];
+            }
+        }
+
+        if ($tertundaMasuk !== []) {
+            $open = $tertundaMasuk[0];
             $tsOpen = AbsenPengurusSession::resolveDisplayUnixTs($open);
-            if ($tsOpen !== null) {
-                $slotOpen = AbsenPengurusSession::sessionSlotForUnixTs($tsOpen);
-                $sumberAbsen = 'sidik_jari';
-                if ($this->absenPengurusHasLokasiColumns()) {
-                    $rawS = isset($open['sumber_absen']) ? trim((string) $open['sumber_absen']) : '';
-                    if ($rawS !== '') {
-                        $sumberAbsen = $rawS;
-                    }
+        } else {
+            $open = null;
+            $tsOpen = null;
+        }
+        $masukTerbuka = null;
+        if ($tsOpen !== null && $open !== null) {
+            $slotOpen = AbsenPengurusSession::sessionSlotForUnixTs($tsOpen);
+            $sumberAbsen = 'sidik_jari';
+            if ($this->absenPengurusHasLokasiColumns()) {
+                $rawS = isset($open['sumber_absen']) ? trim((string) $open['sumber_absen']) : '';
+                if ($rawS !== '') {
+                    $sumberAbsen = $rawS;
                 }
-                $masukTerbuka = [
-                    'id' => (int) ($open['id'] ?? 0),
-                    'jam' => date('H:i:s', $tsOpen),
-                    'sesi' => $slotOpen,
-                    'sesi_label' => AbsenPengurusSession::sesiLabelIndonesia($slotOpen),
-                    'sumber_absen' => $sumberAbsen,
-                ];
-                if ($sumberAbsen === 'lokasi_gps' && $this->absenPengurusHasLokasiColumns()) {
-                    $lid = (int) ($open['id_absen_lokasi'] ?? 0);
-                    if ($lid > 0) {
-                        $namaLok = $this->loadLokasiNamaById($lid);
-                        if ($namaLok !== '') {
-                            $masukTerbuka['lokasi_nama'] = $namaLok;
-                        }
+            }
+            $masukTerbuka = [
+                'id' => (int) ($open['id'] ?? 0),
+                'jam' => date('H:i:s', $tsOpen),
+                'sesi' => $slotOpen,
+                'sesi_label' => AbsenPengurusSession::sesiLabelIndonesia($slotOpen),
+                'sumber_absen' => $sumberAbsen,
+            ];
+            if ($sumberAbsen === 'lokasi_gps' && $this->absenPengurusHasLokasiColumns()) {
+                $lid = (int) ($open['id_absen_lokasi'] ?? 0);
+                if ($lid > 0) {
+                    $namaLok = $this->loadLokasiNamaById($lid);
+                    if ($namaLok !== '') {
+                        $masukTerbuka['lokasi_nama'] = $namaLok;
                     }
                 }
             }
         }
 
         $bolehKeluar = $masukTerbuka !== null;
-        $bolehMasuk = $openQueue === [];
+        $bolehMasuk = match ($slotSekarang) {
+            AbsenPengurusSession::SLOT_PAGI => $hitungBukaPerSlotPemicu[AbsenPengurusSession::SLOT_PAGI] === 0,
+            AbsenPengurusSession::SLOT_SORE => $hitungBukaPerSlotPemicu[AbsenPengurusSession::SLOT_SORE] === 0
+                && $hitungBukaPerSlotPemicu[AbsenPengurusSession::SLOT_PAGI] === 0,
+            default => $hitungBukaPerSlotPemicu[AbsenPengurusSession::SLOT_MALAM] === 0
+                && $hitungBukaPerSlotPemicu[AbsenPengurusSession::SLOT_SORE] === 0,
+        };
         $sumberOpen = $masukTerbuka !== null ? ($masukTerbuka['sumber_absen'] ?? 'sidik_jari') : 'sidik_jari';
         $mandiriGpsTidakTersedia = $masukTerbuka !== null && $sumberOpen !== 'lokasi_gps';
 
@@ -193,15 +202,29 @@ class AbsenPengurusController
         }
     }
 
+    private function absenLokasiHasJamTelatColumns(): bool
+    {
+        try {
+            $st = $this->db->query(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+                 AND table_name = 'absen___lokasi' AND column_name = 'jam_telat_pagi' LIMIT 1"
+            );
+
+            return (bool) $st->fetchColumn();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
     /**
-     * @return array{pagi: array{mulai: string}, sore: array{mulai: string}, malam: array{mulai: string}}
+     * @return array{pagi: array{mulai: string, telat: string}, sore: array{mulai: string, telat: string}, malam: array{mulai: string, telat: string}}
      */
-    private function loadJadwalDefaultMulai(): array
+    private function loadJadwalDefault(): array
     {
         $def = [
-            'pagi' => ['mulai' => '06:00'],
-            'sore' => ['mulai' => '15:00'],
-            'malam' => ['mulai' => '19:00'],
+            'pagi' => ['mulai' => '06:00', 'telat' => '06:00'],
+            'sore' => ['mulai' => '15:00', 'telat' => '15:00'],
+            'malam' => ['mulai' => '19:00', 'telat' => '19:00'],
         ];
         try {
             $st = $this->db->query("SELECT `nilai` FROM `absen___setting` WHERE `kunci` = 'jadwal_default' LIMIT 1");
@@ -216,6 +239,11 @@ class AbsenPengurusController
             foreach (['pagi', 'sore', 'malam'] as $k) {
                 if (isset($j[$k]) && is_array($j[$k]) && isset($j[$k]['mulai']) && is_string($j[$k]['mulai']) && trim($j[$k]['mulai']) !== '') {
                     $def[$k]['mulai'] = trim($j[$k]['mulai']);
+                }
+                if (isset($j[$k]) && is_array($j[$k]) && isset($j[$k]['telat']) && is_string($j[$k]['telat']) && trim($j[$k]['telat']) !== '') {
+                    $def[$k]['telat'] = trim($j[$k]['telat']);
+                } else {
+                    $def[$k]['telat'] = $def[$k]['mulai'];
                 }
             }
         } catch (\Throwable $e) {
@@ -239,7 +267,10 @@ class AbsenPengurusController
         if ($id <= 0) {
             return $picked;
         }
-        $st = $this->db->prepare('SELECT `jam_mulai_pagi`, `jam_mulai_sore`, `jam_mulai_malam` FROM `absen___lokasi` WHERE `id` = ? LIMIT 1');
+        $sql = $this->absenLokasiHasJamTelatColumns()
+            ? 'SELECT `jam_mulai_pagi`, `jam_telat_pagi`, `jam_mulai_sore`, `jam_telat_sore`, `jam_mulai_malam`, `jam_telat_malam` FROM `absen___lokasi` WHERE `id` = ? LIMIT 1'
+            : 'SELECT `jam_mulai_pagi`, `jam_mulai_sore`, `jam_mulai_malam` FROM `absen___lokasi` WHERE `id` = ? LIMIT 1';
+        $st = $this->db->prepare($sql);
         $st->execute([$id]);
         $row = $st->fetch(PDO::FETCH_ASSOC);
         if ($row === false) {
@@ -250,7 +281,7 @@ class AbsenPengurusController
     }
 
     /**
-     * @param array{pagi: array{mulai: string}, sore: array{mulai: string}, malam: array{mulai: string}} $jadwalDefault
+     * @param array{pagi: array{mulai: string, telat?: string}, sore: array{mulai: string, telat?: string}, malam: array{mulai: string, telat?: string}} $jadwalDefault
      */
     private function resolveMulaiHmForLokasiSlot(array $picked, string $slot, array $jadwalDefault): string
     {
@@ -266,6 +297,33 @@ class AbsenPengurusController
         }
 
         return $this->normalizeHmToHms($jadwalDefault[$slot]['mulai'] ?? '06:00');
+    }
+
+    /**
+     * Batas waktu dianggap telat: override kolom jam_telat_* per lokasi, atau jadwal default (telat), bukan salin jam mulai override.
+     *
+     * @param array{pagi: array{mulai: string, telat?: string}, sore: array{mulai: string, telat?: string}, malam: array{mulai: string, telat?: string}} $jadwalDefault
+     */
+    private function resolveBatasTepatWaktuHmForLokasiSlot(array $picked, string $slot, array $jadwalDefault): string
+    {
+        if ($this->absenLokasiHasJamTelatColumns()) {
+            $fieldT = match ($slot) {
+                AbsenPengurusSession::SLOT_PAGI => 'jam_telat_pagi',
+                AbsenPengurusSession::SLOT_SORE => 'jam_telat_sore',
+                AbsenPengurusSession::SLOT_MALAM => 'jam_telat_malam',
+                default => 'jam_telat_pagi',
+            };
+            $rawT = isset($picked[$fieldT]) ? trim((string) $picked[$fieldT]) : '';
+            if ($rawT !== '') {
+                return $this->normalizeHmToHms($rawT);
+            }
+        }
+        $sub = $jadwalDefault[$slot] ?? null;
+        $telatG = is_array($sub) && isset($sub['telat']) && is_string($sub['telat']) && trim($sub['telat']) !== ''
+            ? trim($sub['telat'])
+            : (is_array($sub) && isset($sub['mulai']) ? (string) $sub['mulai'] : '06:00');
+
+        return $this->normalizeHmToHms($telatG);
     }
 
     private function normalizeHmToHms(string $s): string
@@ -298,13 +356,13 @@ class AbsenPengurusController
     /**
      * @return array<string, mixed>
      */
-    private function buildAbsenTelatPayload(int $tsEventUnix, string $slot, string $mulaiHms): array
+    private function buildAbsenTelatPayload(int $tsEventUnix, string $slot, string $jamMulaiHms, string $batasTepatWaktuHms): array
     {
-        $parts = preg_split('/:/', $mulaiHms);
-        $h = (int) ($parts[0] ?? 0);
-        $i = (int) ($parts[1] ?? 0);
-        $s = (int) ($parts[2] ?? 0);
-        $boundary = mktime($h, $i, $s, (int) date('n', $tsEventUnix), (int) date('j', $tsEventUnix), (int) date('Y', $tsEventUnix));
+        $partsB = preg_split('/:/', $batasTepatWaktuHms);
+        $hb = (int) ($partsB[0] ?? 0);
+        $ib = (int) ($partsB[1] ?? 0);
+        $sb = (int) ($partsB[2] ?? 0);
+        $boundary = mktime($hb, $ib, $sb, (int) date('n', $tsEventUnix), (int) date('j', $tsEventUnix), (int) date('Y', $tsEventUnix));
         $telatDetik = max(0, $tsEventUnix - $boundary);
         $hms = $this->formatDurasiDetikKeHms($telatDetik);
         if ($telatDetik === 0) {
@@ -313,11 +371,17 @@ class AbsenPengurusController
             $label = 'Terlambat ' . $hms;
         }
 
+        $partsM = preg_split('/:/', $jamMulaiHms);
+        $hm = (int) ($partsM[0] ?? 0);
+        $im = (int) ($partsM[1] ?? 0);
+        $sm = (int) ($partsM[2] ?? 0);
+
         return [
             'jam_catat' => date('H:i:s', $tsEventUnix),
             'sesi' => $slot,
             'sesi_label' => AbsenPengurusSession::sesiLabelIndonesia($slot),
-            'jam_mulai_sesi' => sprintf('%02d:%02d:%02d', $h, $i, $s),
+            'jam_mulai_sesi' => sprintf('%02d:%02d:%02d', $hm, $im, $sm),
+            'jam_batas_telat' => sprintf('%02d:%02d:%02d', $hb, $ib, $sb),
             'telat_detik' => $telatDetik,
             'telat_hms' => $hms,
             'telat_label' => $label,
@@ -428,7 +492,7 @@ class AbsenPengurusController
             }
         }
         $lokMap = $this->batchLoadLokasiJamByIds($lokIds);
-        $jadwalDefaultMulai = $this->loadJadwalDefaultMulai();
+        $jadwalDefault = $this->loadJadwalDefault();
 
         $nowUnix = time();
         $hariIni = AbsenPengurusSession::dayKeyForUnixTs($nowUnix);
@@ -447,8 +511,9 @@ class AbsenPengurusController
             }
             $lid = $hasLoc ? (int) ($row['id_absen_lokasi'] ?? 0) : 0;
             $lokRow = $lid > 0 && isset($lokMap[$lid]) ? $lokMap[$lid] : [];
-            $mulaiHm = $this->resolveMulaiHmForLokasiSlot($lokRow, $slot, $jadwalDefaultMulai);
-            $telat = $this->buildAbsenTelatPayload($ts, $slot, $mulaiHm);
+            $mulaiHm = $this->resolveMulaiHmForLokasiSlot($lokRow, $slot, $jadwalDefault);
+            $batasHm = $this->resolveBatasTepatWaktuHmForLokasiSlot($lokRow, $slot, $jadwalDefault);
+            $telat = $this->buildAbsenTelatPayload($ts, $slot, $mulaiHm, $batasHm);
             $sumberRow = $hasLoc ? trim((string) ($row['sumber_absen'] ?? '')) : '';
             if ($sumberRow === '') {
                 $sumberRow = 'sidik_jari';
@@ -471,6 +536,7 @@ class AbsenPengurusController
                 'telat_hms' => (string) ($telat['telat_hms'] ?? ''),
                 'telat_label' => (string) ($telat['telat_label'] ?? ''),
                 'jam_mulai_sesi' => (string) ($telat['jam_mulai_sesi'] ?? ''),
+                'jam_batas_telat' => (string) ($telat['jam_batas_telat'] ?? ''),
                 'sumber_absen' => $sumberRow,
                 'lokasi_nama' => $lokNamaOut,
             ];
@@ -499,9 +565,12 @@ class AbsenPengurusController
             return [];
         }
         $ph = implode(',', array_fill(0, count($ids), '?'));
+        $selJam = $this->absenLokasiHasJamTelatColumns()
+            ? '`id`, `nama`, `jam_mulai_pagi`, `jam_telat_pagi`, `jam_mulai_sore`, `jam_telat_sore`, `jam_mulai_malam`, `jam_telat_malam`'
+            : '`id`, `nama`, `jam_mulai_pagi`, `jam_mulai_sore`, `jam_mulai_malam`';
         try {
             $st = $this->db->prepare(
-                "SELECT `id`, `nama`, `jam_mulai_pagi`, `jam_mulai_sore`, `jam_mulai_malam` FROM `absen___lokasi` WHERE `id` IN ({$ph})"
+                "SELECT {$selJam} FROM `absen___lokasi` WHERE `id` IN ({$ph})"
             );
             $st->execute($ids);
             $map = [];
@@ -748,80 +817,6 @@ class AbsenPengurusController
         return 2 * $R * atan2(sqrt($a), sqrt(1 - $a));
     }
 
-    /** @var list<string>|null */
-    private ?array $mandiriRoleAllowlistCache = null;
-
-    /**
-     * Daftar role_key (normalized) dari absen___setting.akses_absen_mandiri; kosong = tanpa filter peran.
-     *
-     * @return list<string>
-     */
-    private function getAbsenMandiriAllowedRoleKeysFromSetting(): array
-    {
-        if ($this->mandiriRoleAllowlistCache !== null) {
-            return $this->mandiriRoleAllowlistCache;
-        }
-        $this->mandiriRoleAllowlistCache = [];
-        try {
-            $st = $this->db->prepare(
-                'SELECT `nilai` FROM `absen___setting` WHERE `kunci` = \'akses_absen_mandiri\' LIMIT 1'
-            );
-            $st->execute();
-            $raw = $st->fetchColumn();
-            if ($raw === false || $raw === null || (string) $raw === '') {
-                return $this->mandiriRoleAllowlistCache;
-            }
-            $j = json_decode((string) $raw, true);
-            if (!is_array($j)) {
-                return $this->mandiriRoleAllowlistCache;
-            }
-            $keys = $j['role_keys'] ?? [];
-            if (!is_array($keys)) {
-                return $this->mandiriRoleAllowlistCache;
-            }
-            $out = [];
-            foreach ($keys as $k) {
-                $k = str_replace(' ', '_', strtolower(trim((string) $k)));
-                if ($k !== '') {
-                    $out[] = $k;
-                }
-            }
-            $this->mandiriRoleAllowlistCache = array_values(array_unique($out));
-        } catch (\Throwable $e) {
-            $this->mandiriRoleAllowlistCache = [];
-        }
-
-        return $this->mandiriRoleAllowlistCache;
-    }
-
-    /**
-     * @param list<string> $allowedKeys
-     */
-    private function userPassesMandiriRoleAllowlist(array $user, array $allowedKeys): bool
-    {
-        if ($allowedKeys === []) {
-            return true;
-        }
-        $allowed = [];
-        foreach ($allowedKeys as $k) {
-            $k = str_replace(' ', '_', strtolower(trim((string) $k)));
-            if ($k !== '') {
-                $allowed[$k] = true;
-            }
-        }
-        if ($allowed === []) {
-            return true;
-        }
-        foreach (RoleHelper::normalizeTokenRoleKeysUnion($user) as $u) {
-            $uk = str_replace(' ', '_', strtolower(trim((string) $u)));
-            if ($uk !== '' && isset($allowed[$uk])) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /**
      * Status absen mandiri (GET slot / riwayat): cukup tab Absen atau aksi lokasi — termasuk cek sidik tanpa GPS.
      */
@@ -831,10 +826,6 @@ class AbsenPengurusController
             return true;
         }
         if (!RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'menu.absen')) {
-            return false;
-        }
-        $allowedRoles = $this->getAbsenMandiriAllowedRoleKeysFromSetting();
-        if ($allowedRoles !== [] && !$this->userPassesMandiriRoleAllowlist($user, $allowedRoles)) {
             return false;
         }
         $hasTabGranular = RoleHelper::tokenUserHasAnyEbeddienFiturCodePrefix($this->db, $user, 'action.absen.tab.');
@@ -849,8 +840,7 @@ class AbsenPengurusController
     }
 
     /**
-     * POST absen GPS: bila granular, wajib action.absen.lokasi.absen (atau tab Ngabsen untuk kompatibilitas lama).
-     * Tab Absen saja tidak mencukupi — hindari dobel dengan alur cek sidik saja.
+     * POST absen GPS: cukup tab «Absen» (atau Ngabsen / lokasi.absen) selaras UI ebeddien.
      */
     private function canMandiriLokasiPost(array $user): bool
     {
@@ -860,18 +850,15 @@ class AbsenPengurusController
         if (!RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'menu.absen')) {
             return false;
         }
-        $allowedRoles = $this->getAbsenMandiriAllowedRoleKeysFromSetting();
-        if ($allowedRoles !== [] && !$this->userPassesMandiriRoleAllowlist($user, $allowedRoles)) {
-            return false;
-        }
         $hasTabGranular = RoleHelper::tokenUserHasAnyEbeddienFiturCodePrefix($this->db, $user, 'action.absen.tab.');
         $hasLokasiGranular = RoleHelper::tokenUserHasAnyEbeddienFiturCodePrefix($this->db, $user, 'action.absen.lokasi.');
         if (!$hasTabGranular && !$hasLokasiGranular) {
             return true;
         }
 
-        return RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.lokasi.absen')
-            || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.tab.ngabsen');
+        return RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.tab.absen')
+            || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.tab.ngabsen')
+            || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.absen.lokasi.absen');
     }
 
     /** null = semua lembaga; [] = tidak ada scope */
@@ -925,7 +912,7 @@ class AbsenPengurusController
         if (!$this->canMandiriLokasiPost($user)) {
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Tidak berhak absen GPS — aktifkan aksi «Lokasi · Absen mandiri (GPS)» untuk peran Anda',
+                'message' => 'Tidak berhak absen GPS — perlu menu Absen dan aksi tab «Absen» (atau aksi setara) untuk peran Anda',
             ], 403);
         }
         $idPengurus = RoleHelper::getPengurusIdFromPayload($user);
@@ -1005,7 +992,7 @@ class AbsenPengurusController
         }
 
         $picked = $this->enrichPickedLokasiWithJam($picked);
-        $jadwalDefaultMulai = $this->loadJadwalDefaultMulai();
+        $jadwalDefault = $this->loadJadwalDefault();
 
         $gate = $this->computeMandiriAbsenGate($idPengurus, time());
         if (!empty($gate['mandiri_gps_tidak_tersedia'])) {
@@ -1015,11 +1002,12 @@ class AbsenPengurusController
             ], 409);
         }
         if ($statusNorm === 'Masuk' && !$gate['boleh_masuk']) {
-            $msg = 'Untuk sesi ' . ($gate['slot_label'] ?? '') . ' hari ini absen masuk sudah tercatat.';
             if (!empty($gate['masuk_terbuka'])) {
                 $mt = $gate['masuk_terbuka'];
                 $msg = 'Lakukan absen keluar terlebih dahulu (masuk tercatat sesi '
                     . ($mt['sesi_label'] ?? '') . ' pukul ' . ($mt['jam'] ?? '') . ').';
+            } else {
+                $msg = 'Untuk sesi ' . ($gate['slot_label'] ?? '') . ' hari ini absen masuk sudah tercatat.';
             }
 
             return $this->jsonResponse($response, ['success' => false, 'message' => trim($msg)], 409);
@@ -1027,8 +1015,7 @@ class AbsenPengurusController
         if ($statusNorm === 'Keluar' && !$gate['boleh_keluar']) {
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Absen keluar hanya setelah ada absen masuk di sesi ini ('
-                    . ($gate['slot_label'] ?? '') . ') yang belum berpasangan keluar.',
+                'message' => 'Tidak ada absen masuk hari ini yang perlu ditutup dengan absen keluar (atau data belum tersingkron).',
             ], 409);
         }
 
@@ -1060,8 +1047,9 @@ class AbsenPengurusController
             $tsEvent = time();
         }
         $slotAbsen = AbsenPengurusSession::sessionSlotForUnixTs($tsEvent);
-        $mulaiHm = $this->resolveMulaiHmForLokasiSlot($picked, $slotAbsen, $jadwalDefaultMulai);
-        $telatPayload = $this->buildAbsenTelatPayload($tsEvent, $slotAbsen, $mulaiHm);
+        $mulaiHm = $this->resolveMulaiHmForLokasiSlot($picked, $slotAbsen, $jadwalDefault);
+        $batasHm = $this->resolveBatasTepatWaktuHmForLokasiSlot($picked, $slotAbsen, $jadwalDefault);
+        $telatPayload = $this->buildAbsenTelatPayload($tsEvent, $slotAbsen, $mulaiHm, $batasHm);
 
         return $this->jsonResponse($response, [
             'success' => true,

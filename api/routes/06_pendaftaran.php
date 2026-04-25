@@ -50,6 +50,7 @@ return function (\Slim\App $app): void {
         $group->get('/search-by-nik', [PendaftaranController::class, 'searchByNik']);
         $group->get('/get-pendaftar-ids', [PendaftaranController::class, 'getPendaftarIds']);
         $group->get('/get-item-list', [PendaftaranController::class, 'getItemList']);
+        $group->get('/item-rekap', [PendaftaranController::class, 'getItemRekap']);
         $group->post('/add-item-to-detail', [PendaftaranController::class, 'addItemToDetail']);
         $group->post('/delete-registrasi-detail', [PendaftaranController::class, 'deleteRegistrasiDetail']);
         $group->post('/auto-assign-items', [PendaftaranController::class, 'autoAssignItems']);

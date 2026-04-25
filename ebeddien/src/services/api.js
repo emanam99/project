@@ -1478,13 +1478,21 @@ export const pendaftaranAPI = {
     return response.data
   },
 
-  getAllPendaftar: async (tahunHijriyah, tahunMasehi) => {
+  /**
+   * @param {string} [tahunHijriyah]
+   * @param {string} [tahunMasehi]
+   * @param {string} [since] — watermark sinkron (tanggal_update / tanggal_dibuat registrasi); hanya baris yang lebih baru
+   */
+  getAllPendaftar: async (tahunHijriyah, tahunMasehi, since) => {
     const params = new URLSearchParams()
     if (tahunHijriyah && tahunHijriyah !== '') {
       params.append('tahun_hijriyah', tahunHijriyah)
     }
     if (tahunMasehi && tahunMasehi !== '') {
       params.append('tahun_masehi', tahunMasehi)
+    }
+    if (since && String(since).trim() !== '') {
+      params.append('since', String(since).trim())
     }
     const queryString = params.toString()
     const url = queryString
@@ -1594,6 +1602,27 @@ export const pendaftaranAPI = {
     const response = await api.get(url)
     return response.data
   },
+  getItemRekap: async (kategori = null, search = null, tahunHijriyah = null, tahunMasehi = null) => {
+    const params = new URLSearchParams()
+    if (kategori && kategori !== '') {
+      params.append('kategori', kategori)
+    }
+    if (search && search !== '') {
+      params.append('search', search)
+    }
+    if (tahunHijriyah && tahunHijriyah !== '') {
+      params.append('tahun_hijriyah', tahunHijriyah)
+    }
+    if (tahunMasehi && tahunMasehi !== '') {
+      params.append('tahun_masehi', tahunMasehi)
+    }
+    const queryString = params.toString()
+    const url = queryString
+      ? `/pendaftaran/item-rekap?${queryString}`
+      : '/pendaftaran/item-rekap'
+    const response = await api.get(url)
+    return response.data
+  },
 
   addItemToDetail: async (idRegistrasi, idItem) => {
     const response = await api.post('/pendaftaran/add-item-to-detail', {
@@ -1642,13 +1671,16 @@ export const pendaftaranAPI = {
     return response.data
   },
 
-  getDashboard: async (tahunHijriyah = null, tahunMasehi = null) => {
+  getDashboard: async (tahunHijriyah = null, tahunMasehi = null, lembagaId = null) => {
     const params = new URLSearchParams()
     if (tahunHijriyah && tahunHijriyah !== '') {
       params.append('tahun_hijriyah', tahunHijriyah)
     }
     if (tahunMasehi && tahunMasehi !== '') {
       params.append('tahun_masehi', tahunMasehi)
+    }
+    if (lembagaId != null && String(lembagaId).trim() !== '') {
+      params.append('lembaga_id', String(lembagaId).trim())
     }
     const queryString = params.toString()
     const url = queryString
@@ -2894,6 +2926,12 @@ export const pengeluaranAPI = {
     return response.data
   },
 
+  /** Rencana dari item PSB + baris item___setor per detail */
+  createRencanaFromPsbItemSetor: async (data) => {
+    const response = await api.post('/pengeluaran/rencana/psb-item-setor', data)
+    return response.data
+  },
+
   getRencanaList: async (status = null, kategori = null, lembaga = null, tanggalDari = null, tanggalSampai = null, page = 1, limit = 20, lembagaContext = null) => {
     let url = `/pengeluaran/rencana?page=${page}&limit=${limit}`
     if (status) {
@@ -3608,6 +3646,37 @@ export const absenPengurusAPI = {
   /** Absen mandiri lewat GPS (pengurus) */
   postLokasi: async (body) => {
     const response = await api.post('/absen-pengurus/lokasi', body)
+    return response.data
+  },
+}
+
+/** Konten wirid/amaliyah Nailul Murod (admin_wirid) */
+export const wiridNailulMurodAPI = {
+  getList: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.bab != null && String(params.bab).trim() !== '') q.set('bab', String(params.bab).trim())
+    const url = q.toString() ? `/wirid-nailul-murod?${q.toString()}` : '/wirid-nailul-murod'
+    const response = await api.get(url)
+    return response.data
+  },
+  getBabOptions: async () => {
+    const response = await api.get('/wirid-nailul-murod/bab-options')
+    return response.data
+  },
+  getById: async (id) => {
+    const response = await api.get(`/wirid-nailul-murod/${id}`)
+    return response.data
+  },
+  create: async (data) => {
+    const response = await api.post('/wirid-nailul-murod', data)
+    return response.data
+  },
+  update: async (id, data) => {
+    const response = await api.put(`/wirid-nailul-murod/${id}`, data)
+    return response.data
+  },
+  delete: async (id) => {
+    const response = await api.delete(`/wirid-nailul-murod/${id}`)
     return response.data
   },
 }

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { santriAPI, pendaftaranAPI } from '../../../services/api'
+import { loadSantriBiodataWithCache } from '../../../services/santriBiodataLoad'
+import { putSantriBiodataFromApi, subscribeSantriBiodataByDbId } from '../../../services/offcanvasSearchCache'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useAuthStore } from '../../../store/authStore'
 import { userMatchesAnyAllowedRole } from '../../../utils/roleAccess'
@@ -156,6 +158,10 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   })
   
   const [hasChanges, setHasChanges] = useState(false)
+  const hasChangesRef = useRef(false)
+  const [biodataSantriDbId, setBiodataSantriDbId] = useState(null)
+  /** Biodata dari IndexedDB (offline / server error) */
+  const [biodataDariCache, setBiodataDariCache] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [localId, setLocalId] = useState('')
@@ -521,6 +527,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   const formRef = useRef(null)
   const previousExternalIdRef = useRef(null)
   const isLoadingDataRef = useRef(false) // Track apakah sedang load data dari API
+  const loadDataRef = useRef(async () => {})
   const onDataChangeTimeoutRef = useRef(null) // Track timeout untuk debounce onDataChange
   // Data dari modal Tambah Santri Baru agar NIK, nama, gender, dan pilihan status langsung terisi di biodata
   const initialDataFromCreateRef = useRef(null)
@@ -768,13 +775,13 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
     isLoadingDataRef.current = true
     setIsLoading(true)
       try {
-        // Load biodata dari tabel santri
-        const biodataResponse = await santriAPI.getById(id)
+        setBiodataDariCache(false)
+        const online = typeof navigator === 'undefined' || navigator.onLine !== false
+        const biodataResponse = await loadSantriBiodataWithCache(id)
         if (biodataResponse.success && biodataResponse.data) {
           const biodata = biodataResponse.data
-          
-          // Debug: log data yang diterima
-          console.log('Biodata loaded from API:', biodata)
+          setBiodataSantriDbId(biodata.id != null ? Number(biodata.id) : null)
+          setBiodataDariCache(!!(biodataResponse.fromCache && (biodataResponse.offline || !!biodataResponse.message)))
           
           // Data awal dari modal Tambah Santri Baru (agar NIK, nama, gender & pilihan tidak hilang)
           const fromCreate = initialDataFromCreateRef.current
@@ -876,11 +883,11 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
             prodi: biodata.prodi || '',
           }
 
-          // Load data registrasi dari tabel psb___registrasi dengan tahun yang sesuai (wajib hijriyah + masehi)
+          // Load data registrasi dari tabel psb___registrasi (perlu jaringan)
           const thReg = String(tahunAjaran || '').trim()
           const tmReg = String(tahunAjaranMasehi || '').trim()
           const registrasiResponse =
-            thReg && tmReg
+            online && thReg && tmReg
               ? await pendaftaranAPI.getRegistrasi(id, thReg, tmReg)
               : { success: false, data: null }
           if (registrasiResponse.success && registrasiResponse.data) {
@@ -923,13 +930,14 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
           setHasChanges(false)
           previousExternalIdRef.current = id
           
-          // Load list berkas
-          if (id && /^\d{7}$/.test(id)) {
+          if (online && id && /^\d{7}$/.test(id)) {
             fetchBerkasList(id)
           }
           
           // Jangan trigger onDataChange saat load dari API (hanya saat user edit)
         } else {
+          setBiodataSantriDbId(null)
+          setBiodataDariCache(false)
           // Jika santri belum ada (atau data belum ready), set ID dan pertahankan data dari modal Tambah Santri Baru
           const fromCreate = initialDataFromCreateRef.current
           setFormData(prev => ({
@@ -958,6 +966,22 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
         }, 100)
       }
   }
+
+  loadDataRef.current = loadData
+
+  useEffect(() => {
+    hasChangesRef.current = hasChanges
+  }, [hasChanges])
+
+  useEffect(() => {
+    if (!biodataSantriDbId || hasChanges) return
+    const sub = subscribeSantriBiodataByDbId(biodataSantriDbId, () => {
+      if (hasChangesRef.current || isLoadingDataRef.current) return
+      const nis = String(externalSantriId || localId || '').trim()
+      if (/^\d{7}$/.test(nis)) void loadDataRef.current(nis)
+    })
+    return () => sub.unsubscribe()
+  }, [biodataSantriDbId, hasChanges, externalSantriId, localId])
 
   // Handle perubahan field
   const handleFieldChange = (field, value) => {
@@ -1446,6 +1470,13 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
       }
 
       setHasChanges(false)
+      setBiodataDariCache(false)
+      const idStr = String(formData.id || '').trim()
+      if (/^\d{7}$/.test(idStr)) {
+        void santriAPI.getById(idStr).then((r) => {
+          if (r?.success && r.data) void putSantriBiodataFromApi(r.data)
+        })
+      }
       showNotification('Data berhasil disimpan!', 'success')
       
       // Notify parent component bahwa biodata sudah disimpan (untuk refresh PembayaranBox)
@@ -1491,6 +1522,12 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
         onOpenDeleteModal={handleOpenDeleteModal}
         showDeleteButton={hapusSantri}
       />
+
+      {biodataDariCache && (
+        <div className="flex-shrink-0 px-3 py-2 text-xs bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-100 border-b border-amber-200/80 dark:border-amber-800/60">
+          Biodata santri dari penyimpanan lokal. Registrasi/berkas hanya dimuat ulang saat online; data akan diperbarui otomatis saat sinkron.
+        </div>
+      )}
 
       {/* Modal Konfirmasi Simpan Biodata + Opsi Kirim WA */}
       <AnimatePresence>

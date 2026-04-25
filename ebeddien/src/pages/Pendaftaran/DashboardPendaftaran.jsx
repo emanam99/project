@@ -60,10 +60,38 @@ function DashboardPendaftaran() {
   const [error, setError] = useState('')
   const [dashboardData, setDashboardData] = useState(null)
   const [lastPendaftar, setLastPendaftar] = useState([])
+  const [lembagaFilter, setLembagaFilter] = useState('')
+  const [lembagaOptions, setLembagaOptions] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      pendaftaranAPI.getLembagaOptions('formal'),
+      pendaftaranAPI.getLembagaOptions('diniyah')
+    ])
+      .then(([formalRes, diniyahRes]) => {
+        if (cancelled) return
+        const map = new Map()
+        const rows = [
+          ...(formalRes?.success && Array.isArray(formalRes.data) ? formalRes.data : []),
+          ...(diniyahRes?.success && Array.isArray(diniyahRes.data) ? diniyahRes.data : [])
+        ]
+        for (const r of rows) {
+          if (r?.id == null || r.id === '') continue
+          const id = String(r.id)
+          if (!map.has(id)) map.set(id, { id, nama: r.nama || id })
+        }
+        setLembagaOptions([...map.values()].sort((a, b) => String(a.nama).localeCompare(String(b.nama), 'id')))
+      })
+      .catch(() => {
+        if (!cancelled) setLembagaOptions([])
+      })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     loadDashboardData()
-  }, [tahunAjaran, tahunAjaranMasehi])
+  }, [tahunAjaran, tahunAjaranMasehi, lembagaFilter])
 
   const loadDashboardData = async () => {
     setLoading(true)
@@ -72,7 +100,7 @@ function DashboardPendaftaran() {
     try {
       // Load dashboard statistics and last pendaftar in parallel dengan filter tahun ajaran
       const [dashboardResult, pendaftarResult] = await Promise.all([
-        pendaftaranAPI.getDashboard(tahunAjaran, tahunAjaranMasehi),
+        pendaftaranAPI.getDashboard(tahunAjaran, tahunAjaranMasehi, lembagaFilter || null),
         pendaftaranAPI.getLastPendaftar(tahunAjaran, tahunAjaranMasehi)
       ])
       
@@ -217,6 +245,54 @@ function DashboardPendaftaran() {
     }
   }
 
+  const genderBlock = dashboardData?.gender ?? {}
+  const genderLaki = genderBlock.laki_laki ?? 0
+  const genderPerempuan = genderBlock.perempuan ?? 0
+  const genderUnknown = genderBlock.tidak_diketahui ?? 0
+  const genderTotal = genderBlock.total ?? dashboardData?.total_pendaftar ?? 0
+  const genderPieSlices = []
+  const genderPieColors = []
+  const genderPieLabels = []
+  if (genderLaki > 0) {
+    genderPieLabels.push('Laki-laki')
+    genderPieSlices.push(genderLaki)
+    genderPieColors.push('#0ea5e9')
+  }
+  if (genderPerempuan > 0) {
+    genderPieLabels.push('Perempuan')
+    genderPieSlices.push(genderPerempuan)
+    genderPieColors.push('#f43f5e')
+  }
+  if (genderUnknown > 0) {
+    genderPieLabels.push('Belum lengkap')
+    genderPieSlices.push(genderUnknown)
+    genderPieColors.push('#94a3b8')
+  }
+  const genderPieData = {
+    labels: genderPieLabels,
+    datasets: [{
+      data: genderPieSlices,
+      backgroundColor: genderPieColors,
+      borderWidth: 0
+    }]
+  }
+  const genderPieOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const v = ctx.parsed
+            const pct = genderTotal > 0 ? Math.round((v / genderTotal) * 100) : 0
+            return `${ctx.label}: ${v} (${pct}%)`
+          }
+        }
+      }
+    }
+  }
+
   const stats = [
     {
       title: 'Pendaftar',
@@ -301,21 +377,37 @@ function DashboardPendaftaran() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
           >
-            {/* Keterangan tahun ajaran */}
-            {(tahunAjaran || tahunAjaranMasehi) && (
-              <motion.div
-                className="mb-6"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, delay: 0.05 }}
-              >
+            {/* Tahun ajaran + filter lembaga */}
+            <motion.div
+              className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.05 }}
+            >
+              {(tahunAjaran || tahunAjaranMasehi) && (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Tahun Ajaran: {tahunAjaran && tahunAjaranMasehi
                     ? `${tahunAjaran} / ${tahunAjaranMasehi}`
                     : tahunAjaran || tahunAjaranMasehi}
                 </p>
-              </motion.div>
-            )}
+              )}
+              <div className={`flex flex-col gap-1 min-w-[min(100%,220px)] ${!(tahunAjaran || tahunAjaranMasehi) ? 'sm:ml-auto' : ''}`}>
+                <label htmlFor="dashboard-psb-lembaga" className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                  Filter lembaga
+                </label>
+                <select
+                  id="dashboard-psb-lembaga"
+                  value={lembagaFilter}
+                  onChange={(e) => setLembagaFilter(e.target.value)}
+                  className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm px-3 py-2 shadow-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                >
+                  <option value="">Semua lembaga</option>
+                  {lembagaOptions.map((l) => (
+                    <option key={l.id} value={l.id}>{l.nama}</option>
+                  ))}
+                </select>
+              </div>
+            </motion.div>
 
             {/* Statistics Cards - 2 kolom di mobile, 5 di desktop; kotak lebih kecil; animasi muncul & angka 0→nilai */}
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-2 sm:gap-3 lg:gap-4 mb-6">
@@ -343,6 +435,79 @@ function DashboardPendaftaran() {
                 </motion.div>
               ))}
             </div>
+
+            {/* Perbandingan gender (ikut filter lembaga + tahun ajaran) */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 mb-6"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Pendaftar menurut jenis kelamin
+                </h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Total:{' '}
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">
+                    <AnimatedNumber value={genderTotal} duration={700} />
+                  </span>
+                </span>
+              </div>
+              {genderTotal > 0 ? (
+                <div className="flex flex-col md:flex-row items-stretch gap-4">
+                  <div className="w-full md:w-48 h-44 flex-shrink-0 mx-auto md:mx-0">
+                    {genderPieSlices.length > 0 ? (
+                      <Pie data={genderPieData} options={genderPieOptions} />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-xs text-gray-400">—</div>
+                    )}
+                  </div>
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/40 p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-sky-500 flex-shrink-0" />
+                        <span className="text-xs font-medium text-sky-800 dark:text-sky-200">Laki-laki</span>
+                      </div>
+                      <p className="text-xl font-bold text-sky-700 dark:text-sky-300">
+                        <AnimatedNumber value={genderLaki} duration={700} />
+                      </p>
+                      <p className="text-[11px] text-sky-600/80 dark:text-sky-400/80 mt-0.5">
+                        {genderTotal > 0 ? `${Math.round((genderLaki / genderTotal) * 100)}%` : '0%'} dari total
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/40 p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 flex-shrink-0" />
+                        <span className="text-xs font-medium text-rose-800 dark:text-rose-200">Perempuan</span>
+                      </div>
+                      <p className="text-xl font-bold text-rose-700 dark:text-rose-300">
+                        <AnimatedNumber value={genderPerempuan} duration={700} />
+                      </p>
+                      <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80 mt-0.5">
+                        {genderTotal > 0 ? `${Math.round((genderPerempuan / genderTotal) * 100)}%` : '0%'} dari total
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-600 p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-slate-400 flex-shrink-0" />
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Belum lengkap</span>
+                      </div>
+                      <p className="text-xl font-bold text-slate-700 dark:text-slate-200">
+                        <AnimatedNumber value={genderUnknown} duration={700} />
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Tanpa jenis kelamin di registrasi/biodata
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">
+                  Tidak ada pendaftar untuk filter ini
+                </p>
+              )}
+            </motion.div>
 
             {/* Diagram Lingkaran: Daftar Formal & Daftar Diniyah (tampilan seperti Dashboard Keuangan) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5 mb-6">

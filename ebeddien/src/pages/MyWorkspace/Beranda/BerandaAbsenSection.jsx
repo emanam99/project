@@ -2,11 +2,10 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
-import { absenLokasiAPI, absenSettingAPI, absenPengurusAPI } from '../../../services/api'
+import { absenLokasiAPI } from '../../../services/api'
 import { AbsenLokasiProvider, useAbsenLokasi } from '../../../contexts/AbsenLokasiContext'
 import { useAbsenFiturAccess } from '../../../hooks/useAbsenFiturAccess'
 import { userHasSuperAdminAccess } from '../../../utils/roleAccess'
-import { userPassesMandiriRoleAllowlist, normalizeAksesMandiriFromApi } from '../../../utils/mandiriAkses'
 import AbsenGpsToggleBar from '../../Lembaga/Absen/AbsenGpsToggleBar'
 import AbsenMandiriGpsPanel from '../../Lembaga/Absen/AbsenMandiriGpsPanel'
 
@@ -23,7 +22,6 @@ const sectionVariants = {
 
 /**
  * Blok riwayat / absen mandiri di Beranda — di bawah menu.
- * Tanpa data sidik & tanpa akses GPS: tidak dirender.
  */
 export default function BerandaAbsenSection() {
   const user = useAuthStore((s) => s.user)
@@ -32,39 +30,9 @@ export default function BerandaAbsenSection() {
   const idPengurus = user?.id_pengurus != null ? Number(user.id_pengurus) : null
 
   const eligible =
-    idPengurus != null &&
-    idPengurus > 0 &&
-    (isSuper || absenFitur.tabAbsen || absenFitur.lokasiAbsenMandiri)
+    idPengurus != null && idPengurus > 0 && (isSuper || absenFitur.tabAbsen)
 
-  const [shouldShow, setShouldShow] = useState(null)
-
-  useEffect(() => {
-    if (!eligible) return
-    if (isSuper || absenFitur.lokasiAbsenMandiri) {
-      setShouldShow(true)
-      return
-    }
-    if (!absenFitur.tabAbsen) {
-      setShouldShow(false)
-      return
-    }
-    let cancelled = false
-    absenPengurusAPI
-      .getMandiriRiwayatMasuk({ limit: 1 })
-      .then((res) => {
-        if (cancelled) return
-        const has = res?.success && Array.isArray(res.data) && res.data.length > 0
-        setShouldShow(has)
-      })
-      .catch(() => {
-        if (!cancelled) setShouldShow(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [eligible, isSuper, absenFitur.lokasiAbsenMandiri, absenFitur.tabAbsen])
-
-  if (!eligible || shouldShow === null || shouldShow === false) {
+  if (!eligible) {
     return null
   }
 
@@ -96,15 +64,8 @@ function BerandaAbsenSectionInner() {
   const absenFitur = useAbsenFiturAccess()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [aksesMandiri, setAksesMandiri] = useState(() => ({ role_keys: [] }))
-  const [roleOptionsMandiri, setRoleOptionsMandiri] = useState(null)
 
   const isSuper = userHasSuperAdminAccess(user)
-
-  const mandiriRoleOk = useMemo(() => {
-    if (roleOptionsMandiri === null) return true
-    return userPassesMandiriRoleAllowlist(user, aksesMandiri)
-  }, [user, aksesMandiri, roleOptionsMandiri])
 
   const needFetchLokasi = useMemo(() => {
     if (!absenFitur.lokasiAbsenMandiri) return false
@@ -149,25 +110,6 @@ function BerandaAbsenSectionInner() {
     void load()
   }, [needFetchLokasi, load])
 
-  useEffect(() => {
-    if (!absenFitur.tabAbsen && !absenFitur.lokasiAbsenMandiri) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const res = await absenSettingAPI.get()
-        if (cancelled || !res?.success || !res.data) return
-        setAksesMandiri(normalizeAksesMandiriFromApi(res.data))
-        const ro = res.data.role_options_mandiri
-        setRoleOptionsMandiri(Array.isArray(ro) ? ro : [])
-      } catch {
-        setRoleOptionsMandiri([])
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [absenFitur.tabAbsen, absenFitur.lokasiAbsenMandiri])
-
   return (
     <motion.section
       variants={sectionVariants}
@@ -191,19 +133,10 @@ function BerandaAbsenSectionInner() {
           <>
             <AbsenGpsToggleBar lokasiList={rows} showToggle={false} />
             <BerandaGpsOffHint />
-            <AbsenMandiriGpsPanel
-              lokasiList={rows}
-              loadingLokasi={loading}
-              mandiriRolePolicyOk={mandiriRoleOk}
-            />
+            <AbsenMandiriGpsPanel lokasiList={rows} loadingLokasi={loading} />
           </>
         ) : (
-          <AbsenMandiriGpsPanel
-            statusOnly
-            lokasiList={[]}
-            loadingLokasi={false}
-            mandiriRolePolicyOk={mandiriRoleOk}
-          />
+          <AbsenMandiriGpsPanel statusOnly lokasiList={[]} loadingLokasi={false} />
         )}
       </div>
     </motion.section>

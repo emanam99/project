@@ -97,6 +97,13 @@ import { getMasehiKeyHariIni, idbGetToday, readTodayPenanggalanSync } from '../.
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useSidebarStore } from '../../../store/sidebarStore'
 import BerandaAbsenSection from './BerandaAbsenSection'
+import { useGlobalSyncOutbox } from '../../../contexts/GlobalSyncOutboxContext'
+import { useGlobalSyncOutboxCount } from '../../../hooks/useGlobalSyncOutboxCount'
+import { useChatOffcanvas } from '../../../contexts/ChatOffcanvasContext'
+import { useChatAiOffcanvas } from '../../../contexts/ChatAiOffcanvasContext'
+
+/** Maks item menu di Beranda; sisanya lewat Semua menu */
+const BERANDA_MENU_DISPLAY_LIMIT = 20
 
 const BULAN_MASEHI = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
 const BULAN_HIJRIYAH = ['Muharram', 'Safar', "Rabiul Awal", "Rabiul Akhir", "Jumadil Awal", "Jumadil Akhir", 'Rajab', "Sya'ban", 'Ramadhan', 'Syawal', "Dzulqa'dah", 'Dzulhijjah']
@@ -146,6 +153,7 @@ const menuIconsByPath = {
   '/dashboard-pendaftaran': <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
   '/pendaftaran': <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
   '/pendaftaran/item': <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>,
+  '/pendaftaran/item/rekap': <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
   '/pendaftaran/item/set': <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>,
   '/pendaftaran/item/kondisi': <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
   '/pendaftaran/item/registrasi': <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
@@ -283,6 +291,10 @@ export default function Beranda() {
   const showWidgetRingkasanKeuangan = widgetAllowed(BERANDA_WIDGET_CODES.ringkasanKeuangan)
   const showWidgetTotalPendaftaran = widgetAllowed(BERANDA_WIDGET_CODES.totalPendaftaran)
   const { tahunAjaran, setTahunAjaran, tahunAjaranMasehi, setTahunAjaranMasehi, options: optionsTA, optionsMasehi: optionsMasehiTA } = useTahunAjaranStore()
+  const { open: openSyncOutbox } = useGlobalSyncOutbox()
+  const { n: syncOutboxN, showBadge: syncOutboxShowBadge } = useGlobalSyncOutboxCount()
+  const { open: openChatOffcanvas, close: closeChatOffcanvas, chatTotalUnread } = useChatOffcanvas()
+  const { open: openChatAiOffcanvas, close: closeChatAiOffcanvas } = useChatAiOffcanvas()
 
   // Jam hidup (update tiap detik)
   useEffect(() => {
@@ -484,6 +496,11 @@ export default function Beranda() {
     fiturMenuCodes,
     fiturMenuFetchStatus
   ])
+
+  const berandaMenus = useMemo(
+    () => allowedMenus.slice(0, BERANDA_MENU_DISPLAY_LIMIT),
+    [allowedMenus]
+  )
 
   /** Gabung baris menu API + katalog agar icon_key dari /me/fitur-menu ikut dipakai pencarian path. */
   const menuCatalogForIcons = useMemo(() => {
@@ -691,6 +708,60 @@ export default function Beranda() {
         animate="visible"
         className="px-4 sm:px-0"
       >
+        <div className="flex justify-center sm:justify-start gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => {
+              closeChatAiOffcanvas()
+              openChatOffcanvas()
+            }}
+            title="Chat"
+            aria-label="Chat"
+            className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200/80 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 text-teal-600 dark:text-teal-400 shadow-sm hover:shadow-md hover:border-teal-300/60 dark:hover:border-teal-600/50 transition-all"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {chatTotalUnread > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 z-10 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold tabular-nums pointer-events-none"
+                aria-label={`${chatTotalUnread} pesan belum dibaca`}
+              >
+                {chatTotalUnread > 99 ? '99+' : chatTotalUnread}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              closeChatOffcanvas()
+              openChatAiOffcanvas()
+            }}
+            title="eBeddien (Chat AI)"
+            aria-label="eBeddien (Chat AI)"
+            className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200/80 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 text-violet-600 dark:text-violet-400 shadow-sm hover:shadow-md hover:border-violet-300/60 dark:hover:border-violet-600/50 transition-all"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={openSyncOutbox}
+            title="Antrean sinkron"
+            aria-label="Antrean sinkron"
+            className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-gray-200/80 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 text-slate-600 dark:text-slate-300 shadow-sm hover:shadow-md hover:border-slate-400/50 dark:hover:border-slate-500/50 transition-all"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h10M4 18h10" />
+            </svg>
+            {syncOutboxShowBadge && (
+              <span className="absolute -top-1 -right-1 min-w-[1.125rem] h-[1.125rem] px-0.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none">
+                {syncOutboxN > 99 ? '99+' : syncOutboxN}
+              </span>
+            )}
+          </button>
+        </div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             Menu
@@ -727,9 +798,9 @@ export default function Beranda() {
           `}</style>
           <motion.div
             className={
-              menuListLoading || allowedMenus.length === 0
+              menuListLoading || berandaMenus.length === 0
                 ? 'flex gap-2 items-center min-h-[88px]'
-                : allowedMenus.length <= menuSingleRowThreshold
+                : berandaMenus.length <= menuSingleRowThreshold
                   ? 'flex gap-2'
                   : 'flex flex-col gap-2'
             }
@@ -743,10 +814,10 @@ export default function Beranda() {
                 <span className="inline-block h-5 w-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin shrink-0" />
                 Memuat menu…
               </div>
-            ) : allowedMenus.length === 0 ? (
+            ) : berandaMenus.length === 0 ? (
               <p className="text-xs text-gray-500 dark:text-gray-400 px-2 py-3">Belum ada menu yang ditampilkan.</p>
-            ) : allowedMenus.length <= menuSingleRowThreshold ? (
-              allowedMenus.map((item, idx) => {
+            ) : berandaMenus.length <= menuSingleRowThreshold ? (
+              berandaMenus.map((item, idx) => {
                 const c = getMenuColor(item.path, idx)
                 return (
                   <motion.button
@@ -769,9 +840,9 @@ export default function Beranda() {
             ) : (
               (() => {
                 // Lebih dari threshold → 2 baris (row1 + row2)
-                const half = Math.ceil(allowedMenus.length / 2)
-                const row1 = allowedMenus.slice(0, half)
-                const row2 = allowedMenus.slice(half)
+                const half = Math.ceil(berandaMenus.length / 2)
+                const row1 = berandaMenus.slice(0, half)
+                const row2 = berandaMenus.slice(half)
                 const menuButton = (item, idx) => {
                   const c = getMenuColor(item.path, idx)
                   return (
