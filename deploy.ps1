@@ -1,6 +1,6 @@
-# Deploy ebeddien/daftar/mybeddien ke Hostinger - pilih staging/production, pilih Frontend (ebeddien/daftar/mybeddien)/API, lalu upload
+# Deploy ebeddien/daftar/mybeddien/nailul-murod ke Hostinger - pilih staging/production, pilih Frontend (ebeddien/daftar/mybeddien/nailul-murod)/API, lalu upload
 # Cara pakai: jalankan dari folder htdocs di PowerShell: .\deploy.ps1
-# - Frontend: pilih ebeddien, daftar, dan/atau mybeddien → build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddien2/mybeddien
+# - Frontend: pilih ebeddien, daftar, mybeddien, dan/atau nailul-murod → build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddien2/mybeddien, nailul-murod2/nailul-murod
 # - API: upload isi folder api (production only)
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +12,7 @@ $SSH_PORT   = 65002
 $TAR_FILE         = "ebeddien-dist.tar"
 $DAFTAR_TAR       = "daftar-dist.tar"
 $MYBEDDIEN_TAR    = "mybeddien-dist.tar"
+$NAILUL_TAR       = "nailul-murod-dist.tar"
 $API_TAR          = "api-dist.tar"
 
 # --- Pilih target: Staging (ebeddien2/api2) atau Production (ebeddien/api) ---
@@ -33,6 +34,7 @@ if ($isStaging) {
     $REMOTE_PATH           = "domains/alutsmani.id/public_html/ebeddien2"
     $REMOTE_DAFTAR_PATH    = "domains/alutsmani.id/public_html/daftar2"
     $REMOTE_MYBEDDIEN_PATH = "domains/alutsmani.id/public_html/mybeddien2"
+    $REMOTE_NAILUL_PATH    = "domains/alutsmani.id/public_html/nailul-murod2"
     $REMOTE_API_PATH       = "domains/alutsmani.id/public_html/api2"
     $envLabel              = "staging"
     $apiUrl                = "https://api2.alutsmani.id/api"
@@ -40,15 +42,16 @@ if ($isStaging) {
     $REMOTE_PATH           = "domains/alutsmani.id/public_html/ebeddien"
     $REMOTE_DAFTAR_PATH    = "domains/alutsmani.id/public_html/daftar"
     $REMOTE_MYBEDDIEN_PATH = "domains/alutsmani.id/public_html/mybeddien"
+    $REMOTE_NAILUL_PATH    = "domains/alutsmani.id/public_html/nailul-murod"
     $REMOTE_API_PATH       = "domains/alutsmani.id/public_html/api"
     $envLabel              = "production"
     $apiUrl                = "https://api.alutsmani.id/api"
 }
 
-# --- Pilih scope: Frontend (ebeddien/daftar/mybeddien) / API / Keduanya ---
+# --- Pilih scope: Frontend (ebeddien/daftar/mybeddien/nailul-murod) / API / Keduanya ---
 Write-Host ""
 Write-Host "  Deploy apa?" -ForegroundColor White
-Write-Host '    1) Frontend saja   - build + upload (pilih ebeddien/daftar/mybeddien nanti)' -ForegroundColor Cyan
+Write-Host '    1) Frontend saja   - build + upload (pilih ebeddien/daftar/mybeddien/nailul-murod nanti)' -ForegroundColor Cyan
 Write-Host '    2) API saja        - upload api (hanya file production)' -ForegroundColor Magenta
 Write-Host '    3) Frontend + API  - keduanya' -ForegroundColor Green
 Write-Host ""
@@ -60,25 +63,28 @@ if ($scope -notmatch '^[123]$') {
 $doFrontend = $scope -eq "1" -or $scope -eq "3"
 $doApi      = $scope -eq "2" -or $scope -eq "3"
 
-# --- Jika Frontend: pilih ebeddien, daftar, dan/atau mybeddien ---
+# --- Jika Frontend: pilih ebeddien, daftar, mybeddien, dan/atau nailul-murod ---
 $doEbeddien  = $false
 $doDaftar    = $false
 $doMybeddien = $false
+$doNailul    = $false
 if ($doFrontend) {
     Write-Host ""
     Write-Host "  Frontend mana?" -ForegroundColor White
     Write-Host '    1) ebeddien saja  - build + upload ke ebeddien2/ebeddien' -ForegroundColor Cyan
     Write-Host '    2) daftar saja    - build + upload ke daftar2/daftar' -ForegroundColor Yellow
     Write-Host '    3) mybeddien saja - build + upload ke mybeddien2/mybeddien' -ForegroundColor Magenta
-    Write-Host '    4) ketiganya      - ebeddien, daftar, dan mybeddien' -ForegroundColor Green
+    Write-Host '    4) nailul-murod saja - build + upload ke nailul-murod2/nailul-murod' -ForegroundColor Blue
+    Write-Host '    5) semuanya       - ebeddien, daftar, mybeddien, nailul-murod' -ForegroundColor Green
     Write-Host ""
-    $front = Read-Host '  Masukkan pilihan (1, 2, 3, atau 4)'
-    if ($front -notmatch '^[1234]$') {
-        Write-Error 'Pilihan tidak valid. Gunakan 1, 2, 3, atau 4.'
+    $front = Read-Host '  Masukkan pilihan (1, 2, 3, 4, atau 5)'
+    if ($front -notmatch '^[12345]$') {
+        Write-Error 'Pilihan tidak valid. Gunakan 1, 2, 3, 4, atau 5.'
     }
-    $doEbeddien  = $front -eq "1" -or $front -eq "4"
-    $doDaftar    = $front -eq "2" -or $front -eq "4"
-    $doMybeddien = $front -eq "3" -or $front -eq "4"
+    $doEbeddien  = $front -eq "1" -or $front -eq "5"
+    $doDaftar    = $front -eq "2" -or $front -eq "5"
+    $doMybeddien = $front -eq "3" -or $front -eq "5"
+    $doNailul    = $front -eq "4" -or $front -eq "5"
 }
 
 # --- Jika API: tanya migrasi & seed sekali di depan (supaya tidak interupsi di tengah proses) ---
@@ -92,17 +98,18 @@ if ($doApi) {
 }
 
 Write-Host ""
-Write-Host "  Target: $envLabel | ebeddien: $doEbeddien | daftar: $doDaftar | mybeddien: $doMybeddien | API: $doApi" -ForegroundColor Cyan
+Write-Host "  Target: $envLabel | ebeddien: $doEbeddien | daftar: $doDaftar | mybeddien: $doMybeddien | nailul-murod: $doNailul | API: $doApi" -ForegroundColor Cyan
 if ($doApi) {
     Write-Host "  Migrasi: $(if ($runMigrations -eq 'y' -or $runMigrations -eq 'Y') { 'ya' } else { 'tidak' }) | Seed: $(if ($runSeeds -eq 'y' -or $runSeeds -eq 'Y') { 'ya' } else { 'tidak' })" -ForegroundColor Cyan
 }
 Write-Host ""
 
-# --- Script di root htdocs; folder ebeddien, daftar, mybeddien, api ada di bawahnya ---
+# --- Script di root htdocs; folder ebeddien, daftar, mybeddien, nailul-murod, api ada di bawahnya ---
 $scriptDir     = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
 $ebeddienDir   = Join-Path $scriptDir "ebeddien"
 $daftarDir     = Join-Path $scriptDir "daftar"
 $mybeddienDir  = Join-Path $scriptDir "mybeddien"
+$nailulDir     = Join-Path $scriptDir "nailul-murod"
 $apiPath       = Join-Path $scriptDir "api"
 
 # ========== FRONTEND (ebeddien) ==========
@@ -239,6 +246,76 @@ if ($doMybeddien) {
     Write-Host "[Frontend mybeddien] Selesai." -ForegroundColor Green
 }
 
+# ========== FRONTEND (nailul-murod) ==========
+if ($doNailul) {
+    if (-not (Test-Path $nailulDir)) {
+        Write-Error "Folder nailul-murod tidak ditemukan: $nailulDir"
+    }
+    Set-Location $nailulDir
+    $envPath = Join-Path $nailulDir ".env"
+    $hasEnvFile = Test-Path $envPath
+    $prevApiBase = $env:VITE_API_BASE
+    $prevApiBaseUrl = $env:VITE_API_BASE_URL
+    $prevAppEnv = $env:VITE_APP_ENV
+    $prevGambarBase = $env:VITE_GAMBAR_BASE
+    $hadPrevApiBase = $null -ne $prevApiBase
+    $hadPrevApiBaseUrl = $null -ne $prevApiBaseUrl
+    $hadPrevAppEnv = $null -ne $prevAppEnv
+    $hadPrevGambarBase = $null -ne $prevGambarBase
+
+    if ($hasEnvFile) {
+        $envContent = Get-Content $envPath -Raw -Encoding UTF8
+        $envContent = $envContent -replace '(?m)^VITE_API_BASE=.*', "VITE_API_BASE=$apiUrl"
+        $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=$apiUrl"
+        $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=$envLabel"
+        $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=$gambarBase"
+        [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "[Frontend nailul-murod] .env diset ke $envLabel" -ForegroundColor Gray
+    } else {
+        $env:VITE_API_BASE = $apiUrl
+        $env:VITE_API_BASE_URL = $apiUrl
+        $env:VITE_APP_ENV = $envLabel
+        $env:VITE_GAMBAR_BASE = $gambarBase
+        Write-Host "[Frontend nailul-murod] .env tidak ada, pakai environment variable sementara untuk build." -ForegroundColor Yellow
+    }
+
+    Write-Host "[Frontend nailul-murod] Build..." -ForegroundColor Cyan
+    npm run build
+    if (-not (Test-Path "dist")) {
+        Write-Error "Folder dist tidak ada setelah build nailul-murod."
+    }
+
+    Write-Host "[Frontend nailul-murod] Buat arsip tar..." -ForegroundColor Cyan
+    $tarPath = Join-Path $nailulDir $NAILUL_TAR
+    if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
+    tar -cf $tarPath -C dist .
+
+    Write-Host "[Frontend nailul-murod] Upload + ekstrak di server..." -ForegroundColor Cyan
+    scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_NAILUL_PATH}/"
+    $extractCmd = 'cd ' + $REMOTE_NAILUL_PATH + ' && tar --warning=no-timestamp -xf ' + $NAILUL_TAR + ' && rm -f ' + $NAILUL_TAR
+    ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd
+
+    Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
+
+    if ($hasEnvFile) {
+        $envContent = Get-Content $envPath -Raw -Encoding UTF8
+        $envContent = $envContent -replace '(?m)^VITE_API_BASE=.*', "VITE_API_BASE=/api"
+        $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=http://localhost/api/public/api"
+        $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=development"
+        $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=/gambar"
+        [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
+        Write-Host "[Frontend nailul-murod] .env dikembalikan ke local." -ForegroundColor Gray
+    } else {
+        if ($hadPrevApiBase) { $env:VITE_API_BASE = $prevApiBase } else { Remove-Item Env:VITE_API_BASE -ErrorAction SilentlyContinue }
+        if ($hadPrevApiBaseUrl) { $env:VITE_API_BASE_URL = $prevApiBaseUrl } else { Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue }
+        if ($hadPrevAppEnv) { $env:VITE_APP_ENV = $prevAppEnv } else { Remove-Item Env:VITE_APP_ENV -ErrorAction SilentlyContinue }
+        if ($hadPrevGambarBase) { $env:VITE_GAMBAR_BASE = $prevGambarBase } else { Remove-Item Env:VITE_GAMBAR_BASE -ErrorAction SilentlyContinue }
+        Write-Host "[Frontend nailul-murod] Environment variable sementara dibersihkan." -ForegroundColor Gray
+    }
+
+    Write-Host "[Frontend nailul-murod] Selesai." -ForegroundColor Green
+}
+
 # ========== API (isi folder api - production only) ==========
 # Upload API: hanya file/folder yang dipakai di production.
 #
@@ -371,6 +448,10 @@ if ($doDaftar) {
 if ($doMybeddien) {
     $url = if ($isStaging) { "https://mybeddien2.alutsmani.id" } else { "https://mybeddien.alutsmani.id" }
     Write-Host "Frontend mybeddien: $url" -ForegroundColor Green
+}
+if ($doNailul) {
+    $url = if ($isStaging) { "https://nailul-murod2.alutsmani.id" } else { "https://nailul-murod.alutsmani.id" }
+    Write-Host "Frontend nailul-murod: $url" -ForegroundColor Green
 }
 if ($doApi) {
     $apiUrlBase = if ($isStaging) { "https://api2.alutsmani.id" } else { "https://api.alutsmani.id" }

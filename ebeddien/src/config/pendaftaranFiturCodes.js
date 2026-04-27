@@ -1,9 +1,16 @@
 /** Selaras migrasi pendaftaran_fitur_actions */
 export const PENDAFTARAN_ACTION_CODES = {
   biodataHapusSantri: 'action.pendaftaran.biodata.hapus_santri',
+  biodataUbahKeteranganStatus: 'action.pendaftaran.biodata.ubah_keterangan_status',
+  pembayaranKelola: 'action.pendaftaran.pembayaran.kelola',
   /** Tanpa aksi ini (dan bukan super_admin): opsi filter formal/diniyah dibatasi ke lembaga sesuai scope role */
   dataPendaftarFilterFormalDiniyahSemuaLembaga:
     'action.pendaftaran.data_pendaftar.filter_formal_diniyah_semua_lembaga',
+  dataPendaftarEdit: 'action.pendaftaran.data_pendaftar.edit',
+  dataPendaftarVerifikasi: 'action.pendaftaran.data_pendaftar.verifikasi',
+  dataPendaftarAktifPondok: 'action.pendaftaran.data_pendaftar.aktif_pondok',
+  dataPendaftarAktifDiniyah: 'action.pendaftaran.data_pendaftar.aktif_diniyah',
+  dataPendaftarAktifFormal: 'action.pendaftaran.data_pendaftar.aktif_formal',
   routeItem: 'action.pendaftaran.route.item',
   routeManageItemSet: 'action.pendaftaran.route.manage_item_set',
   routeManageKondisi: 'action.pendaftaran.route.manage_kondisi',

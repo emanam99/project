@@ -20,6 +20,7 @@ function StatusPendaftaranSection({
   onFocus,
   onBlur,
   getLabelClassName,
+  canEditKeteranganStatus = false,
   kondisiValues = {
     status_pendaftar: [],
     status_santri: [],
@@ -212,28 +213,34 @@ function StatusPendaftaranSection({
         </select>
       </div>
 
-      {/* Keterangan status (admin) — setelah gelombang */}
+      {/* Keterangan status (admin) — setelah gelombang; izin fitur terpisah */}
       <div className="mb-4">
         <label className={getLabelClassName('keterangan_status')}>
           Keterangan Status
         </label>
-        <select
-          value={formData.keterangan_status || ''}
-          onChange={(e) => onFieldChange('keterangan_status', e.target.value)}
-          onFocus={() => onFocus('keterangan_status')}
-          onBlur={onBlur}
-          className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
-        >
-          <option value="">Pilih Keterangan Status</option>
-          <option value="Belum Upload">Belum Upload</option>
-          <option value="Belum Bayar">Belum Bayar</option>
-          <option value="Belum Diverifikasi">Belum Diverifikasi</option>
-          <option value="Sudah Diverifikasi">Sudah Diverifikasi</option>
-          <option value="Melengkapi Data">Melengkapi Data</option>
-          <option value="Upload Berkas">Upload Berkas</option>
-          <option value="Belum Aktif">Belum Aktif</option>
-          <option value="Aktif">Aktif</option>
-        </select>
+        {canEditKeteranganStatus ? (
+          <select
+            value={formData.keterangan_status || ''}
+            onChange={(e) => onFieldChange('keterangan_status', e.target.value)}
+            onFocus={() => onFocus('keterangan_status')}
+            onBlur={onBlur}
+            className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
+          >
+            <option value="">Pilih Keterangan Status</option>
+            <option value="Belum Upload">Belum Upload</option>
+            <option value="Belum Bayar">Belum Bayar</option>
+            <option value="Belum Diverifikasi">Belum Diverifikasi</option>
+            <option value="Sudah Diverifikasi">Sudah Diverifikasi</option>
+            <option value="Melengkapi Data">Melengkapi Data</option>
+            <option value="Upload Berkas">Upload Berkas</option>
+            <option value="Belum Aktif">Belum Aktif</option>
+            <option value="Aktif">Aktif</option>
+          </select>
+        ) : (
+          <div className="w-full p-2 border-b-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 bg-gray-50/50 dark:bg-gray-900/30 rounded">
+            {formData.keterangan_status?.trim() ? formData.keterangan_status : '—'}
+          </div>
+        )}
       </div>
     </div>
   )

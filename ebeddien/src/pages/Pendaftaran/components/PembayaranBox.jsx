@@ -4,6 +4,7 @@ import { pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useAuthStore } from '../../../store/authStore'
+import { usePendaftaranFiturAccess } from '../../../hooks/usePendaftaranFiturAccess'
 import PembayaranOffcanvas from './PembayaranOffcanvas'
 import AddItemOffcanvas from './AddItemOffcanvas'
 import PendaftaranPrintOffcanvas from '../../../components/Pendaftaran/PendaftaranPrintOffcanvas'
@@ -13,6 +14,7 @@ function PembayaranBox({ santriId, refreshKey }) {
   const { showNotification } = useNotification()
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
   const { user } = useAuthStore()
+  const { pembayaranKelola } = usePendaftaranFiturAccess()
   const [registrasi, setRegistrasi] = useState(null)
   const [registrasiDetail, setRegistrasiDetail] = useState([])
   const [originalDetail, setOriginalDetail] = useState([]) // Untuk tracking perubahan
@@ -311,6 +313,7 @@ function PembayaranBox({ santriId, refreshKey }) {
 
   // Handle checkbox pembayaran - hanya update local state
   const handlePaymentCheckbox = (detail, checked) => {
+    if (!pembayaranKelola) return
     if (!detail || !detail.id) {
       console.error('Detail tidak valid:', detail)
       showNotification('Data detail tidak valid', 'error')
@@ -449,6 +452,23 @@ function PembayaranBox({ santriId, refreshKey }) {
     })
   }
 
+  const hasNominalChanges = () => {
+    if (registrasiDetail.length !== originalDetail.length) return true
+    return registrasiDetail.some((detail, index) => {
+      const original = originalDetail[index]
+      if (!original) return true
+      return (
+        parseFloat(detail.nominal_dibayar || 0) !== parseFloat(original.nominal_dibayar || 0)
+      )
+    })
+  }
+
+  const canSaveBulk = () => {
+    if (!hasChanges()) return false
+    if (pembayaranKelola) return true
+    return !hasNominalChanges()
+  }
+
   // Hitung sisa pembayaran
   const calculateSisaPembayaran = () => {
     if (!registrasi) return 0
@@ -500,6 +520,7 @@ function PembayaranBox({ santriId, refreshKey }) {
 
   // Handle checkbox master - centang semua item yang bisa dibayar
   const handleMasterCheckbox = (checked) => {
+    if (!pembayaranKelola) return
     if (!checked) {
       // Jika uncheck, uncheck semua item
       setRegistrasiDetail(prev => 
@@ -823,26 +844,38 @@ function PembayaranBox({ santriId, refreshKey }) {
               </button>
             </div>
             <div className="flex items-center gap-2">
-              {/* Tombol Bayar */}
-              <button
-                onClick={() => setIsOffcanvasOpen(true)}
-                className="px-3 py-1.5 text-xs font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-                <span>Bayar</span>
-              </button>
+              {/* Tombol Bayar — izin fitur kelola pembayaran */}
+              {pembayaranKelola ? (
+                <button
+                  type="button"
+                  onClick={() => setIsOffcanvasOpen(true)}
+                  className="px-3 py-1.5 text-xs font-medium bg-teal-600 hover:bg-teal-700 text-white rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  </svg>
+                  <span>Bayar</span>
+                </button>
+              ) : null}
               {/* Tombol Simpan */}
               <button
+                type="button"
                 onClick={handleBulkSave}
-                disabled={saving || !hasChanges()}
+                disabled={saving || !canSaveBulk()}
                 className={`p-1.5 rounded-lg transition-colors flex items-center justify-center ${
-                  saving || !hasChanges()
+                  saving || !canSaveBulk()
                     ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
                     : 'bg-teal-600 hover:bg-teal-700 text-white'
                 }`}
-                title={saving ? 'Menyimpan...' : !hasChanges() ? 'Tidak ada perubahan' : 'Simpan'}
+                title={
+                  saving
+                    ? 'Menyimpan...'
+                    : !hasChanges()
+                      ? 'Tidak ada perubahan'
+                      : !pembayaranKelola && hasNominalChanges()
+                        ? 'Tidak ada izin mengubah alokasi nominal'
+                        : 'Simpan'
+                }
               >
                 {saving ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
@@ -884,12 +917,18 @@ function PembayaranBox({ santriId, refreshKey }) {
                 <input
                   type="checkbox"
                   checked={isAllPayableItemsChecked()}
-                  disabled={calculateSisaPembayaran() <= 0}
+                  disabled={calculateSisaPembayaran() <= 0 || !pembayaranKelola}
                   onChange={(e) => handleMasterCheckbox(e.target.checked)}
                   className={`w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 ${
-                    calculateSisaPembayaran() <= 0 ? 'opacity-50 cursor-not-allowed' : ''
+                    calculateSisaPembayaran() <= 0 || !pembayaranKelola ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
-                  title={calculateSisaPembayaran() <= 0 ? 'Sisa pembayaran sudah habis' : 'Centang semua item yang bisa dibayar'}
+                  title={
+                    !pembayaranKelola
+                      ? 'Tidak ada izin mengubah alokasi pembayaran'
+                      : calculateSisaPembayaran() <= 0
+                        ? 'Sisa pembayaran sudah habis'
+                        : 'Centang semua item yang bisa dibayar'
+                  }
                 />
                 <span className="text-gray-600 dark:text-gray-400 font-medium">Sisa Pembayaran:</span>
               </div>
@@ -926,8 +965,8 @@ function PembayaranBox({ santriId, refreshKey }) {
               
               // Checkbox checked state: checked jika nominal_dibayar > 0
               const isPaymentChecked = nominalDibayar > 0
-              // Disable checkbox jika sisa pembayaran = 0
-              const isPaymentDisabled = sisaPembayaran <= 0 && nominalDibayar === 0
+              const isPaymentDisabled =
+                !pembayaranKelola || (sisaPembayaran <= 0 && nominalDibayar === 0)
               const isStatusAmbilChecked = statusAmbil === 'sudah_ambil'
               
               // Tentukan warna status dan text - hanya tampilkan jika status "sebagian" (kurang)
@@ -972,7 +1011,13 @@ function PembayaranBox({ santriId, refreshKey }) {
                           className={`w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 ${
                             isPaymentDisabled ? 'opacity-50 cursor-not-allowed' : ''
                           }`}
-                          title={isPaymentDisabled ? 'Sisa pembayaran sudah habis' : 'Centang untuk membayar item ini'}
+                          title={
+                            !pembayaranKelola
+                              ? 'Tidak ada izin mengubah alokasi pembayaran'
+                              : isPaymentDisabled
+                                ? 'Sisa pembayaran sudah habis'
+                                : 'Centang untuk membayar item ini'
+                          }
                         />
                         <input
                           type="checkbox"
@@ -1072,6 +1117,7 @@ function PembayaranBox({ santriId, refreshKey }) {
           buktiPembayaranList={buktiPembayaranList}
           onPreviewBukti={(bukti) => setPreviewFile(bukti)}
           onUploadBuktiSuccess={fetchBuktiPembayaran}
+          canKelolaPembayaran={pembayaranKelola}
         />
       )}
 

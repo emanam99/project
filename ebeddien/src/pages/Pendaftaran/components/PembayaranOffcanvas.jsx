@@ -21,7 +21,8 @@ function PembayaranOffcanvas({
   onPaymentSuccess,
   buktiPembayaranList = [],
   onPreviewBukti,
-  onUploadBuktiSuccess
+  onUploadBuktiSuccess,
+  canKelolaPembayaran = false
 }) {
   const { user } = useAuthStore()
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
@@ -667,8 +668,9 @@ function PembayaranOffcanvas({
                                     <span className="text-gray-500 dark:text-gray-400 leading-tight text-[10px]">{hijriyahStr}</span>
                                   )}
                                 </div>
-                                {!isPending && (
+                                {!isPending && canKelolaPembayaran && (
                                   <button
+                                    type="button"
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       handleDeletePayment(payment.id, paymentAmount)
@@ -699,10 +701,15 @@ function PembayaranOffcanvas({
                   </div>
                 </div>
 
-                {/* New Payment Form */}
+                {/* Tambah/hapus pembayaran — butuh izin fitur */}
                 <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                  {!canKelolaPembayaran && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center mb-2">
+                      Anda hanya dapat melihat riwayat. Hubungi admin untuk menambah atau menghapus pembayaran.
+                    </p>
+                  )}
                   <AnimatePresence mode="wait">
-                    {showForm ? (
+                    {canKelolaPembayaran && showForm ? (
                       <motion.div
                         key="form"
                         initial={{ height: 0, opacity: 0 }}
@@ -760,7 +767,7 @@ function PembayaranOffcanvas({
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
-                  {totals.kurang > 0 && !showForm && (
+                  {canKelolaPembayaran && totals.kurang > 0 && !showForm && (
                     <div className="space-y-2">
                       {/* Tombol Upload Bukti TF dan Bayar dengan iPayMu */}
                       <div className="grid grid-cols-2 gap-2">

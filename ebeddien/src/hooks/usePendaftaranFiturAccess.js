@@ -34,9 +34,34 @@ export function usePendaftaranFiturAccess() {
       can,
       /** Tombol/modal hapus registrasi & opsi hapus di tabel santri (hanya alur biodata pendaftaran) */
       hapusSantri: can(PENDAFTARAN_ACTION_CODES.biodataHapusSantri, hapusSantriFb),
+      biodataUbahKeteranganStatus: can(
+        PENDAFTARAN_ACTION_CODES.biodataUbahKeteranganStatus,
+        noImplicitFilterFull
+      ),
+      pembayaranKelola: can(PENDAFTARAN_ACTION_CODES.pembayaranKelola, noImplicitFilterFull),
       /** Dropdown filter formal/diniyah memuat semua lembaga di data; tanpa aksi → terbatas scope lembaga role */
       dataPendaftarFilterFormalDiniyahSemuaLembaga: can(
         PENDAFTARAN_ACTION_CODES.dataPendaftarFilterFormalDiniyahSemuaLembaga,
+        noImplicitFilterFull
+      ),
+      dataPendaftarEdit: can(
+        PENDAFTARAN_ACTION_CODES.dataPendaftarEdit,
+        noImplicitFilterFull
+      ),
+      dataPendaftarVerifikasi: can(
+        PENDAFTARAN_ACTION_CODES.dataPendaftarVerifikasi,
+        noImplicitFilterFull
+      ),
+      dataPendaftarAktifPondok: can(
+        PENDAFTARAN_ACTION_CODES.dataPendaftarAktifPondok,
+        noImplicitFilterFull
+      ),
+      dataPendaftarAktifDiniyah: can(
+        PENDAFTARAN_ACTION_CODES.dataPendaftarAktifDiniyah,
+        noImplicitFilterFull
+      ),
+      dataPendaftarAktifFormal: can(
+        PENDAFTARAN_ACTION_CODES.dataPendaftarAktifFormal,
         noImplicitFilterFull
       ),
       routeItem: can(PENDAFTARAN_ACTION_CODES.routeItem, superFb),

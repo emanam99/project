@@ -533,7 +533,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
   const initialDataFromCreateRef = useRef(null)
   const { tahunAjaran, tahunAjaranMasehi } = useTahunAjaranStore()
   const { user } = useAuthStore()
-  const { hapusSantri } = usePendaftaranFiturAccess()
+  const { hapusSantri, biodataUbahKeteranganStatus } = usePendaftaranFiturAccess()
   
   // Note: showNotification sudah dideklarasikan di atas (baris 35)
   
@@ -2149,6 +2149,7 @@ function BiodataPendaftaran({ onDataChange, externalSantriId, onOpenSearch, onBi
                 onBlur={() => setFocusedField(null)}
             getLabelClassName={getLabelClassName}
             kondisiValues={kondisiValues}
+            canEditKeteranganStatus={biodataUbahKeteranganStatus}
           />
 
           {/* Kategori & Pendidikan */}

@@ -73,6 +73,22 @@ function DataPendaftar() {
   const [selectedPendaftar, setSelectedPendaftar] = useState(null)
   const [isDetailOffcanvasOpen, setIsDetailOffcanvasOpen] = useState(false)
   const [verifikasiLoading, setVerifikasiLoading] = useState(false)
+  const [aktifLoading, setAktifLoading] = useState(false)
+  const [showAktifOffcanvas, setShowAktifOffcanvas] = useState(false)
+  const [aktifMode, setAktifMode] = useState('pondok')
+  const [kategoriOptionsAktif, setKategoriOptionsAktif] = useState([])
+  const [daerahOptionsAktif, setDaerahOptionsAktif] = useState([])
+  const [kamarOptionsAktif, setKamarOptionsAktif] = useState([])
+  const [lembagaOptionsAktif, setLembagaOptionsAktif] = useState([])
+  const [kelasOptionsAktif, setKelasOptionsAktif] = useState([])
+  const [kelOptionsAktif, setKelOptionsAktif] = useState([])
+  const [rombelMasterAktif, setRombelMasterAktif] = useState([])
+  const [kategoriAktif, setKategoriAktif] = useState('')
+  const [daerahAktif, setDaerahAktif] = useState('')
+  const [kamarAktif, setKamarAktif] = useState('')
+  const [lembagaAktif, setLembagaAktif] = useState('')
+  const [kelasAktif, setKelasAktif] = useState('')
+  const [kelAktif, setKelAktif] = useState('')
   const [isExportOffcanvasOpen, setIsExportOffcanvasOpen] = useState(false)
   const [selectedItems, setSelectedItems] = useState(new Set())
   const [showBulkEditOffcanvas, setShowBulkEditOffcanvas] = useState(false)
@@ -92,6 +108,24 @@ function DataPendaftar() {
     setWaStatusTelpon,
     setWaStatusWaSantri
   } = useWhatsAppCheck(showNotification)
+
+  const resetAktifOffcanvas = useCallback(() => {
+    setAktifMode('pondok')
+    setKategoriAktif('')
+    setDaerahAktif('')
+    setKamarAktif('')
+    setDaerahOptionsAktif([])
+    setKamarOptionsAktif([])
+    setLembagaOptionsAktif([])
+    setKelasOptionsAktif([])
+    setKelOptionsAktif([])
+    setRombelMasterAktif([])
+    setKategoriOptionsAktif([])
+    setLembagaAktif('')
+    setKelasAktif('')
+    setKelAktif('')
+    setShowAktifOffcanvas(false)
+  }, [])
 
   // Auto-cek WA saat offcanvas detail dibuka (untuk No Telpon & No WA)
   useEffect(() => {
@@ -130,6 +164,135 @@ function DataPendaftar() {
       .finally(() => { if (!cancelled) setDetailBerkasLoading(false) })
     return () => { cancelled = true }
   }, [isDetailOffcanvasOpen, selectedPendaftar?.id])
+
+  useEffect(() => {
+    if (!isDetailOffcanvasOpen && showAktifOffcanvas) {
+      resetAktifOffcanvas()
+    }
+  }, [isDetailOffcanvasOpen, showAktifOffcanvas, resetAktifOffcanvas])
+
+  useEffect(() => {
+    if (!showAktifOffcanvas || aktifMode !== 'pondok' || !kategoriAktif) {
+      setDaerahOptionsAktif([])
+      setDaerahAktif('')
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI
+      .getDaerahOptions(kategoriAktif)
+      .then((res) => {
+        if (cancelled) return
+        setDaerahOptionsAktif(res?.success && Array.isArray(res?.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setDaerahOptionsAktif([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showAktifOffcanvas, aktifMode, kategoriAktif])
+
+  useEffect(() => {
+    if (!showAktifOffcanvas || aktifMode !== 'pondok' || !daerahAktif) {
+      setKamarOptionsAktif([])
+      setKamarAktif('')
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI
+      .getKamarOptions(daerahAktif)
+      .then((res) => {
+        if (cancelled) return
+        setKamarOptionsAktif(res?.success && Array.isArray(res?.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setKamarOptionsAktif([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [showAktifOffcanvas, aktifMode, daerahAktif])
+
+  useEffect(() => {
+    if (!showAktifOffcanvas || (aktifMode !== 'diniyah' && aktifMode !== 'formal')) {
+      setLembagaOptionsAktif([])
+      setRombelMasterAktif([])
+      return
+    }
+    let cancelled = false
+    Promise.all([
+      pendaftaranAPI.getLembagaOptions(aktifMode),
+      pendaftaranAPI.getRombelOptions(aktifMode)
+    ])
+      .then(([resLembaga, resRombel]) => {
+        if (cancelled) return
+        const listLembaga = resLembaga?.success && Array.isArray(resLembaga?.data) ? resLembaga.data : []
+        const listRombel = resRombel?.success && Array.isArray(resRombel?.data) ? resRombel.data : []
+        setLembagaOptionsAktif(listLembaga)
+        setRombelMasterAktif(listRombel)
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        setLembagaOptionsAktif([])
+        setRombelMasterAktif([])
+      })
+    return () => { cancelled = true }
+  }, [showAktifOffcanvas, aktifMode])
+
+  useEffect(() => {
+    if (!showAktifOffcanvas || (aktifMode !== 'diniyah' && aktifMode !== 'formal') || !lembagaAktif) {
+      setKelasOptionsAktif([])
+      setKelasAktif('')
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI
+      .getKelasOptions(lembagaAktif)
+      .then((res) => {
+        if (cancelled) return
+        setKelasOptionsAktif(res?.success && Array.isArray(res?.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setKelasOptionsAktif([])
+      })
+    return () => { cancelled = true }
+  }, [showAktifOffcanvas, aktifMode, lembagaAktif])
+
+  useEffect(() => {
+    if (!showAktifOffcanvas || (aktifMode !== 'diniyah' && aktifMode !== 'formal') || !lembagaAktif || !kelasAktif) {
+      setKelOptionsAktif([])
+      setKelAktif('')
+      return
+    }
+    let cancelled = false
+    pendaftaranAPI
+      .getKelOptions(lembagaAktif, kelasAktif)
+      .then((res) => {
+        if (cancelled) return
+        setKelOptionsAktif(res?.success && Array.isArray(res?.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (!cancelled) setKelOptionsAktif([])
+      })
+    return () => { cancelled = true }
+  }, [showAktifOffcanvas, aktifMode, lembagaAktif, kelasAktif])
+
+  useEffect(() => {
+    if (!showAktifOffcanvas || (aktifMode !== 'diniyah' && aktifMode !== 'formal') || !lembagaAktif || !kelasAktif || !kelAktif) {
+      if (aktifMode === 'diniyah' || aktifMode === 'formal') {
+        setKamarAktif('')
+      }
+      return
+    }
+    const found = rombelMasterAktif.find((r) => (
+      String(r?.lembaga_id ?? '') === String(lembagaAktif)
+      && String(r?.kelas ?? '') === String(kelasAktif)
+      && String(r?.kel ?? '') === String(kelAktif)
+    ))
+    setKamarAktif(found?.id != null ? String(found.id) : '')
+  }, [showAktifOffcanvas, aktifMode, lembagaAktif, kelasAktif, kelAktif, rombelMasterAktif])
 
   const refetchDetailBerkas = () => {
     if (!selectedPendaftar?.id) return
@@ -171,7 +334,14 @@ function DataPendaftar() {
     [userLembagas]
   )
 
-  const { dataPendaftarFilterFormalDiniyahSemuaLembaga } = usePendaftaranFiturAccess()
+  const {
+    dataPendaftarFilterFormalDiniyahSemuaLembaga,
+    dataPendaftarEdit,
+    dataPendaftarVerifikasi,
+    dataPendaftarAktifPondok,
+    dataPendaftarAktifDiniyah,
+    dataPendaftarAktifFormal
+  } = usePendaftaranFiturAccess()
 
   /**
    * Lewati pembatasan baris per lembaga (lihat semua baris dari API).
@@ -671,11 +841,23 @@ function DataPendaftar() {
     navigate(`/pendaftaran?nis=${encodeURIComponent(nisForUrl)}`)
   }
 
-  // Tombol Verifikasi selalu muncul kecuali sudah verifikasi atau Aktif
+  // Tombol Verifikasi: izin fitur + belum verifikasi/aktif
   const showVerifikasiButton = (keterangan) => {
     if (!keterangan) return true
     const sudahVerifikasiAtauAktif = ['Sudah Diverivikasi', 'Sudah Diverifikasi', 'Aktif'].includes(keterangan)
     return !sudahVerifikasiAtauAktif
+  }
+
+  const showAktifButton = (keterangan) => {
+    if (!keterangan) return false
+    const t = String(keterangan).trim()
+    return (t === 'Sudah Diverivikasi' || t === 'Sudah Diverifikasi') && t !== 'Aktif'
+  }
+
+  const showAktifJalurButton = (keterangan) => {
+    if (!keterangan) return false
+    const t = String(keterangan).trim()
+    return ['Sudah Diverivikasi', 'Sudah Diverifikasi', 'Aktif'].includes(t)
   }
 
   const handleVerifikasiClick = async () => {
@@ -699,6 +881,87 @@ function DataPendaftar() {
       showNotification(err?.response?.data?.message || 'Gagal verifikasi', 'error')
     } finally {
       setVerifikasiLoading(false)
+    }
+  }
+
+  const handleOpenAktifOffcanvas = async (mode = 'pondok') => {
+    if (!selectedPendaftar?.id) return
+    try {
+      setAktifLoading(true)
+      setAktifMode(mode)
+      setKamarAktif('')
+      setDaerahAktif('')
+      setKategoriAktif('')
+      setLembagaAktif('')
+      setKelasAktif('')
+      setKelAktif('')
+      if (mode === 'pondok') {
+        const resKategori = await pendaftaranAPI.getKategoriOptions()
+        if (!resKategori?.success) {
+          showNotification(resKategori?.message || 'Gagal memuat kategori', 'error')
+          return
+        }
+        const kategoriList = Array.isArray(resKategori.data) ? resKategori.data : []
+        setKategoriOptionsAktif(kategoriList)
+      } else {
+        setKategoriOptionsAktif([])
+      }
+      setShowAktifOffcanvas(true)
+    } catch (err) {
+      showNotification(err?.response?.data?.message || 'Gagal membuka form aktif pondok', 'error')
+    } finally {
+      setAktifLoading(false)
+    }
+  }
+
+  const handleSetAktif = async () => {
+    if (!selectedPendaftar?.id) return
+    const parsedSelectedId = Number.parseInt(String(kamarAktif), 10)
+    if (!Number.isFinite(parsedSelectedId) || parsedSelectedId <= 0) {
+      showNotification(
+        aktifMode === 'pondok'
+          ? 'Silakan pilih kamar terlebih dahulu'
+          : aktifMode === 'diniyah'
+            ? 'Silakan pilih rombel diniyah terlebih dahulu'
+            : 'Silakan pilih rombel formal terlebih dahulu',
+        'warning'
+      )
+      return
+    }
+    try {
+      setAktifLoading(true)
+      const payload = {
+        id_santri: selectedPendaftar.id,
+        keterangan_status: aktifMode === 'pondok'
+          ? 'Aktif'
+          : (selectedPendaftar.keterangan_status || 'Aktif'),
+        tahun_hijriyah: selectedPendaftar.tahun_hijriyah || tahunAjaran,
+        tahun_masehi: selectedPendaftar.tahun_masehi || tahunAjaranMasehi
+      }
+      if (aktifMode === 'pondok') payload.id_kamar = parsedSelectedId
+      if (aktifMode === 'diniyah') payload.id_diniyah = parsedSelectedId
+      if (aktifMode === 'formal') payload.id_formal = parsedSelectedId
+      const result = await pendaftaranAPI.updateKeteranganStatus({
+        ...payload
+      })
+      if (result?.success) {
+        const pesanSukses =
+          aktifMode === 'pondok'
+            ? 'Santri berhasil diaktifkan dan ditempatkan ke kamar'
+            : aktifMode === 'diniyah'
+              ? 'Aktif Diniyah berhasil disimpan'
+              : 'Aktif Formal berhasil disimpan'
+        showNotification(pesanSukses, 'success')
+        setSelectedPendaftar((prev) => (prev ? { ...prev, keterangan_status: 'Aktif' } : null))
+        resetAktifOffcanvas()
+        loadPendaftarData(true)
+      } else {
+        showNotification(result?.message || 'Gagal menyimpan status aktif', 'error')
+      }
+    } catch (err) {
+      showNotification(err?.response?.data?.message || 'Gagal menyimpan status aktif', 'error')
+    } finally {
+      setAktifLoading(false)
     }
   }
 
@@ -794,6 +1057,27 @@ function DataPendaftar() {
     if (val == null || val === '') return '-'
     return `Rp ${Number(val).toLocaleString('id-ID')}`
   }
+
+  /** Jumlah baris + jumlah wajib/bayar/kurang untuk data yang sedang tampil (setelah filter). */
+  const ringkasanPembayaranFilter = useMemo(() => {
+    let sumWajib = 0
+    let sumBayar = 0
+    let sumKurang = 0
+    for (const p of filteredList) {
+      const w = p.wajib != null ? Number(p.wajib) : 0
+      const b = p.bayar != null ? Number(p.bayar) : 0
+      const k = p.kurang != null ? Number(p.kurang) : Math.max(0, w - b)
+      if (Number.isFinite(w)) sumWajib += w
+      if (Number.isFinite(b)) sumBayar += b
+      if (Number.isFinite(k)) sumKurang += k
+    }
+    return {
+      count: filteredList.length,
+      sumWajib,
+      sumBayar,
+      sumKurang
+    }
+  }, [filteredList])
 
   // Fungsi untuk mendapatkan warna badge berdasarkan keterangan_status
   const getKeteranganStatusBadgeColor = (keteranganStatus) => {
@@ -1068,7 +1352,7 @@ function DataPendaftar() {
                       </svg>
                       Eksport
                     </button>
-                    {selectedItems.size > 0 ? (
+                    {dataPendaftarEdit && selectedItems.size > 0 ? (
                       <button
                         type="button"
                         onClick={() => setShowBulkEditOffcanvas(true)}
@@ -1107,11 +1391,35 @@ function DataPendaftar() {
                       <option value="all">Semua</option>
                     </select>
                   </div>
-                  {/* Count santri (kanan) */}
-                  <span className="text-base font-normal text-gray-500 dark:text-gray-400 whitespace-nowrap shrink-0">
-                    {filteredList.length}
-                  </span>
                 </div>
+                {ringkasanPembayaranFilter.count > 0 && (
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50 px-3 py-2">
+                      <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Jumlah</div>
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+                        {ringkasanPembayaranFilter.count.toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-blue-50/80 dark:bg-blue-950/30 px-3 py-2">
+                      <div className="text-[11px] font-medium text-blue-700 dark:text-blue-300 uppercase tracking-wide">Wajib</div>
+                      <div className="text-sm font-semibold text-blue-800 dark:text-blue-200 tabular-nums">
+                        {formatRp(ringkasanPembayaranFilter.sumWajib)}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-emerald-50/80 dark:bg-emerald-950/30 px-3 py-2">
+                      <div className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">Bayar</div>
+                      <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-200 tabular-nums">
+                        {formatRp(ringkasanPembayaranFilter.sumBayar)}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-red-50/80 dark:bg-red-950/30 px-3 py-2">
+                      <div className="text-[11px] font-medium text-red-700 dark:text-red-300 uppercase tracking-wide">Kurang</div>
+                      <div className="text-sm font-semibold text-red-800 dark:text-red-200 tabular-nums">
+                        {formatRp(ringkasanPembayaranFilter.sumKurang)}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {filteredList.length === 0 ? (
@@ -1749,6 +2057,14 @@ function DataPendaftar() {
                                 )}
                               </div>
                               <div>
+                                <dt className="text-xs text-gray-500 dark:text-gray-400">Aktif diniyah</dt>
+                                <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{formatTanggalWaktu(selectedPendaftar.tanggal_aktif_diniyah)}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-xs text-gray-500 dark:text-gray-400">Aktif formal</dt>
+                                <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{formatTanggalWaktu(selectedPendaftar.tanggal_aktif_formal)}</dd>
+                              </div>
+                              <div>
                                 <dt className="text-xs text-gray-500 dark:text-gray-400">Terakhir update</dt>
                                 <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{formatTanggalWaktu(selectedPendaftar.tanggal_update)}</dd>
                               </div>
@@ -1756,17 +2072,20 @@ function DataPendaftar() {
                           </div>
                         </div>
                         <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-2">
-                          <button
-                            type="button"
-                            onClick={handleEditClick}
-                            className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg transition-colors"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Edit
-                          </button>
-                          {showVerifikasiButton(selectedPendaftar.keterangan_status) && (
+                          {dataPendaftarEdit ? (
+                            <button
+                              type="button"
+                              onClick={handleEditClick}
+                              className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg transition-colors"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit
+                            </button>
+                          ) : null}
+                          {dataPendaftarVerifikasi &&
+                            showVerifikasiButton(selectedPendaftar.keterangan_status) && (
                             <button
                               type="button"
                               onClick={handleVerifikasiClick}
@@ -1791,6 +2110,386 @@ function DataPendaftar() {
                               )}
                             </button>
                           )}
+                          {dataPendaftarAktifPondok && showAktifButton(selectedPendaftar.keterangan_status) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAktifOffcanvas('pondok')}
+                              disabled={aktifLoading}
+                              className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {aktifLoading ? (
+                                <>
+                                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                  </svg>
+                                  Memproses...
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  Aktif
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {dataPendaftarAktifDiniyah && showAktifJalurButton(selectedPendaftar.keterangan_status) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAktifOffcanvas('diniyah')}
+                              disabled={aktifLoading}
+                              className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Aktif Diniyah
+                            </button>
+                          )}
+                          {dataPendaftarAktifFormal && showAktifJalurButton(selectedPendaftar.keterangan_status) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAktifOffcanvas('formal')}
+                              disabled={aktifLoading}
+                              className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Aktif Formal
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+                <AnimatePresence>
+                  {showAktifOffcanvas && (
+                    <>
+                      <motion.button
+                        type="button"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed top-0 right-0 bottom-0 w-full max-w-md z-[10000] bg-black/40"
+                        onClick={resetAktifOffcanvas}
+                        aria-label="Tutup pilih kamar"
+                      />
+                      <motion.div
+                        initial={{ y: '100%' }}
+                        animate={{ y: 0 }}
+                        exit={{ y: '100%' }}
+                        transition={{ type: 'tween', duration: 0.2 }}
+                        className="fixed right-0 bottom-0 w-full max-w-md z-[10001] rounded-t-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+                      >
+                        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {aktifMode === 'pondok' ? 'Aktif Pondok - Pilih Kamar' : aktifMode === 'diniyah' ? 'Aktif Diniyah - Pilih Rombel' : 'Aktif Formal - Pilih Rombel'}
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={resetAktifOffcanvas}
+                            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            aria-label="Tutup"
+                          >
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="space-y-3 p-4">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {selectedPendaftar?.nis || '-'} · {selectedPendaftar?.nama || '-'}
+                          </p>
+                          {aktifMode === 'pondok' && !kategoriAktif && (
+                            <div className="space-y-2">
+                              <p className="text-xs text-gray-500 dark:text-gray-400">Pilih kategori</p>
+                              {kategoriOptionsAktif.length === 0 ? (
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Kategori tidak tersedia.</p>
+                              ) : (
+                                <ul className="space-y-1">
+                                  {kategoriOptionsAktif.map((kat) => (
+                                    <li key={String(kat)}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setKategoriAktif(String(kat))
+                                          setDaerahAktif('')
+                                          setKamarAktif('')
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm hover:border-teal-300 dark:border-gray-600 dark:bg-gray-700/50 dark:hover:border-teal-600"
+                                      >
+                                        <span>{String(kat)}</span>
+                                        <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+
+                          {aktifMode === 'pondok' && kategoriAktif && !daerahAktif && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setKategoriAktif('')}
+                                  className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  aria-label="Kembali pilih kategori"
+                                >
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                                  </svg>
+                                </button>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Pilih daerah ({kategoriAktif})</p>
+                              </div>
+                              {daerahOptionsAktif.length === 0 ? (
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Daerah tidak tersedia.</p>
+                              ) : (
+                                <ul className="max-h-56 space-y-1 overflow-y-auto">
+                                  {daerahOptionsAktif.map((d) => (
+                                    <li key={d.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setDaerahAktif(String(d.id))
+                                          setKamarAktif('')
+                                        }}
+                                        className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm hover:border-teal-300 dark:border-gray-600 dark:bg-gray-700/50 dark:hover:border-teal-600"
+                                      >
+                                        <span className="truncate">{d.daerah || `Daerah #${d.id}`}</span>
+                                        <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                        </svg>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+
+                          {aktifMode === 'pondok' && kategoriAktif && daerahAktif && (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDaerahAktif('')
+                                    setKamarAktif('')
+                                  }}
+                                  className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  aria-label="Kembali pilih daerah"
+                                >
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                                  </svg>
+                                </button>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Pilih kamar</p>
+                              </div>
+                              {kamarOptionsAktif.length === 0 ? (
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Kamar tidak tersedia.</p>
+                              ) : (
+                                <ul className="max-h-56 space-y-1 overflow-y-auto">
+                                  {kamarOptionsAktif.map((k) => {
+                                    const rawIdKamar = k?.id ?? k?.id_kamar ?? null
+                                    const idKamar = rawIdKamar != null ? String(rawIdKamar) : ''
+                                    const selected = kamarAktif === idKamar
+                                    return (
+                                      <li key={`${idKamar}-${String(k?.kamar || '')}`}>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!idKamar) return
+                                            setKamarAktif(idKamar)
+                                          }}
+                                          disabled={!idKamar}
+                                          className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                                            selected
+                                              ? 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                              : 'border-gray-200 bg-white hover:border-teal-300 dark:border-gray-600 dark:bg-gray-700/50 dark:hover:border-teal-600'
+                                          }`}
+                                        >
+                                          <span className="truncate">{k.kamar || `Kamar #${k.id}`}</span>
+                                          {selected ? (
+                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                          ) : (
+                                            <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                      </li>
+                                    )
+                                  })}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+                          {(aktifMode === 'diniyah' || aktifMode === 'formal') && (
+                            <div className="space-y-2">
+                              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-200">
+                                {aktifMode === 'diniyah'
+                                  ? `Daftar Diniyah (registrasi): ${selectedPendaftar?.daftar_diniyah ?? selectedPendaftar?.diniyah ?? '-'}`
+                                  : `Daftar Formal (registrasi): ${selectedPendaftar?.daftar_formal ?? selectedPendaftar?.formal ?? '-'}`}
+                              </div>
+                              {!lembagaAktif && (
+                                <>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    Pilih lembaga {aktifMode === 'diniyah' ? 'diniyah' : 'formal'}
+                                  </p>
+                                  {lembagaOptionsAktif.length === 0 ? (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Lembaga tidak tersedia.</p>
+                                  ) : (
+                                    <ul className="max-h-56 space-y-1 overflow-y-auto">
+                                      {lembagaOptionsAktif.map((l) => {
+                                        const idLembaga = l?.id != null ? String(l.id) : ''
+                                        return (
+                                          <li key={`${idLembaga}-${String(l?.nama || '')}`}>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (!idLembaga) return
+                                                setLembagaAktif(idLembaga)
+                                                setKelasAktif('')
+                                                setKelAktif('')
+                                                setKamarAktif('')
+                                              }}
+                                              disabled={!idLembaga}
+                                              className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm hover:border-teal-300 dark:border-gray-600 dark:bg-gray-700/50 dark:hover:border-teal-600"
+                                            >
+                                              <span className="truncate">{l?.nama || `Lembaga #${idLembaga}`}</span>
+                                              <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                              </svg>
+                                            </button>
+                                          </li>
+                                        )
+                                      })}
+                                    </ul>
+                                  )}
+                                </>
+                              )}
+
+                              {lembagaAktif && !kelasAktif && (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setLembagaAktif('')}
+                                      className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                      aria-label="Kembali pilih lembaga"
+                                    >
+                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                                      </svg>
+                                    </button>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">Pilih kelas</p>
+                                  </div>
+                                  {kelasOptionsAktif.length === 0 ? (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Kelas tidak tersedia.</p>
+                                  ) : (
+                                    <ul className="max-h-56 space-y-1 overflow-y-auto">
+                                      {kelasOptionsAktif.map((kls) => (
+                                        <li key={String(kls)}>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setKelasAktif(String(kls))
+                                              setKelAktif('')
+                                              setKamarAktif('')
+                                            }}
+                                            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm hover:border-teal-300 dark:border-gray-600 dark:bg-gray-700/50 dark:hover:border-teal-600"
+                                          >
+                                            <span className="truncate">Kelas {String(kls)}</span>
+                                            <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                            </svg>
+                                          </button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </>
+                              )}
+
+                              {lembagaAktif && kelasAktif && (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setKelasAktif('')
+                                        setKelAktif('')
+                                        setKamarAktif('')
+                                      }}
+                                      className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                      aria-label="Kembali pilih kelas"
+                                    >
+                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+                                      </svg>
+                                    </button>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">Pilih kel</p>
+                                  </div>
+                                  {kelOptionsAktif.length === 0 ? (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Kel tidak tersedia.</p>
+                                  ) : (
+                                    <ul className="max-h-56 space-y-1 overflow-y-auto">
+                                      {kelOptionsAktif.map((kel) => {
+                                        const kelVal = String(kel)
+                                        const selected = kelAktif === kelVal
+                                        return (
+                                          <li key={kelVal}>
+                                            <button
+                                              type="button"
+                                              onClick={() => setKelAktif(kelVal)}
+                                              className={`flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+                                                selected
+                                                  ? 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                                  : 'border-gray-200 bg-white hover:border-teal-300 dark:border-gray-600 dark:bg-gray-700/50 dark:hover:border-teal-600'
+                                              }`}
+                                            >
+                                              <span className="truncate">Kel {kelVal}</span>
+                                              {selected ? (
+                                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                              ) : (
+                                                <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                                </svg>
+                                              )}
+                                            </button>
+                                          </li>
+                                        )
+                                      })}
+                                    </ul>
+                                  )}
+                                </>
+                              )}
+
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2 border-t border-gray-200 p-4 dark:border-gray-700">
+                          <button
+                            type="button"
+                            onClick={resetAktifOffcanvas}
+                            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                          >
+                            Batal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSetAktif}
+                            disabled={aktifLoading || !Number.isFinite(Number.parseInt(String(kamarAktif), 10))}
+                            className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {aktifLoading ? 'Memproses...' : 'Simpan Aktif'}
+                          </button>
                         </div>
                       </motion.div>
                     </>

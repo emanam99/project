@@ -1004,6 +1004,9 @@ class iPaymuService
             // 3. Expired/Failed → update ke Failed
             
             if ($status === 'paid') {
+                // Selaraskan nominal (payment + nanti psb___transaksi) dengan callback / sisa tagihan registrasi
+                // bila sempat expired tapi user tetap membayar, atau data registrasi sudah berubah.
+                $this->syncPendaftaranPaymentNominalFromCallback($transactionId, $callbackData);
                 // Paid = terbayar: langsung update Success + insert psb___transaksi (meski unsettled).
                 $isSettled = ($settlementStatus === 'settled' || $settlementStatus === 'settle');
                 $stmtCheck = $this->db->prepare("
@@ -1095,6 +1098,84 @@ class iPaymuService
             return null;
         }
         return (float) $value;
+    }
+
+    /**
+     * Nominal yang dilaporkan iPayMu (sub_total/amount/total) — urut prioritas sub_total dulu.
+     */
+    private function resolvePaidAmountFromIpaymuCallback(array $c): ?float
+    {
+        foreach (['sub_total', 'SubTotal', 'amount', 'Amount', 'total', 'Total', 'gross_amount', 'GrossAmount'] as $k) {
+            if (!\array_key_exists($k, $c)) {
+                continue;
+            }
+            $v = $this->toNullableFloat($c[$k]);
+            if ($v !== null && $v > 0) {
+                return $v;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sebelum Pendaftaran tercatat sukses: selaraskan payment.nominal dengan (1) callback iPayMu, (2) sisa di psb___registrasi.
+     * Mencegah nominal lama/ kadaluarsa saat transaksi sempat expired tapi user tetap membayar invoice.
+     */
+    private function syncPendaftaranPaymentNominalFromCallback(int $transactionId, array $callbackData): void
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT pt.id_payment, p.jenis_pembayaran, p.id_referensi, p.tabel_referensi, p.nominal
+                FROM payment___transaction pt
+                INNER JOIN payment p ON pt.id_payment = p.id
+                WHERE pt.id = ?
+            ");
+            $stmt->execute([$transactionId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row || ($row['jenis_pembayaran'] ?? '') !== 'Pendaftaran' || ($row['tabel_referensi'] ?? '') !== 'psb___registrasi') {
+                return;
+            }
+            $idPayment = (int) $row['id_payment'];
+            $idReg = (int) ($row['id_referensi'] ?? 0);
+            if ($idReg <= 0) {
+                return;
+            }
+            $current = (float) ($row['nominal'] ?? 0);
+
+            $fromCallback = $this->resolvePaidAmountFromIpaymuCallback($callbackData);
+            $fromReg = null;
+            $stmtR = $this->db->prepare('SELECT wajib, bayar, kurang FROM psb___registrasi WHERE id = ?');
+            $stmtR->execute([$idReg]);
+            $r = $stmtR->fetch(\PDO::FETCH_ASSOC);
+            if ($r) {
+                if (isset($r['kurang']) && $r['kurang'] !== null && $r['kurang'] !== '') {
+                    $fromReg = (float) $r['kurang'];
+                } else {
+                    $w = (float) ($r['wajib'] ?? 0);
+                    $b = (float) ($r['bayar'] ?? 0);
+                    $fromReg = max(0.0, $w - $b);
+                }
+            }
+
+            $target = null;
+            if ($fromCallback !== null && $fromCallback > 0) {
+                $target = $fromCallback;
+            } elseif ($fromReg !== null && $fromReg > 0) {
+                $target = $fromReg;
+            }
+            if ($target === null || $target <= 0) {
+                return;
+            }
+            if (abs($current - $target) < 0.5) {
+                return;
+            }
+
+            $this->db->prepare('UPDATE payment SET nominal = ? WHERE id = ?')
+                ->execute([round($target, 2), $idPayment]);
+            error_log("iPaymuService::syncPendaftaranPaymentNominalFromCallback - id_payment={$idPayment} nominal diselaraskan {$current} -> {$target}");
+        } catch (\Exception $e) {
+            error_log('iPaymuService::syncPendaftaranPaymentNominalFromCallback error: ' . $e->getMessage());
+        }
     }
 
     /**

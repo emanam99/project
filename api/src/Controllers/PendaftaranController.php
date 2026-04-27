@@ -1121,6 +1121,29 @@ class PendaftaranController
             $user = $request->getAttribute('user');
             $userArr = is_array($user) ? $user : [];
             $santriOnlyBiodata = !RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr);
+            if (!$santriOnlyBiodata) {
+                $canEditDataPendaftar = RoleHelper::tokenHasAnyRoleKey($userArr, ['super_admin'])
+                    || RoleHelper::tokenHasEbeddienFiturCode(
+                        $this->db,
+                        $userArr,
+                        'action.pendaftaran.data_pendaftar.edit'
+                    );
+                if (!$canEditDataPendaftar) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Anda tidak memiliki izin untuk menyimpan biodata pendaftar.'
+                    ], 403);
+                }
+            }
+            $allowKeteranganStatusFromInput = false;
+            if (!$santriOnlyBiodata) {
+                $allowKeteranganStatusFromInput = RoleHelper::tokenHasAnyRoleKey($userArr, ['super_admin'])
+                    || RoleHelper::tokenHasEbeddienFiturCode(
+                        $this->db,
+                        $userArr,
+                        'action.pendaftaran.biodata.ubah_keterangan_status'
+                    );
+            }
             $idPengurusPengirim = null;
             if ($user !== null && $appSource === 'uwaba') {
                 $idPengurusPengirim = (int) ($user['id_pengurus'] ?? $user['pengurus_id'] ?? $user['id'] ?? 0) ?: null;
@@ -1366,7 +1389,7 @@ class PendaftaranController
                     $stmt = $this->db->prepare($sql);
                     $stmt->execute($params);
                     
-                    $idRegistrasiSaved = $this->saveOrUpdateRegistrasi($id, $input, $idAdminForReg);
+                    $idRegistrasiSaved = $this->saveOrUpdateRegistrasi($id, $input, $idAdminForReg, $allowKeteranganStatusFromInput);
                     
                     $this->appendSantriRombelRiwayatIfNeeded($id, $input, $request);
                     $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, $oldSantri);
@@ -1520,7 +1543,7 @@ class PendaftaranController
                         throw new \Exception('Gagal mendapatkan ID santri dari database.');
                     }
                     
-                    $idRegistrasiSaved = $this->saveOrUpdateRegistrasi($id, $input, $idAdminForReg);
+                    $idRegistrasiSaved = $this->saveOrUpdateRegistrasi($id, $input, $idAdminForReg, $allowKeteranganStatusFromInput);
                     
                     $this->appendSantriRombelRiwayatIfNeeded($id, $input, $request);
                     $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, null);
@@ -1772,6 +1795,9 @@ class PendaftaranController
         try {
             $tahunHijriyah = $input['tahun_hijriyah'] ?? null;
             $tahunMasehi = $input['tahun_masehi'] ?? null;
+            $idKamarInput = array_key_exists('id_kamar', $input)
+                ? ($input['id_kamar'] === '' || $input['id_kamar'] === null ? null : (int) $input['id_kamar'])
+                : null;
             if ($tahunHijriyah !== null && $tahunHijriyah !== '' && $tahunMasehi !== null && $tahunMasehi !== '') {
                 $stmt = $this->db->prepare("SELECT status_pendaftar, daftar_formal, daftar_diniyah, status_murid FROM psb___registrasi WHERE id_santri = ? AND tahun_hijriyah = ? AND tahun_masehi = ? LIMIT 1");
                 $stmt->execute([$idSantri, $tahunHijriyah, $tahunMasehi]);
@@ -1867,7 +1893,7 @@ class PendaftaranController
      *
      * @return int|null PK psb___registrasi, atau null jika tabel tidak ada
      */
-    private function saveOrUpdateRegistrasi($idSantri, $input, $idAdmin = null): ?int
+    private function saveOrUpdateRegistrasi($idSantri, $input, $idAdmin = null, bool $allowKeteranganStatusFromInput = true): ?int
     {
         // Cek apakah tabel psb___registrasi ada
         try {
@@ -1885,11 +1911,6 @@ class PendaftaranController
 
         // Field yang bisa disimpan ke psb___registrasi
         $statusPendaftar = $input['status_pendaftar'] ?? null;
-        // Simpan biodata → default keterangan_status = Belum Upload (jika tidak dikirim atau kosong)
-        $keteranganStatus = $input['keterangan_status'] ?? null;
-        if ($keteranganStatus === null || trim((string) $keteranganStatus) === '') {
-            $keteranganStatus = 'Belum Upload';
-        }
         $daftarDiniyah = $input['daftar_diniyah'] ?? null;
         $daftarFormal = $input['daftar_formal'] ?? null;
         $statusMurid = $input['status_murid'] ?? null;
@@ -1981,6 +2002,21 @@ class PendaftaranController
         }
 
         $waktuIndonesia = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
+
+        $keteranganStatus = $input['keterangan_status'] ?? null;
+        if (!$allowKeteranganStatusFromInput) {
+            if ($targetRegId !== null) {
+                $stmtK = $this->db->prepare('SELECT keterangan_status FROM psb___registrasi WHERE id = ? LIMIT 1');
+                $stmtK->execute([$targetRegId]);
+                $rowK = $stmtK->fetch(\PDO::FETCH_ASSOC);
+                $keteranganStatus = $rowK['keterangan_status'] ?? null;
+            } else {
+                $keteranganStatus = 'Belum Upload';
+            }
+        }
+        if ($keteranganStatus === null || trim((string) $keteranganStatus) === '') {
+            $keteranganStatus = 'Belum Upload';
+        }
 
         if ($targetRegId !== null) {
             $sql = "UPDATE psb___registrasi SET 
@@ -2359,6 +2395,15 @@ class PendaftaranController
             $keteranganStatus = $input['keterangan_status'] ?? null;
             $tahunHijriyah = $input['tahun_hijriyah'] ?? null;
             $tahunMasehi = $input['tahun_masehi'] ?? null;
+            $idKamarInput = array_key_exists('id_kamar', $input)
+                ? ($input['id_kamar'] === '' || $input['id_kamar'] === null ? null : (int) $input['id_kamar'])
+                : null;
+            $idDiniyahInput = array_key_exists('id_diniyah', $input)
+                ? ($input['id_diniyah'] === '' || $input['id_diniyah'] === null ? null : (int) $input['id_diniyah'])
+                : null;
+            $idFormalInput = array_key_exists('id_formal', $input)
+                ? ($input['id_formal'] === '' || $input['id_formal'] === null ? null : (int) $input['id_formal'])
+                : null;
 
             if (!$idSantriParam) {
                 return $this->jsonResponse($response, [
@@ -2382,17 +2427,129 @@ class PendaftaranController
                 ], 400);
             }
 
-            // Hanya admin dari aplikasi uwaba yang boleh mengubah ke "Sudah Diverifikasi" / "Sudah Diverivikasi"
+            // Set verifikasi: butuh aksi eBeddien action.pendaftaran.data_pendaftar.verifikasi (super_admin bypass)
             $statusVerifikasiTrim = trim($keteranganStatus);
             if ($statusVerifikasiTrim === 'Sudah Diverifikasi' || $statusVerifikasiTrim === 'Sudah Diverivikasi') {
                 $user = $request->getAttribute('user');
-                $allowedApps = $user['allowed_apps'] ?? [];
-                $allowedApps = is_array($allowedApps) ? $allowedApps : [];
-                if (!in_array('uwaba', $allowedApps, true)) {
+                $userArr = is_array($user) ? $user : [];
+                $canVerifikasi = RoleHelper::tokenHasAnyRoleKey($userArr, ['super_admin'])
+                    || RoleHelper::tokenHasEbeddienFiturCode(
+                        $this->db,
+                        $userArr,
+                        'action.pendaftaran.data_pendaftar.verifikasi'
+                    );
+                if (!$canVerifikasi) {
                     return $this->jsonResponse($response, [
                         'success' => false,
-                        'message' => 'Hanya admin dari aplikasi UWABA yang dapat mengubah status menjadi Sudah Diverifikasi.'
+                        'message' => 'Anda tidak memiliki izin untuk mengubah status menjadi Sudah Diverifikasi.'
                     ], 403);
+                }
+            }
+
+            $trimKet = trim((string) $keteranganStatus);
+            $isVerifikasiStatus = in_array($trimKet, ['Sudah Diverifikasi', 'Sudah Diverivikasi'], true);
+            $isAktifStatus = ($trimKet === 'Aktif');
+            if (!$isVerifikasiStatus) {
+                $userKet = $request->getAttribute('user');
+                $userArrKet = is_array($userKet) ? $userKet : [];
+                if ($isAktifStatus) {
+                    $canAktif = RoleHelper::tokenHasAnyRoleKey($userArrKet, ['super_admin']);
+                    if (!$canAktif) {
+                        $din = ($idDiniyahInput ?? 0) > 0;
+                        $for = ($idFormalInput ?? 0) > 0;
+                        if ($din && $for) {
+                            $canAktif = RoleHelper::tokenHasEbeddienFiturCode(
+                                $this->db,
+                                $userArrKet,
+                                'action.pendaftaran.data_pendaftar.aktif_diniyah'
+                            ) && RoleHelper::tokenHasEbeddienFiturCode(
+                                $this->db,
+                                $userArrKet,
+                                'action.pendaftaran.data_pendaftar.aktif_formal'
+                            );
+                        } elseif ($din) {
+                            $canAktif = RoleHelper::tokenHasEbeddienFiturCode(
+                                $this->db,
+                                $userArrKet,
+                                'action.pendaftaran.data_pendaftar.aktif_diniyah'
+                            );
+                        } elseif ($for) {
+                            $canAktif = RoleHelper::tokenHasEbeddienFiturCode(
+                                $this->db,
+                                $userArrKet,
+                                'action.pendaftaran.data_pendaftar.aktif_formal'
+                            );
+                        } else {
+                            $canAktif = RoleHelper::tokenHasEbeddienFiturCode(
+                                $this->db,
+                                $userArrKet,
+                                'action.pendaftaran.data_pendaftar.aktif_pondok'
+                            );
+                        }
+                    }
+                    if (!$canAktif) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Anda tidak memiliki izin untuk mengubah status menjadi Aktif.'
+                        ], 403);
+                    }
+                } else {
+                    $canUbahKetUmum = RoleHelper::tokenHasAnyRoleKey($userArrKet, ['super_admin'])
+                        || RoleHelper::tokenHasEbeddienFiturCode(
+                            $this->db,
+                            $userArrKet,
+                            'action.pendaftaran.biodata.ubah_keterangan_status'
+                        );
+                    if (!$canUbahKetUmum) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Anda tidak memiliki izin untuk mengubah keterangan status.'
+                        ], 403);
+                    }
+                }
+            }
+
+            $isSetAktifPondok = ($statusVerifikasiTrim === 'Aktif');
+            if ($isSetAktifPondok && $idKamarInput !== null && $idKamarInput > 0) {
+                $stmtKamar = $this->db->prepare('SELECT id FROM daerah___kamar WHERE id = ? LIMIT 1');
+                $stmtKamar->execute([$idKamarInput]);
+                if (!$stmtKamar->fetch(\PDO::FETCH_ASSOC)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Kamar tidak ditemukan'
+                    ], 404);
+                }
+            }
+            if ($idDiniyahInput !== null && $idDiniyahInput > 0) {
+                $stmtDiniyah = $this->db->prepare("
+                    SELECT r.id
+                    FROM lembaga___rombel r
+                    INNER JOIN lembaga l ON l.id = r.lembaga_id
+                    WHERE r.id = ? AND l.kategori = 'Diniyah'
+                    LIMIT 1
+                ");
+                $stmtDiniyah->execute([$idDiniyahInput]);
+                if (!$stmtDiniyah->fetch(\PDO::FETCH_ASSOC)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Rombel Diniyah tidak ditemukan'
+                    ], 404);
+                }
+            }
+            if ($idFormalInput !== null && $idFormalInput > 0) {
+                $stmtFormal = $this->db->prepare("
+                    SELECT r.id
+                    FROM lembaga___rombel r
+                    INNER JOIN lembaga l ON l.id = r.lembaga_id
+                    WHERE r.id = ? AND l.kategori = 'Formal'
+                    LIMIT 1
+                ");
+                $stmtFormal->execute([$idFormalInput]);
+                if (!$stmtFormal->fetch(\PDO::FETCH_ASSOC)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Rombel Formal tidak ditemukan'
+                    ], 404);
                 }
             }
 
@@ -2438,8 +2595,10 @@ class PendaftaranController
                     $idPengurusVerifikasi = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
                 }
 
-                // Update keterangan_status dan tanggal_update; bila status = Sudah Diverifikasi, isi tanggal_diverifikasi + id_pengurus_verifikasi (dari UWABA)
-                if ($isSetSudahDiverifikasi && $idPengurusVerifikasi !== null) {
+                $this->db->beginTransaction();
+                try {
+                    // Update keterangan_status dan tanggal_update; bila status = Sudah Diverifikasi, isi tanggal_diverifikasi + id_pengurus_verifikasi (dari UWABA)
+                    if ($isSetSudahDiverifikasi && $idPengurusVerifikasi !== null) {
                     $sql = "UPDATE psb___registrasi SET 
                             keterangan_status = ?,
                             tanggal_update = ?,
@@ -2454,77 +2613,62 @@ class PendaftaranController
                         $idPengurusVerifikasi,
                         $exists['id']
                     ]);
-                } else {
-                    // Saat status di-set ke Belum Bayar (berkas lengkap), catat tanggal_berkas_lengkap jika belum ada
-                    $sql = "UPDATE psb___registrasi SET 
-                            keterangan_status = ?,
-                            tanggal_update = ?";
-                    if (trim($keteranganStatus ?? '') === 'Belum Bayar') {
-                        $sql .= ", tanggal_berkas_lengkap = COALESCE(tanggal_berkas_lengkap, ?)";
-                    }
-                    $sql .= " WHERE id = ?";
-                    $stmt = $this->db->prepare($sql);
-                    if (trim($keteranganStatus ?? '') === 'Belum Bayar') {
-                        $stmt->execute([$keteranganStatus, $waktuIndonesia, $waktuIndonesia, $exists['id']]);
                     } else {
-                        $stmt->execute([$keteranganStatus, $waktuIndonesia, $exists['id']]);
-                    }
-                }
-
-                // Kirim notifikasi WA bila status diubah menjadi Sudah Diverifikasi / Sudah Diverivikasi (format biodata seperti offcanvas)
-                $statusVerifikasi = trim($keteranganStatus);
-                if ($statusVerifikasi === 'Sudah Diverifikasi' || $statusVerifikasi === 'Sudah Diverivikasi') {
-                    try {
-                        $sqlBiodata = "SELECT s.id, s.nis, s.nama, s.nik, s.ayah, s.ibu, s.no_wa_santri, s.no_telpon,
-                            s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten, s.provinsi,
-                            r.daftar_formal AS formal, r.daftar_diniyah AS diniyah, r.status_pendaftar,
-                            r.tahun_hijriyah, r.tahun_masehi
-                            FROM santri s
-                            INNER JOIN psb___registrasi r ON r.id_santri = s.id
-                            WHERE r.id = ?";
-                        $stmtBiodata = $this->db->prepare($sqlBiodata);
-                        $stmtBiodata->execute([$exists['id']]);
-                        $rowBiodata = $stmtBiodata->fetch(\PDO::FETCH_ASSOC);
-                        if ($rowBiodata) {
-                            $alamatParts = array_filter([
-                                isset($rowBiodata['dusun']) ? trim($rowBiodata['dusun']) : '',
-                                isset($rowBiodata['rt']) ? trim($rowBiodata['rt']) : '',
-                                isset($rowBiodata['rw']) ? trim($rowBiodata['rw']) : '',
-                                isset($rowBiodata['desa']) ? trim($rowBiodata['desa']) : '',
-                                isset($rowBiodata['kecamatan']) ? trim($rowBiodata['kecamatan']) : '',
-                                isset($rowBiodata['kabupaten']) ? trim($rowBiodata['kabupaten']) : '',
-                                isset($rowBiodata['provinsi']) ? trim($rowBiodata['provinsi']) : '',
-                            ]);
-                            $alamat = implode(', ', $alamatParts);
-                            $tahunHijriyah = $rowBiodata['tahun_hijriyah'] ?? '';
-                            $tahunMasehi = $rowBiodata['tahun_masehi'] ?? '';
-                            $tahunAjaran = ($tahunHijriyah && $tahunMasehi) ? ($tahunHijriyah . ' / ' . $tahunMasehi) : ($tahunHijriyah ?: $tahunMasehi ?: '-');
-                            $biodata = [
-                                'id' => $rowBiodata['id'] ?? '-',
-                                'nis' => $rowBiodata['nis'] ?? '-',
-                                'nama' => $rowBiodata['nama'] ?? '-',
-                                'nik' => $rowBiodata['nik'] ?? '-',
-                                'ayah' => $rowBiodata['ayah'] ?? '-',
-                                'ibu' => $rowBiodata['ibu'] ?? '-',
-                                'alamat' => $alamat ?: '-',
-                                'formal' => $rowBiodata['formal'] ?? '-',
-                                'diniyah' => $rowBiodata['diniyah'] ?? '-',
-                                'status_pendaftar' => $rowBiodata['status_pendaftar'] ?? '-',
-                                'keterangan_status' => $statusVerifikasi,
-                                'tahun_ajaran' => $tahunAjaran,
-                            ];
-                            $phoneNumbers = array_filter([
-                                trim($rowBiodata['no_telpon'] ?? ''),
-                                trim($rowBiodata['no_wa_santri'] ?? ''),
-                            ]);
-                            if (!empty($phoneNumbers)) {
-                                WhatsAppService::sendPsbSudahDiverifikasi($phoneNumbers, $biodata, $idPengurusVerifikasi);
+                        // Saat status di-set ke Belum Bayar (berkas lengkap), catat tanggal_berkas_lengkap jika belum ada
+                        // Saat status di-set ke Aktif, catat tanggal_aktif_pondok + pengurus aktif jika belum ada.
+                        $sql = "UPDATE psb___registrasi SET 
+                                keterangan_status = ?,
+                                tanggal_update = ?";
+                        $paramsUpdate = [$keteranganStatus, $waktuIndonesia];
+                        if (trim($keteranganStatus ?? '') === 'Belum Bayar') {
+                            $sql .= ", tanggal_berkas_lengkap = COALESCE(tanggal_berkas_lengkap, ?)";
+                            $paramsUpdate[] = $waktuIndonesia;
+                        }
+                        if ($isSetAktifPondok) {
+                            $user = $request->getAttribute('user');
+                            $idPengurusAktif = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+                            $sql .= ", tanggal_aktif_pondok = COALESCE(tanggal_aktif_pondok, ?)";
+                            $paramsUpdate[] = $waktuIndonesia;
+                            if ($idPengurusAktif !== null && $idPengurusAktif > 0) {
+                                $sql .= ", id_pengurus_aktif = COALESCE(id_pengurus_aktif, ?)";
+                                $paramsUpdate[] = $idPengurusAktif;
                             }
                         }
-                    } catch (\Throwable $e) {
-                        error_log('updateKeteranganStatus: send WA sudah diverifikasi error: ' . $e->getMessage());
+                        if ($idDiniyahInput !== null && $idDiniyahInput > 0) {
+                            $sql .= ", tanggal_aktif_diniyah = COALESCE(tanggal_aktif_diniyah, ?)";
+                            $paramsUpdate[] = $waktuIndonesia;
+                        }
+                        if ($idFormalInput !== null && $idFormalInput > 0) {
+                            $sql .= ", tanggal_aktif_formal = COALESCE(tanggal_aktif_formal, ?)";
+                            $paramsUpdate[] = $waktuIndonesia;
+                        }
+                        $sql .= " WHERE id = ?";
+                        $paramsUpdate[] = $exists['id'];
+                        $stmt = $this->db->prepare($sql);
+                        $stmt->execute($paramsUpdate);
                     }
+
+                    if ($isSetAktifPondok && $idKamarInput !== null && $idKamarInput > 0) {
+                        $stmtUpdateKamarSantri = $this->db->prepare('UPDATE santri SET id_kamar = ? WHERE id = ?');
+                        $stmtUpdateKamarSantri->execute([$idKamarInput, $idSantri]);
+                    }
+                    if ($idDiniyahInput !== null && $idDiniyahInput > 0) {
+                        $stmtUpdateDiniyahSantri = $this->db->prepare('UPDATE santri SET id_diniyah = ? WHERE id = ?');
+                        $stmtUpdateDiniyahSantri->execute([$idDiniyahInput, $idSantri]);
+                    }
+                    if ($idFormalInput !== null && $idFormalInput > 0) {
+                        $stmtUpdateFormalSantri = $this->db->prepare('UPDATE santri SET id_formal = ? WHERE id = ?');
+                        $stmtUpdateFormalSantri->execute([$idFormalInput, $idSantri]);
+                    }
+                    $this->db->commit();
+                } catch (\Throwable $txe) {
+                    if ($this->db->inTransaction()) {
+                        $this->db->rollBack();
+                    }
+                    throw $txe;
                 }
+
+                // Notifikasi WhatsApp sengaja dinonaktifkan untuk endpoint update-keterangan-status.
 
                 return $this->jsonResponse($response, [
                     'success' => true,
@@ -2579,6 +2723,21 @@ class PendaftaranController
                 ], 400);
             }
 
+            $user = $request->getAttribute('user');
+            $userArr = is_array($user) ? $user : [];
+            $canBulkEdit = RoleHelper::tokenHasAnyRoleKey($userArr, ['super_admin'])
+                || RoleHelper::tokenHasEbeddienFiturCode(
+                    $this->db,
+                    $userArr,
+                    'action.pendaftaran.data_pendaftar.edit'
+                );
+            if (!$canBulkEdit) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk ubah massal data registrasi.'
+                ], 403);
+            }
+
             $allowedFields = ['status_pendaftar', 'status_murid', 'daftar_formal', 'daftar_diniyah', 'gelombang'];
             $tableCheck = $this->db->query("SHOW TABLES LIKE 'psb___registrasi'");
             if ($tableCheck->rowCount() === 0) {
@@ -2620,7 +2779,6 @@ class PendaftaranController
                 }
             }
             if ($updated > 0) {
-                $user = $request->getAttribute('user');
                 $idAdmin = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
                 if ($idAdmin !== null) {
                     UserAktivitasLogger::log(null, $idAdmin, UserAktivitasLogger::ACTION_UPDATE, 'psb___registrasi', 'bulk-' . $updated, null, ['updated_count' => $updated, 'ids' => array_column(array_filter($input['updates'], fn($i) => !empty($i['id_registrasi'])), 'id_registrasi')], $request);
@@ -3265,6 +3423,21 @@ class PendaftaranController
                 ], 400);
             }
 
+            $userPay = $request->getAttribute('user');
+            $userArrPay = is_array($userPay) ? $userPay : [];
+            $canKelolaPsb = RoleHelper::tokenHasAnyRoleKey($userArrPay, ['super_admin'])
+                || RoleHelper::tokenHasEbeddienFiturCode(
+                    $this->db,
+                    $userArrPay,
+                    'action.pendaftaran.pembayaran.kelola'
+                );
+            if (!$canKelolaPsb) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk menambah pembayaran pendaftaran.'
+                ], 403);
+            }
+
             // Get tanggal hijriyah dan masehi jika tidak diberikan
             if (!$masehi) {
                 $masehi = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
@@ -3564,6 +3737,21 @@ class PendaftaranController
             }
 
             $idTransaksi = $input['id'];
+
+            $userDel = $request->getAttribute('user');
+            $userArrDel = is_array($userDel) ? $userDel : [];
+            $canKelolaPsbDel = RoleHelper::tokenHasAnyRoleKey($userArrDel, ['super_admin'])
+                || RoleHelper::tokenHasEbeddienFiturCode(
+                    $this->db,
+                    $userArrDel,
+                    'action.pendaftaran.pembayaran.kelola'
+                );
+            if (!$canKelolaPsbDel) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki izin untuk menghapus pembayaran pendaftaran.'
+                ], 403);
+            }
 
             $this->db->beginTransaction();
 
@@ -4011,6 +4199,37 @@ class PendaftaranController
                     'success' => false,
                     'message' => 'Array details tidak boleh kosong'
                 ], 400);
+            }
+
+            $userDet = $request->getAttribute('user');
+            $userArrDet = is_array($userDet) ? $userDet : [];
+            $canKelolaPsbDet = RoleHelper::tokenHasAnyRoleKey($userArrDet, ['super_admin'])
+                || RoleHelper::tokenHasEbeddienFiturCode(
+                    $this->db,
+                    $userArrDet,
+                    'action.pendaftaran.pembayaran.kelola'
+                );
+            if (!$canKelolaPsbDet) {
+                $stmtNomCur = $this->db->prepare('SELECT nominal FROM psb___registrasi_detail WHERE id = ? LIMIT 1');
+                foreach ($details as $detail) {
+                    if (!isset($detail['id']) || $detail['id'] === null || $detail['id'] === '') {
+                        continue;
+                    }
+                    $idDet = (int) $detail['id'];
+                    $stmtNomCur->execute([$idDet]);
+                    $rowNom = $stmtNomCur->fetch(\PDO::FETCH_ASSOC);
+                    if ($rowNom === false) {
+                        continue;
+                    }
+                    $oldNom = (float) ($rowNom['nominal'] ?? 0);
+                    $newNom = floatval($detail['nominal_dibayar'] ?? 0);
+                    if (abs($oldNom - $newNom) > 0.009) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Anda tidak memiliki izin mengubah alokasi nominal per item. Izinkan hanya perubahan status ambil.'
+                        ], 403);
+                    }
+                }
             }
 
             $this->db->beginTransaction();
@@ -7055,6 +7274,8 @@ class PendaftaranController
                         r.tanggal_diverifikasi,
                         r.id_pengurus_verifikasi,
                         r.tanggal_aktif_pondok,
+                        r.tanggal_aktif_diniyah,
+                        r.tanggal_aktif_formal,
                         r.id_pengurus_aktif,
                         r.status_pendaftar,
                         r.status_murid,
@@ -7275,6 +7496,8 @@ class PendaftaranController
                     'id_pengurus_verifikasi' => $pick('id_pengurus_verifikasi'),
                     'nama_pengurus_verifikasi' => $pick('nama_pengurus_verifikasi'),
                     'tanggal_aktif_pondok' => $pick('tanggal_aktif_pondok'),
+                    'tanggal_aktif_diniyah' => $pick('tanggal_aktif_diniyah'),
+                    'tanggal_aktif_formal' => $pick('tanggal_aktif_formal'),
                     'id_pengurus_aktif' => $pick('id_pengurus_aktif'),
                     'nama_pengurus_aktif' => $pick('nama_pengurus_aktif'),
                     'status_pendaftar' => $pick('status_pendaftar'),
