@@ -69,6 +69,38 @@ class CsrfMiddleware implements MiddlewareInterface
         'api/iclock/', // POST/GET mesin absensi sidik jari (iClock), tanpa session browser
     ];
 
+    private function normalizePath(string $path): string
+    {
+        $normalized = trim($path, '/');
+        // Jika API dijalankan di subfolder (contoh /api/public), samakan path agar whitelist tetap cocok.
+        if (str_starts_with($normalized, 'api/public/')) {
+            $normalized = substr($normalized, strlen('api/public/'));
+        }
+        if (str_starts_with($normalized, 'public/')) {
+            $normalized = substr($normalized, strlen('public/'));
+        }
+        return trim($normalized, '/');
+    }
+
+    private function isExcludedPath(string $path): bool
+    {
+        $normalizedPath = $this->normalizePath($path);
+        foreach ($this->excludedPaths as $excluded) {
+            $normalizedExcluded = $this->normalizePath((string) $excluded);
+            if ($normalizedExcluded === '') {
+                continue;
+            }
+
+            $isExactMatch = ($normalizedPath === $normalizedExcluded);
+            $isPrefixMatch = str_starts_with($normalizedPath, $normalizedExcluded . '/');
+            if ($isExactMatch || $isPrefixMatch) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $method = $request->getMethod();
@@ -79,10 +111,8 @@ class CsrfMiddleware implements MiddlewareInterface
         }
 
         $path = $request->getUri()->getPath();
-        foreach ($this->excludedPaths as $excluded) {
-            if (strpos($path, $excluded) !== false) {
-                return $handler->handle($request);
-            }
+        if ($this->isExcludedPath($path)) {
+            return $handler->handle($request);
         }
 
         // Start session jika belum ada

@@ -20,6 +20,8 @@ import { getCachedSantriList, filterSantriRowsByRombelId, subscribeSantriRowsOrd
 import OffcanvasPindahRombel from '../../components/Modal/OffcanvasPindahRombel'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import PrintAbsenOffcanvas from './components/PrintAbsenOffcanvas'
+import { useLembagaFilterAccess } from '../../hooks/useLembagaFilterAccess'
+import { LEMBAGA_FILTER_ACTION_CODES } from '../../config/lembagaFilterFiturCodes'
 
 const normalizeStatus = (s) => {
   if (!s) return ''
@@ -46,6 +48,7 @@ function Rombel() {
   const { options: tahunAjaranOptions } = useTahunAjaranStore()
   const user = useAuthStore((s) => s.user)
   const isSuperAdmin = userHasSuperAdminAccess(user)
+  const lembagaAccess = useLembagaFilterAccess(LEMBAGA_FILTER_ACTION_CODES.rombelSemua)
   const [rombelList, setRombelList] = useState([])
   const [lembagaMaster, setLembagaMaster] = useState([])
   const [loading, setLoading] = useState(true)
@@ -160,7 +163,9 @@ function Rombel() {
   )
 
   const { lembagaOptions, kelasOptions, statusOptions } = useMemo(() => {
-    const base = filterSourceData
+    const base = !lembagaAccess.allowedLembagaIds?.length
+      ? filterSourceData
+      : filterSourceData.filter((r) => new Set(lembagaAccess.allowedLembagaIds.map(String)).has(String(r.lembaga_id || '')))
     const dataForLembaga = base.filter((r) => matchByStatus(r, filterStatus) && matchByKelas(r, filterKelas))
     const lembagaCounts = {}
     dataForLembaga.forEach((r) => {
@@ -197,12 +202,20 @@ function Rombel() {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''))
 
     return { lembagaOptions, kelasOptions, statusOptions }
-  }, [filterSourceData, filterLembaga, filterStatus, filterKelas, matchByLembaga, matchByStatus, matchByKelas, statusLabel, canonicalLembagaNama])
+  }, [filterSourceData, filterLembaga, filterStatus, filterKelas, matchByLembaga, matchByStatus, matchByKelas, statusLabel, canonicalLembagaNama, lembagaAccess.allowedLembagaIds])
 
   useEffect(() => {
     const validLembaga = new Set(['', ...lembagaOptions.map((o) => o.value)])
     if (filterLembaga && !validLembaga.has(filterLembaga)) setFilterLembaga('')
   }, [filterLembaga, lembagaOptions])
+  useEffect(() => {
+    const allowed = lembagaAccess.allowedLembagaIds
+    if (!allowed || allowed.length === 0) return
+    if (allowed.length === 1) {
+      const allowedName = lembagaMaster.find((l) => String(l.id) === String(allowed[0]))?.nama || ''
+      if (allowedName && filterLembaga !== allowedName) setFilterLembaga(allowedName)
+    }
+  }, [lembagaAccess.allowedLembagaIds, lembagaMaster, filterLembaga])
   useEffect(() => {
     const validKelas = new Set(['', ...kelasOptions.map((o) => o.value)])
     if (filterKelas !== '' && !validKelas.has(filterKelas)) setFilterKelas('')
@@ -216,7 +229,13 @@ function Rombel() {
     try {
       const res = await lembagaAPI.getAll()
       if (res.success && res.data) {
-        setLembagaMaster(res.data)
+        const rows = Array.isArray(res.data) ? res.data : []
+        if (lembagaAccess.allowedLembagaIds?.length) {
+          const allowedSet = new Set(lembagaAccess.allowedLembagaIds.map(String))
+          setLembagaMaster(rows.filter((row) => allowedSet.has(String(row.id))))
+        } else {
+          setLembagaMaster(rows)
+        }
       }
     } catch (err) {
       console.error('Error loading lembaga:', err)
@@ -226,18 +245,22 @@ function Rombel() {
   /** Ambil semua data rombel (limit besar) hanya untuk opsi filter + jumlah */
   const loadFilterData = useCallback(async () => {
     try {
-      const res = await rombelAPI.getAll({ page: 1, limit: 9999 })
+      const res = await rombelAPI.getAll({
+        page: 1,
+        limit: 9999,
+        lembaga_ids: lembagaAccess.allowedLembagaIds?.length ? lembagaAccess.allowedLembagaIds.join(',') : undefined,
+      })
       if (res.success && Array.isArray(res.data)) {
         setFilterSourceData(res.data)
       }
     } catch (err) {
       console.error('Error loading filter data:', err)
     }
-  }, [])
+  }, [lembagaAccess.allowedLembagaIds])
 
   useEffect(() => {
     loadLembaga()
-  }, [])
+  }, [lembagaAccess.allowedLembagaIds])
 
   useEffect(() => {
     loadFilterData()
@@ -251,6 +274,7 @@ function Rombel() {
         page,
         limit,
         lembaga_nama: (filterLembaga || '').trim() || undefined,
+        lembaga_ids: lembagaAccess.allowedLembagaIds?.length ? lembagaAccess.allowedLembagaIds.join(',') : undefined,
         status: filterStatus || undefined,
         kelas: (filterKelas || '').trim() || undefined,
         search: (searchQuery || '').trim() || undefined
@@ -267,7 +291,7 @@ function Rombel() {
     } finally {
       setLoading(false)
     }
-  }, [page, limit, filterLembaga, filterStatus, filterKelas, searchQuery])
+  }, [page, limit, filterLembaga, filterStatus, filterKelas, searchQuery, lembagaAccess.allowedLembagaIds])
 
   useEffect(() => {
     loadRombel()
@@ -1009,8 +1033,9 @@ function Rombel() {
                         value={filterLembaga}
                         onChange={(e) => handleFilterChange(setFilterLembaga, e.target.value)}
                         className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
+                        disabled={lembagaAccess.lembagaFilterLocked && (lembagaAccess.allowedLembagaIds?.length === 1)}
                       >
-                        <option value="">Lembaga</option>
+                        <option value="">{lembagaAccess.canFilterAllLembaga ? 'Semua Lembaga' : 'Lembaga'}</option>
                         {lembagaOptions.map((o) => (
                           <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
                         ))}
@@ -1051,7 +1076,12 @@ function Rombel() {
                       <button
                         type="button"
                         onClick={() => {
-                          setFilterLembaga('')
+                          if (lembagaAccess.allowedLembagaIds?.length === 1) {
+                            const allowedName = lembagaMaster.find((l) => String(l.id) === String(lembagaAccess.allowedLembagaIds[0]))?.nama || ''
+                            setFilterLembaga(allowedName || '')
+                          } else {
+                            setFilterLembaga('')
+                          }
                           setFilterKelas('')
                           setFilterStatus('')
                           setSearchQuery('')

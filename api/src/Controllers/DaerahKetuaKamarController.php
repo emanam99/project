@@ -65,7 +65,7 @@ class DaerahKetuaKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data ketua kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -108,7 +108,7 @@ class DaerahKetuaKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -175,7 +175,7 @@ class DaerahKetuaKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan ketua kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -240,7 +240,7 @@ class DaerahKetuaKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate ketua kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -303,7 +303,7 @@ class DaerahKetuaKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengubah status',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

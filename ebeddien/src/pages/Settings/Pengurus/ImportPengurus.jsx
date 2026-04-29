@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import * as XLSX from 'xlsx'
 import { manageUsersAPI } from '../../../services/api'
+import { usePengurusFiturAccess } from '../../../hooks/usePengurusFiturAccess'
 
 function ImportPengurus() {
   const navigate = useNavigate()
+  const { importPengurus } = usePengurusFiturAccess()
   const fileInputRef = useRef(null)
   const [file, setFile] = useState(null)
   const [importData, setImportData] = useState([])
@@ -221,7 +223,9 @@ function ImportPengurus() {
               userData.whatsapp = item.data.whatsapp.toString().trim()
             }
 
-            const response = await manageUsersAPI.create(userData)
+            const response = await manageUsersAPI.create(userData, {
+              headers: { 'X-Pengurus-Import': '1' }
+            })
             if (response.success) successCount++
             else {
               errorCount++
@@ -239,7 +243,9 @@ function ImportPengurus() {
               userData.whatsapp = item.data.whatsapp ? item.data.whatsapp.toString().trim() : null
             }
             const identifier = (item.data.nip ?? item.data.id ?? item.existingUser?.nip ?? item.existingUser?.id)?.toString().trim()
-            const response = await manageUsersAPI.update(identifier, userData)
+            const response = await manageUsersAPI.update(identifier, userData, {
+              headers: { 'X-Pengurus-Import': '1' }
+            })
             if (response.success) successCount++
             else {
               errorCount++
@@ -270,6 +276,27 @@ function ImportPengurus() {
   const invalidCount = importData.filter(item => !item.isValid).length
   const insertCount = importData.filter(item => item.action === 'insert' && item.isValid).length
   const updateCount = importData.filter(item => item.action === 'update' && item.isValid).length
+
+  if (!importPengurus) {
+    return (
+      <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
+        <div className="h-full overflow-y-auto" style={{ minHeight: 0 }}>
+          <div className="p-4 sm:p-6 lg:p-8">
+            <div className="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
+              Anda tidak memiliki izin untuk mengakses fitur Import Pengurus.
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/pengurus')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white"
+            >
+              Kembali ke Pengurus
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>

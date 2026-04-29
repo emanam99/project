@@ -116,7 +116,7 @@ class UserAktivitasController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil aktivitas',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -225,7 +225,7 @@ class UserAktivitasController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil daftar aktivitas',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -385,14 +385,14 @@ class UserAktivitasController
                 error_log('UserAktivitasController::rollback ' . $e->getMessage());
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Gagal rollback: ' . $e->getMessage(),
+                    'message' => 'Gagal rollback',
                 ], 500);
             }
         } catch (\Throwable $e) {
             error_log('UserAktivitasController::rollback ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal rollback: ' . $e->getMessage(),
+                'message' => 'Gagal rollback',
             ], 500);
         }
     }

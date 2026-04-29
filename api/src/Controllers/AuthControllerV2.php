@@ -13,6 +13,7 @@ use App\Helpers\PengurusHelper;
 use App\Helpers\RoleHelper;
 use App\Helpers\SantriHelper;
 use App\Helpers\UserAgentHelper;
+use App\Services\EmailService;
 use App\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -439,7 +440,7 @@ class AuthControllerV2
             return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan saat memproses data. Coba lagi.'], 500);
         } catch (\RuntimeException $e) {
             error_log('AuthControllerV2::daftarKonfirmasi ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 503);
+            return $this->json($response, ['success' => false, 'message' => 'Layanan sementara tidak tersedia. Coba lagi dalam beberapa saat.'], 503);
         } catch (\Throwable $e) {
             error_log('AuthControllerV2::daftarKonfirmasi ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan server. Coba lagi atau hubungi admin.'], 500);
@@ -878,7 +879,7 @@ class AuthControllerV2
             ], 200);
         } catch (\RuntimeException $e) {
             error_log('AuthControllerV2::daftarKonfirmasiSantri ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 503);
+            return $this->json($response, ['success' => false, 'message' => 'Layanan sementara tidak tersedia. Coba lagi dalam beberapa saat.'], 503);
         } catch (\Throwable $e) {
             error_log('AuthControllerV2::daftarKonfirmasiSantri ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
             return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan server. Coba lagi atau hubungi admin.'], 500);
@@ -1171,9 +1172,7 @@ class AuthControllerV2
         } catch (\Throwable $e) {
             error_log('AuthControllerV2::login ' . $e->getMessage());
             error_log('AuthControllerV2::login trace: ' . $e->getTraceAsString());
-            $isProduction = (getenv('APP_ENV') ?: '') === 'production';
-            $message = $isProduction ? 'Terjadi kesalahan' : ('Terjadi kesalahan: ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => $message], 500);
+            return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -1773,15 +1772,23 @@ class AuthControllerV2
             $stmt->execute([$usersId]);
             $rowP = $stmt->fetch(\PDO::FETCH_ASSOC);
             $idPengurus = $rowP ? (int) $rowP['id'] : null;
-            $logContext = ['id_santri' => null, 'id_pengurus' => $idPengurus, 'tujuan' => 'pengurus', 'id_pengurus_pengirim' => null, 'kategori' => 'wa_change_otp', 'sumber' => 'auth'];
-            $message = "Kode verifikasi ganti nomor WA: " . $otp . "\n\nBerlaku 10 menit. Jangan bagikan kode ini.";
-            $sendResult = WhatsAppService::sendMessage($noWaBaruNorm, $message, null, $logContext);
+
+            $emailStmt = $this->db->prepare("SELECT email FROM users WHERE id = ? LIMIT 1");
+            $emailStmt->execute([$usersId]);
+            $emailRow = $emailStmt->fetch(\PDO::FETCH_ASSOC);
+            $email = trim((string) ($emailRow['email'] ?? ''));
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $this->db->prepare("DELETE FROM user___wa_change_otp WHERE user_id = ? AND no_wa_baru = ?")->execute([$usersId, $noWaBaruNorm]);
+                return $this->json($response, ['success' => false, 'message' => 'Email akun belum terisi atau tidak valid. Hubungi admin untuk melengkapi email.'], 400);
+            }
+
+            $sendResult = EmailService::sendOtpEmail($email, $otp, 'konfirmasi ganti nomor WhatsApp');
             if (!$sendResult['success']) {
                 $this->db->prepare("DELETE FROM user___wa_change_otp WHERE user_id = ? AND no_wa_baru = ?")->execute([$usersId, $noWaBaruNorm]);
                 return $this->json($response, ['success' => false, 'message' => 'Gagal mengirim OTP: ' . ($sendResult['message'] ?? '')], 502);
             }
             AuditLogger::log((string)$usersId, 'send_otp_ganti_wa', ['no_wa_baru' => $noWaBaruNorm], $this->getClientIp($request), true);
-            return $this->json($response, ['success' => true, 'message' => 'Kode OTP telah dikirim ke nomor baru.'], 200);
+            return $this->json($response, ['success' => true, 'message' => 'Kode OTP telah dikirim ke email akun Anda.'], 200);
         } catch (\Exception $e) {
             error_log('AuthControllerV2::sendOtpGantiWa ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);

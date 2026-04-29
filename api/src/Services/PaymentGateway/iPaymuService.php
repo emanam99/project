@@ -839,14 +839,14 @@ class iPaymuService
             error_log("iPaymuService::processCallback PDO error code: " . $e->getCode());
             return [
                 'success' => false,
-                'message' => 'Gagal memproses callback: ' . $e->getMessage()
+                'message' => 'Gagal memproses callback'
             ];
         } catch (\Exception $e) {
             error_log("iPaymuService::processCallback error: " . $e->getMessage());
             error_log("iPaymuService::processCallback stack trace: " . $e->getTraceAsString());
             return [
                 'success' => false,
-                'message' => 'Gagal memproses callback: ' . $e->getMessage()
+                'message' => 'Gagal memproses callback'
             ];
         }
     }

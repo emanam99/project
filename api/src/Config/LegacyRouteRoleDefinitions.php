@@ -20,7 +20,6 @@ final class LegacyRouteRoleDefinitions
             LegacyRouteRoleKeys::SUPER_ADMIN_MENUS => ['super_admin'],
             LegacyRouteRoleKeys::UGT_MENUS => ['admin_ugt', 'koordinator_ugt', 'super_admin'],
             LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS => ['super_admin', 'tarbiyah', 'admin_daerah', 'admin_domisili', 'kapdar', 'wakapdar'],
-            LegacyRouteRoleKeys::KALENDER_GOOGLE_STAFF_SELECTORS => ['admin_kalender', 'super_admin'],
             LegacyRouteRoleKeys::PSB_STAFF_SUPER_SELECTORS => ['admin_psb', 'petugas_psb', 'super_admin', 'santri'],
             LegacyRouteRoleKeys::PSB_ADMIN_SUPER_SELECTORS => ['admin_psb', 'super_admin'],
             LegacyRouteRoleKeys::PSB_TARBIYAH_SUPER_SELECTORS => ['admin_psb', 'petugas_psb', 'super_admin', 'tarbiyah'],

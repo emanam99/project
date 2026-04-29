@@ -34,6 +34,7 @@ class JabatanController
             $search = $queryParams['search'] ?? '';
             $kategoriFilter = $queryParams['kategori'] ?? '';
             $lembagaFilter = $queryParams['lembaga_id'] ?? '';
+            $lembagaIdsCsv = isset($queryParams['lembaga_ids']) ? trim((string) $queryParams['lembaga_ids']) : '';
             $statusFilter = $queryParams['status'] ?? '';
             
             // Build WHERE clause
@@ -52,7 +53,19 @@ class JabatanController
                 $params[] = $kategoriFilter;
             }
             
-            if (!empty($lembagaFilter)) {
+            if ($lembagaIdsCsv !== '') {
+                $lembagaIds = array_values(array_filter(array_map(static function ($v) {
+                    return trim((string) $v);
+                }, explode(',', $lembagaIdsCsv)), static function ($v) {
+                    return $v !== '';
+                }));
+                if ($lembagaIds !== []) {
+                    $whereConditions[] = 'j.lembaga_id IN (' . implode(',', array_fill(0, count($lembagaIds), '?')) . ')';
+                    foreach ($lembagaIds as $lid) {
+                        $params[] = $lid;
+                    }
+                }
+            } elseif (!empty($lembagaFilter)) {
                 $whereConditions[] = "j.lembaga_id = ?";
                 $params[] = $lembagaFilter;
             }
@@ -95,6 +108,12 @@ class JabatanController
             $stmt = $this->db->prepare($sql);
             $stmt->execute($params);
             $jabatanList = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $jabatanList = array_map(function (array $jabatan): array {
+                if (array_key_exists('deskripsi', $jabatan)) {
+                    $jabatan['deskripsi'] = TextSanitizer::cleanRichHtmlOrNull($jabatan['deskripsi'] ?? null);
+                }
+                return $jabatan;
+            }, $jabatanList);
             
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -113,7 +132,7 @@ class JabatanController
             error_log("Get all jabatan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data jabatan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data jabatan'
             ], 500);
         }
     }
@@ -158,6 +177,7 @@ class JabatanController
                     'message' => 'Jabatan tidak ditemukan'
                 ], 404);
             }
+            $jabatan['deskripsi'] = TextSanitizer::cleanRichHtmlOrNull($jabatan['deskripsi'] ?? null);
             
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -170,7 +190,7 @@ class JabatanController
             error_log("Get jabatan by ID error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data jabatan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data jabatan'
             ], 500);
         }
     }
@@ -221,7 +241,7 @@ class JabatanController
                 TextSanitizer::cleanText($data['nama'] ?? ''),
                 $kategori,
                 $data['lembaga_id'] ?? null,
-                TextSanitizer::cleanTextOrNull($data['deskripsi'] ?? null),
+                TextSanitizer::cleanRichHtmlOrNull($data['deskripsi'] ?? null),
                 isset($data['urutan']) ? (int)$data['urutan'] : 0,
                 $status
             ]);
@@ -247,7 +267,7 @@ class JabatanController
             error_log("Create jabatan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat jabatan: ' . $e->getMessage()
+                'message' => 'Gagal membuat jabatan'
             ], 500);
         }
     }
@@ -329,7 +349,7 @@ class JabatanController
             
             if (isset($data['deskripsi'])) {
                 $updateFields[] = "deskripsi = ?";
-                $updateParams[] = TextSanitizer::cleanTextOrNull($data['deskripsi']) ?: null;
+                $updateParams[] = TextSanitizer::cleanRichHtmlOrNull($data['deskripsi']) ?: null;
             }
             
             if (isset($data['urutan'])) {
@@ -372,7 +392,7 @@ class JabatanController
             error_log("Update jabatan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memperbarui jabatan: ' . $e->getMessage()
+                'message' => 'Gagal memperbarui jabatan'
             ], 500);
         }
     }
@@ -431,7 +451,7 @@ class JabatanController
             error_log("Delete jabatan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus jabatan: ' . $e->getMessage()
+                'message' => 'Gagal menghapus jabatan'
             ], 500);
         }
     }
@@ -445,6 +465,7 @@ class JabatanController
             $queryParams = $request->getQueryParams();
             $kategoriFilter = $queryParams['kategori'] ?? '';
             $lembagaFilter = $queryParams['lembaga_id'] ?? '';
+            $lembagaIdsCsv = isset($queryParams['lembaga_ids']) ? trim((string) $queryParams['lembaga_ids']) : '';
             $statusFilter = $queryParams['status'] ?? 'aktif'; // Default hanya aktif
             
             $whereConditions = ["j.status = 'aktif'"]; // Default hanya aktif
@@ -455,7 +476,19 @@ class JabatanController
                 $params[] = $kategoriFilter;
             }
             
-            if (!empty($lembagaFilter)) {
+            if ($lembagaIdsCsv !== '') {
+                $lembagaIds = array_values(array_filter(array_map(static function ($v) {
+                    return trim((string) $v);
+                }, explode(',', $lembagaIdsCsv)), static function ($v) {
+                    return $v !== '';
+                }));
+                if ($lembagaIds !== []) {
+                    $whereConditions[] = 'j.lembaga_id IN (' . implode(',', array_fill(0, count($lembagaIds), '?')) . ')';
+                    foreach ($lembagaIds as $lid) {
+                        $params[] = $lid;
+                    }
+                }
+            } elseif (!empty($lembagaFilter)) {
                 $whereConditions[] = "j.lembaga_id = ?";
                 $params[] = $lembagaFilter;
             }
@@ -486,7 +519,7 @@ class JabatanController
             error_log("Get jabatan list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data jabatan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data jabatan'
             ], 500);
         }
     }

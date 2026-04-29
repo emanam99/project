@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { pengeluaranAPI } from '../../../../services/api'
 import { useNotification } from '../../../../contexts/NotificationContext'
+import { hijriYmdToMasehiYmd } from '../../../../utils/hijriDate'
 
 /**
  * Custom hook untuk mengelola filtering dan pagination pengeluaran
@@ -27,6 +28,10 @@ export const usePengeluaranFilters = (activeTab, itemsPerPage = 50, options = {}
   const [pengeluaranLembagaFilter, setPengeluaranLembagaFilter] = useState('')
   const [pengeluaranTanggalDari, setPengeluaranTanggalDari] = useState('')
   const [pengeluaranTanggalSampai, setPengeluaranTanggalSampai] = useState('')
+  const [pengeluaranTahunHijriyahDari, setPengeluaranTahunHijriyahDari] = useState('')
+  const [pengeluaranTahunHijriyahSampai, setPengeluaranTahunHijriyahSampai] = useState('')
+  const [pengeluaranTahunHijriyahDariMasehi, setPengeluaranTahunHijriyahDariMasehi] = useState('')
+  const [pengeluaranTahunHijriyahSampaiMasehi, setPengeluaranTahunHijriyahSampaiMasehi] = useState('')
   
   // UI state
   const [isPengeluaranFilterOpen, setIsPengeluaranFilterOpen] = useState(false)
@@ -99,24 +104,60 @@ export const usePengeluaranFilters = (activeTab, itemsPerPage = 50, options = {}
       filtered = filtered.filter(pengeluaran => pengeluaran.lembaga === pengeluaranLembagaFilter)
     }
 
+    const effectiveTanggalDari = pengeluaranTahunHijriyahDariMasehi || pengeluaranTanggalDari
+    const effectiveTanggalSampai = pengeluaranTahunHijriyahSampaiMasehi || pengeluaranTanggalSampai
+
     // Filter berdasarkan tanggal
-    if (pengeluaranTanggalDari) {
+    if (effectiveTanggalDari) {
       filtered = filtered.filter(pengeluaran => {
         const tanggalDibuat = new Date(pengeluaran.tanggal_dibuat).toISOString().split('T')[0]
-        return tanggalDibuat >= pengeluaranTanggalDari
+        return tanggalDibuat >= effectiveTanggalDari
       })
     }
 
-    if (pengeluaranTanggalSampai) {
+    if (effectiveTanggalSampai) {
       filtered = filtered.filter(pengeluaran => {
         const tanggalDibuat = new Date(pengeluaran.tanggal_dibuat).toISOString().split('T')[0]
-        return tanggalDibuat <= pengeluaranTanggalSampai
+        return tanggalDibuat <= effectiveTanggalSampai
       })
     }
 
     setFilteredPengeluaran(filtered)
     setPengeluaranPage(1) // Reset ke halaman pertama saat filter berubah
-  }, [pengeluaranSearchQuery, pengeluaranKategoriFilter, pengeluaranLembagaFilter, pengeluaranTanggalDari, pengeluaranTanggalSampai, allPengeluaran])
+  }, [pengeluaranSearchQuery, pengeluaranKategoriFilter, pengeluaranLembagaFilter, pengeluaranTanggalDari, pengeluaranTanggalSampai, pengeluaranTahunHijriyahDariMasehi, pengeluaranTahunHijriyahSampaiMasehi, allPengeluaran])
+
+  useEffect(() => {
+    let cancelled = false
+    const convertYearStart = async () => {
+      if (!pengeluaranTahunHijriyahDari || !/^\d{4}$/.test(String(pengeluaranTahunHijriyahDari))) {
+        setPengeluaranTahunHijriyahDariMasehi('')
+        return
+      }
+      const converted = await hijriYmdToMasehiYmd(`${pengeluaranTahunHijriyahDari}-01-01`)
+      if (!cancelled) {
+        setPengeluaranTahunHijriyahDariMasehi(converted || '')
+      }
+    }
+    convertYearStart()
+    return () => { cancelled = true }
+  }, [pengeluaranTahunHijriyahDari])
+
+  useEffect(() => {
+    let cancelled = false
+    const convertYearEnd = async () => {
+      if (!pengeluaranTahunHijriyahSampai || !/^\d{4}$/.test(String(pengeluaranTahunHijriyahSampai))) {
+        setPengeluaranTahunHijriyahSampaiMasehi('')
+        return
+      }
+      const converted30 = await hijriYmdToMasehiYmd(`${pengeluaranTahunHijriyahSampai}-12-30`)
+      const converted29 = converted30 || await hijriYmdToMasehiYmd(`${pengeluaranTahunHijriyahSampai}-12-29`)
+      if (!cancelled) {
+        setPengeluaranTahunHijriyahSampaiMasehi(converted29 || '')
+      }
+    }
+    convertYearEnd()
+    return () => { cancelled = true }
+  }, [pengeluaranTahunHijriyahSampai])
 
   // Pagination untuk pengeluaran
   useEffect(() => {
@@ -153,6 +194,10 @@ export const usePengeluaranFilters = (activeTab, itemsPerPage = 50, options = {}
     pengeluaranLembagaFilter,
     pengeluaranTanggalDari,
     pengeluaranTanggalSampai,
+    pengeluaranTahunHijriyahDari,
+    pengeluaranTahunHijriyahSampai,
+    pengeluaranTahunHijriyahDariMasehi,
+    pengeluaranTahunHijriyahSampaiMasehi,
     
     // Pagination
     pengeluaranPage,
@@ -173,7 +218,9 @@ export const usePengeluaranFilters = (activeTab, itemsPerPage = 50, options = {}
     setPengeluaranKategoriFilter,
     setPengeluaranLembagaFilter,
     setPengeluaranTanggalDari,
-    setPengeluaranTanggalSampai
+    setPengeluaranTanggalSampai,
+    setPengeluaranTahunHijriyahDari,
+    setPengeluaranTahunHijriyahSampai
   }
 }
 

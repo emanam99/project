@@ -61,7 +61,7 @@ class DaerahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data daerah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -99,7 +99,7 @@ class DaerahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data daerah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -164,7 +164,7 @@ class DaerahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan daerah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -226,7 +226,7 @@ class DaerahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate daerah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -289,7 +289,7 @@ class DaerahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengubah status daerah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

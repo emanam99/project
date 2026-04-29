@@ -105,7 +105,7 @@ class MadrasahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data madrasah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -197,7 +197,7 @@ class MadrasahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data madrasah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -372,7 +372,7 @@ class MadrasahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan madrasah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -531,7 +531,7 @@ class MadrasahController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate madrasah',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

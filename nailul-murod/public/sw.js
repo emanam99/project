@@ -28,8 +28,10 @@ self.addEventListener('activate', (event) => {
 async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request)
-    const cache = await caches.open(cacheName)
-    cache.put(request, response.clone())
+    if (response && response.ok && request.url.startsWith('http')) {
+      const cache = await caches.open(cacheName)
+      cache.put(request, response.clone())
+    }
     return response
   } catch {
     const cached = await caches.match(request)
@@ -42,14 +44,17 @@ async function cacheFirst(request, cacheName) {
   const cached = await caches.match(request)
   if (cached) return cached
   const response = await fetch(request)
-  const cache = await caches.open(cacheName)
-  cache.put(request, response.clone())
+  if (response && response.ok && request.url.startsWith('http')) {
+    const cache = await caches.open(cacheName)
+    cache.put(request, response.clone())
+  }
   return response
 }
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
   const url = new URL(event.request.url)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return
 
   if (event.request.mode === 'navigate' || url.pathname.endsWith('.html')) {
     event.respondWith(networkFirst(event.request, CACHE_HTML))

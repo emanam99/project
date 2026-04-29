@@ -175,7 +175,7 @@ class UploadsManagerController
             error_log('UploadsManagerController::list - ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar file: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar file'
             ], 500);
         }
     }
@@ -327,7 +327,7 @@ class UploadsManagerController
             error_log('UploadsManagerController::delete - ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus file: ' . $e->getMessage()
+                'message' => 'Gagal menghapus file'
             ], 500);
         }
     }
@@ -373,7 +373,7 @@ class UploadsManagerController
             error_log('UploadsManagerController::checkLegacySantri - ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengecek file lama: ' . $e->getMessage()
+                'message' => 'Gagal mengecek file lama'
             ], 500);
         }
     }
@@ -450,7 +450,7 @@ class UploadsManagerController
             error_log('UploadsManagerController::migrateSantriFromLegacy - ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memindahkan file: ' . $e->getMessage()
+                'message' => 'Gagal memindahkan file'
             ], 500);
         }
     }
@@ -511,7 +511,7 @@ class UploadsManagerController
             error_log('UploadsManagerController::checkLegacyRencanaPengeluaran - ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengecek file lama: ' . $e->getMessage()
+                'message' => 'Gagal mengecek file lama'
             ], 500);
         }
     }
@@ -588,7 +588,7 @@ class UploadsManagerController
             error_log('UploadsManagerController::migrateRencanaPengeluaranFromLegacy - ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memindahkan file: ' . $e->getMessage()
+                'message' => 'Gagal memindahkan file'
             ], 500);
         }
     }

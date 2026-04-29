@@ -74,7 +74,7 @@ class SantriJuaraController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data santri juara',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -127,7 +127,7 @@ class SantriJuaraController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data santri juara',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -179,7 +179,7 @@ class SantriJuaraController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data santri juara',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -265,7 +265,7 @@ class SantriJuaraController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan data santri juara',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -343,7 +343,7 @@ class SantriJuaraController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate data santri juara',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -392,7 +392,7 @@ class SantriJuaraController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menghapus data santri juara',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

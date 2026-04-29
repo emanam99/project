@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\FileUploadValidator;
 use App\Helpers\SantriHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -132,30 +133,20 @@ class SantriBerkasControllerV2
             }
 
             $file = $uploadedFiles['file'];
-            if ($file->getError() !== UPLOAD_ERR_OK) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Error saat upload file: ' . $this->getUploadErrorMessage($file->getError())
-                ], 400);
-            }
-
-            $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-            $fileType = $file->getClientMediaType();
-            $originalName = $file->getClientFilename();
-            $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
             $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
+            $maxSize = 10 * 1024 * 1024;
 
-            if (!in_array($fileType, $allowedTypes) && !in_array($extension, $allowedExtensions)) {
+            $validation = FileUploadValidator::validate($file, $allowedExtensions, $maxSize);
+            if (!$validation['success']) {
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Tipe file tidak diizinkan. Hanya gambar (JPEG, PNG, GIF, WEBP) dan PDF yang diizinkan'
+                    'message' => $validation['message'],
                 ], 400);
             }
 
-            $maxSize = 10 * 1024 * 1024;
-            if ($file->getSize() > $maxSize) {
-                return $this->jsonResponse($response, ['success' => false, 'message' => 'Ukuran file terlalu besar. Maksimal 10MB'], 400);
-            }
+            $originalName = $file->getClientFilename();
+            $extension = $validation['extension'];
+            $fileType = $validation['mime'];
 
             $checkSql = "SELECT id, path_file FROM santri___berkas WHERE id_santri = ? AND jenis_berkas = ?";
             $checkStmt = $this->db->prepare($checkSql);
@@ -175,6 +166,18 @@ class SantriBerkasControllerV2
             $relativePath = 'uploads/santri/' . $fileName;
 
             $file->moveTo($filePath);
+
+            $postCheck = FileUploadValidator::validateMovedFile($filePath, $extension);
+            if (!$postCheck['success']) {
+                @unlink($filePath);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $postCheck['message'],
+                ], 400);
+            }
+            if (!empty($postCheck['mime'])) {
+                $fileType = $postCheck['mime'];
+            }
             $finalFileSize = filesize($filePath);
 
             if ($existingBerkas) {
@@ -199,13 +202,13 @@ class SantriBerkasControllerV2
             // Jika upload Bukti Pembayaran, kirim WA link ke halaman pembayaran
             if (stripos($jenisBerkas, 'Bukti Pembayaran') !== false) {
                 try {
-                    $stmtSantri = $this->db->prepare("SELECT nama, no_telpon, no_wa_santri FROM santri WHERE id = ?");
+                    $stmtSantri = $this->db->prepare("SELECT id, nama, no_telpon, no_wa_santri FROM santri WHERE id = ?");
                     $stmtSantri->execute([$idSantri]);
                     $santri = $stmtSantri->fetch(\PDO::FETCH_ASSOC);
                     if ($santri) {
                         $noWa = trim($santri['no_wa_santri'] ?? '') ?: trim($santri['no_telpon'] ?? '');
                         if ($noWa !== '') {
-                            WhatsAppService::sendPsbPembayaranLink($noWa, $santri['nama'] ?? '', 'open', isset($santri['id']) ? (int) $santri['id'] : null);
+                            WhatsAppService::sendPsbPembayaranLink($noWa, $santri['nama'] ?? '', 'open', (int) $idSantri);
                         }
                     }
                 } catch (\Throwable $e) {
@@ -232,7 +235,7 @@ class SantriBerkasControllerV2
             error_log("Upload berkas santri v2 error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal meng-upload berkas: ' . $e->getMessage()
+                'message' => 'Gagal meng-upload berkas'
             ], 500);
         }
     }
@@ -282,7 +285,7 @@ class SantriBerkasControllerV2
 
         } catch (\Exception $e) {
             error_log("Get berkas list v2 error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil daftar berkas: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil daftar berkas'], 500);
         }
     }
 
@@ -334,7 +337,7 @@ class SantriBerkasControllerV2
 
         } catch (\Exception $e) {
             error_log("Delete berkas v2 error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghapus berkas: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghapus berkas'], 500);
         }
     }
 
@@ -379,7 +382,7 @@ class SantriBerkasControllerV2
 
         } catch (\Exception $e) {
             error_log("Download berkas v2 error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengunduh berkas: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengunduh berkas'], 500);
         }
     }
 
@@ -477,7 +480,7 @@ class SantriBerkasControllerV2
 
         } catch (\Exception $e) {
             error_log("Update berkas v2 error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengganti berkas: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengganti berkas'], 500);
         }
     }
 
@@ -564,7 +567,7 @@ class SantriBerkasControllerV2
 
         } catch (\Exception $e) {
             error_log("Link berkas v2 error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal link berkas: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal link berkas'], 500);
         }
     }
 
@@ -639,7 +642,7 @@ class SantriBerkasControllerV2
 
         } catch (\Exception $e) {
             error_log("Mark tidak ada v2 error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menandai berkas: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menandai berkas'], 500);
         }
     }
 
@@ -690,7 +693,7 @@ class SantriBerkasControllerV2
 
         } catch (\Exception $e) {
             error_log("Unmark tidak ada v2 error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghapus tanda: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghapus tanda'], 500);
         }
     }
 
@@ -752,7 +755,7 @@ class SantriBerkasControllerV2
                 }
             }
 
-            $stmtSantri = $this->db->prepare("SELECT nama, nis, no_telpon, no_wa_santri FROM santri WHERE id = ?");
+            $stmtSantri = $this->db->prepare("SELECT nama, nis, email, no_telpon, no_wa_santri FROM santri WHERE id = ?");
             $stmtSantri->execute([$idSantri]);
             $santri = $stmtSantri->fetch(\PDO::FETCH_ASSOC);
             if (!$santri) return;
@@ -764,7 +767,7 @@ class SantriBerkasControllerV2
             if (empty($phones)) return;
 
             WhatsAppService::sendPsbBerkasLengkap(
-                ['id' => $idSantri, 'nis' => $santri['nis'] ?? null, 'nama' => $santri['nama'] ?? ''],
+                ['id' => $idSantri, 'nis' => $santri['nis'] ?? null, 'nama' => $santri['nama'] ?? '', 'email' => $santri['email'] ?? ''],
                 $listAda,
                 $listTidakAda,
                 $phones

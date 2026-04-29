@@ -930,7 +930,17 @@ export const santriAPI = {
   getRiwayatKamar: async (idSantri) => {
     const response = await api.get(`/santri/riwayat-kamar?id_santri=${encodeURIComponent(idSantri)}`)
     return response.data
-  }
+  },
+
+  getExcelRaw: async (params = {}) => {
+    const response = await api.get('/santri/excel-raw', { params })
+    return response.data
+  },
+
+  bulkUpdateFromExcel: async (rows) => {
+    const response = await api.post('/santri/excel-bulk-update', { rows })
+    return response.data
+  },
 }
 
 // Lulusan (santri___lulusan) — super_admin only
@@ -1094,43 +1104,6 @@ export const hariPentingAPI = {
   /** Tambah hari penting target hanya users.id pembuat (semua user login; tanpa aksi admin kalender) */
   createPersonalSelf: async (data) => {
     const response = await api.post('/hari-penting/personal-self', data)
-    return response.data
-  }
-}
-
-// Google Calendar (Jadwal Pesantren - kalender public)
-export const googleCalendarAPI = {
-  getEvents: async (params = {}) => {
-    const q = new URLSearchParams()
-    if (params.slug) q.set('slug', params.slug)
-    if (params.timeMin) q.set('timeMin', params.timeMin)
-    if (params.timeMax) q.set('timeMax', params.timeMax)
-    const url = `/google-calendar/events${q.toString() ? `?${q.toString()}` : ''}`
-    const response = await api.get(url)
-    return response.data
-  },
-  getConfig: async () => {
-    const response = await api.get('/google-calendar/config')
-    return response.data
-  },
-  getConfigBySlug: async (slug) => {
-    const response = await api.get(`/google-calendar/config/${encodeURIComponent(slug)}`)
-    return response.data
-  },
-  updateConfig: async (slug, data) => {
-    const response = await api.put(`/google-calendar/config/${encodeURIComponent(slug)}`, data)
-    return response.data
-  },
-  createEvent: async (data) => {
-    const response = await api.post('/google-calendar/events', data)
-    return response.data
-  },
-  updateEvent: async (eventId, data) => {
-    const response = await api.put(`/google-calendar/events/${encodeURIComponent(eventId)}`, data)
-    return response.data
-  },
-  deleteEvent: async (eventId, slug = 'pesantren') => {
-    const response = await api.delete(`/google-calendar/events/${encodeURIComponent(eventId)}?slug=${encodeURIComponent(slug)}`)
     return response.data
   }
 }
@@ -2459,13 +2432,13 @@ export const manageUsersAPI = {
     return response.data
   },
 
-  create: async (data) => {
-    const response = await api.post('/manage-users', data)
+  create: async (data, config = {}) => {
+    const response = await api.post('/manage-users', data, config)
     return response.data
   },
 
-  update: async (id, data) => {
-    const response = await api.put(`/manage-users/${id}`, data)
+  update: async (id, data, config = {}) => {
+    const response = await api.put(`/manage-users/${id}`, data, config)
     return response.data
   },
 
@@ -2600,6 +2573,18 @@ export const settingsAPI = {
   /** Buang cache RolePolicyResolver di worker backend (setelah edit SQL manual). Super admin. */
   postRolePolicyClearCache: async () => {
     const response = await api.post('/settings/role-policy/clear-cache', {})
+    return response.data
+  },
+  getEmailConfig: async () => {
+    const response = await api.get('/settings/email-config')
+    return response.data
+  },
+  saveEmailConfig: async (data) => {
+    const response = await api.put('/settings/email-config', data)
+    return response.data
+  },
+  testEmailConfig: async (data) => {
+    const response = await api.post('/settings/email-config/test', data)
     return response.data
   }
 }
@@ -2776,6 +2761,7 @@ export const jabatanAPI = {
     if (params.search) queryParams.append('search', params.search)
     if (params.kategori) queryParams.append('kategori', params.kategori)
     if (params.lembaga_id) queryParams.append('lembaga_id', params.lembaga_id)
+    if (params.lembaga_ids) queryParams.append('lembaga_ids', params.lembaga_ids)
     if (params.status) queryParams.append('status', params.status)
 
     const queryString = queryParams.toString()
@@ -2808,6 +2794,7 @@ export const jabatanAPI = {
     const queryParams = new URLSearchParams()
     if (params.kategori) queryParams.append('kategori', params.kategori)
     if (params.lembaga_id) queryParams.append('lembaga_id', params.lembaga_id)
+    if (params.lembaga_ids) queryParams.append('lembaga_ids', params.lembaga_ids)
     if (params.status) queryParams.append('status', params.status)
 
     const queryString = queryParams.toString()
@@ -2872,7 +2859,7 @@ export const pemasukanAPI = {
     const response = await api.post('/pemasukan', data)
     return response.data
   },
-  getAll: async (kategori = null, status = null, tanggalDari = null, tanggalSampai = null, page = 1, limit = 20) => {
+  getAll: async (kategori = null, status = null, tanggalDari = null, tanggalSampai = null, page = 1, limit = 20, lembaga = null) => {
     let url = `/pemasukan?page=${page}&limit=${limit}`
     if (kategori) {
       url += `&kategori=${encodeURIComponent(kategori)}`
@@ -2885,6 +2872,9 @@ export const pemasukanAPI = {
     }
     if (tanggalSampai) {
       url += `&tanggal_sampai=${encodeURIComponent(tanggalSampai)}`
+    }
+    if (lembaga) {
+      url += `&lembaga=${encodeURIComponent(lembaga)}`
     }
     const response = await api.get(url)
     return response.data
@@ -3724,6 +3714,7 @@ export const mapelAPI = {
     const q = new URLSearchParams()
     if (params.search != null && params.search !== '') q.set('search', String(params.search))
     if (params.lembaga_id != null && params.lembaga_id !== '') q.set('lembaga_id', String(params.lembaga_id))
+    if (params.lembaga_ids != null && params.lembaga_ids !== '') q.set('lembaga_ids', String(params.lembaga_ids))
     if (params.status != null && params.status !== '') q.set('status', String(params.status))
     if (params.page != null) q.set('page', String(params.page))
     if (params.limit != null) q.set('limit', String(params.limit))
@@ -3758,6 +3749,7 @@ export const rombelAPI = {
   getAll: async (params = {}) => {
     const q = new URLSearchParams()
     if (params.lembaga_id) q.set('lembaga_id', params.lembaga_id)
+    if (params.lembaga_ids != null && params.lembaga_ids !== '') q.set('lembaga_ids', params.lembaga_ids)
     if (params.lembaga_nama != null && params.lembaga_nama !== '') q.set('lembaga_nama', params.lembaga_nama)
     if (params.status) q.set('status', params.status)
     if (params.kelas != null && params.kelas !== '') q.set('kelas', params.kelas)

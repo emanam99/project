@@ -76,7 +76,7 @@ class DaerahKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -131,7 +131,7 @@ class DaerahKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -196,7 +196,7 @@ class DaerahKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -258,7 +258,7 @@ class DaerahKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -321,7 +321,7 @@ class DaerahKamarController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengubah status kamar',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

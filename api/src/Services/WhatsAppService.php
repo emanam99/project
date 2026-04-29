@@ -73,6 +73,52 @@ class WhatsAppService
      */
     private const PSB_FLOW_WA_NOTIF_DISABLED = true;
 
+    /**
+     * Resolve email santri dari tabel santri berdasarkan id.
+     */
+    private static function getSantriEmailById(?int $idSantri): ?string
+    {
+        if ($idSantri === null || $idSantri <= 0) {
+            return null;
+        }
+        try {
+            $db = Database::getInstance()->getConnection();
+            $stmt = $db->prepare('SELECT email FROM santri WHERE id = ? LIMIT 1');
+            $stmt->execute([$idSantri]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $email = trim((string) ($row['email'] ?? ''));
+            if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return $email;
+            }
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::getSantriEmailById ' . $e->getMessage());
+        }
+        return null;
+    }
+
+    private static function sendPsbEmailNotification(?string $email, string $subject, string $messageText, ?int $idSantri = null, string $kategori = ''): void
+    {
+        $email = trim((string) $email);
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+        $safeMessage = htmlspecialchars($messageText, ENT_QUOTES, 'UTF-8');
+        $html = '<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;">'
+            . nl2br($safeMessage)
+            . '</div>';
+        $res = EmailService::send($email, $subject, $html, $messageText);
+        if (empty($res['success'])) {
+            error_log(
+                'WhatsAppService::sendPsbEmailNotification gagal'
+                . ' kategori=' . $kategori
+                . ' id_santri=' . (string) ($idSantri ?? 0)
+                . ' email=' . $email
+                . ' msg=' . (string) ($res['message'] ?? '')
+                . ' err=' . (string) ($res['error'] ?? '')
+            );
+        }
+    }
+
     private static function getConfig(): array
     {
         $config = require __DIR__ . '/../../config.php';
@@ -2068,6 +2114,15 @@ class WhatsAppService
      */
     public static function sendPsbBiodataTerdaftar(array $santriData, array $phoneNumbers, array $logOptions = []): void
     {
+        $linkPendaftaran = self::getDaftarAppUrl();
+        $message = WhatsAppTemplates::biodataTerdaftar($santriData, $linkPendaftaran);
+        $idSantri = isset($santriData['id']) ? (int) $santriData['id'] : null;
+        $email = trim((string) ($santriData['email'] ?? ''));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $email = self::getSantriEmailById($idSantri);
+        }
+        self::sendPsbEmailNotification($email, 'Biodata Pendaftaran Tersimpan', $message, $idSantri, 'biodata_terdaftar');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2076,9 +2131,6 @@ class WhatsAppService
             return;
         }
 
-        $linkPendaftaran = self::getDaftarAppUrl();
-        $message = WhatsAppTemplates::biodataTerdaftar($santriData, $linkPendaftaran);
-        $idSantri = isset($santriData['id']) ? (int) $santriData['id'] : null;
         $sumber = $logOptions['sumber'] ?? 'system';
         $idPengurusPengirim = isset($logOptions['id_pengurus_pengirim']) ? (int) $logOptions['id_pengurus_pengirim'] : null;
         $logContext = [
@@ -2215,6 +2267,14 @@ class WhatsAppService
      */
     public static function sendPsbBerkasLengkap(array $santriData, array $listAda, array $listTidakAda, array $phoneNumbers): void
     {
+        $message = WhatsAppTemplates::berkasLengkap($santriData, $listAda, $listTidakAda);
+        $idSantri = isset($santriData['id']) ? (int) $santriData['id'] : null;
+        $email = trim((string) ($santriData['email'] ?? ''));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $email = self::getSantriEmailById($idSantri);
+        }
+        self::sendPsbEmailNotification($email, 'Berkas Pendaftaran Lengkap', $message, $idSantri, 'berkas_lengkap');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2223,8 +2283,6 @@ class WhatsAppService
             return;
         }
 
-        $message = WhatsAppTemplates::berkasLengkap($santriData, $listAda, $listTidakAda);
-        $idSantri = isset($santriData['id']) ? (int) $santriData['id'] : null;
         $logContext = ['id_santri' => $idSantri, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'berkas_lengkap', 'sumber' => 'system'];
 
         foreach ($numbers as $num) {
@@ -2246,6 +2304,13 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranLink(string $noWa, string $nama, string $mode = 'open', ?int $idSantri = null): void
     {
+        $baseUrl = self::getDaftarAppUrl();
+        $path = $mode === 'ipaymu' ? '/pembayaran?payment=ipaymu' : '/pembayaran?payment=open';
+        $link = $baseUrl . $path;
+        $message = WhatsAppTemplates::pembayaranLink($nama, $link);
+        $email = self::getSantriEmailById($idSantri);
+        self::sendPsbEmailNotification($email, 'Informasi Pembayaran Pendaftaran', $message, $idSantri, 'pembayaran_link');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2254,10 +2319,6 @@ class WhatsAppService
             return;
         }
 
-        $baseUrl = self::getDaftarAppUrl();
-        $path = $mode === 'ipaymu' ? '/pembayaran?payment=ipaymu' : '/pembayaran?payment=open';
-        $link = $baseUrl . $path;
-        $message = WhatsAppTemplates::pembayaranLink($nama, $link);
         $logContext = ['id_santri' => $idSantri, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'pembayaran_link', 'sumber' => 'system'];
 
         try {
@@ -2277,6 +2338,11 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranBerhasil(string $noWa, string $nama, $nominal, ?int $idSantri = null): void
     {
+        $nominalFormatted = 'Rp ' . number_format((float) $nominal, 0, ',', '.');
+        $message = WhatsAppTemplates::pembayaranBerhasil($nama, $nominalFormatted);
+        $email = self::getSantriEmailById($idSantri);
+        self::sendPsbEmailNotification($email, 'Pembayaran Pendaftaran Berhasil', $message, $idSantri, 'pembayaran_berhasil');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2285,8 +2351,6 @@ class WhatsAppService
             return;
         }
 
-        $nominalFormatted = 'Rp ' . number_format((float) $nominal, 0, ',', '.');
-        $message = WhatsAppTemplates::pembayaranBerhasil($nama, $nominalFormatted);
         $logContext = ['id_santri' => $idSantri, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'pembayaran_berhasil', 'sumber' => 'system'];
 
         try {
@@ -2314,9 +2378,6 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranIpaymuOrder(array $phoneNumbers, string $nama, $amount, $adminFee, $total, string $paymentMethod, string $paymentChannel, string $vaOrCode, string $link = '', ?int $idSantri = null): void
     {
-        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
-            return;
-        }
         if ($vaOrCode === '') {
             return;
         }
@@ -2346,6 +2407,12 @@ class WhatsAppService
         }
 
         $message = WhatsAppTemplates::pembayaranIpaymuOrder($nama, $amountFormatted, $adminFeeFormatted, $totalFormatted, $channelLabel, $vaOrCode, $instruksi, $link);
+        $email = self::getSantriEmailById($idSantri);
+        self::sendPsbEmailNotification($email, 'Detail Pembayaran Pendaftaran', $message, $idSantri, 'pembayaran_ipaymu_order');
+
+        if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
+            return;
+        }
         $numbers = self::collectPhoneNumbers($phoneNumbers);
 
         foreach ($numbers as $no) {
@@ -2372,6 +2439,16 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranIpaymuQris(array $phoneNumbers, string $nama, $amount, $adminFee, $total, string $qrCode, string $link = '', ?int $idSantri = null): void
     {
+        if ($link === '') {
+            $link = self::getDaftarAppUrl() . '/pembayaran?payment=ipaymu';
+        }
+        $amountFormatted = 'Rp ' . number_format((float) $amount, 0, ',', '.');
+        $adminFeeFormatted = ($adminFee !== null && $adminFee !== '') ? ('Rp ' . number_format((float) $adminFee, 0, ',', '.')) : null;
+        $totalFormatted = ($total !== null && $total !== '') ? ('Rp ' . number_format((float) $total, 0, ',', '.')) : null;
+        $message = WhatsAppTemplates::pembayaranIpaymuQris($nama, $amountFormatted, $adminFeeFormatted, $totalFormatted, $link);
+        $email = self::getSantriEmailById($idSantri);
+        self::sendPsbEmailNotification($email, 'QRIS Pembayaran Pendaftaran', $message, $idSantri, 'pembayaran_ipaymu_qris');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2381,13 +2458,6 @@ class WhatsAppService
             return;
         }
 
-        if ($link === '') {
-            $link = self::getDaftarAppUrl() . '/pembayaran?payment=ipaymu';
-        }
-        $amountFormatted = 'Rp ' . number_format((float) $amount, 0, ',', '.');
-        $adminFeeFormatted = ($adminFee !== null && $adminFee !== '') ? ('Rp ' . number_format((float) $adminFee, 0, ',', '.')) : null;
-        $totalFormatted = ($total !== null && $total !== '') ? ('Rp ' . number_format((float) $total, 0, ',', '.')) : null;
-        $message = WhatsAppTemplates::pembayaranIpaymuQris($nama, $amountFormatted, $adminFeeFormatted, $totalFormatted, $link);
         $numbers = self::collectPhoneNumbers($phoneNumbers);
         $logContext = ['id_santri' => $idSantri, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'pembayaran_ipaymu_qris', 'sumber' => 'system'];
 
@@ -2409,6 +2479,10 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranDibatalkan(array $phoneNumbers, string $nama, ?int $idSantri = null): void
     {
+        $message = WhatsAppTemplates::pembayaranDibatalkan($nama);
+        $email = self::getSantriEmailById($idSantri);
+        self::sendPsbEmailNotification($email, 'Pesanan Pembayaran Dibatalkan', $message, $idSantri, 'pembayaran_dibatalkan');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2416,7 +2490,7 @@ class WhatsAppService
         if (empty($numbers)) {
             return;
         }
-        $message = WhatsAppTemplates::pembayaranDibatalkan($nama);
+
         $logContext = ['id_santri' => $idSantri, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'pembayaran_dibatalkan', 'sumber' => 'system'];
         foreach ($numbers as $no) {
             try {
@@ -2436,6 +2510,10 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranGagal(array $phoneNumbers, string $nama, ?int $idSantri = null): void
     {
+        $message = WhatsAppTemplates::pembayaranGagal($nama);
+        $email = self::getSantriEmailById($idSantri);
+        self::sendPsbEmailNotification($email, 'Pembayaran Pendaftaran Gagal', $message, $idSantri, 'pembayaran_gagal');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2443,7 +2521,7 @@ class WhatsAppService
         if (empty($numbers)) {
             return;
         }
-        $message = WhatsAppTemplates::pembayaranGagal($nama);
+
         $logContext = ['id_santri' => $idSantri, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'pembayaran_gagal', 'sumber' => 'system'];
         foreach ($numbers as $no) {
             try {
@@ -2463,6 +2541,10 @@ class WhatsAppService
      */
     public static function sendPsbPembayaranKadaluarsa(array $phoneNumbers, string $nama, ?int $idSantri = null): void
     {
+        $message = WhatsAppTemplates::pembayaranKadaluarsa($nama);
+        $email = self::getSantriEmailById($idSantri);
+        self::sendPsbEmailNotification($email, 'Pembayaran Pendaftaran Kadaluarsa', $message, $idSantri, 'pembayaran_kadaluarsa');
+
         if (self::PSB_FLOW_WA_NOTIF_DISABLED) {
             return;
         }
@@ -2470,7 +2552,7 @@ class WhatsAppService
         if (empty($numbers)) {
             return;
         }
-        $message = WhatsAppTemplates::pembayaranKadaluarsa($nama);
+
         $logContext = ['id_santri' => $idSantri, 'id_pengurus' => null, 'tujuan' => 'wali_santri', 'id_pengurus_pengirim' => null, 'kategori' => 'pembayaran_kadaluarsa', 'sumber' => 'system'];
         foreach ($numbers as $no) {
             try {

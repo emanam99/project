@@ -218,7 +218,7 @@ class AuthController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Terjadi kesalahan saat login: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan saat login'
             ], 500);
         }
     }
@@ -506,7 +506,7 @@ class AuthController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Terjadi kesalahan saat login: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan saat login'
             ], 500);
         }
     }

@@ -121,6 +121,11 @@ final class EbeddienFiturAccess
         return EbeddienFiturSelectorRepository::codesForMethod('santriByKelasApiSelectors');
     }
 
+    public static function santriExcelApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('santriExcelApiSelectors');
+    }
+
     public static function rombelWaliKelasApiSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('rombelWaliKelasApiSelectors');
@@ -244,11 +249,6 @@ final class EbeddienFiturAccess
     public static function aktivitasPemasukanAdminSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('aktivitasPemasukanAdminSelectors');
-    }
-
-    public static function kalenderGoogleStaffSelectors(): array
-    {
-        return EbeddienFiturSelectorRepository::codesForMethod('kalenderGoogleStaffSelectors');
     }
 
     public static function kalenderPengaturanBulanSelectors(): array

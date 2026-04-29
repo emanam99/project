@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback, useRef, memo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { mapelAPI, rombelAPI, kitabAPI, lembagaAPI } from '../../../services/api'
 import Modal from '../../../components/Modal/Modal'
 import { useNotification } from '../../../contexts/NotificationContext'
 import MapelFormOffcanvas from './components/MapelFormOffcanvas'
+import { useLembagaFilterAccess } from '../../../hooks/useLembagaFilterAccess'
+import { LEMBAGA_FILTER_ACTION_CODES } from '../../../config/lembagaFilterFiturCodes'
 
 const MapelListItem = memo(({ row, index, onClick, onDelete, statusBadge }) => (
   <motion.div
@@ -69,6 +71,7 @@ MapelListItem.displayName = 'MapelListItem'
 
 function Mapel() {
   const { showNotification } = useNotification()
+  const lembagaAccess = useLembagaFilterAccess(LEMBAGA_FILTER_ACTION_CODES.mapelSemua)
   const [list, setList] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -96,6 +99,11 @@ function Mapel() {
   const [deleteConfirmId, setDeleteConfirmId] = useState('')
   const [deleting, setDeleting] = useState(false)
 
+  const allowedLembagaSet = useMemo(
+    () => (lembagaAccess.allowedLembagaIds?.length ? new Set(lembagaAccess.allowedLembagaIds.map(String)) : null),
+    [lembagaAccess.allowedLembagaIds]
+  )
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchInput), 350)
     return () => clearTimeout(t)
@@ -121,7 +129,10 @@ function Mapel() {
         if (cancelled) return
         if (lr?.success) setRombelList(Array.isArray(lr.data) ? lr.data : [])
         if (kr?.success) setKitabList(Array.isArray(kr.data) ? kr.data : [])
-        if (le?.success) setLembagaList(Array.isArray(le.data) ? le.data : [])
+        if (le?.success) {
+          const rows = Array.isArray(le.data) ? le.data : []
+          setLembagaList(!allowedLembagaSet ? rows : rows.filter((l) => allowedLembagaSet.has(String(l.id))))
+        }
       } catch (e) {
         console.error(e)
       }
@@ -130,7 +141,13 @@ function Mapel() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [allowedLembagaSet])
+
+  useEffect(() => {
+    const allowed = lembagaAccess.allowedLembagaIds
+    if (!allowed || allowed.length !== 1) return
+    if (lembagaFilter !== allowed[0]) setLembagaFilter(allowed[0])
+  }, [lembagaAccess.allowedLembagaIds, lembagaFilter])
 
   const loadMapel = useCallback(async () => {
     try {
@@ -139,6 +156,7 @@ function Mapel() {
       const res = await mapelAPI.getList({
         search: debouncedSearch.trim(),
         lembaga_id: lembagaFilter,
+        lembaga_ids: lembagaAccess.allowedLembagaIds?.length ? lembagaAccess.allowedLembagaIds.join(',') : undefined,
         status: statusFilter,
         page: currentPage,
         limit: itemsPerPage
@@ -159,7 +177,7 @@ function Mapel() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, lembagaFilter, statusFilter, currentPage, itemsPerPage])
+  }, [debouncedSearch, lembagaFilter, statusFilter, currentPage, itemsPerPage, lembagaAccess.allowedLembagaIds])
 
   useEffect(() => {
     loadMapel()
@@ -240,7 +258,7 @@ function Mapel() {
 
   const resetFilter = () => {
     setSearchInput('')
-    setLembagaFilter('')
+    setLembagaFilter(lembagaAccess.allowedLembagaIds?.length === 1 ? lembagaAccess.allowedLembagaIds[0] : '')
     setStatusFilter('')
     setCurrentPage(1)
   }
@@ -354,8 +372,9 @@ function Mapel() {
                         value={lembagaFilter}
                         onChange={(e) => setLembagaFilter(e.target.value)}
                         className="border rounded-lg px-2 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 min-w-[10rem]"
+                        disabled={lembagaAccess.lembagaFilterLocked && (lembagaAccess.allowedLembagaIds?.length === 1)}
                       >
-                        <option value="">Semua lembaga</option>
+                        <option value="">{lembagaAccess.canFilterAllLembaga ? 'Semua lembaga' : 'Lembaga'}</option>
                         {lembagaList.map((l) => (
                           <option key={l.id} value={l.id}>
                             {l.nama || l.id}

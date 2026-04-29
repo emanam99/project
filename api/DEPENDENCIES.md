@@ -9,7 +9,7 @@
     ```bash
     composer require firebase/php-jwt:^7.0
     ```
-    Pastikan `JWT_SECRET` di `.env` minimal 32 karakter. API encode/decode (JwtAuth, GoogleCalendarService) kompatibel dengan 7.x.
+    Pastikan `JWT_SECRET` di `.env` minimal 32 karakter. API encode/decode (JwtAuth) kompatibel dengan 7.x.
 
 ## Lainnya
 

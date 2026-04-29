@@ -90,7 +90,7 @@ class BoyongController
             error_log("Get boyong error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -156,7 +156,7 @@ class BoyongController
             error_log("Create boyong error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -249,7 +249,7 @@ class BoyongController
             error_log('Create boyong domisili error: ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan',
             ], 500);
         }
     }
@@ -324,7 +324,7 @@ class BoyongController
             error_log("Update boyong error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -367,7 +367,7 @@ class BoyongController
             error_log("Delete boyong error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }

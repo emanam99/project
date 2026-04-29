@@ -91,13 +91,13 @@
     }
   ],
   "screenshots": [
-    { "src": "https://alutsmani.id/gambar/ss/ebeddien (1).png", "sizes": "1080x1920", "type": "image/png" },
-    { "src": "https://alutsmani.id/gambar/ss/ebeddien (2).png", "sizes": "1080x1920", "type": "image/png" },
-    { "src": "https://alutsmani.id/gambar/ss/ebeddien (3).png", "sizes": "1080x1920", "type": "image/png" },
-    { "src": "https://alutsmani.id/gambar/ss/ebeddien (4).png", "sizes": "1080x1920", "type": "image/png" },
-    { "src": "https://alutsmani.id/gambar/ss/ebeddien (5).png", "sizes": "1080x1920", "type": "image/png" },
-    { "src": "https://alutsmani.id/gambar/ss/ebeddienpc (1).png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide" },
-    { "src": "https://alutsmani.id/gambar/ss/ebeddienpc (2).png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide" },
-    { "src": "https://alutsmani.id/gambar/ss/ebeddienpc (3).png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide" }
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod (1).png", "sizes": "1080x1920", "type": "image/png" },
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod (2).png", "sizes": "1080x1920", "type": "image/png" },
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod (3).png", "sizes": "1080x1920", "type": "image/png" },
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod (4).png", "sizes": "1080x1920", "type": "image/png" },
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod (5).png", "sizes": "1080x1920", "type": "image/png" },
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod-pc (1).png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide" },
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod-pc (2).png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide" },
+    { "src": "https://alutsmani.id/gambar/ss/nailul-murod-pc (3).png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide" }
   ]
 }

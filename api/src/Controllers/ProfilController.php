@@ -85,14 +85,14 @@ class ProfilController
             error_log("Error code: " . $e->getCode());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error calculating total pembayaran: ' . $e->getMessage(),
+                'message' => 'Gagal menghitung total pembayaran',
                 'total' => 0
             ], 500);
         } catch (\Exception $e) {
             error_log("Total pembayaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error calculating total pembayaran: ' . $e->getMessage(),
+                'message' => 'Gagal menghitung total pembayaran',
                 'total' => 0
             ], 500);
         }

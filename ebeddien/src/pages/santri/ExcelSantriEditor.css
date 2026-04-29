@@ -1,0 +1,68 @@
+.excel-santri-editor .luckysheet-input-box,
+.excel-santri-editor .luckysheet-input-box *,
+.excel-santri-editor .luckysheet-formula-editor-input,
+.excel-santri-editor .luckysheet-formula-editor-input *,
+.excel-santri-editor .luckysheet-rich-text-editor,
+.excel-santri-editor .luckysheet-rich-text-editor * {
+  color: #111827 !important;
+}
+
+.dark .excel-santri-editor .luckysheet-input-box,
+.dark .excel-santri-editor .luckysheet-input-box *,
+.dark .excel-santri-editor .luckysheet-formula-editor-input,
+.dark .excel-santri-editor .luckysheet-formula-editor-input *,
+.dark .excel-santri-editor .luckysheet-rich-text-editor,
+.dark .excel-santri-editor .luckysheet-rich-text-editor * {
+  color: #111827 !important;
+}
+
+/* FortuneSheet kadang render editor/input via portal di luar wrapper komponen. */
+.dark .luckysheet-input-box,
+.dark .luckysheet-input-box *,
+.dark .luckysheet-formula-editor-input,
+.dark .luckysheet-formula-editor-input *,
+.dark .luckysheet-rich-text-editor,
+.dark .luckysheet-rich-text-editor * {
+  color: #111827 !important;
+}
+
+/* Perbaiki pengalaman sentuh di HP agar scroll area sheet lebih halus. */
+.excel-santri-editor {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.excel-santri-editor .luckysheet,
+.excel-santri-editor .luckysheet-cell-main,
+.excel-santri-editor .luckysheet-grid-window {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.excel-santri-editor .luckysheet-cell-main *,
+.excel-santri-editor .luckysheet-grid-window * {
+  touch-action: pan-x pan-y;
+}
+
+/* Aktifkan scrolling native viewport grid di mobile. */
+.excel-santri-editor .luckysheet-grid-window {
+  overflow: auto !important;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 768px) {
+  .excel-santri-page {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .excel-santri-editor {
+    min-height: calc(100vh - 220px);
+  }
+
+  .excel-santri-editor .luckysheet-grid-window,
+  .excel-santri-editor .luckysheet-cell-main {
+    will-change: auto;
+    contain: none;
+  }
+}

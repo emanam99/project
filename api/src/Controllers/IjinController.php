@@ -54,7 +54,7 @@ class IjinController
             error_log("Get ijin error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -119,7 +119,7 @@ class IjinController
             error_log("Create ijin error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -241,7 +241,7 @@ class IjinController
             error_log("Update ijin error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -292,7 +292,7 @@ class IjinController
             error_log("Delete ijin error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -377,7 +377,7 @@ class IjinController
 
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan',
             ], 500);
         }
     }
@@ -409,7 +409,7 @@ class IjinController
             error_log("Get public ijin error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -543,7 +543,7 @@ class IjinController
             error_log("Get dashboard ijin error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }

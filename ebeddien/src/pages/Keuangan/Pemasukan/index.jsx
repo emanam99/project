@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { pemasukanAPI } from '../../../services/api'
+import { lembagaAPI, pemasukanAPI } from '../../../services/api'
 import { useAuthStore } from '../../../store/authStore'
 import { useTahunAjaranStore } from '../../../store/tahunAjaranStore'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
-import { getTanggalFromAPI } from '../../../utils/hijriDate'
+import { getTanggalFromAPI, hijriYmdToMasehiYmd } from '../../../utils/hijriDate'
+import { PickDateHijri, formatHijriDateDisplay } from '../../../components/PickDateHijri'
 import Modal from '../../../components/Modal/Modal'
 import DetailOffcanvas from '../../../components/DetailOffcanvas/DetailOffcanvas'
 
@@ -23,10 +24,19 @@ const SearchAndFilterPemasukan = memo(({
   onKategoriFilterChange,
   statusFilter,
   onStatusFilterChange,
+  lembagaFilter,
+  onLembagaFilterChange,
+  listLembaga,
   tanggalDari,
   onTanggalDariChange,
   tanggalSampai,
   onTanggalSampaiChange,
+  tanggalHijriyahDari,
+  onTanggalHijriyahDariChange,
+  tanggalHijriyahSampai,
+  onTanggalHijriyahSampaiChange,
+  tanggalHijriyahDariConverted,
+  tanggalHijriyahSampaiConverted,
   onCreateClick,
   onUwabaClick,
   onTunggakanClick,
@@ -121,6 +131,18 @@ const SearchAndFilterPemasukan = memo(({
                   <option value="Bank">Bank</option>
                   <option value="Lainnya">Lainnya</option>
                 </select>
+                <select
+                  value={lembagaFilter}
+                  onChange={onLembagaFilterChange}
+                  className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                >
+                  <option value="">Lembaga</option>
+                  {listLembaga.map((lembaga) => (
+                    <option key={lembaga.id} value={lembaga.id}>
+                      {lembaga.id}
+                    </option>
+                  ))}
+                </select>
                 <input
                   type="date"
                   value={tanggalDari}
@@ -135,6 +157,36 @@ const SearchAndFilterPemasukan = memo(({
                   className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                   placeholder="Sampai Tanggal"
                 />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <div className="w-[180px] min-w-0">
+                  <PickDateHijri
+                    value={tanggalHijriyahDari}
+                    onChange={onTanggalHijriyahDariChange}
+                    placeholder="Hijriyah Dari"
+                    inputClassName="!h-7 !min-h-[28px] !rounded !px-2 !py-1 !text-xs !border-gray-300 dark:!border-gray-600"
+                  />
+                </div>
+                <div className="w-[180px] min-w-0">
+                  <PickDateHijri
+                    value={tanggalHijriyahSampai}
+                    onChange={onTanggalHijriyahSampaiChange}
+                    placeholder="Hijriyah Sampai"
+                    inputClassName="!h-7 !min-h-[28px] !rounded !px-2 !py-1 !text-xs !border-gray-300 dark:!border-gray-600"
+                  />
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                  <span className="font-medium">Hijriyah Dari:</span>{' '}
+                  {tanggalHijriyahDari ? formatHijriDateDisplay(tanggalHijriyahDari) : '-'}{' '}
+                  {tanggalHijriyahDariConverted ? `-> ${tanggalHijriyahDariConverted}` : ''}
+                </div>
+                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                  <span className="font-medium">Hijriyah Sampai:</span>{' '}
+                  {tanggalHijriyahSampai ? formatHijriDateDisplay(tanggalHijriyahSampai) : '-'}{' '}
+                  {tanggalHijriyahSampaiConverted ? `-> ${tanggalHijriyahSampaiConverted}` : ''}
+                </div>
               </div>
             </div>
           </motion.div>
@@ -232,6 +284,7 @@ function Pemasukan() {
   const [loadingTunggakan, setLoadingTunggakan] = useState(false)
   const [loadingKhusus, setLoadingKhusus] = useState(false)
   const [loadingPendaftaran, setLoadingPendaftaran] = useState(false)
+  const [listLembaga, setListLembaga] = useState([])
 
   // Data state
   const [allPemasukan, setAllPemasukan] = useState([])
@@ -244,8 +297,13 @@ function Pemasukan() {
   const [searchQuery, setSearchQuery] = useState('')
   const [kategoriFilter, setKategoriFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [lembagaFilter, setLembagaFilter] = useState('')
   const [tanggalDari, setTanggalDari] = useState('')
   const [tanggalSampai, setTanggalSampai] = useState('')
+  const [tanggalHijriyahDari, setTanggalHijriyahDari] = useState(null)
+  const [tanggalHijriyahSampai, setTanggalHijriyahSampai] = useState(null)
+  const [tanggalHijriyahDariConverted, setTanggalHijriyahDariConverted] = useState('')
+  const [tanggalHijriyahSampaiConverted, setTanggalHijriyahSampaiConverted] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
 
@@ -253,6 +311,7 @@ function Pemasukan() {
   const [formData, setFormData] = useState({
     keterangan: '',
     kategori: 'Lainnya',
+    lembaga: '',
     status: 'Cash',
     nominal: '',
     hijriyah: '',
@@ -264,6 +323,7 @@ function Pemasukan() {
   // Load semua data pemasukan
   useEffect(() => {
     loadAllPemasukan()
+    loadListLembaga()
   }, [])
 
   const loadAllPemasukan = async () => {
@@ -280,6 +340,17 @@ function Pemasukan() {
       showNotification(err.response?.data?.message || 'Terjadi kesalahan saat memuat daftar pemasukan', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadListLembaga = async () => {
+    try {
+      const response = await lembagaAPI.getAll()
+      if (response.success) {
+        setListLembaga(response.data || [])
+      }
+    } catch (err) {
+      console.error('Error loading lembaga:', err)
     }
   }
 
@@ -312,24 +383,67 @@ function Pemasukan() {
       filtered = filtered.filter(pemasukan => pemasukan.status === statusFilter)
     }
 
+    if (lembagaFilter) {
+      filtered = filtered.filter(pemasukan => (pemasukan.lembaga || '') === lembagaFilter)
+    }
+
     // Filter berdasarkan tanggal
-    if (tanggalDari) {
+    const effectiveTanggalDari = tanggalHijriyahDariConverted || tanggalDari
+    const effectiveTanggalSampai = tanggalHijriyahSampaiConverted || tanggalSampai
+
+    if (effectiveTanggalDari) {
       filtered = filtered.filter(pemasukan => {
         const tanggalDibuat = new Date(pemasukan.tanggal_dibuat).toISOString().split('T')[0]
-        return tanggalDibuat >= tanggalDari
+        return tanggalDibuat >= effectiveTanggalDari
       })
     }
 
-    if (tanggalSampai) {
+    if (effectiveTanggalSampai) {
       filtered = filtered.filter(pemasukan => {
         const tanggalDibuat = new Date(pemasukan.tanggal_dibuat).toISOString().split('T')[0]
-        return tanggalDibuat <= tanggalSampai
+        return tanggalDibuat <= effectiveTanggalSampai
       })
     }
 
     setFilteredPemasukan(filtered)
     setPemasukanPage(1)
-  }, [searchQuery, kategoriFilter, statusFilter, tanggalDari, tanggalSampai, allPemasukan])
+  }, [searchQuery, kategoriFilter, statusFilter, lembagaFilter, tanggalDari, tanggalSampai, tanggalHijriyahDariConverted, tanggalHijriyahSampaiConverted, allPemasukan])
+
+  useEffect(() => {
+    let cancelled = false
+    const convert = async () => {
+      if (!tanggalHijriyahDari) {
+        setTanggalHijriyahDariConverted('')
+        return
+      }
+      const converted = await hijriYmdToMasehiYmd(tanggalHijriyahDari)
+      if (!cancelled) {
+        setTanggalHijriyahDariConverted(converted || '')
+      }
+    }
+    convert()
+    return () => {
+      cancelled = true
+    }
+  }, [tanggalHijriyahDari])
+
+  useEffect(() => {
+    let cancelled = false
+    const convert = async () => {
+      if (!tanggalHijriyahSampai) {
+        setTanggalHijriyahSampaiConverted('')
+        return
+      }
+      const converted = await hijriYmdToMasehiYmd(tanggalHijriyahSampai)
+      if (!cancelled) {
+        setTanggalHijriyahSampaiConverted(converted || '')
+      }
+    }
+    convert()
+    return () => {
+      cancelled = true
+    }
+  }, [tanggalHijriyahSampai])
 
   // Pagination
   useEffect(() => {
@@ -338,6 +452,12 @@ function Pemasukan() {
     setPemasukanList(filteredPemasukan.slice(startIndex, endIndex))
     setPemasukanTotal(filteredPemasukan.length)
   }, [filteredPemasukan, pemasukanPage, itemsPerPage])
+
+  const totalNominalFiltered = useMemo(() => {
+    return filteredPemasukan.reduce((total, pemasukan) => {
+      return total + parseFloat(pemasukan.nominal || 0)
+    }, 0)
+  }, [filteredPemasukan])
 
   // Search input handlers
   const handleSearchInputChange = useCallback((e) => {
@@ -409,6 +529,7 @@ function Pemasukan() {
     setFormData({
       keterangan: initialData.keterangan || '',
       kategori: initialData.kategori || 'Lainnya',
+      lembaga: initialData.lembaga || '',
       status: initialData.status || 'Cash',
       nominal: initialData.nominal || '',
       hijriyah: hijriyahValue,
@@ -441,6 +562,7 @@ function Pemasukan() {
     handleCreate({
       keterangan: keterangan,
       kategori: 'UWABA',
+      lembaga: 'UWABA',
       status: via === 'TF' ? 'Bank' : 'Cash',
       nominal: nominal.toString(),
       tahun_ajaran: tahunAjaran || ''
@@ -471,6 +593,7 @@ function Pemasukan() {
     handleCreate({
       keterangan: keterangan,
       kategori: 'Tunggakan',
+      lembaga: 'UWABA',
       status: via === 'TF' ? 'Bank' : 'Cash',
       nominal: nominal.toString(),
       tahun_ajaran: tahunAjaran || ''
@@ -501,6 +624,7 @@ function Pemasukan() {
     handleCreate({
       keterangan: keterangan,
       kategori: 'Khusus',
+      lembaga: 'UWABA',
       status: via === 'TF' ? 'Bank' : 'Cash',
       nominal: nominal.toString(),
       tahun_ajaran: tahunAjaran || ''
@@ -531,6 +655,7 @@ function Pemasukan() {
     handleCreate({
       keterangan: keterangan,
       kategori: 'PSB',
+      lembaga: 'UWABA',
       status: via === 'TF' ? 'Bank' : 'Cash',
       nominal: nominal.toString(),
       tahun_ajaran: tahunAjaran || ''
@@ -570,6 +695,7 @@ function Pemasukan() {
     setFormData({
       keterangan: pemasukan.keterangan || '',
       kategori: pemasukan.kategori || '',
+      lembaga: pemasukan.lembaga || '',
       status: pemasukan.status || 'Cash',
       nominal: pemasukan.nominal || '',
       hijriyah: pemasukan.hijriyah || '',
@@ -763,6 +889,7 @@ function Pemasukan() {
       const payload = {
         keterangan: formData.keterangan.trim(),
         kategori: formData.kategori || null,
+        lembaga: formData.lembaga || null,
         status: formData.status,
         nominal: parseFloat(formData.nominal),
         hijriyah: formData.hijriyah || null,
@@ -848,6 +975,12 @@ function Pemasukan() {
                 setStatusFilter(e.target.value)
                 setPemasukanPage(1)
               }}
+              lembagaFilter={lembagaFilter}
+              onLembagaFilterChange={(e) => {
+                setLembagaFilter(e.target.value)
+                setPemasukanPage(1)
+              }}
+              listLembaga={listLembaga}
               tanggalDari={tanggalDari}
               onTanggalDariChange={(e) => {
                 setTanggalDari(e.target.value)
@@ -858,12 +991,43 @@ function Pemasukan() {
                 setTanggalSampai(e.target.value)
                 setPemasukanPage(1)
               }}
+              tanggalHijriyahDari={tanggalHijriyahDari}
+              onTanggalHijriyahDariChange={(value) => {
+                setTanggalHijriyahDari(value)
+                setPemasukanPage(1)
+              }}
+              tanggalHijriyahSampai={tanggalHijriyahSampai}
+              onTanggalHijriyahSampaiChange={(value) => {
+                setTanggalHijriyahSampai(value)
+                setPemasukanPage(1)
+              }}
+              tanggalHijriyahDariConverted={tanggalHijriyahDariConverted}
+              tanggalHijriyahSampaiConverted={tanggalHijriyahSampaiConverted}
               onCreateClick={handleCreate}
               onUwabaClick={() => setShowUwabaModal(true)}
               onTunggakanClick={() => setShowTunggakanModal(true)}
               onKhususClick={() => setShowKhususModal(true)}
               onPendaftaranClick={() => setShowPendaftaranModal(true)}
             />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+              <div className="bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700 px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Count Data (Sesuai Filter)
+                </p>
+                <p className="mt-0.5 text-lg font-bold text-gray-800 dark:text-gray-100">
+                  {filteredPemasukan.length}
+                </p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-md shadow-sm border border-gray-200 dark:border-gray-700 px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Sum Nominal (Sesuai Filter)
+                </p>
+                <p className="mt-0.5 text-lg font-bold text-teal-600 dark:text-teal-400">
+                  {formatCurrency(totalNominalFiltered)}
+                </p>
+              </div>
+            </div>
 
 
             {/* Pemasukan List */}
@@ -897,6 +1061,11 @@ function Pemasukan() {
                         </h3>
                         <div className="flex flex-wrap gap-2 mb-1">
                           {pemasukan.kategori && getKategoriBadge(pemasukan.kategori)}
+                          {pemasukan.lembaga && (
+                            <span className="px-2 py-0.5 bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200 rounded text-xs">
+                              {pemasukan.lembaga}
+                            </span>
+                          )}
                           {getStatusBadge(pemasukan.status)}
                         </div>
                         <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
@@ -1022,6 +1191,7 @@ function Pemasukan() {
           setFormData({
             keterangan: '',
             kategori: 'Lainnya',
+            lembaga: '',
             status: 'Cash',
             nominal: '',
             hijriyah: '',
@@ -1066,6 +1236,24 @@ function Pemasukan() {
                   <option value="Cashback">Cashback</option>
                   <option value="BOS">BOS</option>
                   <option value="Lainnya">Lainnya</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Lembaga
+                </label>
+                <select
+                  value={formData.lembaga}
+                  onChange={(e) => setFormData({ ...formData, lembaga: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-teal-500"
+                >
+                  <option value="">Pilih Lembaga</option>
+                  {listLembaga.map((lembaga) => (
+                    <option key={lembaga.id} value={lembaga.id}>
+                      {lembaga.id}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1147,6 +1335,7 @@ function Pemasukan() {
                 setFormData({
                   keterangan: '',
                   kategori: 'Lainnya',
+                  lembaga: '',
                   status: 'Cash',
                   nominal: ''
                 })

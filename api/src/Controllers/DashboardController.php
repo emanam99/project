@@ -152,7 +152,7 @@ class DashboardController
             error_log("Dashboard error trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan',
                 'trace' => $e->getTraceAsString()
             ], 500);
         }
@@ -197,7 +197,7 @@ class DashboardController
             error_log("Kelompok detail error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -261,7 +261,7 @@ class DashboardController
             error_log("Update kelompok error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal update database: ' . $e->getMessage()
+                'message' => 'Gagal update database'
             ], 500);
         }
     }
@@ -401,7 +401,31 @@ class DashboardController
 
     private function getKomposisiStatus(): array
     {
-        $stmt = $this->db->query("SELECT status_santri, COUNT(*) as total FROM santri GROUP BY status_santri");
+        $stmt = $this->db->query("
+            SELECT
+                status_santri,
+                COUNT(*) as total,
+                SUM(
+                    CASE
+                        WHEN UPPER(TRIM(gender)) = 'L'
+                            OR UPPER(TRIM(gender)) = 'LAKI-LAKI'
+                            OR UPPER(TRIM(gender)) LIKE 'LAKI%'
+                            OR (UPPER(TRIM(gender)) LIKE 'L%' AND LENGTH(TRIM(gender)) <= 2)
+                        THEN 1 ELSE 0
+                    END
+                ) as total_l,
+                SUM(
+                    CASE
+                        WHEN UPPER(TRIM(gender)) = 'P'
+                            OR UPPER(TRIM(gender)) = 'PEREMPUAN'
+                            OR UPPER(TRIM(gender)) LIKE 'PEREMPUAN%'
+                            OR (UPPER(TRIM(gender)) LIKE 'P%' AND LENGTH(TRIM(gender)) <= 2)
+                        THEN 1 ELSE 0
+                    END
+                ) as total_p
+            FROM santri
+            GROUP BY status_santri
+        ");
         $statusLabels = [];
         $statusData = [];
         $statusL = [];
@@ -410,31 +434,8 @@ class DashboardController
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
             $statusLabels[] = $row['status_santri'];
             $statusData[] = (int)$row['total'];
-            
-            $statusVal = $row['status_santri'];
-            
-            // Query untuk Laki-laki
-            $qL = $this->db->prepare("SELECT COUNT(*) as total FROM santri WHERE status_santri = ? AND (
-                UPPER(TRIM(gender)) = 'L' OR 
-                UPPER(TRIM(gender)) = 'LAKI-LAKI' OR 
-                UPPER(TRIM(gender)) LIKE 'LAKI%' OR
-                (UPPER(TRIM(gender)) LIKE 'L%' AND LENGTH(TRIM(gender)) <= 2)
-            )");
-            $qL->execute([$statusVal]);
-            $lCount = (int)($qL->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
-            
-            // Query untuk Perempuan
-            $qP = $this->db->prepare("SELECT COUNT(*) as total FROM santri WHERE status_santri = ? AND (
-                UPPER(TRIM(gender)) = 'P' OR 
-                UPPER(TRIM(gender)) = 'PEREMPUAN' OR 
-                UPPER(TRIM(gender)) LIKE 'PEREMPUAN%' OR
-                (UPPER(TRIM(gender)) LIKE 'P%' AND LENGTH(TRIM(gender)) <= 2)
-            )");
-            $qP->execute([$statusVal]);
-            $pCount = (int)($qP->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
-            
-            $statusL[] = $lCount;
-            $statusP[] = $pCount;
+            $statusL[] = (int)($row['total_l'] ?? 0);
+            $statusP[] = (int)($row['total_p'] ?? 0);
         }
 
         return [
@@ -482,7 +483,7 @@ class DashboardController
                 DATE(masehi) as tanggal,
                 COALESCE(SUM(nominal), 0) as total
             FROM uwaba___bayar 
-            WHERE DATE(masehi) >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
+            WHERE masehi >= DATE_SUB(CURDATE(), INTERVAL 15 DAY)
             GROUP BY DATE(masehi)
             ORDER BY tanggal ASC
         ");
@@ -511,20 +512,35 @@ class DashboardController
         $params = [];
         
         if ($tahunAjaran && $tahunAjaranMasehi) {
-            $whereConditions[] = "(tahun_ajaran = ? OR tahun_ajaran = ?)";
+            $whereConditions[] = "(t.tahun_ajaran = ? OR t.tahun_ajaran = ?)";
             $params[] = $tahunAjaran;
             $params[] = $tahunAjaranMasehi;
         } elseif ($tahunAjaran) {
-            $whereConditions[] = "tahun_ajaran = ?";
+            $whereConditions[] = "t.tahun_ajaran = ?";
             $params[] = $tahunAjaran;
         } elseif ($tahunAjaranMasehi) {
-            $whereConditions[] = "tahun_ajaran = ?";
+            $whereConditions[] = "t.tahun_ajaran = ?";
             $params[] = $tahunAjaranMasehi;
         }
         
         $whereSql = count($whereConditions) > 0 ? "WHERE " . $whereConditions[0] : "";
         
-        $stmt = $this->db->prepare("SELECT `$groupBy`, COUNT(*) as jumlah_tunggakan, SUM(wajib) as total, MIN(id) as min_id FROM uwaba___tunggakan $whereSql GROUP BY `$groupBy`");
+        $stmt = $this->db->prepare("
+            SELECT
+                t.`$groupBy` AS group_value,
+                COUNT(*) AS jumlah_tunggakan,
+                COALESCE(SUM(t.wajib), 0) AS total,
+                COALESCE(SUM(b.total_bayar), 0) AS total_bayar,
+                MIN(COALESCE(t.keterangan_2, '')) AS keterangan_2
+            FROM uwaba___tunggakan t
+            LEFT JOIN (
+                SELECT id_tunggakan, COALESCE(SUM(nominal), 0) AS total_bayar
+                FROM uwaba___bayar_tunggakan
+                GROUP BY id_tunggakan
+            ) b ON b.id_tunggakan = t.id
+            $whereSql
+            GROUP BY t.`$groupBy`
+        ");
         if (count($params) > 0) {
             $stmt->execute($params);
         } else {
@@ -533,37 +549,18 @@ class DashboardController
         $kelompok = [];
         
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-            $groupValue = $row[$groupBy] ?? null;
+            $groupValue = $row['group_value'] ?? null;
             if ($groupValue === null) {
                 continue; // Skip jika nilai groupBy null
             }
-            
-            $stmtKet2 = $this->db->prepare("SELECT keterangan_2 FROM uwaba___tunggakan WHERE id = ? LIMIT 1");
-            $stmtKet2->execute([$row['min_id']]);
-            $keterangan2 = ($ket2row = $stmtKet2->fetch(\PDO::FETCH_ASSOC)) ? $ket2row['keterangan_2'] : '';
-            
-            // Filter bayar berdasarkan tahun_ajaran hijriyah OR tahun_ajaran masehi
-            if ($tahunAjaran && $tahunAjaranMasehi) {
-                $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_tunggakan b JOIN uwaba___tunggakan t ON b.id_tunggakan = t.id WHERE t.`$groupBy` = ? AND (t.tahun_ajaran = ? OR t.tahun_ajaran = ?)");
-                $stmtBayar->execute([$groupValue, $tahunAjaran, $tahunAjaranMasehi]);
-            } elseif ($tahunAjaran) {
-                $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_tunggakan b JOIN uwaba___tunggakan t ON b.id_tunggakan = t.id WHERE t.`$groupBy` = ? AND t.tahun_ajaran = ?");
-                $stmtBayar->execute([$groupValue, $tahunAjaran]);
-            } elseif ($tahunAjaranMasehi) {
-                $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_tunggakan b JOIN uwaba___tunggakan t ON b.id_tunggakan = t.id WHERE t.`$groupBy` = ? AND t.tahun_ajaran = ?");
-                $stmtBayar->execute([$groupValue, $tahunAjaranMasehi]);
-            } else {
-            $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_tunggakan b JOIN uwaba___tunggakan t ON b.id_tunggakan = t.id WHERE t.`$groupBy` = ?");
-                $stmtBayar->execute([$groupValue]);
-            }
-            $totalBayarKelompok = (int)($stmtBayar->fetchColumn() ?: 0);
+            $keterangan2 = $groupBy === 'keterangan_2' ? (string)$groupValue : (string)($row['keterangan_2'] ?? '');
             
             $kelompok[] = [
                 $groupBy => $groupValue,
                 'keterangan_2' => $keterangan2,
                 'jumlah_tunggakan' => (int)$row['jumlah_tunggakan'],
                 'total' => (int)$row['total'],
-                'total_bayar' => $totalBayarKelompok
+                'total_bayar' => (int)($row['total_bayar'] ?? 0)
             ];
         }
         
@@ -583,20 +580,35 @@ class DashboardController
         $params = [];
         
         if ($tahunAjaran && $tahunAjaranMasehi) {
-            $whereConditions[] = "(tahun_ajaran = ? OR tahun_ajaran = ?)";
+            $whereConditions[] = "(k.tahun_ajaran = ? OR k.tahun_ajaran = ?)";
             $params[] = $tahunAjaran;
             $params[] = $tahunAjaranMasehi;
         } elseif ($tahunAjaran) {
-            $whereConditions[] = "tahun_ajaran = ?";
+            $whereConditions[] = "k.tahun_ajaran = ?";
             $params[] = $tahunAjaran;
         } elseif ($tahunAjaranMasehi) {
-            $whereConditions[] = "tahun_ajaran = ?";
+            $whereConditions[] = "k.tahun_ajaran = ?";
             $params[] = $tahunAjaranMasehi;
         }
         
         $whereSql = count($whereConditions) > 0 ? "WHERE " . $whereConditions[0] : "";
         
-        $stmt = $this->db->prepare("SELECT `$groupBy`, COUNT(*) as jumlah_tunggakan, SUM(wajib) as total, MIN(id) as min_id FROM uwaba___khusus $whereSql GROUP BY `$groupBy`");
+        $stmt = $this->db->prepare("
+            SELECT
+                k.`$groupBy` AS group_value,
+                COUNT(*) AS jumlah_tunggakan,
+                COALESCE(SUM(k.wajib), 0) AS total,
+                COALESCE(SUM(b.total_bayar), 0) AS total_bayar,
+                MIN(COALESCE(k.keterangan_2, '')) AS keterangan_2
+            FROM uwaba___khusus k
+            LEFT JOIN (
+                SELECT id_khusus, COALESCE(SUM(nominal), 0) AS total_bayar
+                FROM uwaba___bayar_khusus
+                GROUP BY id_khusus
+            ) b ON b.id_khusus = k.id
+            $whereSql
+            GROUP BY k.`$groupBy`
+        ");
         if (count($params) > 0) {
             $stmt->execute($params);
         } else {
@@ -605,37 +617,18 @@ class DashboardController
         $kelompok = [];
         
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-            $groupValue = $row[$groupBy] ?? null;
+            $groupValue = $row['group_value'] ?? null;
             if ($groupValue === null) {
                 continue; // Skip jika nilai groupBy null
             }
-            
-            $stmtKet2 = $this->db->prepare("SELECT keterangan_2 FROM uwaba___khusus WHERE id = ? LIMIT 1");
-            $stmtKet2->execute([$row['min_id']]);
-            $keterangan2 = ($ket2row = $stmtKet2->fetch(\PDO::FETCH_ASSOC)) ? $ket2row['keterangan_2'] : '';
-            
-            // Filter bayar berdasarkan tahun_ajaran hijriyah OR tahun_ajaran masehi
-            if ($tahunAjaran && $tahunAjaranMasehi) {
-                $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_khusus b JOIN uwaba___khusus k ON b.id_khusus = k.id WHERE k.`$groupBy` = ? AND (k.tahun_ajaran = ? OR k.tahun_ajaran = ?)");
-                $stmtBayar->execute([$groupValue, $tahunAjaran, $tahunAjaranMasehi]);
-            } elseif ($tahunAjaran) {
-                $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_khusus b JOIN uwaba___khusus k ON b.id_khusus = k.id WHERE k.`$groupBy` = ? AND k.tahun_ajaran = ?");
-                $stmtBayar->execute([$groupValue, $tahunAjaran]);
-            } elseif ($tahunAjaranMasehi) {
-                $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_khusus b JOIN uwaba___khusus k ON b.id_khusus = k.id WHERE k.`$groupBy` = ? AND k.tahun_ajaran = ?");
-                $stmtBayar->execute([$groupValue, $tahunAjaranMasehi]);
-            } else {
-            $stmtBayar = $this->db->prepare("SELECT COALESCE(SUM(b.nominal),0) as total_bayar FROM uwaba___bayar_khusus b JOIN uwaba___khusus k ON b.id_khusus = k.id WHERE k.`$groupBy` = ?");
-                $stmtBayar->execute([$groupValue]);
-            }
-            $totalBayar = (int)($stmtBayar->fetchColumn() ?: 0);
+            $keterangan2 = $groupBy === 'keterangan_2' ? (string)$groupValue : (string)($row['keterangan_2'] ?? '');
             
             $kelompok[] = [
                 $groupBy => $groupValue,
                 'keterangan_2' => $keterangan2,
                 'jumlah_tunggakan' => (int)$row['jumlah_tunggakan'],
                 'total' => (int)$row['total'],
-                'total_bayar' => $totalBayar
+                'total_bayar' => (int)($row['total_bayar'] ?? 0)
             ];
         }
         
@@ -921,7 +914,7 @@ class DashboardController
             error_log("Get data santri error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -1126,7 +1119,7 @@ class DashboardController
             error_log("Get data khusus error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -1225,7 +1218,7 @@ class DashboardController
             return $this->jsonResponse($response, ['success' => true, 'data' => $formattedData], 200);
         } catch (\Exception $e) {
             error_log("Get data tunggakan error: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Terjadi kesalahan'], 500);
         }
     }
 

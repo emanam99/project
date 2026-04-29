@@ -500,6 +500,10 @@ export default function Notifikasi() {
                 <Link to="/settings/evolution-wa" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
                   Evolution WA →
                 </Link>
+                <span className="text-gray-300 dark:text-gray-600">·</span>
+                <Link to="/settings/email-otp" className="text-sm text-teal-600 dark:text-teal-400 hover:underline">
+                  OTP Email →
+                </Link>
                 {provider === 'wa_sendiri' && (
                   <>
                     <span className="text-gray-300 dark:text-gray-600">·</span>

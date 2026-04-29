@@ -34,6 +34,12 @@ return function (\Slim\App $app): void {
         $group->post('/santri', [SantriController::class, 'updateSantri']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::santriCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::PSB_TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
 
+    // Data mentah untuk editor spreadsheet santri (FortuneSheet) + simpan massal.
+    $app->group('/api', function ($group) {
+        $group->get('/santri/excel-raw', [SantriController::class, 'getExcelRawSantri']);
+        $group->post('/santri/excel-bulk-update', [SantriController::class, 'bulkUpdateSantriFromExcel']);
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::santriExcelApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::SUPER_ADMIN_MENUS)))->add(new AuthMiddleware());
+
     // Profil total pembayaran & syahriah — staff UWABA
     $app->group('/api', function ($group) {
         $group->get('/profil/total-pembayaran', [ProfilController::class, 'totalPembayaranHariIni']);
@@ -42,6 +48,12 @@ return function (\Slim\App $app): void {
         $group->post('/payment/syahriah/delete', [PaymentController::class, 'deleteSyahriahPayment']);
         $group->post('/payment/syahriah/history', [PaymentController::class, 'getSyahriahHistory']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::uwabaStaffSuperSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::UWABA_STAFF_SUPER_SELECTORS)))->add(new AuthMiddleware());
+
+    // Issue signed token akses pembayaran publik (short TTL).
+    // Cukup user terautentikasi; pengetatan otorisasi (siapa boleh issue untuk siapa) dilakukan di controller / lapisan client.
+    $app->group('/api', function ($group) {
+        $group->post('/payment/public-token', [PaymentController::class, 'issuePublicPaymentToken']);
+    })->add(new AuthMiddleware());
 
     // Saldo pemasukan/pengeluaran (header Keuangan) — selaras financeMenus + UWABA
     $app->group('/api', function ($group) {

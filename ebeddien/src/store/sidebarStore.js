@@ -3,7 +3,13 @@ import { create } from 'zustand'
 const getInitialCollapsed = () => {
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('sidebarCollapsed')
-    if (saved !== null) return JSON.parse(saved)
+    if (saved !== null) {
+      try {
+        return JSON.parse(saved)
+      } catch (error) {
+        localStorage.removeItem('sidebarCollapsed')
+      }
+    }
   }
   return false
 }

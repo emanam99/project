@@ -822,7 +822,7 @@ class PaymentTransactionController
             error_log("PaymentTransactionController::createTransaction error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat transaksi: ' . $e->getMessage()
+                'message' => 'Gagal membuat transaksi'
             ], 500);
         }
     }
@@ -888,8 +888,8 @@ class PaymentTransactionController
                     }
                 }
             } else {
-                // Fallback: iPaymu mengirim callback tanpa header va/signature (notifikasi fallback).
-                // Jika body callback sudah berisi status paid (berhasil/status_code 1), proses body langsung seperti callback resmi.
+                // Fallback tanpa signature tidak boleh langsung update status dari body callback.
+                // Jalur ini hanya untuk sinkronisasi status melalui API iPaymu berdasarkan session_id.
                 $sessionId = $callbackData['session_id'] ?? $callbackData['sid'] ?? null;
                 if (empty($sessionId)) {
                     error_log("PaymentTransactionController::handleCallback - Header va/signature tidak ada dan session_id/sid tidak ada di body");
@@ -898,16 +898,7 @@ class PaymentTransactionController
                         'message' => 'Unauthorized'
                     ], 401);
                 }
-                $callbackIndicatesPaid = ($this->mapStatusFromResponse($callbackData) === 'paid');
-                if (!empty($callbackData) && $callbackIndicatesPaid) {
-                    // Body callback punya status berhasil/paid → proses seperti callback dengan signature (update + insert psb___transaksi)
-                    error_log("PaymentTransactionController::handleCallback - Fallback: memproses body callback (status paid) session_id=" . $sessionId);
-                    $result = $this->ipaymuService->processCallback($callbackData);
-                    $httpCode = isset($result['http_code']) ? (int) $result['http_code'] : ($result['success'] ? 200 : 400);
-                    unset($result['http_code']);
-                    return $this->jsonResponse($response, $result, $httpCode);
-                }
-                // Body tidak ada atau status belum paid → sinkron dari API transaction
+                // Sinkron dari API transaction agar status berasal dari source yang tervalidasi.
                 $stmt = $this->db->prepare("SELECT id, status, id_payment FROM payment___transaction WHERE session_id = ? LIMIT 1");
                 $stmt->execute([$sessionId]);
                 $transaction = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -1158,7 +1149,7 @@ class PaymentTransactionController
             error_log("PaymentTransactionController::getPendingTransaction error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil transaksi pending: ' . $e->getMessage()
+                'message' => 'Gagal mengambil transaksi pending'
             ], 500);
         }
     }
@@ -1213,7 +1204,7 @@ class PaymentTransactionController
             error_log("PaymentTransactionController::checkStatus error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengecek status: ' . $e->getMessage()
+                'message' => 'Gagal mengecek status'
             ], 500);
         }
     }
@@ -1526,7 +1517,7 @@ class PaymentTransactionController
             error_log("PaymentTransactionController::cancelTransaction error trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membatalkan transaksi: ' . $e->getMessage()
+                'message' => 'Gagal membatalkan transaksi'
             ], 500);
         }
     }
@@ -1677,7 +1668,7 @@ class PaymentTransactionController
             error_log("PaymentTransactionController::updateTransaction error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate transaksi: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate transaksi'
             ], 500);
         }
     }

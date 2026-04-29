@@ -470,7 +470,7 @@ class PrintController
             error_log("Print data error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data print: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data print'
             ], 500);
         }
     }

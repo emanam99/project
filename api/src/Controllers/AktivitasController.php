@@ -145,7 +145,7 @@ class AktivitasController
             error_log("Get aktivitas list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar aktivitas: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar aktivitas'
             ], 500);
         }
     }
@@ -183,7 +183,7 @@ class AktivitasController
             error_log("Get available months error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar bulan: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil daftar bulan',
                 'data' => []
             ], 500);
         }
@@ -333,7 +333,7 @@ class AktivitasController
             error_log("Get aktivitas list hijriyah error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar aktivitas hijriyah: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar aktivitas hijriyah'
             ], 500);
         }
     }
@@ -373,7 +373,7 @@ class AktivitasController
             error_log("Get available hijriyah months error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar bulan hijriyah: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil daftar bulan hijriyah',
                 'data' => []
             ], 500);
         }

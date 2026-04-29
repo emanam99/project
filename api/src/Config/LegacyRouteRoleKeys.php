@@ -18,8 +18,6 @@ final class LegacyRouteRoleKeys
 
     public const TARBIYAH_SUPER_SELECTORS = 'tarbiyahSuperSelectors';
 
-    public const KALENDER_GOOGLE_STAFF_SELECTORS = 'kalenderGoogleStaffSelectors';
-
     public const PSB_STAFF_SUPER_SELECTORS = 'psbStaffSuperSelectors';
 
     public const PSB_ADMIN_SUPER_SELECTORS = 'psbAdminSuperSelectors';

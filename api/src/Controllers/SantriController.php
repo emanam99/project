@@ -384,7 +384,7 @@ class SantriController
             error_log("Update santri error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error updating santri: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate data santri'
             ], 500);
         }
     }
@@ -505,7 +505,7 @@ class SantriController
             error_log("Get public shohifah error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -642,7 +642,7 @@ class SantriController
             error_log("Save public shohifah error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan'
             ], 500);
         }
     }
@@ -694,6 +694,341 @@ class SantriController
                 'success' => false,
                 'message' => 'Gagal mengambil data santri',
                 'data' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/santri/excel-raw
+     * Data ringkas untuk editor spreadsheet.
+     */
+    public function getExcelRawSantri(Request $request, Response $response): Response
+    {
+        try {
+            $q = $request->getQueryParams();
+            $lembaga = isset($q['lembaga']) ? trim((string) $q['lembaga']) : '';
+            $kelas = isset($q['kelas']) ? trim((string) $q['kelas']) : '';
+            $kel = isset($q['kel']) ? trim((string) $q['kel']) : '';
+            $statusCsv = isset($q['status']) ? trim((string) $q['status']) : '';
+            $kategori = isset($q['kategori']) ? trim((string) $q['kategori']) : '';
+            $daerah = isset($q['daerah']) ? trim((string) $q['daerah']) : '';
+            $kamar = isset($q['kamar']) ? trim((string) $q['kamar']) : '';
+            $tidakDiniyah = isset($q['tidak_diniyah']) && (string) $q['tidak_diniyah'] === '1';
+            $tidakFormal = isset($q['tidak_formal']) && (string) $q['tidak_formal'] === '1';
+
+            $sql = "SELECT
+                s.id,
+                s.nis,
+                s.nama,
+                s.nik,
+                s.tempat_lahir,
+                s.tanggal_lahir,
+                s.gender,
+                s.nisn,
+                s.no_kk,
+                s.kepala_keluarga,
+                s.anak_ke,
+                s.jumlah_saudara,
+                s.ayah,
+                s.status_ayah,
+                s.nik_ayah,
+                s.tempat_lahir_ayah,
+                s.tanggal_lahir_ayah,
+                s.pekerjaan_ayah,
+                s.pendidikan_ayah,
+                s.penghasilan_ayah,
+                s.ibu,
+                s.status_ibu,
+                s.nik_ibu,
+                s.tempat_lahir_ibu,
+                s.tanggal_lahir_ibu,
+                s.pekerjaan_ibu,
+                s.pendidikan_ibu,
+                s.penghasilan_ibu,
+                s.hubungan_wali,
+                s.wali,
+                s.nik_wali,
+                s.tempat_lahir_wali,
+                s.tanggal_lahir_wali,
+                s.pekerjaan_wali,
+                s.pendidikan_wali,
+                s.penghasilan_wali,
+                s.status_santri,
+                COALESCE(d.kategori, s.kategori) AS kategori,
+                s.status_pendaftar,
+                s.status_murid,
+                s.status_nikah,
+                s.pekerjaan,
+                s.saudara_di_pesantren,
+                s.hobi,
+                s.cita_cita,
+                s.kebutuhan_khusus,
+                s.riwayat_sakit,
+                s.ukuran_baju,
+                s.kip,
+                s.pkh,
+                s.kks,
+                s.dusun,
+                s.rt,
+                s.rw,
+                s.desa,
+                s.kecamatan,
+                s.kabupaten,
+                s.provinsi,
+                s.kode_pos,
+                s.madrasah,
+                s.nama_madrasah,
+                s.alamat_madrasah,
+                s.lulus_madrasah,
+                s.sekolah,
+                s.nama_sekolah,
+                s.alamat_sekolah,
+                s.lulus_sekolah,
+                s.npsn,
+                s.nsm,
+                d.daerah,
+                dk.kamar,
+                CONCAT(COALESCE(d.daerah, ''), IF(COALESCE(d.daerah, '') <> '' AND COALESCE(dk.kamar, '') <> '', '.', ''), COALESCE(dk.kamar, '')) AS daerah_kamar,
+                s.id_kamar,
+                s.id_diniyah,
+                rd.lembaga_id AS diniyah,
+                rd.kelas AS kelas_diniyah,
+                rd.kel AS kel_diniyah,
+                s.nim_diniyah,
+                s.id_formal,
+                rf.lembaga_id AS formal,
+                rf.kelas AS kelas_formal,
+                rf.kel AS kel_formal,
+                s.nim_formal,
+                s.lttq,
+                s.kelas_lttq,
+                s.kel_lttq,
+                s.no_telpon,
+                s.no_wa_santri,
+                s.email
+                FROM santri s
+                LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
+                LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
+                LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                LEFT JOIN daerah d ON d.id = dk.id_daerah";
+
+            $where = [];
+            $bind = [];
+
+            if ($lembaga !== '') {
+                $where[] = '(rd.lembaga_id = ? OR rf.lembaga_id = ?)';
+                $bind[] = $lembaga;
+                $bind[] = $lembaga;
+            }
+
+            if ($kelas !== '' && $lembaga !== '') {
+                $where[] = '((rd.lembaga_id = ? AND rd.kelas = ?) OR (rf.lembaga_id = ? AND rf.kelas = ?))';
+                $bind[] = $lembaga;
+                $bind[] = $kelas;
+                $bind[] = $lembaga;
+                $bind[] = $kelas;
+            }
+
+            if ($kel !== '' && $lembaga !== '') {
+                $where[] = '((rd.lembaga_id = ? AND rd.kel = ?) OR (rf.lembaga_id = ? AND rf.kel = ?))';
+                $bind[] = $lembaga;
+                $bind[] = $kel;
+                $bind[] = $lembaga;
+                $bind[] = $kel;
+            }
+
+            if ($statusCsv !== '') {
+                $statusList = array_values(array_filter(array_map(static function ($v) {
+                    $x = strtolower(trim((string) $v));
+                    if ($x === 'khooriji') $x = 'khoriji';
+                    return $x;
+                }, explode(',', $statusCsv)), static function ($x) {
+                    return $x !== '';
+                }));
+                if ($statusList !== []) {
+                    $ph = implode(',', array_fill(0, count($statusList), '?'));
+                    $where[] = "LOWER(TRIM(COALESCE(s.status_santri, ''))) IN ($ph)";
+                    foreach ($statusList as $sv) $bind[] = $sv;
+                }
+            }
+
+            if ($kategori !== '') {
+                $where[] = 'COALESCE(d.kategori, s.kategori) = ?';
+                $bind[] = $kategori;
+            }
+            if ($daerah !== '') {
+                $where[] = 'd.daerah = ?';
+                $bind[] = $daerah;
+            }
+            if ($kamar !== '') {
+                $where[] = 'dk.kamar = ?';
+                $bind[] = $kamar;
+            }
+            if ($tidakDiniyah) {
+                $where[] = '(s.id_diniyah IS NULL OR s.id_diniyah = "")';
+            }
+            if ($tidakFormal) {
+                $where[] = '(s.id_formal IS NULL OR s.id_formal = "")';
+            }
+
+            if ($where !== []) {
+                $sql .= ' WHERE ' . implode(' AND ', $where);
+            }
+            $sql .= ' ORDER BY s.id ASC';
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($bind);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $rows
+            ], 200);
+        } catch (\Exception $e) {
+            error_log("Get excel raw santri error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil data mentah santri',
+                'data' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/santri/excel-bulk-update
+     * Body: { rows: [{id, ...fields}] }
+     */
+    public function bulkUpdateSantriFromExcel(Request $request, Response $response): Response
+    {
+        try {
+            $payload = $request->getParsedBody();
+            $rows = is_array($payload['rows'] ?? null) ? $payload['rows'] : [];
+            if ($rows === []) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'rows wajib diisi'
+                ], 400);
+            }
+
+            $allowedFields = [
+                'nama', 'tempat_lahir', 'tanggal_lahir', 'gender', 'nisn', 'no_kk', 'kepala_keluarga', 'anak_ke', 'jumlah_saudara',
+                'ayah', 'status_ayah', 'nik_ayah', 'tempat_lahir_ayah', 'tanggal_lahir_ayah', 'pekerjaan_ayah', 'pendidikan_ayah', 'penghasilan_ayah',
+                'ibu', 'status_ibu', 'nik_ibu', 'tempat_lahir_ibu', 'tanggal_lahir_ibu', 'pekerjaan_ibu', 'pendidikan_ibu', 'penghasilan_ibu',
+                'hubungan_wali', 'wali', 'nik_wali', 'tempat_lahir_wali', 'tanggal_lahir_wali', 'pekerjaan_wali', 'pendidikan_wali', 'penghasilan_wali',
+                'status_santri', 'kategori', 'status_pendaftar', 'status_murid', 'status_nikah', 'pekerjaan',
+                'saudara_di_pesantren', 'hobi', 'cita_cita', 'kebutuhan_khusus', 'riwayat_sakit', 'ukuran_baju', 'kip', 'pkh', 'kks',
+                'dusun', 'rt', 'rw', 'desa', 'kecamatan', 'kabupaten', 'provinsi', 'kode_pos',
+                'madrasah', 'nama_madrasah', 'alamat_madrasah', 'lulus_madrasah',
+                'sekolah', 'nama_sekolah', 'alamat_sekolah', 'lulus_sekolah', 'npsn', 'nsm',
+                'id_kamar', 'id_diniyah', 'nim_diniyah', 'id_formal', 'nim_formal',
+                'lttq', 'kelas_lttq', 'kel_lttq',
+                'no_telpon', 'no_wa_santri', 'email'
+            ];
+
+            $this->db->beginTransaction();
+            $updated = 0;
+            $skipped = 0;
+            $errors = [];
+            $reqUser = $request->getAttribute('user');
+            $pengurusId = isset($reqUser['id_pengurus']) ? (int) $reqUser['id_pengurus'] : null;
+            if (!$pengurusId && isset($reqUser['user_id'])) {
+                $pengurusId = (int) $reqUser['user_id'];
+            }
+
+            foreach ($rows as $idx => $row) {
+                if (!is_array($row)) {
+                    $skipped++;
+                    continue;
+                }
+                $idRaw = $row['id'] ?? null;
+                $resolvedId = SantriHelper::resolveId($this->db, $idRaw);
+                if ($resolvedId === null) {
+                    $errors[] = "Baris " . ($idx + 1) . ": ID santri tidak valid";
+                    continue;
+                }
+
+                $set = [];
+                $params = [];
+                foreach ($allowedFields as $field) {
+                    if (!array_key_exists($field, $row)) {
+                        continue;
+                    }
+                    $set[] = $field . " = ?";
+                    $val = $row[$field];
+                    if ($val === '') {
+                        $val = null;
+                    }
+                    $params[] = is_string($val) ? TextSanitizer::cleanTextOrNull($val) : $val;
+                }
+
+                if ($set === []) {
+                    $skipped++;
+                    continue;
+                }
+
+                $oldStmt = $this->db->prepare("SELECT * FROM santri WHERE id = ? LIMIT 1");
+                $oldStmt->execute([$resolvedId]);
+                $oldRow = $oldStmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+                $params[] = $resolvedId;
+                $sql = "UPDATE santri SET " . implode(', ', $set) . " WHERE id = ?";
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute($params);
+                $isRowUpdated = $stmt->rowCount() > 0;
+                $updated += $isRowUpdated ? 1 : 0;
+
+                if ($isRowUpdated) {
+                    $oldChanged = [];
+                    $newChanged = [];
+                    foreach ($allowedFields as $field) {
+                        if (!array_key_exists($field, $row)) {
+                            continue;
+                        }
+                        $oldVal = $oldRow[$field] ?? null;
+                        $newVal = $row[$field];
+                        if ($newVal === '') $newVal = null;
+                        if ((string) ($oldVal ?? '') === (string) ($newVal ?? '')) {
+                            continue;
+                        }
+                        $oldChanged[$field] = $oldVal;
+                        $newChanged[$field] = $newVal;
+                    }
+
+                    if ($oldChanged !== [] || $newChanged !== []) {
+                        UserAktivitasLogger::log(
+                            null,
+                            $pengurusId,
+                            UserAktivitasLogger::ACTION_UPDATE,
+                            'santri',
+                            (string) $resolvedId,
+                            $oldChanged,
+                            $newChanged,
+                            $request
+                        );
+                    }
+                }
+            }
+
+            $this->db->commit();
+            if ($updated > 0) {
+                LiveSantriIndexNotifier::ping();
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Bulk update selesai',
+                'updated' => $updated,
+                'skipped' => $skipped,
+                'errors' => $errors
+            ], 200);
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log("Bulk update santri excel error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan perubahan massal santri'
             ], 500);
         }
     }

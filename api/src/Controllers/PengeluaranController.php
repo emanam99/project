@@ -319,7 +319,7 @@ class PengeluaranController
             error_log("Create rencana error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat rencana: ' . $e->getMessage()
+                'message' => 'Gagal membuat rencana'
             ], 500);
         }
     }
@@ -520,7 +520,7 @@ class PengeluaranController
             error_log('Create rencana PSB item setor error: ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat rencana: ' . $e->getMessage(),
+                'message' => 'Gagal membuat rencana',
             ], 500);
         }
     }
@@ -639,7 +639,7 @@ class PengeluaranController
             error_log("Get rencana list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar rencana: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar rencana'
             ], 500);
         }
     }
@@ -879,7 +879,7 @@ class PengeluaranController
             error_log("Get rencana detail error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil detail rencana: ' . $e->getMessage()
+                'message' => 'Gagal mengambil detail rencana'
             ], 500);
         }
     }
@@ -959,7 +959,7 @@ class PengeluaranController
             error_log("Pengeluaran sendRencanaNotifWa error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengirim notifikasi: ' . $e->getMessage(),
+                'message' => 'Gagal mengirim notifikasi',
             ], 500);
         }
     }
@@ -1032,7 +1032,7 @@ class PengeluaranController
             error_log("Pengeluaran sendPengeluaranNotifWa error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengirim notifikasi: ' . $e->getMessage(),
+                'message' => 'Gagal mengirim notifikasi',
             ], 500);
         }
     }
@@ -1374,7 +1374,7 @@ class PengeluaranController
             error_log("Update rencana error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate rencana: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate rencana'
             ], 500);
         }
     }
@@ -2252,7 +2252,7 @@ class PengeluaranController
             error_log("Approve rencana error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal meng-approve rencana: ' . $e->getMessage()
+                'message' => 'Gagal meng-approve rencana'
             ], 500);
         }
     }
@@ -2342,7 +2342,7 @@ class PengeluaranController
             error_log("Reject rencana error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menolak rencana: ' . $e->getMessage()
+                'message' => 'Gagal menolak rencana'
             ], 500);
         }
     }
@@ -2445,7 +2445,7 @@ class PengeluaranController
             error_log("Get pengeluaran list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar pengeluaran: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar pengeluaran'
             ], 500);
         }
     }
@@ -2722,7 +2722,7 @@ class PengeluaranController
             error_log("Get pengeluaran detail error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil detail pengeluaran: ' . $e->getMessage()
+                'message' => 'Gagal mengambil detail pengeluaran'
             ], 500);
         }
     }
@@ -2888,7 +2888,7 @@ class PengeluaranController
             error_log("Create komentar error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menambahkan komentar: ' . $e->getMessage()
+                'message' => 'Gagal menambahkan komentar'
             ], 500);
         }
     }
@@ -2956,7 +2956,7 @@ class PengeluaranController
             error_log("Get komentar error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil komentar: ' . $e->getMessage()
+                'message' => 'Gagal mengambil komentar'
             ], 500);
         }
     }
@@ -3025,7 +3025,7 @@ class PengeluaranController
             error_log("Delete komentar error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus komentar: ' . $e->getMessage()
+                'message' => 'Gagal menghapus komentar'
             ], 500);
         }
     }
@@ -3063,7 +3063,7 @@ class PengeluaranController
             error_log("Get viewer error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar viewer: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar viewer'
             ], 500);
         }
     }
@@ -3240,7 +3240,7 @@ class PengeluaranController
             error_log("Upload file error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal meng-upload file: ' . $e->getMessage()
+                'message' => 'Gagal meng-upload file'
             ], 500);
         }
     }
@@ -3278,7 +3278,7 @@ class PengeluaranController
             error_log("Get files error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar file: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar file'
             ], 500);
         }
     }
@@ -3335,7 +3335,7 @@ class PengeluaranController
             error_log("Download file error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengunduh file: ' . $e->getMessage()
+                'message' => 'Gagal mengunduh file'
             ], 500);
         }
     }
@@ -3402,7 +3402,7 @@ class PengeluaranController
             error_log("Delete file error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus file: ' . $e->getMessage()
+                'message' => 'Gagal menghapus file'
             ], 500);
         }
     }
@@ -3834,7 +3834,7 @@ class PengeluaranController
             error_log("Update pengeluaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate pengeluaran: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate pengeluaran'
             ], 500);
         }
     }
@@ -3919,7 +3919,7 @@ class PengeluaranController
             error_log("Get pengurus by lembaga error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar pengurus: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar pengurus'
             ], 500);
         }
     }
@@ -3996,7 +3996,7 @@ class PengeluaranController
 
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus draft: ' . $e->getMessage(),
+                'message' => 'Gagal menghapus draft',
             ], 500);
         }
     }
@@ -4127,7 +4127,7 @@ class PengeluaranController
             error_log("Delete pengeluaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus pengeluaran: ' . $e->getMessage()
+                'message' => 'Gagal menghapus pengeluaran'
             ], 500);
         }
     }

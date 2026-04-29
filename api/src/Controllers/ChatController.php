@@ -132,7 +132,7 @@ class ChatController
             $this->log('SAVE_CHAT_ERROR: ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan chat: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan chat'
             ], 500);
         }
     }
@@ -185,7 +185,7 @@ class ChatController
         } catch (\Exception $e) {
             $this->db->rollBack();
             $this->log('SAVE_ALL_CHAT_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menyimpan: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menyimpan'], 500);
         }
     }
 
@@ -212,7 +212,7 @@ class ChatController
             return $this->jsonResponse($response, ['success' => true, 'message' => 'Status berhasil diupdate'], 200);
         } catch (\Exception $e) {
             $this->log('UPDATE_STATUS_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengupdate status: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengupdate status'], 500);
         }
     }
 
@@ -240,7 +240,7 @@ class ChatController
             return $this->jsonResponse($response, ['success' => true, 'message' => 'OK'], 200);
         } catch (\Exception $e) {
             $this->log('UPDATE_STATUS_BY_MESSAGE_ID_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengupdate status'], 500);
         }
     }
 
@@ -273,7 +273,7 @@ class ChatController
             return $this->jsonResponse($response, ['success' => true, 'count' => (int) ($result['total'] ?? 0)], 200);
         } catch (\Exception $e) {
             $this->log('COUNT_BY_SANTRI_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghitung riwayat: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menghitung riwayat'], 500);
         }
     }
 
@@ -352,7 +352,7 @@ class ChatController
             return $this->jsonResponse($response, ['success' => true, 'data' => $data], 200);
         } catch (\Exception $e) {
             $this->log('GET_CHAT_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil data chat: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil data chat'], 500);
         }
     }
 
@@ -463,7 +463,7 @@ class ChatController
             $this->log('GET_ALL_CHAT_ERROR: ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data chat: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data chat'
             ], 500);
         }
     }
@@ -504,7 +504,7 @@ class ChatController
             return $this->jsonResponse($response, ['success' => true, 'data' => $stats], 200);
         } catch (\Exception $e) {
             $this->log('GET_STATS_ERROR: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil statistik: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal mengambil statistik'], 500);
         }
     }
 
@@ -603,7 +603,7 @@ class ChatController
             $this->log('SYNC_FROM_WA_ERROR: ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal sinkron: ' . $e->getMessage(),
+                'message' => 'Gagal sinkron',
                 'synced_count' => 0,
             ], 500);
         }

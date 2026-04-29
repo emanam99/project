@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\FileUploadValidator;
 use App\Helpers\SantriHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -316,49 +317,19 @@ class SantriBerkasController
             }
 
             $file = $uploadedFiles['file'];
-            
-            // Validasi error upload
-            if ($file->getError() !== UPLOAD_ERR_OK) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Error saat upload file: ' . $this->getUploadErrorMessage($file->getError())
-                ], 400);
-            }
-
-            // Validasi tipe file (hanya gambar dan PDF)
-            $allowedTypes = [
-                'image/jpeg', 
-                'image/jpg', 
-                'image/png', 
-                'image/gif', 
-                'image/webp', 
-                'application/pdf'
-            ];
-            
-            // Validasi berdasarkan MIME type
-            $fileType = $file->getClientMediaType();
-            
-            // Validasi juga berdasarkan ekstensi file sebagai fallback
-            $originalName = $file->getClientFilename();
-            $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
             $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
-            
-            if (!in_array($fileType, $allowedTypes) && !in_array($extension, $allowedExtensions)) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Tipe file tidak diizinkan. Hanya gambar (JPEG, PNG, GIF, WEBP) dan PDF yang diizinkan'
-                ], 400);
-            }
+            $maxSize = 10 * 1024 * 1024;
 
-            // Validasi ukuran file (max 10MB)
-            $maxSize = 10 * 1024 * 1024; // 10MB
-            $fileSize = $file->getSize();
-            if ($fileSize > $maxSize) {
+            $validation = FileUploadValidator::validate($file, $allowedExtensions, $maxSize);
+            if (!$validation['success']) {
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Ukuran file terlalu besar. Maksimal 10MB'
+                    'message' => $validation['message'],
                 ], 400);
             }
+            $fileType = $validation['mime'];
+            $originalName = $file->getClientFilename();
+            $extension = $validation['extension'];
 
             // Cek apakah sudah ada berkas dengan jenis_berkas yang sama untuk santri ini
             // Khusus untuk foto_juara, kita tidak replace tapi selalu insert baru (bisa multiple)
@@ -374,24 +345,30 @@ class SantriBerkasController
                 $existingBerkas = null; // Force insert baru untuk foto_juara
             }
 
-            // Generate nama file unik
-            $extension = pathinfo($originalName, PATHINFO_EXTENSION);
-            // Sanitize jenis_berkas for filename
             $sanitizedJenis = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $jenisBerkas);
             $fileName = uniqid('santri_' . $idSantri . '_' . $sanitizedJenis . '_', true) . '.' . $extension;
-            
+
             $uploadDir = $this->uploadsPath . '/santri';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0755, true);
             }
 
             $filePath = $uploadDir . '/' . $fileName;
-            // Path relatif untuk disimpan di database (dari root project)
             $relativePath = 'uploads/santri/' . $fileName;
 
-            // Pindahkan file sementara
-            // Catatan: Kompresi gambar sudah dilakukan di frontend sebelum upload
             $file->moveTo($filePath);
+
+            $postCheck = FileUploadValidator::validateMovedFile($filePath, $extension);
+            if (!$postCheck['success']) {
+                @unlink($filePath);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $postCheck['message'],
+                ], 400);
+            }
+            if (!empty($postCheck['mime'])) {
+                $fileType = $postCheck['mime'];
+            }
             $finalFileSize = filesize($filePath);
             
             if ($existingBerkas) {
@@ -458,7 +435,7 @@ class SantriBerkasController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal meng-upload berkas: ' . $e->getMessage()
+                'message' => 'Gagal meng-upload berkas'
             ], 500);
         }
     }
@@ -732,7 +709,7 @@ class SantriBerkasController
             error_log("Get berkas list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar berkas: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar berkas'
             ], 500);
         }
     }
@@ -806,7 +783,7 @@ class SantriBerkasController
             error_log("Delete berkas error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus berkas: ' . $e->getMessage()
+                'message' => 'Gagal menghapus berkas'
             ], 500);
         }
     }
@@ -879,31 +856,19 @@ class SantriBerkasController
             }
 
             $file = $uploadedFiles['file'];
-            $originalName = $file->getClientFilename();
-            $fileType = $file->getClientMediaType();
-            $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-
-            // Allowed types (images and PDF only)
-            $allowedTypes = [
-                'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
-                'application/pdf'
-            ];
             $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
+            $maxSize = 10 * 1024 * 1024;
 
-            if (!in_array($fileType, $allowedTypes) && !in_array($extension, $allowedExtensions)) {
+            $validation = FileUploadValidator::validate($file, $allowedExtensions, $maxSize);
+            if (!$validation['success']) {
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Tipe file tidak diizinkan. Hanya foto (JPEG, PNG, GIF, WEBP) dan PDF yang diizinkan'
+                    'message' => $validation['message'],
                 ], 400);
             }
-
-            $maxSize = 10 * 1024 * 1024; // 10MB
-            if ($file->getSize() > $maxSize) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Ukuran file terlalu besar. Maksimal 10MB'
-                ], 400);
-            }
+            $originalName = $file->getClientFilename();
+            $fileType = $validation['mime'];
+            $extension = $validation['extension'];
 
             // Hapus file lama
             $oldFilePath = $this->resolvePath($berkasLama['path_file']);
@@ -923,12 +888,21 @@ class SantriBerkasController
             $filePath = $uploadDir . '/' . $fileName;
             $relativePath = 'uploads/santri/' . $fileName;
 
-            // Pindahkan file baru
-            // Catatan: Kompresi gambar sudah dilakukan di frontend sebelum upload
             $file->moveTo($filePath);
+
+            $postCheck = FileUploadValidator::validateMovedFile($filePath, $extension);
+            if (!$postCheck['success']) {
+                @unlink($filePath);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $postCheck['message'],
+                ], 400);
+            }
+            if (!empty($postCheck['mime'])) {
+                $fileType = $postCheck['mime'];
+            }
             $finalFileSize = filesize($filePath);
 
-            // Update database
             $updateSql = "UPDATE santri___berkas 
                          SET nama_file = ?, path_file = ?, ukuran_file = ?, tipe_file = ?, 
                              keterangan = ?, id_admin = ?, tanggal_update = CURRENT_TIMESTAMP
@@ -963,7 +937,7 @@ class SantriBerkasController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengganti berkas: ' . $e->getMessage()
+                'message' => 'Gagal mengganti berkas'
             ], 500);
         }
     }
@@ -1030,7 +1004,7 @@ class SantriBerkasController
             error_log("Download berkas error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengunduh berkas: ' . $e->getMessage()
+                'message' => 'Gagal mengunduh berkas'
             ], 500);
         }
     }
@@ -1144,7 +1118,7 @@ class SantriBerkasController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal link berkas: ' . $e->getMessage()
+                'message' => 'Gagal link berkas'
             ], 500);
         }
     }

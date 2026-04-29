@@ -153,6 +153,10 @@ function Pengeluaran() {
     pengeluaranLembagaFilter,
     pengeluaranTanggalDari,
     pengeluaranTanggalSampai,
+    pengeluaranTahunHijriyahDari,
+    pengeluaranTahunHijriyahSampai,
+    pengeluaranTahunHijriyahDariMasehi,
+    pengeluaranTahunHijriyahSampaiMasehi,
     pengeluaranPage,
     setPengeluaranPage,
     isPengeluaranFilterOpen,
@@ -165,7 +169,9 @@ function Pengeluaran() {
     setPengeluaranKategoriFilter,
     setPengeluaranLembagaFilter,
     setPengeluaranTanggalDari,
-    setPengeluaranTanggalSampai
+    setPengeluaranTanggalSampai,
+    setPengeluaranTahunHijriyahDari,
+    setPengeluaranTahunHijriyahSampai
   } = pengeluaranFilters
   
   // Destructure draft filters
@@ -971,6 +977,18 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                     setPengeluaranTanggalSampai(e.target.value)
                     setPengeluaranPage(1)
                   }}
+                  tahunHijriyahDari={pengeluaranTahunHijriyahDari}
+                  onTahunHijriyahDariChange={(e) => {
+                    setPengeluaranTahunHijriyahDari(e.target.value)
+                    setPengeluaranPage(1)
+                  }}
+                  tahunHijriyahSampai={pengeluaranTahunHijriyahSampai}
+                  onTahunHijriyahSampaiChange={(e) => {
+                    setPengeluaranTahunHijriyahSampai(e.target.value)
+                    setPengeluaranPage(1)
+                  }}
+                  tahunHijriyahDariConverted={pengeluaranTahunHijriyahDariMasehi}
+                  tahunHijriyahSampaiConverted={pengeluaranTahunHijriyahSampaiMasehi}
                   lembagaRows={lembagaRows}
                   allowedLembagaIds={pengeluaranFitur.allowedLembagaIdsPengeluaran}
                   lembagaFilterDisabled={!!lockedPengeluaranLembagaId}

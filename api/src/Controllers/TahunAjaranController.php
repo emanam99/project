@@ -61,7 +61,7 @@ class TahunAjaranController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data tahun ajaran',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -101,7 +101,7 @@ class TahunAjaranController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data tahun ajaran',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -176,7 +176,7 @@ class TahunAjaranController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan tahun ajaran',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -269,7 +269,7 @@ class TahunAjaranController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate tahun ajaran',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }

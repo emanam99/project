@@ -18,6 +18,7 @@ class RateLimitMiddleware implements MiddlewareInterface
     private $maxDaftarAttempts;
     private $lockoutDaftarSeconds;
     private $disableLocalhost;
+    private $trustedProxies;
 
     public function __construct()
     {
@@ -31,6 +32,7 @@ class RateLimitMiddleware implements MiddlewareInterface
         $this->maxDaftarAttempts = $security['max_daftar_attempts'] ?? 25;
         $this->lockoutDaftarSeconds = $security['lockout_daftar_seconds'] ?? 900;
         $this->disableLocalhost = $security['disable_rate_limit_localhost'] ?? true;
+        $this->trustedProxies = $security['trusted_proxies'] ?? [];
 
         // Buat tabel rate_limits jika belum ada
         $this->createTableIfNotExists();
@@ -498,13 +500,33 @@ class RateLimitMiddleware implements MiddlewareInterface
     private function getClientIp(ServerRequestInterface $request): string
     {
         $serverParams = $request->getServerParams();
-        
-        if (isset($serverParams['HTTP_X_FORWARDED_FOR'])) {
-            $ips = explode(',', $serverParams['HTTP_X_FORWARDED_FOR']);
-            return trim($ips[0]);
+
+        $remoteAddr = trim((string) ($serverParams['REMOTE_ADDR'] ?? ''));
+        if ($remoteAddr === '') {
+            return 'unknown';
         }
-        
-        return $serverParams['REMOTE_ADDR'] ?? 'unknown';
+
+        // Hanya percaya X-Forwarded-For jika request datang dari reverse proxy tepercaya.
+        if ($this->isTrustedProxy($remoteAddr) && isset($serverParams['HTTP_X_FORWARDED_FOR'])) {
+            $ips = explode(',', (string) $serverParams['HTTP_X_FORWARDED_FOR']);
+            foreach ($ips as $ip) {
+                $candidate = trim($ip);
+                if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        return $remoteAddr;
+    }
+
+    private function isTrustedProxy(string $remoteAddr): bool
+    {
+        if (empty($this->trustedProxies)) {
+            return false;
+        }
+
+        return in_array($remoteAddr, $this->trustedProxies, true);
     }
     
     /**

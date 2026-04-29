@@ -288,7 +288,7 @@ function DetailOffcanvas({
   // Load lembaga saat edit mode aktif
   useEffect(() => {
     const loadLembaga = async () => {
-      if (type === 'pengeluaran' && isEditMode && listLembaga.length === 0) {
+      if ((type === 'pengeluaran' || type === 'pemasukan') && isEditMode && listLembaga.length === 0) {
         try {
           setLoadingLembaga(true)
           const response = await lembagaAPI.getAll()
@@ -317,6 +317,7 @@ function DetailOffcanvas({
       if (type === 'pemasukan') {
         const response = await pemasukanAPI.update(detailData.id, {
           kategori: editFormData.kategori || null,
+          lembaga: editFormData.lembaga || null,
           status: editFormData.status || 'Cash'
         })
 
@@ -333,7 +334,7 @@ function DetailOffcanvas({
               // Update form data dengan data terbaru
               setEditFormData({
                 kategori: detailResponse.data.kategori || '',
-                lembaga: '',
+                lembaga: detailResponse.data.lembaga || '',
                 sumber_uang: 'Cash',
                 status: detailResponse.data.status || detailResponse.data.sumber_uang || 'Cash'
               })
@@ -343,6 +344,7 @@ function DetailOffcanvas({
             // Fallback: update lokal saja
             if (detailData) {
               detailData.kategori = editFormData.kategori || null
+              detailData.lembaga = editFormData.lembaga || null
               detailData.status = editFormData.status || 'Cash'
               detailData.sumber_uang = editFormData.status || 'Cash'
             }
@@ -786,7 +788,7 @@ function DetailOffcanvas({
                                 onClick={() => {
                                   setEditFormData({
                                     kategori: detailData?.kategori || '',
-                                    lembaga: '',
+                                    lembaga: detailData?.lembaga || '',
                                     sumber_uang: 'Cash',
                                     status: detailData?.status || detailData?.sumber_uang || 'Cash'
                                   })
@@ -836,7 +838,23 @@ function DetailOffcanvas({
                                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-teal-500"
                                 >
                                   <option value="Cash">Cash</option>
-                                  <option value="TF">Transfer</option>
+                                  <option value="Bank">Bank</option>
+                                  <option value="Lainnya">Lainnya</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-sm font-medium text-gray-600 dark:text-gray-400 block mb-1">Lembaga:</label>
+                                <select
+                                  value={editFormData.lembaga}
+                                  onChange={(e) => setEditFormData(prev => ({ ...prev, lembaga: e.target.value }))}
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-teal-500"
+                                >
+                                  <option value="">Pilih Lembaga</option>
+                                  {listLembaga.map((lembaga) => (
+                                    <option key={lembaga.id} value={lembaga.id}>
+                                      {lembaga.id}
+                                    </option>
+                                  ))}
                                 </select>
                               </div>
                               <div className="flex gap-2 pt-2">
@@ -874,6 +892,12 @@ function DetailOffcanvas({
                                 <div className="flex justify-between">
                                   <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Kategori:</span>
                                   <span className="text-sm text-gray-800 dark:text-gray-200">{detailData.kategori}</span>
+                                </div>
+                              )}
+                              {detailData.lembaga && (
+                                <div className="flex justify-between">
+                                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Lembaga:</span>
+                                  <span className="text-sm text-gray-800 dark:text-gray-200">{detailData.lembaga}</span>
                                 </div>
                               )}
                               {(detailData.sumber_uang || detailData.status) && (

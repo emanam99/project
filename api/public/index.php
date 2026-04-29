@@ -78,7 +78,6 @@ use App\Controllers\PengeluaranRencanaFileControllerV2;
 use App\Controllers\WhatsAppController;
 use App\Controllers\KalenderController;
 use App\Controllers\HariPentingController;
-use App\Controllers\GoogleCalendarController;
 use App\Controllers\MadrasahController;
 use App\Controllers\MadrasahFotoController;
 use App\Controllers\PengurusController;
@@ -676,7 +675,6 @@ $errorMiddleware->setErrorHandler(
 (require __DIR__ . '/../routes/17_madrasah_jabatan.php')($app);
 (require __DIR__ . '/../routes/18_uploads_santri_juara.php')($app);
 (require __DIR__ . '/../routes/19_kalender_hari_penting.php')($app);
-(require __DIR__ . '/../routes/20_google_calendar.php')($app);
 (require __DIR__ . '/../routes/21_ijin_boyong.php')($app);
 (require __DIR__ . '/../routes/22_mybeddian.php')($app);
 (require __DIR__ . '/../routes/23_cashless.php')($app);

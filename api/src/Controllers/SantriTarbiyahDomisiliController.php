@@ -37,7 +37,7 @@ class SantriTarbiyahDomisiliController
             return $this->json($response, ['success' => true, 'data' => $st->fetchAll(\PDO::FETCH_ASSOC)], 200);
         } catch (\Exception $e) {
             error_log('listCatatan: ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->json($response, ['success' => false, 'message' => 'Gagal mengambil daftar catatan'], 500);
         }
     }
 
@@ -70,7 +70,7 @@ class SantriTarbiyahDomisiliController
             return $this->json($response, ['success' => true, 'message' => 'Catatan disimpan', 'data' => ['id' => $id]], 201);
         } catch (\Exception $e) {
             error_log('createCatatan: ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->json($response, ['success' => false, 'message' => 'Gagal menyimpan catatan'], 500);
         }
     }
 
@@ -99,7 +99,7 @@ class SantriTarbiyahDomisiliController
             return $this->json($response, ['success' => true, 'message' => 'Kamar santri diperbarui'], 200);
         } catch (\Exception $e) {
             error_log('pindahKamar: ' . $e->getMessage());
-            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->json($response, ['success' => false, 'message' => 'Gagal memindahkan kamar santri'], 500);
         }
     }
 

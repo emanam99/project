@@ -33,6 +33,7 @@ class RombelController
         try {
             $params = $request->getQueryParams();
             $lembagaId = $params['lembaga_id'] ?? null;
+            $lembagaIdsCsv = isset($params['lembaga_ids']) ? trim((string) $params['lembaga_ids']) : '';
             $lembagaNama = isset($params['lembaga_nama']) ? trim((string) $params['lembaga_nama']) : null;
             $status = $params['status'] ?? null;
             $page = isset($params['page']) ? max(1, (int) $params['page']) : 1;
@@ -44,7 +45,20 @@ class RombelController
 
             $where = " WHERE 1=1";
             $bind = [];
-            if ($lembagaId !== null && $lembagaId !== '') {
+            if ($lembagaIdsCsv !== '') {
+                $lembagaIds = array_values(array_filter(array_map(static function ($v) {
+                    return trim((string) $v);
+                }, explode(',', $lembagaIdsCsv)), static function ($v) {
+                    return $v !== '';
+                }));
+                if ($lembagaIds !== []) {
+                    $ph = implode(',', array_fill(0, count($lembagaIds), '?'));
+                    $where .= " AND r.lembaga_id IN ($ph)";
+                    foreach ($lembagaIds as $lid) {
+                        $bind[] = $lid;
+                    }
+                }
+            } elseif ($lembagaId !== null && $lembagaId !== '') {
                 $where .= " AND r.lembaga_id = ?";
                 $bind[] = trim((string) $lembagaId);
             } elseif ($lembagaNama !== null && $lembagaNama !== '') {
@@ -102,7 +116,7 @@ class RombelController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data rombel',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -145,7 +159,7 @@ class RombelController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data rombel',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -241,7 +255,7 @@ class RombelController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan rombel',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -304,7 +318,7 @@ class RombelController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate rombel',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -365,7 +379,7 @@ class RombelController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengubah status rombel',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -423,7 +437,7 @@ class RombelController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menghapus rombel',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

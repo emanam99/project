@@ -8,6 +8,7 @@ namespace App\Helpers;
  */
 class TextSanitizer
 {
+    private const ALLOWED_RICH_HTML_TAGS = '<p><br><strong><b><em><i><u><ul><ol><li>';
     /**
      * Daftar field yang dianggap numerik/tanggal — tidak di-sanitize dengan cleanText (tetap trim).
      * Untuk field lain (string bebas) gunakan cleanText.
@@ -119,6 +120,43 @@ class TextSanitizer
     {
         $cleaned = self::cleanText($value);
         return $cleaned === '' ? null : $cleaned;
+    }
+
+    /**
+     * Sanitasi rich text HTML dengan allowlist tag sederhana untuk editor deskripsi.
+     * Semua atribut dihapus agar event handler/JS URL tidak bisa disisipkan.
+     */
+    public static function cleanRichHtmlOrNull(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $value = mb_convert_encoding((string) $value, 'UTF-8', 'UTF-8');
+        if ($value === false) {
+            return null;
+        }
+
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value) ?? '';
+        $value = str_replace("\xEF\xBF\xBD", '', $value);
+        $value = preg_replace('/[\x{E000}-\x{F8FF}]/u', '', $value) ?? $value;
+
+        // Hapus tag berbahaya beserta kontennya.
+        $value = preg_replace('/<(script|style|iframe|object|embed|svg|math)[^>]*>.*?<\/\1>/is', '', $value) ?? $value;
+
+        // Sisakan hanya tag yang diizinkan.
+        $value = strip_tags($value, self::ALLOWED_RICH_HTML_TAGS);
+
+        // Hapus seluruh atribut dari tag yang diizinkan (onerror, style, class, dst).
+        $value = preg_replace('/<([a-z0-9]+)(\s+[^>]*)>/i', '<$1>', $value) ?? $value;
+
+        // Rapikan karakter spasi non-breaking.
+        $value = str_replace('&nbsp;', ' ', $value);
+        $value = trim($value);
+
+        // Jika setelah dibersihkan tidak ada teks bermakna, simpan null.
+        $plainText = trim(strip_tags($value));
+        return $plainText === '' ? null : $value;
     }
 
     /**

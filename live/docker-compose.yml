@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: alutsmani-live:local
+    container_name: ${LIVE_CONTAINER_NAME:-live-app}
+    restart: always
+    stop_grace_period: 30s
+    ports:
+      - "${PORT:-3004}:${PORT:-3004}"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production

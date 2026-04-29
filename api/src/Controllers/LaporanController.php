@@ -158,7 +158,7 @@ class LaporanController
             error_log("Laporan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data laporan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data laporan'
             ], 500);
         }
     }

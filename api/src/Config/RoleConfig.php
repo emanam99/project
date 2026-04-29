@@ -40,6 +40,8 @@ class RoleConfig
         'admin_daerah' => ['uwaba'],
         /** Admin Domisili: baseline akses app; menu/aksi lewat Role & Akses. */
         'admin_domisili' => ['uwaba'],
+        'admin_diniyah' => [],
+        'admin_formal' => [],
         'kapdar' => ['uwaba'],
         'wakapdar' => ['uwaba'],
         'wali_kelas' => [],
@@ -117,6 +119,8 @@ class RoleConfig
             'manage_santri',
             'view_reports'
         ],
+        'admin_diniyah' => [],
+        'admin_formal' => [],
         'kapdar' => [
             'manage_santri',
             'view_reports'
@@ -203,6 +207,8 @@ class RoleConfig
         'tarbiyah' => 'Tarbiyah',
         'admin_daerah' => 'Admin Daerah',
         'admin_domisili' => 'Admin Domisili',
+        'admin_diniyah' => 'Admin Diniyah',
+        'admin_formal' => 'Admin Formal',
         'kapdar' => 'Kapdar',
         'wakapdar' => 'Wakapdar',
         'wali_kelas' => 'Wali Kelas',

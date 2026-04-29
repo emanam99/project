@@ -42,6 +42,16 @@ export function usePengurusFiturAccess() {
     }
 
     const filterLembagaSemua = lembagaSemua(C.filterLembagaSemua, () => true)
+    const tambahPengurus = (() => {
+      if (isSuper) return true
+      if (!apiHasPengurusActions) return true
+      return codes.includes(C.tambah)
+    })()
+    const importPengurus = (() => {
+      if (isSuper) return true
+      if (!apiHasPengurusActions) return true
+      return codes.includes(C.import)
+    })()
 
     const lembagaFilterLocked =
       apiHasPengurusActions && lembagaIds.length > 0 && !filterLembagaSemua && !isSuper
@@ -53,6 +63,8 @@ export function usePengurusFiturAccess() {
       apiHasPengurusActions,
       hasMenuPengurus,
       filterLembagaSemua,
+      tambahPengurus,
+      importPengurus,
       lembagaFilterLocked,
       allowedLembagaIdsFilter,
     }

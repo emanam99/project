@@ -14,7 +14,6 @@ export const GROUP_ORDER = [
   'Ijin',
   'Wirid',
   'Kalender',
-  'Kalender Pesantren',
   'Domisili',
   'Lembaga',
   'Setting',

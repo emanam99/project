@@ -116,7 +116,7 @@ class SubscriptionController
             error_log("Save subscription error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan subscription: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan subscription'
             ], 500);
         }
     }
@@ -154,7 +154,7 @@ class SubscriptionController
             error_log("Get subscriptions error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil subscriptions: ' . $e->getMessage()
+                'message' => 'Gagal mengambil subscriptions'
             ], 500);
         }
     }
@@ -210,7 +210,7 @@ class SubscriptionController
             error_log("Delete subscription error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus subscription: ' . $e->getMessage()
+                'message' => 'Gagal menghapus subscription'
             ], 500);
         }
     }
@@ -261,7 +261,7 @@ class SubscriptionController
             error_log("Delete subscription by endpoint error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus subscription: ' . $e->getMessage()
+                'message' => 'Gagal menghapus subscription'
             ], 500);
         }
     }

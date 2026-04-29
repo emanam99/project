@@ -96,13 +96,13 @@ class PengaturanController
             error_log("Get all pengaturan PDO error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data pengaturan'
             ], 500);
         } catch (\Exception $e) {
             error_log("Get all pengaturan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data pengaturan'
             ], 500);
         }
     }
@@ -163,13 +163,13 @@ class PengaturanController
             error_log("Get pengaturan by key PDO error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil pengaturan'
             ], 500);
         } catch (\Exception $e) {
             error_log("Get pengaturan by key error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal mengambil pengaturan'
             ], 500);
         }
     }
@@ -255,13 +255,13 @@ class PengaturanController
             error_log("Create pengaturan PDO error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal membuat pengaturan'
             ], 500);
         } catch (\Exception $e) {
             error_log("Create pengaturan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal membuat pengaturan'
             ], 500);
         }
     }
@@ -358,7 +358,7 @@ class PengaturanController
             error_log("Update pengaturan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate pengaturan'
             ], 500);
         }
     }
@@ -455,7 +455,7 @@ class PengaturanController
             error_log("Update pengaturan by key error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate pengaturan'
             ], 500);
         }
     }
@@ -505,7 +505,7 @@ class PengaturanController
             error_log("Delete pengaturan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus pengaturan: ' . $e->getMessage()
+                'message' => 'Gagal menghapus pengaturan'
             ], 500);
         }
     }
@@ -624,7 +624,7 @@ class PengaturanController
             error_log("Upload image pengaturan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal upload gambar: ' . $e->getMessage()
+                'message' => 'Gagal upload gambar'
             ], 500);
         }
     }
@@ -688,7 +688,7 @@ class PengaturanController
             error_log("Serve image pengaturan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil gambar: ' . $e->getMessage()
+                'message' => 'Gagal mengambil gambar'
             ], 500);
         }
     }

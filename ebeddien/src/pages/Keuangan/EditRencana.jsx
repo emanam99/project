@@ -10,6 +10,7 @@ import { useNotification } from '../../contexts/NotificationContext'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { generateRencanaWhatsAppMessage } from './Pengeluaran/utils/pengeluaranUtils'
 import { compressImage } from '../../utils/imageCompression'
+import { PickDateHijri, formatHijriDateDisplay } from '../../components/PickDateHijri'
 import * as XLSX from 'xlsx'
 import Modal from '../../components/Modal/Modal'
 import WaNotifRecipientChecklist from './Pengeluaran/components/WaNotifRecipientChecklist'
@@ -113,8 +114,8 @@ function EditRencana({
   ])
 
   const submitPrimaryLabel = useMemo(() => {
-    if (isCreateMode) return 'Ajukan'
-    if (rencana?.ket === 'draft') return 'Ajukan'
+    if (isCreateMode) return 'Ajukan Rencana'
+    if (rencana?.ket === 'draft') return 'Ajukan Rencana'
     return 'Update'
   }, [isCreateMode, rencana?.ket])
 
@@ -1249,15 +1250,23 @@ function EditRencana({
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Hijriyah
                   </label>
-                  <input
-                    type="text"
+                  <PickDateHijri
                     value={formData.hijriyah}
-                    onChange={(e) => setFormData(prev => ({ ...prev, hijriyah: e.target.value }))}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
-                    placeholder="Auto dari header"
+                    onChange={(value) => setFormData(prev => ({ ...prev, hijriyah: value || '' }))}
+                    placeholder="Pilih tanggal Hijriyah"
+                    className="w-full"
+                    inputClassName="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Otomatis diambil dari tanggal hijriyah di header
+                    Nilai awal otomatis dari tanggal Hijriyah di header, bisa diubah lewat picker
+                  </p>
+                  {formData.hijriyah ? (
+                    <p className="text-xs text-teal-600 dark:text-teal-400 mt-1">
+                      Dipilih: {formatHijriDateDisplay(formData.hijriyah)}
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Kosongkan jika ingin pakai default saat submit
                   </p>
                 </div>
 
@@ -1662,7 +1671,7 @@ function EditRencana({
                         Menyimpan...
                       </>
                     ) : (
-                      'Draft'
+                      'Simpan Draft'
                     )}
                   </button>
                 ) : null}

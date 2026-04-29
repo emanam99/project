@@ -42,9 +42,6 @@ final class EbeddienFiturAccessDefinitions
             'menu.manage_uploads',
             'menu.whatsapp_koneksi',
             'menu.juara.data_juara',
-            'menu.kalender_pesantren',
-            'menu.kalender_pesantren.kelola_event',
-            'menu.kalender_pesantren.pengaturan',
         ];
     }
 
@@ -222,6 +219,15 @@ final class EbeddienFiturAccessDefinitions
     public static function santriByKelasApiSelectors(): array
     {
         return self::santriCrudApiSelectors();
+    }
+
+    /** GET/POST /api/santri/excel-* */
+    public static function santriExcelApiSelectors(): array
+    {
+        return self::merge(
+            self::superAdminMenus(),
+            ['action.santri.excel']
+        );
     }
 
     /** /api/rombel, /api/wali-kelas, /api/santri-lulusan (konteks rombel) */
@@ -422,17 +428,6 @@ final class EbeddienFiturAccessDefinitions
                 'menu.dashboard_keuangan',
             ]
         );
-    }
-
-    public static function kalenderGoogleStaffSelectors(): array
-    {
-        return [
-            'menu.kalender.pengaturan',
-            'menu.converter',
-            'menu.kalender_pesantren',
-            'menu.kalender_pesantren.kelola_event',
-            'menu.kalender_pesantren.pengaturan',
-        ];
     }
 
     /** POST /api/kalender (bulk bulan) — terpisah dari tab hari penting. */

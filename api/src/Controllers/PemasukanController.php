@@ -20,7 +20,7 @@ class PemasukanController
     }
 
     /**
-     * Ensure hijriyah and tahun_ajaran columns exist in pemasukan table
+     * Ensure dynamic columns exist in pemasukan table
      */
     private function ensureColumnsExist(): void
     {
@@ -37,6 +37,13 @@ class PemasukanController
             if ($columnCheck->rowCount() === 0) {
                 $this->db->exec("ALTER TABLE pemasukan ADD COLUMN tahun_ajaran VARCHAR(20) NULL AFTER hijriyah");
                 error_log("COLUMN_ADDED: tahun_ajaran column added to pemasukan table");
+            }
+
+            // Check if lembaga column exists
+            $columnCheck = $this->db->query("SHOW COLUMNS FROM pemasukan LIKE 'lembaga'");
+            if ($columnCheck->rowCount() === 0) {
+                $this->db->exec("ALTER TABLE pemasukan ADD COLUMN lembaga VARCHAR(50) NULL AFTER kategori");
+                error_log("COLUMN_ADDED: lembaga column added to pemasukan table");
             }
         } catch (\Exception $e) {
             error_log("Error ensuring columns exist: " . $e->getMessage());
@@ -63,6 +70,7 @@ class PemasukanController
             $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
             $keterangan = TextSanitizer::cleanText($data['keterangan'] ?? '');
             $kategori = $data['kategori'] ?? 'Lainnya';
+            $lembaga = $data['lembaga'] ?? null;
             $status = $data['status'] ?? 'Cash';
             $nominal = $data['nominal'] ?? 0;
             $hijriyah = $data['hijriyah'] ?? null;
@@ -100,10 +108,10 @@ class PemasukanController
                 ], 400);
             }
 
-            $sql = "INSERT INTO pemasukan (keterangan, kategori, id_admin, status, nominal, hijriyah, tahun_ajaran) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO pemasukan (keterangan, kategori, lembaga, id_admin, status, nominal, hijriyah, tahun_ajaran) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $this->db->prepare($sql);
-            $stmt->execute([$keterangan, $kategori, $idAdmin, $status, $nominal, $hijriyah, $tahunAjaran]);
+            $stmt->execute([$keterangan, $kategori, $lembaga, $idAdmin, $status, $nominal, $hijriyah, $tahunAjaran]);
             
             $idPemasukan = $this->db->lastInsertId();
 
@@ -145,6 +153,7 @@ class PemasukanController
         try {
             $queryParams = $request->getQueryParams();
             $kategori = $queryParams['kategori'] ?? null;
+            $lembaga = $queryParams['lembaga'] ?? null;
             $status = $queryParams['status'] ?? null;
             $tanggalDari = $queryParams['tanggal_dari'] ?? null;
             $tanggalSampai = $queryParams['tanggal_sampai'] ?? null;
@@ -164,6 +173,11 @@ class PemasukanController
             if ($status) {
                 $conditions[] = "p.status = ?";
                 $params[] = $status;
+            }
+
+            if ($lembaga) {
+                $conditions[] = "p.lembaga = ?";
+                $params[] = $lembaga;
             }
 
             if ($tanggalDari) {
@@ -300,6 +314,7 @@ class PemasukanController
 
             $keterangan = $data['keterangan'] ?? null;
             $kategori = $data['kategori'] ?? null;
+            $lembaga = $data['lembaga'] ?? null;
             $status = $data['status'] ?? null;
             $nominal = $data['nominal'] ?? null;
             $hijriyah = $data['hijriyah'] ?? null;
@@ -331,6 +346,11 @@ class PemasukanController
                 }
                 $updateFields[] = "kategori = ?";
                 $params[] = $kategori;
+            }
+
+            if ($lembaga !== null) {
+                $updateFields[] = "lembaga = ?";
+                $params[] = $lembaga !== '' ? $lembaga : null;
             }
 
             if ($status !== null) {

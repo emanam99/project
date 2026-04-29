@@ -75,7 +75,7 @@ class WaliKelasController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data wali kelas',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -127,7 +127,7 @@ class WaliKelasController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data wali kelas',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -202,7 +202,7 @@ class WaliKelasController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan wali kelas',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -284,7 +284,7 @@ class WaliKelasController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate wali kelas',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -345,7 +345,7 @@ class WaliKelasController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengubah status wali kelas',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

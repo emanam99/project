@@ -50,7 +50,7 @@ class WaInteractiveMenuController
             ], 200);
         } catch (\Throwable $e) {
             error_log('WaInteractiveMenuController::putSettings ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menyimpan pengaturan'], 500);
         }
     }
 
@@ -145,8 +145,7 @@ class WaInteractiveMenuController
             return $this->jsonResponse($response, ['success' => false, 'message' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
             error_log('WaInteractiveMenuController::putTree ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
-            $msg = $e instanceof \RuntimeException ? $e->getMessage() : 'Gagal menyimpan menu';
-            return $this->jsonResponse($response, ['success' => false, 'message' => $msg], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menyimpan menu'], 500);
         }
     }
 }

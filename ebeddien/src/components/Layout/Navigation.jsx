@@ -668,15 +668,29 @@ function Navigation() {
   useEffect(() => {
     const expandedMenu = expandedMenuScrollRef.current
     if (expandedMenu) {
+      const handleExpandedMenuMouseEnter = () => {
+        if (expandedScrollTimeoutRef.current) {
+          clearTimeout(expandedScrollTimeoutRef.current)
+        }
+        setShowExpandedScrollbar(true)
+      }
+
+      const handleExpandedMenuMouseLeave = () => {
+        if (expandedScrollTimeoutRef.current) {
+          clearTimeout(expandedScrollTimeoutRef.current)
+        }
+        expandedScrollTimeoutRef.current = setTimeout(() => {
+          setShowExpandedScrollbar(false)
+        }, 500)
+      }
+
       expandedMenu.addEventListener('scroll', handleExpandedMenuScroll)
-      expandedMenu.addEventListener('mouseenter', () => setShowExpandedScrollbar(true))
-      expandedMenu.addEventListener('mouseleave', () => {
-        setTimeout(() => setShowExpandedScrollbar(false), 500)
-      })
+      expandedMenu.addEventListener('mouseenter', handleExpandedMenuMouseEnter)
+      expandedMenu.addEventListener('mouseleave', handleExpandedMenuMouseLeave)
       return () => {
         expandedMenu.removeEventListener('scroll', handleExpandedMenuScroll)
-        expandedMenu.removeEventListener('mouseenter', () => setShowExpandedScrollbar(true))
-        expandedMenu.removeEventListener('mouseleave', () => setShowExpandedScrollbar(false))
+        expandedMenu.removeEventListener('mouseenter', handleExpandedMenuMouseEnter)
+        expandedMenu.removeEventListener('mouseleave', handleExpandedMenuMouseLeave)
         if (expandedScrollTimeoutRef.current) {
           clearTimeout(expandedScrollTimeoutRef.current)
         }

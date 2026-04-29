@@ -144,7 +144,7 @@ class UwabaController
             error_log("Get uwaba error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat memproses permintaan',
                 'data' => [],
                 'histori' => []
             ], 500);
@@ -196,7 +196,7 @@ class UwabaController
 
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat memproses permintaan',
                 'data' => [],
             ], 500);
         }
@@ -241,7 +241,7 @@ class UwabaController
             error_log("Test santri count error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil test data: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil test data',
                 'data' => []
             ], 500);
         }
@@ -273,7 +273,7 @@ class UwabaController
             error_log("Get status santri options error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil status santri options: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil status santri options',
                 'data' => []
             ], 500);
         }
@@ -352,7 +352,7 @@ class UwabaController
             error_log("Get all data error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil data',
                 'data' => []
             ], 500);
         }
@@ -416,7 +416,7 @@ class UwabaController
             error_log("Get uwaba POST error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat memproses permintaan',
                 'data' => []
             ], 500);
         }
@@ -592,7 +592,7 @@ class UwabaController
             error_log("Save uwaba data error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan data: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan data'
             ], 500);
         }
     }
@@ -680,7 +680,7 @@ class UwabaController
             error_log("Delete payment error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal menghapus pembayaran'
             ], 500);
         }
     }
@@ -771,7 +771,7 @@ class UwabaController
             error_log("Create payment error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan pembayaran'
             ], 500);
         }
     }
@@ -1100,7 +1100,7 @@ class UwabaController
             error_log("Lengkapi data uwaba error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal melengkapi data: ' . $e->getMessage()
+                'message' => 'Gagal melengkapi data'
             ], 500);
         }
     }

@@ -6,6 +6,17 @@ import { jabatanAPI } from '../../services/api'
 import api from '../../services/api'
 import Modal from '../../components/Modal/Modal'
 import { useNotification } from '../../contexts/NotificationContext'
+import { useLembagaFilterAccess } from '../../hooks/useLembagaFilterAccess'
+import { LEMBAGA_FILTER_ACTION_CODES } from '../../config/lembagaFilterFiturCodes'
+
+const stripHtmlToText = (html) => {
+  if (!html) return ''
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 function ManageJabatan() {
   const { showNotification } = useNotification()
@@ -33,6 +44,7 @@ function ManageJabatan() {
   const [deleting, setDeleting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState('')
+  const lembagaAccess = useLembagaFilterAccess(LEMBAGA_FILTER_ACTION_CODES.jabatanSemua)
   const deskripsiEditorRef = useRef(null)
   const savedSelectionRef = useRef(null)
   const [deskripsiFormat, setDeskripsiFormat] = useState({ bold: false, italic: false, underline: false, bulletList: false, numberedList: false })
@@ -65,7 +77,7 @@ function ManageJabatan() {
       if (prev.bold === bold && prev.italic === italic && prev.underline === underline && prev.bulletList === bulletList && prev.numberedList === numberedList) return prev
       return { bold, italic, underline, bulletList, numberedList }
     })
-  }, [])
+  }, [lembagaAccess.allowedLembagaIds])
 
   const saveDeskripsiSelection = useCallback(() => {
     const el = deskripsiEditorRef.current
@@ -100,7 +112,7 @@ function ManageJabatan() {
 
   useEffect(() => {
     loadLembaga()
-  }, [])
+  }, [lembagaAccess.allowedLembagaIds])
 
   useEffect(() => {
     if (offcanvasOpen && deskripsiEditorRef.current) {
@@ -123,7 +135,13 @@ function ManageJabatan() {
     try {
       const response = await api.get('/lembaga')
       if (response.data.success) {
-        setLembagaList(response.data.data || [])
+        const rows = response.data.data || []
+        if (lembagaAccess.allowedLembagaIds?.length) {
+          const allowedSet = new Set(lembagaAccess.allowedLembagaIds.map(String))
+          setLembagaList(rows.filter((row) => allowedSet.has(String(row.id))))
+        } else {
+          setLembagaList(rows)
+        }
       }
     } catch (err) {
       console.error('Error loading lembaga:', err)
@@ -134,7 +152,10 @@ function ManageJabatan() {
     try {
       setLoading(true)
       setError('')
-      const response = await jabatanAPI.getAll({ limit: 10000 })
+      const response = await jabatanAPI.getAll({
+        limit: 10000,
+        lembaga_ids: lembagaAccess.allowedLembagaIds?.length ? lembagaAccess.allowedLembagaIds.join(',') : undefined,
+      })
       if (response.success) {
         setJabatanList(response.data?.jabatan || [])
       } else {
@@ -165,13 +186,18 @@ function ManageJabatan() {
   const matchByStatus = useCallback((j, val) => !val || normalizeStatus(j.status) === normalizeStatus(val), [normalizeStatus])
 
   const dataAfterFilters = useMemo(() => {
-    return jabatanList.filter(
+    let base = jabatanList
+    if (lembagaAccess.allowedLembagaIds?.length) {
+      const allowedSet = new Set(lembagaAccess.allowedLembagaIds.map(String))
+      base = base.filter((j) => allowedSet.has(String(j.lembaga_id || '')))
+    }
+    return base.filter(
       (j) =>
         matchByKategori(j, kategoriFilter) &&
         matchByLembaga(j, lembagaFilter) &&
         matchByStatus(j, statusFilter)
     )
-  }, [jabatanList, kategoriFilter, lembagaFilter, statusFilter, matchByKategori, matchByLembaga, matchByStatus])
+  }, [jabatanList, kategoriFilter, lembagaFilter, statusFilter, matchByKategori, matchByLembaga, matchByStatus, lembagaAccess.allowedLembagaIds])
 
   const filteredJabatan = useMemo(() => {
     if (!searchQuery.trim()) return dataAfterFilters
@@ -200,7 +226,12 @@ function ManageJabatan() {
       .map(([value, count]) => ({ value, label: kategoriLabel(value), count }))
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''))
 
-    const dataForLembaga = base.filter((j) => matchByKategori(j, kategoriFilter) && matchByStatus(j, statusFilter))
+    const dataForLembaga = base
+      .filter((j) => {
+        if (!lembagaAccess.allowedLembagaIds?.length) return true
+        return new Set(lembagaAccess.allowedLembagaIds.map(String)).has(String(j.lembaga_id || ''))
+      })
+      .filter((j) => matchByKategori(j, kategoriFilter) && matchByStatus(j, statusFilter))
     const lembagaCounts = {}
     dataForLembaga.forEach((j) => {
       const id = j.lembaga_id != null ? String(j.lembaga_id) : ''
@@ -224,7 +255,15 @@ function ManageJabatan() {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''))
 
     return { kategoriOptions, lembagaOptions, statusOptions }
-  }, [jabatanList, kategoriFilter, lembagaFilter, statusFilter, matchByKategori, matchByLembaga, matchByStatus, normalizeStatus, statusLabel])
+  }, [jabatanList, kategoriFilter, lembagaFilter, statusFilter, matchByKategori, matchByLembaga, matchByStatus, normalizeStatus, statusLabel, lembagaAccess.allowedLembagaIds])
+
+  useEffect(() => {
+    const allowed = lembagaAccess.allowedLembagaIds
+    if (!allowed || allowed.length === 0) return
+    if (allowed.length === 1 && lembagaFilter !== allowed[0]) {
+      setLembagaFilter(allowed[0])
+    }
+  }, [lembagaAccess.allowedLembagaIds, lembagaFilter])
 
   useEffect(() => {
     const validKategori = new Set(['', ...kategoriOptions.map((o) => o.value)])
@@ -465,8 +504,9 @@ function ManageJabatan() {
                           value={lembagaFilter}
                           onChange={(e) => setLembagaFilter(e.target.value)}
                           className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[180px]"
+                          disabled={lembagaAccess.lembagaFilterLocked && (lembagaAccess.allowedLembagaIds?.length === 1)}
                         >
-                          <option value="">Lembaga</option>
+                          <option value="">{lembagaAccess.canFilterAllLembaga ? 'Semua Lembaga' : 'Lembaga'}</option>
                           {lembagaOptions.map((o) => (
                             <option key={o.value} value={o.value}>{o.label} ({o.count})</option>
                           ))}
@@ -498,7 +538,7 @@ function ManageJabatan() {
                           type="button"
                           onClick={() => {
                             setKategoriFilter('')
-                            setLembagaFilter('')
+                            setLembagaFilter(lembagaAccess.allowedLembagaIds?.length === 1 ? lembagaAccess.allowedLembagaIds[0] : '')
                             setStatusFilter('')
                             setSearchQuery('')
                           }}
@@ -572,10 +612,9 @@ function ManageJabatan() {
                           </div>
                           
                           {jabatan.deskripsi && (
-                            <div
-                              className="deskripsi-rich-text text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-2"
-                              dangerouslySetInnerHTML={{ __html: jabatan.deskripsi }}
-                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-2">
+                              {stripHtmlToText(jabatan.deskripsi)}
+                            </p>
                           )}
                         </div>
                         
@@ -699,9 +738,14 @@ function ManageJabatan() {
                         className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-gray-700 dark:text-gray-200"
                       >
                         <option value="">-- Pilih Lembaga (Opsional) --</option>
-                        {lembagaList.map((lem) => (
+                        {lembagaList
+                          .filter((lem) => {
+                            if (!lembagaAccess.allowedLembagaIds?.length) return true
+                            return new Set(lembagaAccess.allowedLembagaIds.map(String)).has(String(lem.id))
+                          })
+                          .map((lem) => (
                           <option key={lem.id} value={lem.id}>{lem.nama || lem.id}</option>
-                        ))}
+                          ))}
                       </select>
                     </div>
 

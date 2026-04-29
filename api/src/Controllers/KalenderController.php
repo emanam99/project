@@ -67,7 +67,7 @@ class KalenderController
             return $this->getAll($response, $params['waktu'] ?? null);
         } catch (\Throwable $e) {
             error_log("Kalender get error: " . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -262,7 +262,7 @@ class KalenderController
             return $this->json($response, ['message' => 'Data kalender berhasil diproses.']);
         } catch (\Exception $e) {
             error_log("Kalender postBulk error: " . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 

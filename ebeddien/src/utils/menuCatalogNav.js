@@ -72,7 +72,7 @@ export function getHeaderGroupsFromMenuFlat(flatItems) {
   const byGroup = new Map()
   flatItems.forEach((item) => {
     const g = item.group || 'Lainnya'
-    if (g === 'My Workspace' || g === 'Kalender Pesantren') return
+    if (g === 'My Workspace') return
     const target = g === 'Domisili' || g === 'Lembaga' ? 'Setting' : g
     if (!byGroup.has(target)) byGroup.set(target, [])
     byGroup.get(target).push({ path: item.path, label: item.label })

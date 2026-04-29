@@ -35,6 +35,7 @@ class LembagaKitabController
         try {
             $params = $request->getQueryParams();
             $lembagaId = isset($params['lembaga_id']) ? trim((string) $params['lembaga_id']) : '';
+            $lembagaIdsCsv = isset($params['lembaga_ids']) ? trim((string) $params['lembaga_ids']) : '';
             $status = isset($params['status']) ? trim((string) $params['status']) : '';
             $search = isset($params['search']) ? trim((string) $params['search']) : '';
             $page = isset($params['page']) ? max(1, (int) $params['page']) : 1;
@@ -44,7 +45,20 @@ class LembagaKitabController
             $where = ' WHERE 1=1';
             $bind = [];
 
-            if ($lembagaId !== '') {
+            if ($lembagaIdsCsv !== '') {
+                $lembagaIds = array_values(array_filter(array_map(static function ($v) {
+                    return trim((string) $v);
+                }, explode(',', $lembagaIdsCsv)), static function ($v) {
+                    return $v !== '';
+                }));
+                if ($lembagaIds !== []) {
+                    $ph = implode(',', array_fill(0, count($lembagaIds), '?'));
+                    $where .= " AND r.lembaga_id IN ($ph)";
+                    foreach ($lembagaIds as $lid) {
+                        $bind[] = $lid;
+                    }
+                }
+            } elseif ($lembagaId !== '') {
                 $where .= ' AND r.lembaga_id = ?';
                 $bind[] = $lembagaId;
             }
@@ -99,7 +113,7 @@ class LembagaKitabController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil daftar mapel',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -192,7 +206,7 @@ class LembagaKitabController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan mapel',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -254,7 +268,7 @@ class LembagaKitabController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal memperbarui mapel',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }

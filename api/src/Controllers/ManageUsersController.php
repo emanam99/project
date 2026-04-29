@@ -44,6 +44,8 @@ class ManageUsersController
     }
 
     private const FITUR_PENGURUS_FILTER_LEMBAGA_SEMUA = 'action.pengurus.filter.lembaga_semua';
+    private const FITUR_PENGURUS_TAMBAH = 'action.pengurus.tambah';
+    private const FITUR_PENGURUS_IMPORT = 'action.pengurus.import';
 
     /**
      * Ruang lingkup lembaga untuk GET /api/manage-users: super / aksi semua / role tanpa batas / union lembaga penugasan.
@@ -461,7 +463,7 @@ class ManageUsersController
             error_log("Get all users error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data users: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data users'
             ], 500);
         }
     }
@@ -472,6 +474,24 @@ class ManageUsersController
     public function createUser(Request $request, Response $response): Response
     {
         try {
+            $user = $request->getAttribute('user');
+            $userArr = \is_array($user) ? $user : [];
+            $hasAnyEbeddienFiturAssignment = RoleHelper::tokenUnionHasAnyEbeddienFiturAssignment($this->db, $userArr);
+            $isImportRequest = trim((string) $request->getHeaderLine('X-Pengurus-Import')) === '1';
+            $canCreatePengurus = RoleHelper::tokenHasAnyRoleKey($userArr, ['super_admin'])
+                || RoleHelper::tokenHasEbeddienFiturCode($this->db, $userArr, self::FITUR_PENGURUS_TAMBAH)
+                || ($isImportRequest && RoleHelper::tokenHasEbeddienFiturCode($this->db, $userArr, self::FITUR_PENGURUS_IMPORT))
+                // Selaras middleware: role legacy masih boleh bila belum ada assignment fitur eBeddien.
+                || !$hasAnyEbeddienFiturAssignment;
+            if (!$canCreatePengurus) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $isImportRequest
+                        ? 'Anda tidak memiliki izin untuk import pengurus.'
+                        : 'Anda tidak memiliki izin untuk menambah pengurus.'
+                ], 403);
+            }
+
             $data = $request->getParsedBody();
             $data = TextSanitizer::sanitizeStringValues($data ?? [], []);
             
@@ -533,7 +553,7 @@ class ManageUsersController
                     $this->db->rollBack();
                     return $this->jsonResponse($response, [
                         'success' => false,
-                        'message' => 'Gagal generate NIP: ' . $e->getMessage()
+                        'message' => 'Gagal generate NIP'
                     ], 500);
                 }
             }
@@ -628,7 +648,7 @@ class ManageUsersController
             error_log("Create user error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat user: ' . $e->getMessage()
+                'message' => 'Gagal membuat user'
             ], 500);
         }
     }
@@ -639,6 +659,23 @@ class ManageUsersController
     public function updateUser(Request $request, Response $response, array $args): Response
     {
         try {
+            $user = $request->getAttribute('user');
+            $userArr = \is_array($user) ? $user : [];
+            $hasAnyEbeddienFiturAssignment = RoleHelper::tokenUnionHasAnyEbeddienFiturAssignment($this->db, $userArr);
+            $isImportRequest = trim((string) $request->getHeaderLine('X-Pengurus-Import')) === '1';
+            if ($isImportRequest) {
+                $canImportPengurus = RoleHelper::tokenHasAnyRoleKey($userArr, ['super_admin'])
+                    || RoleHelper::tokenHasEbeddienFiturCode($this->db, $userArr, self::FITUR_PENGURUS_IMPORT)
+                    // Selaras middleware: role legacy masih boleh bila belum ada assignment fitur eBeddien.
+                    || !$hasAnyEbeddienFiturAssignment;
+                if (!$canImportPengurus) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Anda tidak memiliki izin untuk import pengurus.'
+                    ], 403);
+                }
+            }
+
             $userId = $args['id'] ?? '';
             $data = $request->getParsedBody();
             $data = TextSanitizer::sanitizeStringValues($data ?? [], []);
@@ -841,7 +878,7 @@ class ManageUsersController
             error_log("Update user stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memperbarui user: ' . $e->getMessage()
+                'message' => 'Gagal memperbarui user'
             ], 500);
         }
     }
@@ -925,7 +962,7 @@ class ManageUsersController
             error_log("Delete user error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus user: ' . $e->getMessage()
+                'message' => 'Gagal menghapus user'
             ], 500);
         }
     }
@@ -1047,7 +1084,7 @@ class ManageUsersController
             error_log("Get user by ID error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data user: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data user'
             ], 500);
         }
     }
@@ -1071,7 +1108,7 @@ class ManageUsersController
             error_log("Get roles list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data roles: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data roles'
             ], 500);
         }
     }
@@ -1133,7 +1170,7 @@ class ManageUsersController
 
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar role: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil daftar role',
             ], 500);
         }
     }
@@ -1204,7 +1241,7 @@ class ManageUsersController
             error_log("Create role error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat role: ' . $e->getMessage()
+                'message' => 'Gagal membuat role'
             ], 500);
         }
     }
@@ -1306,7 +1343,7 @@ class ManageUsersController
             error_log("Update role error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memperbarui role: ' . $e->getMessage()
+                'message' => 'Gagal memperbarui role'
             ], 500);
         }
     }
@@ -1396,7 +1433,7 @@ class ManageUsersController
             error_log("Add user role error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menambahkan role: ' . $e->getMessage()
+                'message' => 'Gagal menambahkan role'
             ], 500);
         }
     }
@@ -1463,7 +1500,7 @@ class ManageUsersController
             error_log("Remove user role error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus role: ' . $e->getMessage()
+                'message' => 'Gagal menghapus role'
             ], 500);
         }
     }
@@ -1564,7 +1601,7 @@ class ManageUsersController
             error_log("Add user jabatan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menambahkan jabatan: ' . $e->getMessage()
+                'message' => 'Gagal menambahkan jabatan'
             ], 500);
         }
     }
@@ -1625,7 +1662,7 @@ class ManageUsersController
             error_log("Remove user jabatan error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus jabatan: ' . $e->getMessage()
+                'message' => 'Gagal menghapus jabatan'
             ], 500);
         }
     }
@@ -1717,7 +1754,7 @@ class ManageUsersController
             error_log("Update user jabatan status error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memperbarui status jabatan: ' . $e->getMessage()
+                'message' => 'Gagal memperbarui status jabatan'
             ], 500);
         }
     }
@@ -1863,7 +1900,7 @@ class ManageUsersController
             error_log('ManageUsersController::getAllUsersV2 ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data users: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil data users',
             ], 500);
         }
     }
@@ -2041,7 +2078,7 @@ class ManageUsersController
             error_log('ManageUsersController::getUserByIdV2 ' . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data user: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil data user',
             ], 500);
         }
     }

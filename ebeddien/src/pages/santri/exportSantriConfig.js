@@ -9,7 +9,7 @@ export const EXPORT_COLUMNS = [
   { key: 'id', label: 'ID' },
   { key: 'nis', label: 'NIS', required: true },
   { key: 'nama', label: 'Nama' },
-  { key: 'nik', label: 'NIK' },
+  { key: 'nik', label: 'NIK', required: true },
   { key: 'gender', label: 'Jenis Kelamin' },
   { key: 'tempat_lahir', label: 'Tempat Lahir' },
   { key: 'tanggal_lahir', label: 'Tanggal Lahir' },

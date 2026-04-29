@@ -37,8 +37,7 @@
 | 17 | `17_madrasah_jabatan.php` | Group `/api/madrasah`, group `/api/jabatan` |
 | 18 | `18_uploads_santri_juara.php` | Group `/api/uploads-manager`, group `/api/santri-juara` |
 | 19 | `19_kalender_hari_penting.php` | Group `/api/kalender` (POST), group `/api/hari-penting` (POST, DELETE) |
-| 20 | `20_google_calendar.php` | Dua group `/api/google-calendar` |
-| 21 | `21_ijin_boyong.php` | Group `/api/ijin`, group `/api/boyong` |
+| 20 | `21_ijin_boyong.php` | Group `/api/ijin`, group `/api/boyong` |
 
 Setelah itu di `index.php`: catch-all 404 dan `$app->run()` tetap di index (tidak dipindah).
 
@@ -79,7 +78,6 @@ Setiap file:
 (require __DIR__ . '/../routes/17_madrasah_jabatan.php')($app);
 (require __DIR__ . '/../routes/18_uploads_santri_juara.php')($app);
 (require __DIR__ . '/../routes/19_kalender_hari_penting.php')($app);
-(require __DIR__ . '/../routes/20_google_calendar.php')($app);
 (require __DIR__ . '/../routes/21_ijin_boyong.php')($app);
 
 // Catch-all untuk 404
@@ -100,10 +98,9 @@ $app->run();
 
 ## Hasil Pemeriksaan Mendalam
 
-- **Semua 21 file route** ada dan berisi route yang sesuai rencana; tidak ada route yang tertinggal di index.
+- **Semua file route** ada dan berisi route yang sesuai rencana; tidak ada route yang tertinggal di index.
 - **Urutan route:** 06_pendaftaran = dua group pendaftaran (tanpa santri-berkas di tengah); 07 = santri-berkas. Urutan require di index = urutan registrasi; path tidak bentrok.
 - **Path config di 03_public:** Versi backend memakai `dirname(__DIR__) . '/config.php'` agar resolusi ke `api/config.php` jelas (setara dengan `__DIR__ . '/../config.php'`).
-- **Google Calendar:** Group pertama (events + config) memakai `RoleMiddleware(['admin_kalender', 'super_admin'])` agar sesuai dokumentasi controller; group kedua (create/update/delete events) tetap `super_admin` only.
 - **Manage-users:** Route spesifik (`/roles/list`, `/{id}/roles`, …) didefinisikan sebelum route umum (`get('')`, `get('/{id}')`); konsisten dengan index asli.
 - **Subscription:** `delete('/subscription/endpoint')` sebelum `delete('/subscription/{id}')`; path statis sebelum dinamis.
 - **Pengaturan public:** GET `/api/pengaturan/image/{key}`, GET `/api/pengaturan`, GET `/api/pengaturan/{key}` di 03_public; urutan aman untuk matching.

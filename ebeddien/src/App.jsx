@@ -109,13 +109,11 @@ const PublicTunggakan = lazy(() => import('./pages/santri/PublicTunggakan'))
 const PublicIjin = lazy(() => import('./pages/santri/PublicIjin'))
 const PublicShohifah = lazy(() => import('./pages/santri/PublicShohifah'))
 const PublicKalender = lazy(() => import('./pages/santri/PublicKalender'))
+const ExcelSantriEditor = lazy(() => import('./pages/santri/ExcelSantriEditor'))
 const Kalender = lazy(() => import('./pages/Kalender/index.jsx'))
 const KalenderPengaturan = lazy(() => import('./pages/Kalender/KalenderPengaturan'))
 const KalenderHariPenting = lazy(() => import('./pages/Kalender/HariPenting'))
 const Converter = lazy(() => import('./pages/Converter/index.jsx'))
-const KalenderPesantren = lazy(() => import('./pages/KalenderPesantren/index.jsx'))
-const KalenderPesantrenPengaturan = lazy(() => import('./pages/KalenderPesantren/Pengaturan.jsx'))
-const KalenderPesantrenKelolaEvent = lazy(() => import('./pages/KalenderPesantren/KelolaEvent.jsx'))
 const DataMadrasah = lazy(() => import('./pages/UGT/DataMadrasah'))
 const LaporanUGT = lazy(() => import('./pages/UGT/LaporanUGT'))
 const LaporanKoordinatorPage = lazy(() => import('./pages/UGT/LaporanKoordinatorPage'))
@@ -131,6 +129,7 @@ const Fitur = lazy(() => import('./pages/Settings/Fitur'))
 const TahunAjaranPage = lazy(() => import('./pages/Settings/TahunAjaran'))
 const Notifikasi = lazy(() => import('./pages/Settings/Notifikasi'))
 const Watzap = lazy(() => import('./pages/Settings/Watzap'))
+const EmailOtp = lazy(() => import('./pages/Settings/EmailOtp'))
 const EvolutionWa = lazy(() => import('./pages/Settings/EvolutionWa'))
 const WaInteractiveMenu = lazy(() => import('./pages/Settings/WaInteractiveMenu'))
 const DataSantri = lazy(() => import('./pages/Santri/DataSantri'))
@@ -986,30 +985,6 @@ function App() {
               }
             />
             <Route
-              path="/kalender-pesantren"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <KalenderPesantren />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/kalender-pesantren/pengaturan"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <KalenderPesantrenPengaturan />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/kalender-pesantren/kelola-event"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <KalenderPesantrenKelolaEvent />
-                </Suspense>
-              }
-            />
-            <Route
               path="/super-admin/dashboard"
               element={
                 <Suspense fallback={<PageLoader />}>
@@ -1138,6 +1113,14 @@ function App() {
               }
             />
             <Route
+              path="/santri/excel-editor"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ExcelSantriEditor />
+                </Suspense>
+              }
+            />
+            <Route
               path="/lulusan"
               element={
                 <Suspense fallback={<PageLoader />}>
@@ -1230,6 +1213,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <Notifikasi />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/settings/email-otp"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <EmailOtp />
                 </Suspense>
               }
             />

@@ -66,7 +66,7 @@ class KitabController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil daftar kitab',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -193,7 +193,7 @@ class KitabController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan kitab',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -274,7 +274,7 @@ class KitabController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal memperbarui kitab',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -306,7 +306,7 @@ class KitabController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menghapus kitab',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }

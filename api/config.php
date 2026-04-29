@@ -202,11 +202,6 @@ return [
     })(),
     // Nama folder upload: production = uploads, staging = uploads2 (langsung dari .env).
     'uploads_folder' => trim(env('UPLOADS_FOLDER', 'uploads'), '/\\'),
-    // Google Calendar (opsional): API key untuk read. Service account untuk create/update/delete (super_admin).
-    'google' => [
-        'calendar_api_key' => env('GOOGLE_CALENDAR_API_KEY', null),
-        'service_account_json_path' => env('GOOGLE_SERVICE_ACCOUNT_JSON_PATH', null),
-    ],
     // iPayMu callback: verifikasi signature & IP whitelist (opsional).
     // Ref: https://documenter.getpostman.com/view/40296808/2sB3WtseBT | https://ipaymu.com/en/api-documentation/
     'ipaymu_callback' => [

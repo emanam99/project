@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Database;
+use App\Helpers\FileUploadValidator;
 use App\Helpers\RoleHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -226,34 +227,19 @@ class PengeluaranRencanaFileControllerV2
             }
 
             $file = $uploadedFiles['file'];
-            if ($file->getError() !== UPLOAD_ERR_OK) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Error saat upload file: ' . $this->getUploadErrorMessage($file->getError())
-                ], 400);
-            }
-
-            $allowedTypes = [
-                'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
-                'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            ];
-            $fileType = $file->getClientMediaType();
-            $originalName = $file->getClientFilename();
-            $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
             $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
+            $maxSize = 10 * 1024 * 1024;
 
-            if (!in_array($fileType, $allowedTypes) && !in_array($extension, $allowedExtensions)) {
+            $validation = FileUploadValidator::validate($file, $allowedExtensions, $maxSize);
+            if (!$validation['success']) {
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Tipe file tidak diizinkan. Hanya foto, PDF, Word, Excel yang diizinkan'
+                    'message' => $validation['message'],
                 ], 400);
             }
-
-            $maxSize = 10 * 1024 * 1024;
-            if ($file->getSize() > $maxSize) {
-                return $this->jsonResponse($response, ['success' => false, 'message' => 'Ukuran file terlalu besar. Maksimal 10MB'], 400);
-            }
+            $fileType = $validation['mime'];
+            $originalName = $file->getClientFilename();
+            $extension = $validation['extension'];
 
             $fileName = uniqid('rencana_' . $idRencana . '_', true) . '.' . $extension;
             $relativePath = 'rencana-pengeluaran/' . $idRencana . '/' . $fileName;
@@ -264,6 +250,18 @@ class PengeluaranRencanaFileControllerV2
             $filePath = $uploadDir . DIRECTORY_SEPARATOR . $fileName;
 
             $file->moveTo($filePath);
+
+            $postCheck = FileUploadValidator::validateMovedFile($filePath, $extension);
+            if (!$postCheck['success']) {
+                @unlink($filePath);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $postCheck['message'],
+                ], 400);
+            }
+            if (!empty($postCheck['mime'])) {
+                $fileType = $postCheck['mime'];
+            }
             $finalFileSize = $file->getSize();
 
             if (($fileType === 'application/pdf' || $extension === 'pdf') && $finalFileSize > 512 * 1024) {
@@ -299,7 +297,7 @@ class PengeluaranRencanaFileControllerV2
             ], 201);
         } catch (\Exception $e) {
             error_log("PengeluaranRencanaFileV2 upload: " . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal meng-upload file: ' . $e->getMessage()], 500);
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal meng-upload file'], 500);
         }
     }
 

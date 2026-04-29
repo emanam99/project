@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import { santriAPI, pendaftaranAPI, lembagaAPI } from '../../services/api'
 import {
   subscribeSantriRowsOrdered,
@@ -12,9 +13,14 @@ import { fetchSantriDeltaQuiet } from '../../services/santriIndexedDbSync'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import ExportSantriOffcanvas from './components/ExportSantriOffcanvas'
 import { useSantriDetailOffcanvas } from '../../contexts/SantriDetailOffcanvasContext'
+import { useLembagaFilterAccess } from '../../hooks/useLembagaFilterAccess'
+import { LEMBAGA_FILTER_ACTION_CODES } from '../../config/lembagaFilterFiturCodes'
+import { useAuthStore } from '../../store/authStore'
 
 function DataSantri() {
   const { openSantriDetail } = useSantriDetailOffcanvas()
+  const navigate = useNavigate()
+  const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [santriList, setSantriList] = useState([])
@@ -27,7 +33,8 @@ function DataSantri() {
   const [lembagaFilter, setLembagaFilter] = useState('')
   const [kelasFilter, setKelasFilter] = useState('')
   const [kelFilter, setKelFilter] = useState('')
-  const [statusSantriFilter, setStatusSantriFilter] = useState('')
+  const [statusSantriFilter, setStatusSantriFilter] = useState(['mukim', 'khoriji'])
+  const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false)
   const [kategoriFilter, setKategoriFilter] = useState('')
   const [daerahFilter, setDaerahFilter] = useState('')
   const [kamarFilter, setKamarFilter] = useState('')
@@ -38,12 +45,27 @@ function DataSantri() {
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [menuOpen, setMenuOpen] = useState(false)
+  const statusFilterRef = useRef(null)
+  const statusFilterButtonRef = useRef(null)
+  const statusFilterDropdownRef = useRef(null)
+  const [statusFilterPosition, setStatusFilterPosition] = useState({ top: 0, left: 0, width: 0 })
   const menuRef = useRef(null)
   const [isExportOffcanvasOpen, setIsExportOffcanvasOpen] = useState(false)
   const closeExportOffcanvas = useOffcanvasBackClose(isExportOffcanvasOpen, () => setIsExportOffcanvasOpen(false))
   const [lembagaRows, setLembagaRows] = useState([])
+  const lembagaAccess = useLembagaFilterAccess(LEMBAGA_FILTER_ACTION_CODES.santriSemua)
+  const canOpenExcelEditor = Array.isArray(fiturMenuCodes) && fiturMenuCodes.includes('action.santri.excel')
 
   const sameLembaga = (a, b) => (a != null && b != null && String(a) === String(b))
+  const normalizeStatusSantri = (value) => {
+    const raw = String(value || '').trim().toLowerCase()
+    if (raw === 'khooriji') return 'khoriji'
+    return raw
+  }
+  const isStatusSantriSelected = useCallback(
+    (value) => statusSantriFilter.includes(normalizeStatusSantri(value)),
+    [statusSantriFilter]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -59,17 +81,35 @@ function DataSantri() {
 
   const lembagaMasterFilterOptions = useMemo(() => {
     const rows = Array.isArray(lembagaRows) ? lembagaRows : []
+    const allowedSet = lembagaAccess.allowedLembagaIds ? new Set(lembagaAccess.allowedLembagaIds.map(String)) : null
     return rows
+      .filter((l) => !allowedSet || allowedSet.has(String(l.id)))
       .map((l) => {
         const id = String(l.id)
         const count = santriList.filter(
           (s) => sameLembaga(s.diniyah, id) || sameLembaga(s.formal, id)
         ).length
         const nama = l.nama != null && String(l.nama).trim() !== '' ? String(l.nama) : id
-        return { value: id, label: `${nama} (${count})`, count }
+        const kategori = l.kategori != null && String(l.kategori).trim() !== '' ? String(l.kategori) : 'Lainnya'
+        return { value: id, label: `${nama} (${count})`, count, kategori }
       })
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [lembagaRows, santriList])
+  }, [lembagaRows, santriList, lembagaAccess.allowedLembagaIds])
+
+  const lembagaMasterFilterGroups = useMemo(() => {
+    const grouped = new Map()
+    lembagaMasterFilterOptions.forEach((item) => {
+      const key = item.kategori || 'Lainnya'
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key).push(item)
+    })
+    return Array.from(grouped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([kategori, options]) => ({
+        kategori,
+        options: [...options].sort((a, b) => a.label.localeCompare(b.label)),
+      }))
+  }, [lembagaMasterFilterOptions])
 
   useEffect(() => {
     const valid = new Set(['', ...lembagaMasterFilterOptions.map((o) => o.value)])
@@ -94,7 +134,7 @@ function DataSantri() {
   const dynamicUniqueKategori = useMemo(() => {
     let filtered = santriList
     if (lembagaFilter) filtered = filtered.filter(s => sameLembaga(s.diniyah, lembagaFilter) || sameLembaga(s.formal, lembagaFilter))
-    if (statusSantriFilter) filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
+    if (statusSantriFilter.length > 0) filtered = filtered.filter(s => isStatusSantriSelected(s.status_santri))
     if (daerahFilter) filtered = filtered.filter(s => (s.daerah || '') === daerahFilter)
     if (kamarFilter) filtered = filtered.filter(s => (s.kamar || '') === kamarFilter)
     const values = [...new Set(filtered.map(s => (s.kategori != null && s.kategori !== '') ? String(s.kategori) : null).filter(Boolean))]
@@ -103,7 +143,7 @@ function DataSantri() {
       count: filtered.filter(s => (s.kategori || '') === val).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [santriList, lembagaFilter, statusSantriFilter, daerahFilter, kamarFilter])
+  }, [santriList, lembagaFilter, statusSantriFilter, daerahFilter, kamarFilter, isStatusSantriSelected])
 
   useEffect(() => {
     if (!kategoriFilter) {
@@ -142,7 +182,7 @@ function DataSantri() {
     if (!kategoriFilter) return []
     let filtered = santriList
     if (lembagaFilter) filtered = filtered.filter(s => sameLembaga(s.diniyah, lembagaFilter) || sameLembaga(s.formal, lembagaFilter))
-    if (statusSantriFilter) filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
+    if (statusSantriFilter.length > 0) filtered = filtered.filter(s => isStatusSantriSelected(s.status_santri))
     if (kategoriFilter) filtered = filtered.filter(s => (s.kategori || '') === kategoriFilter)
     if (daerahFilter) filtered = filtered.filter(s => (s.daerah || '') === daerahFilter)
     const values = [...new Set(filtered.map(s => (s.kamar != null && s.kamar !== '') ? String(s.kamar) : null).filter(Boolean))]
@@ -151,7 +191,7 @@ function DataSantri() {
       count: filtered.filter(s => (s.kamar || '') === val).length
     }))
     return counts.sort((a, b) => (a.value || '').localeCompare(b.value || ''))
-  }, [santriList, lembagaFilter, statusSantriFilter, kategoriFilter, daerahFilter])
+  }, [santriList, lembagaFilter, statusSantriFilter, kategoriFilter, daerahFilter, isStatusSantriSelected])
 
   // Kelas & Kel (rombel) — hanya untuk santri di lembaga terpilih
   const getKelasForLembaga = (s) => {
@@ -168,10 +208,18 @@ function DataSantri() {
     if (!lembagaFilter) return []
     return santriList.filter(s => sameLembaga(s.diniyah, lembagaFilter) || sameLembaga(s.formal, lembagaFilter))
   }, [santriList, lembagaFilter])
+
+  useEffect(() => {
+    const allowed = lembagaAccess.allowedLembagaIds
+    if (!allowed || allowed.length === 0) return
+    if (allowed.length === 1 && lembagaFilter !== allowed[0]) {
+      setLembagaFilter(allowed[0])
+    }
+  }, [lembagaAccess.allowedLembagaIds, lembagaFilter])
   const dynamicUniqueKelas = useMemo(() => {
     if (!lembagaFilter) return []
     let filtered = santriInLembaga
-    if (statusSantriFilter) filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
+    if (statusSantriFilter.length > 0) filtered = filtered.filter(s => isStatusSantriSelected(s.status_santri))
     if (kategoriFilter) filtered = filtered.filter(s => (s.kategori || '') === kategoriFilter)
     if (daerahFilter) filtered = filtered.filter(s => (s.daerah || '') === daerahFilter)
     if (kamarFilter) filtered = filtered.filter(s => (s.kamar || '') === kamarFilter)
@@ -181,11 +229,11 @@ function DataSantri() {
       count: filtered.filter(s => getKelasForLembaga(s) === val).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
-  }, [lembagaFilter, santriInLembaga, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter])
+  }, [lembagaFilter, santriInLembaga, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter, isStatusSantriSelected])
   const dynamicUniqueKel = useMemo(() => {
     if (!lembagaFilter) return []
     let filtered = santriInLembaga
-    if (statusSantriFilter) filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
+    if (statusSantriFilter.length > 0) filtered = filtered.filter(s => isStatusSantriSelected(s.status_santri))
     if (kategoriFilter) filtered = filtered.filter(s => (s.kategori || '') === kategoriFilter)
     if (daerahFilter) filtered = filtered.filter(s => (s.daerah || '') === daerahFilter)
     if (kamarFilter) filtered = filtered.filter(s => (s.kamar || '') === kamarFilter)
@@ -196,11 +244,18 @@ function DataSantri() {
       count: filtered.filter(s => getKelForLembaga(s) === val).length
     }))
     return counts.sort((a, b) => (String(a.value || '')).localeCompare(String(b.value || '')))
-  }, [lembagaFilter, kelasFilter, santriInLembaga, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter])
+  }, [lembagaFilter, kelasFilter, santriInLembaga, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter, isStatusSantriSelected])
 
   // Filter data berdasarkan search dan filter
   useEffect(() => {
     let filtered = santriList
+
+    if (lembagaAccess.allowedLembagaIds?.length) {
+      const allowedSet = new Set(lembagaAccess.allowedLembagaIds.map(String))
+      filtered = filtered.filter(
+        (s) => allowedSet.has(String(s.diniyah || '')) || allowedSet.has(String(s.formal || ''))
+      )
+    }
 
     if (lembagaFilter) {
       filtered = filtered.filter(s => sameLembaga(s.diniyah, lembagaFilter) || sameLembaga(s.formal, lembagaFilter))
@@ -217,8 +272,8 @@ function DataSantri() {
         (sameLembaga(s.formal, lembagaFilter) && (s.kel_formal || '') === kelFilter)
       )
     }
-    if (statusSantriFilter) {
-      filtered = filtered.filter(s => (s.status_santri || '') === statusSantriFilter)
+    if (statusSantriFilter.length > 0) {
+      filtered = filtered.filter(s => isStatusSantriSelected(s.status_santri))
     }
     if (kategoriFilter) {
       filtered = filtered.filter(s => (s.kategori || '') === kategoriFilter)
@@ -263,7 +318,7 @@ function DataSantri() {
     }
 
     setFilteredList(filtered)
-  }, [searchQuery, santriList, lembagaFilter, kelasFilter, kelFilter, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter, tidakDiniyahFilter, tidakFormalFilter, sortConfig])
+  }, [searchQuery, santriList, lembagaFilter, kelasFilter, kelFilter, statusSantriFilter, kategoriFilter, daerahFilter, kamarFilter, tidakDiniyahFilter, tidakFormalFilter, sortConfig, isStatusSantriSelected, lembagaAccess.allowedLembagaIds])
 
   const fetchSantriListFull = useCallback(async () => {
     setLoading(true)
@@ -355,6 +410,55 @@ function DataSantri() {
       setKelFilter('')
     }
   }, [lembagaFilter])
+
+  useEffect(() => {
+    if (!daerahFilter && kamarFilter) setKamarFilter('')
+  }, [daerahFilter, kamarFilter])
+
+  useEffect(() => {
+    const updatePosition = () => {
+      if (statusFilterButtonRef.current) {
+        const rect = statusFilterButtonRef.current.getBoundingClientRect()
+        setStatusFilterPosition({
+          top: rect.bottom + window.scrollY + 4,
+          left: rect.left + window.scrollX,
+          width: rect.width,
+        })
+      }
+    }
+
+    if (isStatusFilterOpen) {
+      updatePosition()
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
+    }
+
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [isStatusFilterOpen])
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const isClickInButton = statusFilterButtonRef.current && statusFilterButtonRef.current.contains(event.target)
+      const isClickInDropdown = statusFilterDropdownRef.current && statusFilterDropdownRef.current.contains(event.target)
+      const isClickInContainer = statusFilterRef.current && statusFilterRef.current.contains(event.target)
+      if (!isClickInButton && !isClickInDropdown && !isClickInContainer) {
+        setIsStatusFilterOpen(false)
+      }
+    }
+
+    if (isStatusFilterOpen) {
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside)
+      }, 0)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isStatusFilterOpen])
 
   // Tutup menu saat klik luar
   useEffect(() => {
@@ -501,12 +605,17 @@ function DataSantri() {
                             value={lembagaFilter}
                             onChange={(e) => setLembagaFilter(e.target.value)}
                             className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                            disabled={lembagaAccess.lembagaFilterLocked && (lembagaAccess.allowedLembagaIds?.length === 1)}
                           >
-                            <option value="">Lembaga</option>
-                            {lembagaMasterFilterOptions.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
+                            <option value="">{lembagaAccess.canFilterAllLembaga ? 'Semua Lembaga' : 'Lembaga'}</option>
+                            {lembagaMasterFilterGroups.map((group) => (
+                              <optgroup key={group.kategori} label={group.kategori}>
+                                {group.options.map((item) => (
+                                  <option key={item.value} value={item.value}>
+                                    {item.label}
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                           <AnimatePresence mode="wait">
@@ -542,16 +651,98 @@ function DataSantri() {
                               </motion.div>
                             )}
                           </AnimatePresence>
-                          <select
-                            value={statusSantriFilter}
-                            onChange={(e) => setStatusSantriFilter(e.target.value)}
-                            className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
-                          >
-                            <option value="">Status Santri</option>
-                            {dynamicUniqueStatusSantri.map(item => (
-                              <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
-                            ))}
-                          </select>
+                          <div className="relative" ref={statusFilterRef}>
+                            <button
+                              ref={statusFilterButtonRef}
+                              type="button"
+                              onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
+                              className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 flex items-center justify-between gap-1 px-2"
+                              style={{ minWidth: '120px' }}
+                            >
+                              <span className="truncate">
+                                {statusSantriFilter.length === 0
+                                  ? 'Status Santri'
+                                  : statusSantriFilter.length === 1
+                                    ? (dynamicUniqueStatusSantri.find((s) => normalizeStatusSantri(s.value) === statusSantriFilter[0])?.value || statusSantriFilter[0])
+                                    : `${statusSantriFilter.length} dipilih`}
+                              </span>
+                              <svg
+                                className={`w-3 h-3 transition-transform ${isStatusFilterOpen ? 'rotate-180' : ''}`}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                          </div>
+                          {isStatusFilterOpen && createPortal(
+                            <AnimatePresence>
+                              <motion.div
+                                ref={statusFilterDropdownRef}
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.2 }}
+                                className="fixed z-[9999] bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-lg max-h-60 overflow-y-auto"
+                                style={{
+                                  top: `${statusFilterPosition.top}px`,
+                                  left: `${statusFilterPosition.left}px`,
+                                  width: `${Math.max(statusFilterPosition.width, 200)}px`,
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="p-2 space-y-1">
+                                  {dynamicUniqueStatusSantri.map((item) => {
+                                    const normalizedValue = normalizeStatusSantri(item.value)
+                                    const isChecked = statusSantriFilter.includes(normalizedValue)
+                                    return (
+                                      <label
+                                        key={item.value}
+                                        className="flex items-center gap-2 p-1.5 hover:bg-gray-50 dark:hover:bg-gray-600 rounded cursor-pointer text-xs"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            e.stopPropagation()
+                                            if (e.target.checked) {
+                                              setStatusSantriFilter((prev) => (
+                                                prev.includes(normalizedValue) ? prev : [...prev, normalizedValue]
+                                              ))
+                                            } else {
+                                              setStatusSantriFilter((prev) => prev.filter((v) => v !== normalizedValue))
+                                            }
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500"
+                                        />
+                                        <span className="text-gray-700 dark:text-gray-300 flex-1">
+                                          {item.value} ({item.count})
+                                        </span>
+                                      </label>
+                                    )
+                                  })}
+                                  {statusSantriFilter.length > 0 && (
+                                    <div className="pt-1 border-t border-gray-200 dark:border-gray-600">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setStatusSantriFilter([])
+                                          setIsStatusFilterOpen(false)
+                                        }}
+                                        className="w-full text-left px-1.5 py-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                                      >
+                                        Hapus semua
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            </AnimatePresence>,
+                            document.body
+                          )}
                           <select
                             value={kategoriFilter}
                             onChange={(e) => {
@@ -566,26 +757,30 @@ function DataSantri() {
                               <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
                             ))}
                           </select>
-                          <select
-                            value={daerahFilter}
-                            onChange={(e) => { setDaerahFilter(e.target.value); setKamarFilter('') }}
-                            className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
-                          >
-                            <option value="">{kategoriFilter ? 'Daerah' : 'Pilih kategori'}</option>
-                            {daerahFilterDropdown.map(item => (
-                              <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
-                            ))}
-                          </select>
-                          <select
-                            value={kamarFilter}
-                            onChange={(e) => setKamarFilter(e.target.value)}
-                            className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
-                          >
-                            <option value="">Kamar</option>
-                            {dynamicUniqueKamar.map(item => (
-                              <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
-                            ))}
-                          </select>
+                          {kategoriFilter && (
+                            <select
+                              value={daerahFilter}
+                              onChange={(e) => { setDaerahFilter(e.target.value); setKamarFilter('') }}
+                              className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                            >
+                              <option value="">Daerah</option>
+                              {daerahFilterDropdown.map(item => (
+                                <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
+                              ))}
+                            </select>
+                          )}
+                          {kategoriFilter && daerahFilter && (
+                            <select
+                              value={kamarFilter}
+                              onChange={(e) => setKamarFilter(e.target.value)}
+                              className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                            >
+                              <option value="">Kamar</option>
+                              {dynamicUniqueKamar.map(item => (
+                                <option key={item.value} value={item.value}>{item.value} ({item.count})</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-4 pt-2 mt-2 border-t border-gray-200 dark:border-gray-600">
                           <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-gray-700 dark:text-gray-300">
@@ -626,10 +821,11 @@ function DataSantri() {
                               setLembagaFilter('')
                               setKelasFilter('')
                               setKelFilter('')
-                              setStatusSantriFilter('')
+                              setStatusSantriFilter(['mukim', 'khoriji'])
                               setKategoriFilter('')
                               setDaerahFilter('')
                               setKamarFilter('')
+                              setLembagaFilter(lembagaAccess.allowedLembagaIds?.length === 1 ? lembagaAccess.allowedLembagaIds[0] : '')
                               setTidakDiniyahFilter(false)
                               setTidakFormalFilter(false)
                               setSearchQuery('')
@@ -678,6 +874,32 @@ function DataSantri() {
                     </select>
                     {/* PC: tombol Eksport & Pilih Check tampil sejajar */}
                     <div className="hidden sm:flex items-center gap-2">
+                      {canOpenExcelEditor && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const params = new URLSearchParams()
+                            if (lembagaFilter) params.set('lembaga', lembagaFilter)
+                            if (kelasFilter) params.set('kelas', kelasFilter)
+                            if (kelFilter) params.set('kel', kelFilter)
+                            if (statusSantriFilter.length > 0) params.set('status', statusSantriFilter.join(','))
+                            if (kategoriFilter) params.set('kategori', kategoriFilter)
+                            if (daerahFilter) params.set('daerah', daerahFilter)
+                            if (kamarFilter) params.set('kamar', kamarFilter)
+                            if (tidakDiniyahFilter) params.set('tidak_diniyah', '1')
+                            if (tidakFormalFilter) params.set('tidak_formal', '1')
+                            const qs = params.toString()
+                            navigate(qs ? `/santri/excel-editor?${qs}` : '/santri/excel-editor')
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 h-8 text-xs font-medium rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+                          title="Editor spreadsheet santri"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6M7 7h10M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                          </svg>
+                          Excel
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setIsExportOffcanvasOpen(true)}
@@ -732,6 +954,32 @@ function DataSantri() {
                               </svg>
                               Eksport
                             </button>
+                            {canOpenExcelEditor && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const params = new URLSearchParams()
+                                  if (lembagaFilter) params.set('lembaga', lembagaFilter)
+                                  if (kelasFilter) params.set('kelas', kelasFilter)
+                                  if (kelFilter) params.set('kel', kelFilter)
+                                  if (statusSantriFilter.length > 0) params.set('status', statusSantriFilter.join(','))
+                                  if (kategoriFilter) params.set('kategori', kategoriFilter)
+                                  if (daerahFilter) params.set('daerah', daerahFilter)
+                                  if (kamarFilter) params.set('kamar', kamarFilter)
+                                  if (tidakDiniyahFilter) params.set('tidak_diniyah', '1')
+                                  if (tidakFormalFilter) params.set('tidak_formal', '1')
+                                  const qs = params.toString()
+                                  setMenuOpen(false)
+                                  navigate(qs ? `/santri/excel-editor?${qs}` : '/santri/excel-editor')
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6M7 7h10M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                                </svg>
+                                Excel
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => { setSelectionMode((m) => { if (m) setSelectedIds(new Set()); return !m }); setMenuOpen(false) }}

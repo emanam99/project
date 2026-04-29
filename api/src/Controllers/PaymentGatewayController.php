@@ -42,7 +42,7 @@ class PaymentGatewayController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil konfigurasi payment gateway',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -71,7 +71,7 @@ class PaymentGatewayController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil konfigurasi aktif',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -111,7 +111,7 @@ class PaymentGatewayController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil konfigurasi',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -151,7 +151,7 @@ class PaymentGatewayController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate konfigurasi',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -190,7 +190,7 @@ class PaymentGatewayController
             error_log("Error switching payment gateway mode: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengubah mode: ' . $e->getMessage()
+                'message' => 'Gagal mengubah mode'
             ], 500);
         }
     }
@@ -273,7 +273,7 @@ class PaymentGatewayController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil informasi server',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

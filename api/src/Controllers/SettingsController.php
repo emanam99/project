@@ -8,6 +8,7 @@ use App\Config\LegacyRouteRolesRepository;
 use App\Config\RoleConfig;
 use App\Config\RolePolicyResolver;
 use App\Database;
+use App\Services\EmailService;
 use App\Services\WhatsAppService;
 use App\Services\WatzapService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -31,6 +32,39 @@ class SettingsController
         return $response
             ->withStatus($statusCode)
             ->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * @param array<int, string> $keys
+     * @return array<string, string>
+     */
+    private function readAppSettings(array $keys): array
+    {
+        if ($keys === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($keys), '?'));
+        $stmt = $this->db->prepare("SELECT `key`, `value` FROM `app___settings` WHERE `key` IN ({$placeholders})");
+        $stmt->execute($keys);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $out = [];
+        foreach ($rows as $row) {
+            $k = (string) ($row['key'] ?? '');
+            if ($k === '') {
+                continue;
+            }
+            $out[$k] = (string) ($row['value'] ?? '');
+        }
+        return $out;
+    }
+
+    private function upsertAppSetting(string $key, string $value): void
+    {
+        $stmt = $this->db->prepare(
+            "INSERT INTO app___settings (`key`, `value`) VALUES (?, ?) "
+            . "ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updated_at = NOW()"
+        );
+        $stmt->execute([$key, $value]);
     }
 
     /**
@@ -82,7 +116,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil konfigurasi role',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -122,7 +156,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil selector fitur',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -180,7 +214,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menyimpan selector',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -233,7 +267,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil fallback role route',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -304,7 +338,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menyimpan fallback role route',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -364,7 +398,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil katalog kebijakan role',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -480,7 +514,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal memperbarui kebijakan role',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -522,7 +556,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal sinkron dari RoleConfig',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -617,7 +651,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil pemetaan menu–role',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -727,7 +761,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menyimpan pemetaan menu–role',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -906,7 +940,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menyimpan',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -986,7 +1020,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil konfigurasi fitur',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -1020,7 +1054,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil pengaturan notifikasi',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -1057,7 +1091,191 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menyimpan pengaturan notifikasi',
-                'error' => $e->getMessage(),
+                'error' => null,
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/settings/email-config - Konfigurasi SMTP email untuk OTP.
+     */
+    public function getEmailConfig(Request $request, Response $response): Response
+    {
+        try {
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tabel app___settings belum ada. Jalankan migration 20260315000001_app_settings_watzap.',
+                ], 500);
+            }
+
+            $keys = [
+                'email_enabled',
+                'email_smtp_host',
+                'email_smtp_port',
+                'email_smtp_username',
+                'email_smtp_password',
+                'email_smtp_encryption',
+                'email_from_address',
+                'email_from_name',
+                'email_otp_subject',
+            ];
+            $values = $this->readAppSettings($keys);
+
+            $password = (string) ($values['email_smtp_password'] ?? '');
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'enabled' => in_array(strtolower((string) ($values['email_enabled'] ?? '0')), ['1', 'true', 'yes', 'on'], true),
+                    'smtp_host' => 'smtp.hostinger.com',
+                    'smtp_port' => 465,
+                    'smtp_username' => (string) ($values['email_smtp_username'] ?? ''),
+                    'smtp_encryption' => 'ssl',
+                    'from_address' => (string) ($values['email_from_address'] ?? ($values['email_smtp_username'] ?? '')),
+                    'from_name' => (string) ($values['email_from_name'] ?? 'eBeddien'),
+                    'otp_subject' => (string) ($values['email_otp_subject'] ?? 'Kode OTP Konfirmasi'),
+                    'smtp_password_set' => $password !== '',
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::getEmailConfig ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil pengaturan email',
+                'error' => null,
+            ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/settings/email-config - Simpan konfigurasi SMTP email.
+     */
+    public function saveEmailConfig(Request $request, Response $response): Response
+    {
+        try {
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tabel app___settings belum ada. Jalankan migration 20260315000001_app_settings_watzap.',
+                ], 500);
+            }
+
+            $body = (array) $request->getParsedBody();
+            $enabled = filter_var((string) ($body['enabled'] ?? 'false'), FILTER_VALIDATE_BOOLEAN);
+            $smtpUsername = trim((string) ($body['smtp_username'] ?? ''));
+            $smtpPassword = isset($body['smtp_password']) ? (string) $body['smtp_password'] : null;
+            $fromName = trim((string) ($body['from_name'] ?? 'eBeddien'));
+            $otpSubject = trim((string) ($body['otp_subject'] ?? 'Kode OTP Konfirmasi'));
+
+            $smtpHost = 'smtp.hostinger.com';
+            $smtpPort = 465;
+            $smtpEncryption = 'ssl';
+            $fromAddress = $smtpUsername;
+
+            if ($enabled) {
+                if ($smtpUsername === '') {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'SMTP username wajib diisi saat email diaktifkan.',
+                    ], 400);
+                }
+                if (!filter_var($fromAddress, FILTER_VALIDATE_EMAIL)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Format from address tidak valid.',
+                    ], 400);
+                }
+            }
+
+            $this->upsertAppSetting('email_enabled', $enabled ? '1' : '0');
+            $this->upsertAppSetting('email_smtp_host', $smtpHost);
+            $this->upsertAppSetting('email_smtp_port', (string) $smtpPort);
+            $this->upsertAppSetting('email_smtp_username', $smtpUsername);
+            if ($smtpPassword !== null && trim($smtpPassword) !== '') {
+                $this->upsertAppSetting('email_smtp_password', $smtpPassword);
+            }
+            $this->upsertAppSetting('email_smtp_encryption', $smtpEncryption);
+            $this->upsertAppSetting('email_from_address', $fromAddress);
+            $this->upsertAppSetting('email_from_name', $fromName !== '' ? $fromName : 'eBeddien');
+            $this->upsertAppSetting('email_otp_subject', $otpSubject !== '' ? $otpSubject : 'Kode OTP Konfirmasi');
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Konfigurasi email berhasil disimpan.',
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::saveEmailConfig ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan pengaturan email',
+                'error' => null,
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/settings/email-config/test - Tes kirim email.
+     */
+    public function postEmailConfigTest(Request $request, Response $response): Response
+    {
+        try {
+            $body = (array) $request->getParsedBody();
+            $recipient = trim((string) ($body['recipient_email'] ?? ''));
+            $subject = trim((string) ($body['subject'] ?? 'Tes koneksi SMTP eBeddien'));
+            $message = trim((string) ($body['message'] ?? 'Ini email tes dari pengaturan SMTP eBeddien.'));
+
+            if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'recipient_email tidak valid.',
+                ], 400);
+            }
+
+            $html = '<div style="font-family:Arial,sans-serif;color:#111827;">'
+                . '<p>' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</p>'
+                . '<p style="font-size:12px;color:#6b7280;">Waktu kirim: ' . date('Y-m-d H:i:s') . ' WIB</p>'
+                . '</div>';
+
+            $sendResult = EmailService::send($recipient, $subject !== '' ? $subject : 'Tes koneksi SMTP eBeddien', $html, $message);
+            if (!$sendResult['success']) {
+                $failureMessage = trim((string) ($sendResult['message'] ?? 'Gagal mengirim email tes'));
+                $failureDetail = trim((string) ($sendResult['error'] ?? ''));
+                $combined = $failureMessage;
+                if ($failureDetail !== '') {
+                    $combined .= ': ' . $failureDetail;
+                }
+                $statusCode = 500;
+                $lower = strtolower($combined);
+                if (
+                    str_contains($lower, 'konfigurasi') ||
+                    str_contains($lower, 'tidak valid') ||
+                    str_contains($lower, 'auth') ||
+                    str_contains($lower, 'authentication') ||
+                    str_contains($lower, 'username') ||
+                    str_contains($lower, 'password') ||
+                    str_contains($lower, '535')
+                ) {
+                    $statusCode = 400;
+                }
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $combined,
+                    'error' => $sendResult['error'] ?? null,
+                ], $statusCode);
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Email tes berhasil dikirim.',
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('SettingsController::postEmailConfigTest ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengirim email tes',
+                'error' => null,
             ], 500);
         }
     }
@@ -1087,7 +1305,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil kelompok notifikasi',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -1134,7 +1352,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil pesan notifikasi',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -1237,7 +1455,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menjalankan tes alert error',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -1292,7 +1510,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal memuat matriks penugasan role. Pastikan migrasi tabel role___boleh_assign_role sudah dijalankan.',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }
@@ -1382,7 +1600,7 @@ class SettingsController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menyimpan matriks penugasan role.',
-                'error' => $e->getMessage(),
+                'error' => null,
             ], 500);
         }
     }

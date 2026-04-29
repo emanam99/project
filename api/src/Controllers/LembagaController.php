@@ -93,7 +93,7 @@ class LembagaController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data lembaga',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -142,7 +142,7 @@ class LembagaController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil data lembaga',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -207,7 +207,7 @@ class LembagaController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menambahkan lembaga',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -267,7 +267,7 @@ class LembagaController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengupdate lembaga',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }
@@ -318,7 +318,7 @@ class LembagaController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal menghapus lembaga',
-                'error' => $e->getMessage()
+                'error' => null
             ], 500);
         }
     }

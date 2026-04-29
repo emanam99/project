@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\PengurusAdminIdHelper;
+use App\Helpers\PublicPaymentTokenHelper;
 use App\Helpers\SantriHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -13,10 +14,13 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 class PaymentController
 {
     private $db;
+    private $securityConfig;
 
     public function __construct()
     {
         $this->db = Database::getInstance()->getConnection();
+        $config = require __DIR__ . '/../../config.php';
+        $this->securityConfig = $config['security'] ?? [];
     }
 
     private function jsonResponse(Response $response, array $data, int $statusCode): Response
@@ -25,6 +29,136 @@ class PaymentController
         return $response
             ->withStatus($statusCode)
             ->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Apakah fallback akses publik tanpa token diperbolehkan (legacy/transisi).
+     * Default false. Setelah seluruh frontend pindah ke signed token, flag ini bisa tetap false permanen.
+     */
+    private function isPublicPaymentEndpointEnabled(): bool
+    {
+        return (bool) ($this->securityConfig['allow_public_payment_lookup'] ?? false);
+    }
+
+    /**
+     * Ambil token signed dari request (header X-Public-Payment-Token / Authorization Bearer / query "token").
+     */
+    private function extractPublicPaymentToken(Request $request): ?string
+    {
+        $headerToken = trim($request->getHeaderLine('X-Public-Payment-Token'));
+        if ($headerToken !== '') {
+            return $headerToken;
+        }
+        $auth = trim($request->getHeaderLine('Authorization'));
+        if ($auth !== '' && stripos($auth, 'Bearer ') === 0) {
+            $bearer = trim(substr($auth, 7));
+            if ($bearer !== '') {
+                return $bearer;
+            }
+        }
+        $params = $request->getQueryParams();
+        $queryToken = isset($params['token']) ? trim((string) $params['token']) : '';
+        return $queryToken !== '' ? $queryToken : null;
+    }
+
+    /**
+     * Validasi token publik untuk mode endpoint tertentu.
+     *
+     * Aturan:
+     * - Jika token disertakan → wajib valid + scope cocok; santri_id terikat ke token.
+     * - Jika token tidak ada DAN flag `allow_public_payment_lookup` aktif → fallback transisi: lewat (santri_id=null).
+     * - Jika token tidak ada DAN flag tidak aktif → 401/403.
+     *
+     * @return array{santri_id?: int|null, error?: Response, used_token?: bool}
+     */
+    private function authorizePublicPaymentRequest(Request $request, Response $response, string $endpointMode): array
+    {
+        $token = $this->extractPublicPaymentToken($request);
+        if ($token !== null) {
+            $payload = PublicPaymentTokenHelper::verify($token);
+            if ($payload === null) {
+                return ['error' => $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Token tidak valid atau sudah kedaluwarsa'
+                ], 401)];
+            }
+            if (!PublicPaymentTokenHelper::scopeAllowsMode((string) $payload['mode'], $endpointMode)) {
+                return ['error' => $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Token tidak berlaku untuk mode ini'
+                ], 403)];
+            }
+            return ['santri_id' => (int) $payload['id_santri'], 'used_token' => true];
+        }
+
+        // Tanpa token → hanya boleh kalau kill-switch transisi diaktifkan.
+        if (!$this->isPublicPaymentEndpointEnabled()) {
+            return ['error' => $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Token akses pembayaran wajib disertakan'
+            ], 401)];
+        }
+        return ['santri_id' => null, 'used_token' => false];
+    }
+
+    /**
+     * POST /api/payment/public-token - Issue signed token akses pembayaran publik.
+     * Endpoint ini WAJIB di-mount di route ber-auth (frontend internal yang sudah login).
+     * Body JSON: { id_santri: int|nis, mode: "uwaba"|"khusus"|"tunggakan"|"all", ttl?: int }
+     */
+    public function issuePublicPaymentToken(Request $request, Response $response): Response
+    {
+        try {
+            $body = $request->getParsedBody();
+            $idSantriParam = is_array($body) ? ($body['id_santri'] ?? null) : null;
+            $mode = is_array($body) ? trim((string) ($body['mode'] ?? PublicPaymentTokenHelper::SCOPE_ALL)) : PublicPaymentTokenHelper::SCOPE_ALL;
+            $ttl = is_array($body) && isset($body['ttl']) ? (int) $body['ttl'] : null;
+
+            if ($idSantriParam === null || $idSantriParam === '') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Parameter id_santri wajib diisi'
+                ], 400);
+            }
+            if (!in_array($mode, PublicPaymentTokenHelper::ALLOWED_SCOPES, true)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Mode tidak valid'
+                ], 400);
+            }
+            $idSantri = SantriHelper::resolveId($this->db, $idSantriParam);
+            if ($idSantri === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Santri tidak ditemukan'
+                ], 404);
+            }
+            // Batas TTL maksimum (cegah token berumur panjang dibuat lewat parameter user).
+            if ($ttl !== null && ($ttl <= 0 || $ttl > 1800)) {
+                $ttl = null;
+            }
+            $token = PublicPaymentTokenHelper::issue($idSantri, $mode, $ttl);
+            if ($token === null) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Gagal membuat token'
+                ], 500);
+            }
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'token' => $token,
+                    'mode' => $mode,
+                    'ttl' => $ttl,
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('issuePublicPaymentToken error: ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal membuat token akses pembayaran'
+            ], 500);
+        }
     }
 
     /**
@@ -190,7 +324,7 @@ class PaymentController
             error_log("Get rincian error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil rincian: ' . $e->getMessage()
+                'message' => 'Gagal mengambil rincian'
             ], 500);
         }
     }
@@ -241,7 +375,7 @@ class PaymentController
             error_log("Get payment history error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil riwayat pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal mengambil riwayat pembayaran'
             ], 500);
         }
     }
@@ -374,7 +508,7 @@ class PaymentController
                 error_log("Create payment error: " . $e->getMessage());
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Gagal memproses pembayaran: ' . $e->getMessage()
+                    'message' => 'Gagal memproses pembayaran'
                 ], 500);
             }
 
@@ -382,7 +516,7 @@ class PaymentController
             error_log("Create payment error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memproses pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal memproses pembayaran'
             ], 500);
         }
     }
@@ -466,7 +600,7 @@ class PaymentController
                 error_log("Delete payment error (inner) trace: " . $e->getTraceAsString());
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Gagal menghapus pembayaran: ' . $e->getMessage()
+                    'message' => 'Gagal menghapus pembayaran'
                 ], 500);
             }
 
@@ -475,7 +609,7 @@ class PaymentController
             error_log("Delete payment error (outer) trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal menghapus pembayaran'
             ], 500);
         }
     }
@@ -519,7 +653,7 @@ class PaymentController
             error_log("Check related payment error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengecek pembayaran terkait: ' . $e->getMessage()
+                'message' => 'Gagal mengecek pembayaran terkait'
             ], 500);
         }
     }
@@ -593,7 +727,7 @@ class PaymentController
             error_log("Insert tunggakan/khusus error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menambahkan data: ' . $e->getMessage()
+                'message' => 'Gagal menambahkan data'
             ], 500);
         }
     }
@@ -681,7 +815,7 @@ class PaymentController
             error_log("Update tunggakan/khusus error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate data: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate data'
             ], 500);
         }
     }
@@ -741,7 +875,7 @@ class PaymentController
             error_log("Delete tunggakan/khusus error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus data: ' . $e->getMessage()
+                'message' => 'Gagal menghapus data'
             ], 500);
         }
     }
@@ -884,7 +1018,7 @@ class PaymentController
             error_log("Get pembayaran khusus error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat memproses permintaan',
                 'error_type' => 'database'
             ], 500);
         }
@@ -924,7 +1058,7 @@ class PaymentController
             error_log("Get uwaba last number error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil nomor terakhir: ' . $e->getMessage()
+                'message' => 'Gagal mengambil nomor terakhir'
             ], 500);
         }
     }
@@ -1017,7 +1151,7 @@ class PaymentController
             error_log("Save uwaba payment error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan pembayaran'
             ], 500);
         }
     }
@@ -1138,14 +1272,14 @@ class PaymentController
             
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => $errorMessage . ': ' . $e->getMessage()
+                'message' => $errorMessage
             ], 500);
         } catch (\Exception $e) {
             error_log("Delete uwaba payment error: " . $e->getMessage());
             error_log("Error trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal menghapus pembayaran'
             ], 500);
         }
     }
@@ -1202,7 +1336,7 @@ class PaymentController
             error_log("Get uwaba history error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil riwayat pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal mengambil riwayat pembayaran'
             ], 500);
         }
     }
@@ -1242,17 +1376,6 @@ class PaymentController
     {
         try {
             $mode = $args['mode'] ?? null;
-            $queryParams = $request->getQueryParams();
-            $idSantri = $queryParams['id_santri'] ?? null;
-            $tahunAjaran = $queryParams['tahun_ajaran'] ?? null;
-
-            if (!$idSantri) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Parameter id_santri wajib diisi'
-                ], 400);
-            }
-
             // Validasi mode
             $validModes = ['uwaba', 'khusus', 'tunggakan'];
             if (!in_array($mode, $validModes)) {
@@ -1262,12 +1385,37 @@ class PaymentController
                 ], 400);
             }
 
+            $authResult = $this->authorizePublicPaymentRequest($request, $response, (string) $mode);
+            if (isset($authResult['error'])) {
+                return $authResult['error'];
+            }
+            $usedToken = (bool) ($authResult['used_token'] ?? false);
+            $tokenSantriId = $authResult['santri_id'] ?? null;
+
+            $queryParams = $request->getQueryParams();
+            $tahunAjaran = $queryParams['tahun_ajaran'] ?? null;
+            $idSantri = $queryParams['id_santri'] ?? $tokenSantriId;
+
+            if ($idSantri === null || $idSantri === '') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Parameter id_santri wajib diisi'
+                ], 400);
+            }
+
             $idSantriResolved = SantriHelper::resolveId($this->db, $idSantri);
             if ($idSantriResolved === null) {
                 return $this->jsonResponse($response, [
                     'success' => true,
                     'data' => ['rincian' => [], 'total' => ['total' => 0, 'bayar' => 0, 'kurang' => 0]]
                 ], 200);
+            }
+            if ($usedToken && $idSantriResolved !== (int) $tokenSantriId) {
+                // Token TIDAK match dengan id_santri di query → tolak (cegah re-use token untuk santri lain).
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Token tidak berlaku untuk santri ini'
+                ], 403);
             }
 
             // Untuk uwaba, gunakan struktur berbeda (tabel uwaba)
@@ -1411,7 +1559,7 @@ class PaymentController
             error_log("Get public rincian error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil rincian: ' . $e->getMessage()
+                'message' => 'Gagal mengambil rincian'
             ], 500);
         }
     }
@@ -1425,18 +1573,6 @@ class PaymentController
     {
         try {
             $mode = $args['mode'] ?? null;
-            $queryParams = $request->getQueryParams();
-            $idSantri = $queryParams['id_santri'] ?? null;
-            $tahunAjaran = $queryParams['tahun_ajaran'] ?? null;
-
-            if (!$idSantri) {
-                return $this->jsonResponse($response, [
-                    'success' => false,
-                    'message' => 'Parameter id_santri wajib diisi'
-                ], 400);
-            }
-
-            // Validasi mode
             $validModes = ['uwaba', 'khusus', 'tunggakan'];
             if (!in_array($mode, $validModes)) {
                 return $this->jsonResponse($response, [
@@ -1445,9 +1581,33 @@ class PaymentController
                 ], 400);
             }
 
+            $authResult = $this->authorizePublicPaymentRequest($request, $response, (string) $mode);
+            if (isset($authResult['error'])) {
+                return $authResult['error'];
+            }
+            $usedToken = (bool) ($authResult['used_token'] ?? false);
+            $tokenSantriId = $authResult['santri_id'] ?? null;
+
+            $queryParams = $request->getQueryParams();
+            $tahunAjaran = $queryParams['tahun_ajaran'] ?? null;
+            $idSantri = $queryParams['id_santri'] ?? $tokenSantriId;
+
+            if ($idSantri === null || $idSantri === '') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Parameter id_santri wajib diisi'
+                ], 400);
+            }
+
             $idSantriResolved = SantriHelper::resolveId($this->db, $idSantri);
             if ($idSantriResolved === null) {
                 return $this->jsonResponse($response, ['success' => true, 'data' => []], 200);
+            }
+            if ($usedToken && $idSantriResolved !== (int) $tokenSantriId) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Token tidak berlaku untuk santri ini'
+                ], 403);
             }
 
             // Riwayat uwaba: dari tabel uwaba___bayar (bukan payment)
@@ -1517,7 +1677,7 @@ class PaymentController
             error_log("Get public payment history error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil riwayat pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal mengambil riwayat pembayaran'
             ], 500);
         }
     }

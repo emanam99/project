@@ -5,19 +5,22 @@
 const GAMBAR_BASE_ENV = import.meta.env.VITE_GAMBAR_BASE
 const GAMBAR_ORIGIN = 'https://alutsmani.id/gambar'
 
+function normalizeBase(url) {
+  if (!url) return ''
+  const trimmed = url.trim().replace(/\/$/, '')
+  if (trimmed === '/gambar' || trimmed === 'gambar') return GAMBAR_ORIGIN
+  if (trimmed.startsWith('/gambar/')) return `${GAMBAR_ORIGIN}${trimmed.slice('/gambar'.length)}`
+  return trimmed
+}
+
 function getGambarBase() {
   const env = typeof GAMBAR_BASE_ENV === 'string' ? GAMBAR_BASE_ENV.trim() : ''
   // Jika VITE_GAMBAR_BASE terdefinisi di .env, pakai itu (local /gambar atau staging/prod URL)
   if (env) {
-    return env.endsWith('/') ? env.slice(0, -1) : env
+    const normalized = normalizeBase(env)
+    if (normalized) return normalized
   }
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname || ''
-    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('alutsmani.id')) {
-      return GAMBAR_ORIGIN
-    }
-  }
-  return '/gambar'
+  return GAMBAR_ORIGIN
 }
 
 export const GAMBAR_BASE = getGambarBase()

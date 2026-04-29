@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { aktivitasAPI, pemasukanAPI, pengeluaranAPI } from '../../../services/api'
+import { aktivitasAPI, lembagaAPI, pemasukanAPI, pengeluaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { usePengeluaranFiturAccess } from '../../../hooks/usePengeluaranFiturAccess'
+import { hijriYmdToMasehiYmd } from '../../../utils/hijriDate'
+import { PickDateHijri, formatHijriDateDisplay } from '../../../components/PickDateHijri'
 import DetailOffcanvas from '../../../components/DetailOffcanvas/DetailOffcanvas'
 import PrintLaporanAktivitasOffcanvas from './components/PrintLaporanAktivitasOffcanvas'
 
@@ -31,6 +33,14 @@ function Aktivitas() {
   const [searchQuery, setSearchQuery] = useState('')
   const [tanggalDari, setTanggalDari] = useState('')
   const [tanggalSampai, setTanggalSampai] = useState('')
+  const [tanggalHijriyahDari, setTanggalHijriyahDari] = useState('')
+  const [tanggalHijriyahSampai, setTanggalHijriyahSampai] = useState('')
+  const [lembagaFilter, setLembagaFilter] = useState('')
+  const [listLembaga, setListLembaga] = useState([])
+  const [tahunHijriyahDari, setTahunHijriyahDari] = useState('')
+  const [tahunHijriyahSampai, setTahunHijriyahSampai] = useState('')
+  const [tahunHijriyahDariMasehi, setTahunHijriyahDariMasehi] = useState('')
+  const [tahunHijriyahSampaiMasehi, setTahunHijriyahSampaiMasehi] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [allAktivitas, setAllAktivitas] = useState([]) // Semua data dari server
@@ -52,6 +62,20 @@ function Aktivitas() {
       loadAvailableHijriyahMonths()
     }
   }, [activeTab])
+
+  useEffect(() => {
+    const loadListLembaga = async () => {
+      try {
+        const response = await lembagaAPI.getAll()
+        if (response.success) {
+          setListLembaga(response.data || [])
+        }
+      } catch (err) {
+        console.error('Error loading lembaga:', err)
+      }
+    }
+    loadListLembaga()
+  }, [])
 
   useEffect(() => {
     if (activeTab === 'masehi') {
@@ -188,25 +212,65 @@ function Aktivitas() {
       )
     }
 
+    if (lembagaFilter) {
+      filtered = filtered.filter(item => item.tipe !== 'pengeluaran' || (item.lembaga || '') === lembagaFilter)
+    }
+
     // Filter berdasarkan tanggal dari
-    if (tanggalDari) {
+    const effectiveTanggalDari = tahunHijriyahDariMasehi || tanggalDari
+    const effectiveTanggalSampai = tahunHijriyahSampaiMasehi || tanggalSampai
+
+    if (effectiveTanggalDari) {
       filtered = filtered.filter(item => {
         const tanggalDibuat = new Date(item.tanggal_dibuat).toISOString().split('T')[0]
-        return tanggalDibuat >= tanggalDari
+        return tanggalDibuat >= effectiveTanggalDari
       })
     }
 
     // Filter berdasarkan tanggal sampai
-    if (tanggalSampai) {
+    if (effectiveTanggalSampai) {
       filtered = filtered.filter(item => {
         const tanggalDibuat = new Date(item.tanggal_dibuat).toISOString().split('T')[0]
-        return tanggalDibuat <= tanggalSampai
+        return tanggalDibuat <= effectiveTanggalSampai
       })
     }
 
     setFilteredAktivitas(filtered)
     setAktivitas(filtered)
-  }, [searchQuery, tanggalDari, tanggalSampai, allAktivitas])
+  }, [searchQuery, lembagaFilter, tanggalDari, tanggalSampai, tahunHijriyahDariMasehi, tahunHijriyahSampaiMasehi, allAktivitas])
+
+  useEffect(() => {
+    let cancelled = false
+    const convertYearStart = async () => {
+      if (!tahunHijriyahDari || !/^\d{4}$/.test(String(tahunHijriyahDari))) {
+        setTahunHijriyahDariMasehi('')
+        return
+      }
+      const converted = await hijriYmdToMasehiYmd(`${tahunHijriyahDari}-01-01`)
+      if (!cancelled) {
+        setTahunHijriyahDariMasehi(converted || '')
+      }
+    }
+    convertYearStart()
+    return () => { cancelled = true }
+  }, [tahunHijriyahDari])
+
+  useEffect(() => {
+    let cancelled = false
+    const convertYearEnd = async () => {
+      if (!tahunHijriyahSampai || !/^\d{4}$/.test(String(tahunHijriyahSampai))) {
+        setTahunHijriyahSampaiMasehi('')
+        return
+      }
+      const converted30 = await hijriYmdToMasehiYmd(`${tahunHijriyahSampai}-12-30`)
+      const converted29 = converted30 || await hijriYmdToMasehiYmd(`${tahunHijriyahSampai}-12-29`)
+      if (!cancelled) {
+        setTahunHijriyahSampaiMasehi(converted29 || '')
+      }
+    }
+    convertYearEnd()
+    return () => { cancelled = true }
+  }, [tahunHijriyahSampai])
 
   const getMonthName = (month) => {
     const months = [
@@ -340,6 +404,28 @@ function Aktivitas() {
       return formattedDate
     }
     return hijriyahString
+  }
+
+  const handleTanggalHijriyahDariChange = async (value) => {
+    const hijriValue = value || ''
+    setTanggalHijriyahDari(hijriValue)
+    if (!hijriValue) {
+      setTanggalDari('')
+      return
+    }
+    const converted = await hijriYmdToMasehiYmd(hijriValue)
+    setTanggalDari(converted || '')
+  }
+
+  const handleTanggalHijriyahSampaiChange = async (value) => {
+    const hijriValue = value || ''
+    setTanggalHijriyahSampai(hijriValue)
+    if (!hijriValue) {
+      setTanggalSampai('')
+      return
+    }
+    const converted = await hijriYmdToMasehiYmd(hijriValue)
+    setTanggalSampai(converted || '')
   }
 
   const getTipeBadge = (tipe) => {
@@ -645,20 +731,72 @@ function Aktivitas() {
                   >
                     <div className="px-4 py-2">
                       <div className="flex flex-wrap gap-2">
-                        <input
-                          type="date"
-                          value={tanggalDari}
-                          onChange={(e) => setTanggalDari(e.target.value)}
+                        <select
+                          value={lembagaFilter}
+                          onChange={(e) => setLembagaFilter(e.target.value)}
                           className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
-                          placeholder="Dari Tanggal"
+                        >
+                          <option value="">Lembaga (Pengeluaran)</option>
+                          {listLembaga.map((lembaga) => (
+                            <option key={lembaga.id} value={lembaga.id}>
+                              {lembaga.id}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="min-w-[180px]">
+                          <PickDateHijri
+                            value={tanggalHijriyahDari || null}
+                            onChange={(value) => {
+                              void handleTanggalHijriyahDariChange(value)
+                            }}
+                            placeholder="Dari Tgl Hijriyah"
+                            className="w-full"
+                            inputClassName="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                          />
+                        </div>
+                        <div className="min-w-[180px]">
+                          <PickDateHijri
+                            value={tanggalHijriyahSampai || null}
+                            onChange={(value) => {
+                              void handleTanggalHijriyahSampaiChange(value)
+                            }}
+                            placeholder="Sampai Tgl Hijriyah"
+                            className="w-full"
+                            inputClassName="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                          />
+                        </div>
+                        <input
+                          type="number"
+                          min="1300"
+                          max="1700"
+                          value={tahunHijriyahDari}
+                          onChange={(e) => setTahunHijriyahDari(e.target.value)}
+                          className="border rounded p-1 h-7 w-28 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                          placeholder="Hijriyah Dari"
                         />
                         <input
-                          type="date"
-                          value={tanggalSampai}
-                          onChange={(e) => setTanggalSampai(e.target.value)}
-                          className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
-                          placeholder="Sampai Tanggal"
+                          type="number"
+                          min="1300"
+                          max="1700"
+                          value={tahunHijriyahSampai}
+                          onChange={(e) => setTahunHijriyahSampai(e.target.value)}
+                          className="border rounded p-1 h-7 w-28 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                          placeholder="Hijriyah Sampai"
                         />
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          <span className="font-medium">Tanggal Dari:</span> {tanggalHijriyahDari ? formatHijriDateDisplay(tanggalHijriyahDari) : '-'} {tanggalDari ? `-> ${tanggalDari}` : ''}
+                        </div>
+                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          <span className="font-medium">Tanggal Sampai:</span> {tanggalHijriyahSampai ? formatHijriDateDisplay(tanggalHijriyahSampai) : '-'} {tanggalSampai ? `-> ${tanggalSampai}` : ''}
+                        </div>
+                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          <span className="font-medium">Hijriyah Dari:</span> {tahunHijriyahDari || '-'} {tahunHijriyahDariMasehi ? `-> ${tahunHijriyahDariMasehi}` : ''}
+                        </div>
+                        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                          <span className="font-medium">Hijriyah Sampai:</span> {tahunHijriyahSampai || '-'} {tahunHijriyahSampaiMasehi ? `-> ${tahunHijriyahSampaiMasehi}` : ''}
+                        </div>
                       </div>
                     </div>
                   </motion.div>

@@ -208,9 +208,14 @@ class MenuActionsFiturSeed extends AbstractSeed
     {
         $rows = [
             ['menu.santri', 'action.santri.halaman', 'Santri · Akses halaman data', 5],
+            ['menu.santri', 'action.santri.filter.lembaga_semua', 'Santri · Filter semua lembaga', 8],
+            ['menu.santri', 'action.santri.excel', 'Santri · Editor spreadsheet', 20],
             ['menu.rombel', 'action.rombel.halaman', 'Rombel · Akses halaman', 5],
+            ['menu.rombel', 'action.rombel.filter.lembaga_semua', 'Rombel · Filter semua lembaga', 8],
             ['menu.manage_jabatan', 'action.manage_jabatan.halaman', 'Jabatan · Akses halaman', 5],
+            ['menu.manage_jabatan', 'action.manage_jabatan.filter.lembaga_semua', 'Jabatan · Filter semua lembaga', 8],
             ['menu.mapel', 'action.mapel.halaman', 'Mapel · Akses halaman', 5],
+            ['menu.mapel', 'action.mapel.filter.lembaga_semua', 'Mapel · Filter semua lembaga', 8],
         ];
         foreach ($rows as $r) {
             $parentId = $this->parentId($conn, $pidStmt, $r[0]);

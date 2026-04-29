@@ -6,7 +6,15 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const rawBase = (env.VITE_GAMBAR_BASE || '').trim()
-  const GAMBAR_BASE = rawBase !== '' ? rawBase.replace(/\/$/, '') : '/gambar'
+  const DEFAULT_GAMBAR_BASE = 'https://alutsmani.id/gambar'
+  const normalizeGambarBase = (base) => {
+    const trimmed = (base || '').trim().replace(/\/$/, '')
+    if (!trimmed) return DEFAULT_GAMBAR_BASE
+    if (trimmed === '/gambar' || trimmed === 'gambar') return DEFAULT_GAMBAR_BASE
+    if (trimmed.startsWith('/gambar/')) return `${DEFAULT_GAMBAR_BASE}${trimmed.slice('/gambar'.length)}`
+    return trimmed
+  }
+  const GAMBAR_BASE = normalizeGambarBase(rawBase)
   const isDev = mode === 'development'
 
   return {
@@ -44,8 +52,8 @@ export default defineConfig(({ mode }) => {
             { src: `${GAMBAR_BASE}/icon/mybeddien512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
           screenshots: [
-            { src: '/ss/narrow.png', sizes: '540x720', type: 'image/png', form_factor: 'narrow', label: 'myBeddien - Mobile' },
-            { src: '/ss/wide.png', sizes: '1280x720', type: 'image/png', form_factor: 'wide', label: 'myBeddien - Desktop' },
+            { src: `${GAMBAR_BASE}/ss/narrow.png`, sizes: '540x720', type: 'image/png', form_factor: 'narrow', label: 'myBeddien - Mobile' },
+            { src: `${GAMBAR_BASE}/ss/wide.png`, sizes: '1280x720', type: 'image/png', form_factor: 'wide', label: 'myBeddien - Desktop' },
           ],
         },
         manifestFilename: 'manifest.webmanifest',

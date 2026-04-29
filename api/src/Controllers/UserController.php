@@ -220,7 +220,7 @@ class UserController
             error_log("Update profile error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memperbarui profil: ' . $e->getMessage()
+                'message' => 'Gagal memperbarui profil'
             ], 500);
         }
     }
@@ -277,7 +277,7 @@ class UserController
             error_log("Verify password error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal verifikasi password: ' . $e->getMessage()
+                'message' => 'Gagal verifikasi password'
             ], 500);
         }
     }
@@ -335,7 +335,7 @@ class UserController
             error_log("Update password error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengubah password: ' . $e->getMessage()
+                'message' => 'Gagal mengubah password'
             ], 500);
         }
     }
@@ -373,7 +373,7 @@ class UserController
             error_log("Get all users error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat memproses permintaan',
                 'data' => []
             ], 500);
         }
@@ -410,7 +410,7 @@ class UserController
 
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat memproses permintaan',
                 'data' => [],
             ], 500);
         }
@@ -504,7 +504,7 @@ class UserController
             error_log("Get user by ID error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Database error: ' . $e->getMessage()
+                'message' => 'Terjadi kesalahan saat memproses permintaan'
             ], 500);
         }
     }

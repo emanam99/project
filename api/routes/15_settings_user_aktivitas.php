@@ -37,6 +37,9 @@ return function (\Slim\App $app): void {
         $group->get('/notification-groups', [SettingsController::class, 'getNotificationGroups']);
         $group->get('/notification-messages', [SettingsController::class, 'getNotificationMessages']);
         $group->post('/error-alert/test', [SettingsController::class, 'postErrorAlertTest']);
+        $group->get('/email-config', [SettingsController::class, 'getEmailConfig']);
+        $group->put('/email-config', [SettingsController::class, 'saveEmailConfig']);
+        $group->post('/email-config/test', [SettingsController::class, 'postEmailConfigTest']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::superAdminMenus(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::SUPER_ADMIN_MENUS)))->add(new AuthMiddleware());
 
     $app->group('/api/watzap', function ($group) {

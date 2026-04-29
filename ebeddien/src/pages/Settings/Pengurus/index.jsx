@@ -24,6 +24,8 @@ const SearchAndFilterSection = memo(({
   onExportClick,
   onImportClick,
   onTemplateClick,
+  canTambah = true,
+  canImport = true,
   viewMode = 'detail',
   onViewModeChange,
   jabatanLembagaFilter,
@@ -98,15 +100,17 @@ const SearchAndFilterSection = memo(({
                     transition={{ duration: 0.15 }}
                     className="absolute right-0 top-full mt-1 py-1 w-44 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 z-50"
                   >
-                    <button
-                      onClick={() => runAndClose(onTambahClick)}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      Tambah
-                    </button>
+                    {canTambah && (
+                      <button
+                        onClick={() => runAndClose(onTambahClick)}
+                        className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Tambah
+                      </button>
+                    )}
                     <button
                       onClick={() => runAndClose(onExportClick)}
                       className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
@@ -116,15 +120,17 @@ const SearchAndFilterSection = memo(({
                       </svg>
                       Export
                     </button>
-                    <button
-                      onClick={() => runAndClose(onImportClick)}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                      Import
-                    </button>
+                    {canImport && (
+                      <button
+                        onClick={() => runAndClose(onImportClick)}
+                        className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        Import
+                      </button>
+                    )}
                     <button
                       onClick={() => runAndClose(onTemplateClick)}
                       className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
@@ -811,6 +817,8 @@ const handleDownloadTemplate = useCallback(() => {
               onExportClick={() => setShowExportOffcanvas(true)}
               onImportClick={handleImportPengurus}
               onTemplateClick={handleDownloadTemplate}
+              canTambah={pengurusFitur.tambahPengurus}
+              canImport={pengurusFitur.importPengurus}
               viewMode={viewMode}
               onViewModeChange={handleViewModeChange}
               jabatanLembagaFilter={jabatanLembagaFilter}

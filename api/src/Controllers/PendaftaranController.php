@@ -499,7 +499,7 @@ class PendaftaranController
             error_log("Get rincian pendaftaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil rincian: ' . $e->getMessage()
+                'message' => 'Gagal mengambil rincian'
             ], 500);
         }
     }
@@ -534,7 +534,7 @@ class PendaftaranController
             error_log("Get payment history pendaftaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil riwayat pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal mengambil riwayat pembayaran'
             ], 500);
         }
     }
@@ -624,7 +624,7 @@ class PendaftaranController
                 error_log("Create payment pendaftaran error: " . $e->getMessage());
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Gagal memproses pembayaran: ' . $e->getMessage()
+                    'message' => 'Gagal memproses pembayaran'
                 ], 500);
             }
 
@@ -632,7 +632,7 @@ class PendaftaranController
             error_log("Create payment pendaftaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memproses pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal memproses pembayaran'
             ], 500);
         }
     }
@@ -705,7 +705,7 @@ class PendaftaranController
                 error_log("Delete payment pendaftaran error: " . $e->getMessage());
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Gagal menghapus pembayaran: ' . $e->getMessage()
+                    'message' => 'Gagal menghapus pembayaran'
                 ], 500);
             }
 
@@ -713,7 +713,7 @@ class PendaftaranController
             error_log("Delete payment pendaftaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal menghapus pembayaran'
             ], 500);
         }
     }
@@ -758,7 +758,7 @@ class PendaftaranController
             error_log("Insert pendaftaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menambahkan data: ' . $e->getMessage()
+                'message' => 'Gagal menambahkan data'
             ], 500);
         }
     }
@@ -821,7 +821,7 @@ class PendaftaranController
             error_log("Update pendaftaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate data: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate data'
             ], 500);
         }
     }
@@ -874,7 +874,7 @@ class PendaftaranController
             error_log("Delete pendaftaran error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus data: ' . $e->getMessage()
+                'message' => 'Gagal menghapus data'
             ], 500);
         }
     }
@@ -988,7 +988,7 @@ class PendaftaranController
             error_log("Create santri error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat santri baru: ' . $e->getMessage()
+                'message' => 'Gagal membuat santri baru'
             ], 500);
         }
     }
@@ -1043,7 +1043,7 @@ class PendaftaranController
             error_log("Search by NIK error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mencari santri: ' . $e->getMessage()
+                'message' => 'Gagal mencari santri'
             ], 500);
         }
     }
@@ -1102,7 +1102,7 @@ class PendaftaranController
             error_log("Check NIK error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengecek NIK: ' . $e->getMessage()
+                'message' => 'Gagal mengecek NIK'
             ], 500);
         }
     }
@@ -1121,13 +1121,16 @@ class PendaftaranController
             $user = $request->getAttribute('user');
             $userArr = is_array($user) ? $user : [];
             $santriOnlyBiodata = !RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr) && RoleHelper::tokenIsSantriDaftarContext($userArr);
+            $hasAnyEbeddienFiturAssignment = RoleHelper::tokenUnionHasAnyEbeddienFiturAssignment($this->db, $userArr);
             if (!$santriOnlyBiodata) {
                 $canEditDataPendaftar = RoleHelper::tokenHasAnyRoleKey($userArr, ['super_admin'])
                     || RoleHelper::tokenHasEbeddienFiturCode(
                         $this->db,
                         $userArr,
                         'action.pendaftaran.data_pendaftar.edit'
-                    );
+                    )
+                    // Selaras middleware: bila role belum punya assignment fitur eBeddien sama sekali, fallback ke role legacy PSB.
+                    || (!$hasAnyEbeddienFiturAssignment && RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr));
                 if (!$canEditDataPendaftar) {
                     return $this->jsonResponse($response, [
                         'success' => false,
@@ -1142,7 +1145,8 @@ class PendaftaranController
                         $this->db,
                         $userArr,
                         'action.pendaftaran.biodata.ubah_keterangan_status'
-                    );
+                    )
+                    || (!$hasAnyEbeddienFiturAssignment && RoleHelper::tokenCanQueryAnyPendaftaranSantri($userArr));
             }
             $idPengurusPengirim = null;
             if ($user !== null && $appSource === 'uwaba') {
@@ -1669,7 +1673,7 @@ class PendaftaranController
             error_log("Save biodata pendaftaran error trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan biodata: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan biodata'
             ], 500);
         }
     }
@@ -2360,7 +2364,7 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan data registrasi: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan data registrasi'
             ], 500);
         }
     }
@@ -2566,7 +2570,7 @@ class PendaftaranController
                 error_log("Error checking table psb___registrasi: " . $e->getMessage());
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Error checking table: ' . $e->getMessage()
+                    'message' => 'Terjadi kesalahan saat memeriksa data'
                 ], 500);
             }
 
@@ -2696,7 +2700,7 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate keterangan status: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate keterangan status'
             ], 500);
         }
     }
@@ -2794,7 +2798,7 @@ class PendaftaranController
             error_log("Bulk update registrasi error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal bulk update registrasi: ' . $e->getMessage()
+                'message' => 'Gagal bulk update registrasi'
             ], 500);
         }
     }
@@ -2891,7 +2895,7 @@ class PendaftaranController
             error_log("Sync keterangan status error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyinkronkan keterangan status: ' . $e->getMessage()
+                'message' => 'Gagal menyinkronkan keterangan status'
             ], 500);
         }
     }
@@ -3173,7 +3177,7 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data registrasi'
             ], 500);
         }
     }
@@ -3239,7 +3243,7 @@ class PendaftaranController
             error_log("Get transaksi error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data transaksi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data transaksi'
             ], 500);
         }
     }
@@ -3327,7 +3331,7 @@ class PendaftaranController
             error_log("Get transaksi public error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data transaksi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data transaksi'
             ], 500);
         }
     }
@@ -3533,7 +3537,7 @@ class PendaftaranController
             error_log("Create payment PSB error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menyimpan pembayaran: ' . $e->getMessage()
+                'message' => 'Gagal menyimpan pembayaran'
             ], 500);
         }
     }
@@ -3601,7 +3605,7 @@ class PendaftaranController
             error_log("Get pendaftar IDs error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data pendaftar: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data pendaftar'
             ], 500);
         }
     }
@@ -3666,7 +3670,7 @@ class PendaftaranController
             error_log("Get tahun ajaran list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar tahun ajaran: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar tahun ajaran'
             ], 500);
         }
     }
@@ -3701,7 +3705,7 @@ class PendaftaranController
             error_log("Get registrasi by id error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data registrasi'
             ], 500);
         }
     }
@@ -3819,7 +3823,7 @@ class PendaftaranController
             error_log("Delete transaksi error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus transaksi: ' . $e->getMessage()
+                'message' => 'Gagal menghapus transaksi'
             ], 500);
         }
     }
@@ -3962,7 +3966,7 @@ class PendaftaranController
 
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memperbarui transaksi: ' . $e->getMessage(),
+                'message' => 'Gagal memperbarui transaksi',
             ], 500);
         }
     }
@@ -4021,7 +4025,7 @@ class PendaftaranController
             error_log("Get registrasi detail error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data detail registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data detail registrasi'
             ], 500);
         }
     }
@@ -4120,7 +4124,7 @@ class PendaftaranController
             error_log("Update registrasi detail error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate detail registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate detail registrasi'
             ], 500);
         }
     }
@@ -4319,7 +4323,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate detail registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate detail registrasi'
             ], 500);
         }
     }
@@ -4385,7 +4389,7 @@ class PendaftaranController
             error_log("Get item list error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar item: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar item'
             ], 500);
         }
     }
@@ -4599,7 +4603,7 @@ class PendaftaranController
             error_log("Get item rekap error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil rekap item: ' . $e->getMessage()
+                'message' => 'Gagal mengambil rekap item'
             ], 500);
         }
     }
@@ -4698,7 +4702,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menambahkan item: ' . $e->getMessage()
+                'message' => 'Gagal menambahkan item'
             ], 500);
         }
     }
@@ -4771,7 +4775,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus item: ' . $e->getMessage()
+                'message' => 'Gagal menghapus item'
             ], 500);
         }
     }
@@ -4836,7 +4840,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menambahkan item: ' . $e->getMessage()
+                'message' => 'Gagal menambahkan item'
             ], 500);
         }
     }
@@ -4926,7 +4930,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate item: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate item'
             ], 500);
         }
     }
@@ -5005,7 +5009,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus item: ' . $e->getMessage()
+                'message' => 'Gagal menghapus item'
             ], 500);
         }
     }
@@ -5201,7 +5205,7 @@ class PendaftaranController
             error_log("Get items by kondisi error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil item berdasarkan kondisi: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil item berdasarkan kondisi',
             ], 500);
         }
     }
@@ -5299,7 +5303,7 @@ class PendaftaranController
                 'assigned' => 0,
                 'skipped' => 0,
                 'sets' => [],
-                'error' => $e->getMessage()
+                'error' => null
             ];
         }
     }
@@ -5401,7 +5405,7 @@ class PendaftaranController
             error_log("Auto-assign items error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal melakukan auto-assign items: ' . $e->getMessage()
+                'message' => 'Gagal melakukan auto-assign items'
             ], 500);
         }
     }
@@ -5480,7 +5484,7 @@ class PendaftaranController
             error_log("Get item sets error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar item set: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar item set'
             ], 500);
         }
     }
@@ -5658,7 +5662,7 @@ class PendaftaranController
             error_log("Get unique kondisi from registrasi error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil kondisi unik dari registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil kondisi unik dari registrasi'
             ], 500);
         }
     }
@@ -5724,7 +5728,7 @@ class PendaftaranController
             error_log("Get registrasi by kondisi error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar registrasi'
             ], 500);
         }
     }
@@ -5806,7 +5810,7 @@ class PendaftaranController
             error_log("Get item set error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil item set: ' . $e->getMessage()
+                'message' => 'Gagal mengambil item set'
             ], 500);
         }
     }
@@ -5882,7 +5886,7 @@ class PendaftaranController
             error_log("Create item set error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat item set: ' . $e->getMessage()
+                'message' => 'Gagal membuat item set'
             ], 500);
         }
     }
@@ -6006,7 +6010,7 @@ class PendaftaranController
             error_log("Update item set error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate item set: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate item set'
             ], 500);
         }
     }
@@ -6051,7 +6055,7 @@ class PendaftaranController
             error_log("Delete item set error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus item set: ' . $e->getMessage()
+                'message' => 'Gagal menghapus item set'
             ], 500);
         }
     }
@@ -6099,7 +6103,7 @@ class PendaftaranController
             error_log("Get kondisi fields error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar kondisi field: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar kondisi field'
             ], 500);
         }
     }
@@ -6150,7 +6154,7 @@ class PendaftaranController
             error_log("Get kondisi field error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil kondisi field: ' . $e->getMessage()
+                'message' => 'Gagal mengambil kondisi field'
             ], 500);
         }
     }
@@ -6209,7 +6213,7 @@ class PendaftaranController
             error_log("Create kondisi field error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat kondisi field: ' . $e->getMessage()
+                'message' => 'Gagal membuat kondisi field'
             ], 500);
         }
     }
@@ -6285,7 +6289,7 @@ class PendaftaranController
             error_log("Update kondisi field error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate kondisi field: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate kondisi field'
             ], 500);
         }
     }
@@ -6342,7 +6346,7 @@ class PendaftaranController
             error_log("Delete kondisi field error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus kondisi field: ' . $e->getMessage()
+                'message' => 'Gagal menghapus kondisi field'
             ], 500);
         }
     }
@@ -6431,14 +6435,14 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar kondisi value: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar kondisi value'
             ], 500);
         } catch (\Exception $e) {
             error_log("Get kondisi values error: " . $e->getMessage());
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil daftar kondisi value: ' . $e->getMessage()
+                'message' => 'Gagal mengambil daftar kondisi value'
             ], 500);
         }
     }
@@ -6492,7 +6496,7 @@ class PendaftaranController
             error_log("Get kondisi value error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil kondisi value: ' . $e->getMessage()
+                'message' => 'Gagal mengambil kondisi value'
             ], 500);
         }
     }
@@ -6561,7 +6565,7 @@ class PendaftaranController
             error_log("Create kondisi value error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal membuat kondisi value: ' . $e->getMessage()
+                'message' => 'Gagal membuat kondisi value'
             ], 500);
         }
     }
@@ -6647,7 +6651,7 @@ class PendaftaranController
             error_log("Update kondisi value error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengupdate kondisi value: ' . $e->getMessage()
+                'message' => 'Gagal mengupdate kondisi value'
             ], 500);
         }
     }
@@ -6704,7 +6708,7 @@ class PendaftaranController
             error_log("Delete kondisi value error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus kondisi value: ' . $e->getMessage()
+                'message' => 'Gagal menghapus kondisi value'
             ], 500);
         }
     }
@@ -6796,14 +6800,14 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data pendaftar terakhir: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data pendaftar terakhir'
             ], 500);
         } catch (\Exception $e) {
             error_log("Get last pendaftar error: " . $e->getMessage());
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data pendaftar terakhir: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data pendaftar terakhir'
             ], 500);
         }
     }
@@ -7065,14 +7069,14 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data dashboard: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data dashboard'
             ], 500);
         } catch (\Exception $e) {
             error_log("Get dashboard pendaftaran error: " . $e->getMessage());
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data dashboard: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data dashboard'
             ], 500);
         }
     }
@@ -7190,7 +7194,7 @@ class PendaftaranController
             error_log("Get pendapatan hari ini error: " . $e->getMessage());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil pendapatan hari ini: ' . $e->getMessage()
+                'message' => 'Gagal mengambil pendapatan hari ini'
             ], 500);
         }
     }
@@ -7526,7 +7530,7 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data pendaftar: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data pendaftar'
             ], 500);
         }
     }
@@ -7652,7 +7656,7 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mengambil data registrasi: ' . $e->getMessage()
+                'message' => 'Gagal mengambil data registrasi'
             ], 500);
         }
     }
@@ -7753,7 +7757,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal menghapus registrasi: ' . $e->getMessage()
+                'message' => 'Gagal menghapus registrasi'
             ], 500);
         }
     }
@@ -7871,7 +7875,7 @@ class PendaftaranController
             error_log("Stack trace: " . $e->getTraceAsString());
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal mencari data santri: ' . $e->getMessage()
+                'message' => 'Gagal mencari data santri'
             ], 500);
         }
     }
@@ -8038,7 +8042,7 @@ class PendaftaranController
             }
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Gagal memadukan data santri: ' . $e->getMessage()
+                'message' => 'Gagal memadukan data santri'
             ], 500);
         }
     }

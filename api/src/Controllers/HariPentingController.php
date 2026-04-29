@@ -367,7 +367,7 @@ class HariPentingController
             return $this->json($response, $rows);
         } catch (\Throwable $e) {
             error_log('HariPenting getList error: ' . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -477,7 +477,7 @@ class HariPentingController
             return $this->json($response, ['data' => $data]);
         } catch (\Throwable $e) {
             error_log('HariPenting getUserPicker error: ' . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -507,7 +507,7 @@ class HariPentingController
             return $this->json($response, ['data' => $data]);
         } catch (\Exception $e) {
             error_log('HariPenting getLembagaOptions error: ' . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -706,7 +706,7 @@ class HariPentingController
             return $this->json($response, ['message' => 'Hari penting berhasil ditambah', 'id' => $newId]);
         } catch (\Exception $e) {
             error_log('HariPenting post error: ' . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -808,7 +808,7 @@ class HariPentingController
             return $this->json($response, ['message' => 'Jadwal pribadi berhasil ditambah', 'id' => $newId]);
         } catch (\Exception $e) {
             error_log('HariPenting postPersonalSelf error: ' . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 
@@ -835,7 +835,7 @@ class HariPentingController
             return $this->json($response, ['message' => 'Hari penting berhasil dihapus']);
         } catch (\Exception $e) {
             error_log('HariPenting delete error: ' . $e->getMessage());
-            return $this->json($response, ['error' => $e->getMessage()], 500);
+            return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
     }
 

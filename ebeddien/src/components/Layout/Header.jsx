@@ -8,6 +8,7 @@ import { useChatAiOffcanvas } from '../../contexts/ChatAiOffcanvasContext'
 import { useThemeStore } from '../../store/themeStore'
 import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import { profilAPI, authAPI, pendaftaranAPI, kalenderAPI, getAppEnv, deepseekAPI } from '../../services/api'
+import usePollingScheduler from '../../hooks/usePollingScheduler'
 import { CHAT_AI_USAGE_HEADER_EVENT } from '../../utils/chatAiHeaderUsage'
 import { getTanggalFromAPI, getBootPenanggalanPair, persistPenanggalanHariIni } from '../../utils/hijriDate'
 import { getMasehiKeyHariIni, idbGetToday, readTodayPenanggalanSync } from '../../services/hijriPenanggalanStorage'
@@ -66,7 +67,12 @@ function Header() {
   const { tahunAjaran, setTahunAjaran, options, tahunAjaranMasehi, setTahunAjaranMasehi, optionsMasehi } = useTahunAjaranStore()
   const navigate = useNavigate()
   const location = useLocation()
+  const normalizedPathname = useMemo(
+    () => ((location.pathname || '').replace(/\/+$/, '') || '/'),
+    [location.pathname]
+  )
   const isChatAiRoute = (location.pathname || '').startsWith('/chat-ai')
+  const isSantriExcelEditorRoute = normalizedPathname === '/santri/excel-editor'
   const { open: openTemplateOffcanvas } = useWhatsAppTemplate()
   const { open: openChatOffcanvas, close: closeChatOffcanvas, chatTotalUnread, refreshChatUnreadFromApi } =
     useChatOffcanvas()
@@ -110,6 +116,8 @@ function Header() {
   const [aktivitasTerakhir, setAktivitasTerakhir] = useState([])
   const [aktivitasTextVersion, setAktivitasTextVersion] = useState(0)
   const [chatAiHeaderUsage, setChatAiHeaderUsage] = useState({ today: 0, limit: 5 })
+  const [excelHeaderSaving, setExcelHeaderSaving] = useState(false)
+  const [excelHeaderChangedCount, setExcelHeaderChangedCount] = useState(0)
   const [openTADropdown, setOpenTADropdown] = useState(null) // 'hijriyah' | 'masehi' | null
   const [todayKalender, setTodayKalender] = useState(() => {
     const s = readTodayPenanggalanSync()
@@ -180,19 +188,38 @@ function Header() {
   }, [user?.id])
 
   const CHAT_UNREAD_POLL_MS = 45000
-  useEffect(() => {
-    if (!user?.id) return
-    refreshChatUnreadFromApi()
-    const t = setInterval(() => {
-      refreshChatUnreadFromApi()
-    }, CHAT_UNREAD_POLL_MS)
-    return () => clearInterval(t)
-  }, [user?.id, refreshChatUnreadFromApi])
+  const PAYMENT_POLL_MS = 30000
+  const SALDO_POLL_MS = 30000
+  const PENDAPATAN_POLL_MS = 30000
+  const TANGGAL_POLL_MS = 60000
+  const CHAT_AI_USAGE_POLL_MS = 30000
 
   useEffect(() => {
     if (!showUserDropdown || !user?.id) return
     refreshChatUnreadFromApi()
   }, [showUserDropdown, user?.id, refreshChatUnreadFromApi])
+
+  useEffect(() => {
+    const onSavingChanged = (event) => {
+      const next = Boolean(event?.detail?.saving)
+      setExcelHeaderSaving(next)
+    }
+    window.addEventListener('excel-santri-saving-changed', onSavingChanged)
+    return () => {
+      window.removeEventListener('excel-santri-saving-changed', onSavingChanged)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onChangedCount = (event) => {
+      const n = Number(event?.detail?.count ?? 0)
+      setExcelHeaderChangedCount(Number.isFinite(n) && n > 0 ? Math.floor(n) : 0)
+    }
+    window.addEventListener('excel-santri-changed-count', onChangedCount)
+    return () => {
+      window.removeEventListener('excel-santri-changed-count', onChangedCount)
+    }
+  }, [])
 
   const matchedNavState = useMemo(
     () => matchHeaderRoute(location.pathname, headerGroups),
@@ -228,6 +255,7 @@ function Header() {
   )
 
   const pageTitle = useMemo(() => {
+    if (isSantriExcelEditorRoute) return 'Excel Editor'
     if (matchedNavState?.label) return matchedNavState.label
     if (catalogPathLabel) return catalogPathLabel
     const path = location.pathname || '/'
@@ -240,7 +268,7 @@ function Header() {
       .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : ''))
       .filter(Boolean)
       .join(' ')
-  }, [matchedNavState?.label, catalogPathLabel, location.pathname])
+  }, [isSantriExcelEditorRoute, matchedNavState?.label, catalogPathLabel, location.pathname])
 
   // Fallback saat route belum/tdk termuat di katalog header, agar grup utama tetap konsisten.
   const fallbackGroupByPath = useMemo(() => {
@@ -419,7 +447,7 @@ function Header() {
   }, [aktivitasTerakhir])
 
   // Update tanggal dari API (cache lokal/IndexedDB diisi di getTanggalFromAPI)
-  const updateTanggal = async () => {
+  const updateTanggal = useCallback(async () => {
     try {
       const { masehi, hijriyah } = await getTanggalFromAPI()
       setTanggalMasehi((prev) => (masehi ? masehi.slice(0, 10) : prev))
@@ -430,9 +458,9 @@ function Header() {
     } catch (error) {
       console.error('Error updating tanggal:', error)
     }
-  }
+  }, [])
 
-  // Update tanggal on mount and every minute; isi dari IndexedDB jika mirror belum ada
+  // Update tanggal on mount; pembaruan periodik dilakukan oleh usePollingScheduler.
   useEffect(() => {
     let cancelled = false
     const iso = getMasehiKeyHariIni()
@@ -446,11 +474,8 @@ function Header() {
         setTanggalHijriyah((prev) => prev || p.hijriyah.slice(0, 10))
       })()
     }
-    updateTanggal()
-    const interval = setInterval(updateTanggal, 60000)
     return () => {
       cancelled = true
-      clearInterval(interval)
     }
   }, [])
 
@@ -508,96 +533,78 @@ function Header() {
     return codes.includes(BERANDA_WIDGET_CODES.pembayaranHariIni)
   }, [user, fiturMenuCodes])
 
-  useEffect(() => {
+  // Loader pembayaran hari ini (dipanggil oleh scheduler)
+  const loadPaymentData = useCallback(async () => {
     if (!user?.id || !canAccessTotalPembayaran) return
-
-    const loadPaymentData = async () => {
-      try {
-        const response = await profilAPI.getTotalPembayaran(user.id)
-        if (response.success) {
-          setPaymentData({
-            total: response.total || 0,
-            totalKeseluruhan: response.total_keseluruhan || 0,
-            rincian: {
-              uwaba: response.detail?.uwaba || 0,
-              tunggakan: response.detail?.tunggakan || 0,
-              khusus: response.detail?.khusus || 0,
-              total: response.total || 0
-            },
-            rincianVia: {
-              uwaba: response.detail_via?.uwaba || {},
-              tunggakan: response.detail_via?.tunggakan || {},
-              khusus: response.detail_via?.khusus || {}
-            },
-            keseluruhan: {
-              uwaba: response.detail_keseluruhan?.uwaba || 0,
-              tunggakan: response.detail_keseluruhan?.tunggakan || 0,
-              khusus: response.detail_keseluruhan?.khusus || 0,
-              total: response.total_keseluruhan || 0
-            }
-          })
-        }
-      } catch (error) {
-        if (error?.response?.status !== 403) console.error('Error loading payment data:', error)
+    try {
+      const response = await profilAPI.getTotalPembayaran(user.id)
+      if (response.success) {
+        setPaymentData({
+          total: response.total || 0,
+          totalKeseluruhan: response.total_keseluruhan || 0,
+          rincian: {
+            uwaba: response.detail?.uwaba || 0,
+            tunggakan: response.detail?.tunggakan || 0,
+            khusus: response.detail?.khusus || 0,
+            total: response.total || 0
+          },
+          rincianVia: {
+            uwaba: response.detail_via?.uwaba || {},
+            tunggakan: response.detail_via?.tunggakan || {},
+            khusus: response.detail_via?.khusus || {}
+          },
+          keseluruhan: {
+            uwaba: response.detail_keseluruhan?.uwaba || 0,
+            tunggakan: response.detail_keseluruhan?.tunggakan || 0,
+            khusus: response.detail_keseluruhan?.khusus || 0,
+            total: response.total_keseluruhan || 0
+          }
+        })
       }
+    } catch (error) {
+      if (error?.response?.status !== 403) console.error('Error loading payment data:', error)
+      throw error
     }
-
-    loadPaymentData()
-    const interval = setInterval(loadPaymentData, 30000)
-    return () => clearInterval(interval)
   }, [user?.id, canAccessTotalPembayaran])
 
-  // Load saldo data (pemasukan & pengeluaran) untuk grup Keuangan
-  useEffect(() => {
+  // Loader saldo (Keuangan) — dipanggil scheduler.
+  const loadSaldoData = useCallback(async () => {
     if (!isKeuanganGroup) return
-
-    const loadSaldoData = async () => {
-      try {
-        const response = await profilAPI.getTotalPemasukanPengeluaran(tahunAjaran)
-        if (response.success) {
-          setSaldoData({
-            saldo_awal_tahun: response.saldo_awal_tahun || 0,
-            total_pemasukan: response.total_pemasukan || 0,
-            total_pengeluaran: response.total_pengeluaran || 0,
-            sisa_saldo: response.sisa_saldo || 0
-          })
-        }
-      } catch (error) {
-        console.error('Error loading saldo data:', error)
+    try {
+      const response = await profilAPI.getTotalPemasukanPengeluaran(tahunAjaran)
+      if (response.success) {
+        setSaldoData({
+          saldo_awal_tahun: response.saldo_awal_tahun || 0,
+          total_pemasukan: response.total_pemasukan || 0,
+          total_pengeluaran: response.total_pengeluaran || 0,
+          sisa_saldo: response.sisa_saldo || 0
+        })
       }
+    } catch (error) {
+      console.error('Error loading saldo data:', error)
+      throw error
     }
-
-    loadSaldoData()
-    // Refresh setiap 30 detik
-    const interval = setInterval(loadSaldoData, 30000)
-    return () => clearInterval(interval)
   }, [isKeuanganGroup, tahunAjaran])
 
-  // Load pendapatan hari ini dari transaksi pendaftaran untuk grup Pendaftaran
-  useEffect(() => {
+  // Loader pendapatan pendaftaran hari ini — dipanggil scheduler.
+  const loadPendapatanHariIni = useCallback(async () => {
     if (!isPendaftaranGroup && !isConfiguredPaymentGroup) return
-
-    const loadPendapatanHariIni = async () => {
-      try {
-        const response = await pendaftaranAPI.getPendapatanHariIni(tahunAjaran, tahunAjaranMasehi)
-        if (response.success && response.data) {
-          setPendapatanPendaftaranHariIni(response.data.total_pendapatan_hari_ini ?? 0)
-          setPendapatanPendaftaranAdminHariIni(response.data.total_pendapatan_hari_ini_admin ?? 0)
-          setPendapatanPendaftaranRincian({
-            jumlah_transaksi: response.data.jumlah_transaksi ?? 0,
-            jumlah_transaksi_admin: response.data.jumlah_transaksi_admin ?? 0,
-            rincian_via: response.data.rincian_via ?? {},
-            rincian_via_admin: response.data.rincian_via_admin ?? {}
-          })
-        }
-      } catch (error) {
-        console.error('Error loading pendapatan pendaftaran hari ini:', error)
+    try {
+      const response = await pendaftaranAPI.getPendapatanHariIni(tahunAjaran, tahunAjaranMasehi)
+      if (response.success && response.data) {
+        setPendapatanPendaftaranHariIni(response.data.total_pendapatan_hari_ini ?? 0)
+        setPendapatanPendaftaranAdminHariIni(response.data.total_pendapatan_hari_ini_admin ?? 0)
+        setPendapatanPendaftaranRincian({
+          jumlah_transaksi: response.data.jumlah_transaksi ?? 0,
+          jumlah_transaksi_admin: response.data.jumlah_transaksi_admin ?? 0,
+          rincian_via: response.data.rincian_via ?? {},
+          rincian_via_admin: response.data.rincian_via_admin ?? {}
+        })
       }
+    } catch (error) {
+      console.error('Error loading pendapatan pendaftaran hari ini:', error)
+      throw error
     }
-
-    loadPendapatanHariIni()
-    const interval = setInterval(loadPendapatanHariIni, 30000)
-    return () => clearInterval(interval)
   }, [isPendaftaranGroup, isConfiguredPaymentGroup, tahunAjaran, tahunAjaranMasehi])
 
   const aktivitasCacheKey = useMemo(
@@ -643,21 +650,7 @@ function Header() {
     }
   }, [user?.id, aktivitasTerakhir, aktivitasCacheKey])
 
-  useEffect(() => {
-    if (!user?.id) return
-    refreshAktivitasBackground()
-    const interval = setInterval(refreshAktivitasBackground, AKTIVITAS_REFRESH_INTERVAL_MS)
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') refreshAktivitasBackground()
-    }
-    window.addEventListener('focus', refreshAktivitasBackground)
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      clearInterval(interval)
-      window.removeEventListener('focus', refreshAktivitasBackground)
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [user?.id, refreshAktivitasBackground])
+  // Aktivitas: pembaruan periodik & re-fetch on visible/focus dilakukan oleh usePollingScheduler.
 
   const refreshChatAiHeaderUsage = useCallback(async () => {
     if (!user?.id) return
@@ -673,9 +666,9 @@ function Header() {
     }
   }, [user?.id])
 
+  // Chat AI usage: listener event detail tetap perlu untuk update real-time dari komponen lain.
   useEffect(() => {
     if (!user?.id || !isChatAiRoute) return
-    refreshChatAiHeaderUsage()
     const onDetail = (e) => {
       const d = e?.detail
       if (!d) return
@@ -685,19 +678,81 @@ function Header() {
       })
     }
     window.addEventListener(CHAT_AI_USAGE_HEADER_EVENT, onDetail)
-    const interval = setInterval(refreshChatAiHeaderUsage, AKTIVITAS_REFRESH_INTERVAL_MS)
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') refreshChatAiHeaderUsage()
-    }
-    window.addEventListener('focus', refreshChatAiHeaderUsage)
-    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.removeEventListener(CHAT_AI_USAGE_HEADER_EVENT, onDetail)
-      clearInterval(interval)
-      window.removeEventListener('focus', refreshChatAiHeaderUsage)
-      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [user?.id, isChatAiRoute, refreshChatAiHeaderUsage])
+  }, [user?.id, isChatAiRoute])
+
+  // Scheduler tunggal: konsolidasi semua polling Header (tanggal, payment, saldo, pendapatan,
+  // aktivitas, chat AI usage, chat unread). Otomatis pause saat tab hidden / browser offline,
+  // dan exponential backoff saat task gagal berurutan.
+  const headerPollingTasks = useMemo(() => ([
+    {
+      id: 'tanggal',
+      run: updateTanggal,
+      intervalMs: TANGGAL_POLL_MS,
+      enabled: true,
+      immediate: true,
+    },
+    {
+      id: 'chatUnread',
+      run: refreshChatUnreadFromApi,
+      intervalMs: CHAT_UNREAD_POLL_MS,
+      enabled: !!user?.id,
+      immediate: true,
+    },
+    {
+      id: 'payment',
+      run: loadPaymentData,
+      intervalMs: PAYMENT_POLL_MS,
+      enabled: !!user?.id && canAccessTotalPembayaran,
+      immediate: true,
+    },
+    {
+      id: 'saldo',
+      run: loadSaldoData,
+      intervalMs: SALDO_POLL_MS,
+      enabled: isKeuanganGroup,
+      immediate: true,
+    },
+    {
+      id: 'pendapatan',
+      run: loadPendapatanHariIni,
+      intervalMs: PENDAPATAN_POLL_MS,
+      enabled: isPendaftaranGroup || isConfiguredPaymentGroup,
+      immediate: true,
+    },
+    {
+      id: 'aktivitas',
+      run: refreshAktivitasBackground,
+      intervalMs: AKTIVITAS_REFRESH_INTERVAL_MS,
+      enabled: !!user?.id,
+      immediate: true,
+    },
+    {
+      id: 'chatAiUsage',
+      run: refreshChatAiHeaderUsage,
+      intervalMs: CHAT_AI_USAGE_POLL_MS,
+      enabled: !!user?.id && isChatAiRoute,
+      immediate: true,
+    },
+  ]), [
+    updateTanggal,
+    refreshChatUnreadFromApi,
+    loadPaymentData,
+    loadSaldoData,
+    loadPendapatanHariIni,
+    refreshAktivitasBackground,
+    refreshChatAiHeaderUsage,
+    user?.id,
+    canAccessTotalPembayaran,
+    isKeuanganGroup,
+    isPendaftaranGroup,
+    isConfiguredPaymentGroup,
+    isChatAiRoute,
+  ])
+
+  usePollingScheduler({ baseTickMs: 5000, tasks: headerPollingTasks })
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -767,7 +822,7 @@ function Header() {
         )}
 
         {/* Mobile: Keuangan = saldo, Pendaftaran = pendapatan hari ini (transaksi pendaftaran), lain = pembayaran */}
-        {isKeuanganGroup ? (
+        {!isSantriExcelEditorRoute && isKeuanganGroup ? (
           <div className="md:hidden relative" ref={saldoRef}>
             <div 
               className="flex items-center gap-2 mt-2 cursor-pointer hover:opacity-80 transition-opacity"
@@ -865,7 +920,7 @@ function Header() {
               )}
             </AnimatePresence>
           </div>
-        ) : showAktivitasAsDefault ? (
+        ) : !isSantriExcelEditorRoute && showAktivitasAsDefault ? (
           isChatAiRoute ? (
             <div className="md:hidden flex items-center gap-2 mt-2">
               <svg className="w-4 h-4 text-white/80 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -971,7 +1026,41 @@ function Header() {
 
       {/* Right Section - Desktop: Keuangan = saldo, Pendaftaran = pendapatan hari ini, lain = pembayaran */}
       <div className="relative flex items-center gap-3 flex-shrink-0" ref={paymentRef}>
-        {isKeuanganGroup ? (
+        {isSantriExcelEditorRoute ? (
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('excel-santri-columns-toggle'))}
+              className="inline-flex items-center justify-center h-8 w-8 md:h-auto md:w-auto md:px-3 md:py-2 text-xs md:text-sm rounded-lg border border-white/40 bg-white/10 hover:bg-white/20 text-white"
+              aria-label="Kolom"
+              title="Kolom"
+            >
+              <svg className="w-4 h-4 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5h18M3 12h18M3 19h18" />
+              </svg>
+              <span className="hidden md:inline">Kolom</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('excel-santri-save-request'))}
+              disabled={excelHeaderSaving}
+              className="relative inline-flex items-center justify-center h-8 px-2.5 md:px-3 md:py-2 text-xs md:text-sm rounded-lg bg-teal-500 hover:bg-teal-400 disabled:opacity-60 text-white"
+              aria-label={excelHeaderSaving ? 'Menyimpan' : 'Simpan'}
+              title={excelHeaderSaving ? 'Menyimpan' : 'Simpan'}
+            >
+              <svg className="w-4 h-4 md:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="hidden md:inline">{excelHeaderSaving ? 'Menyimpan...' : 'Simpan'}</span>
+              <span className="md:hidden">{excelHeaderSaving ? '...' : 'Simpan'}</span>
+              {excelHeaderChangedCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                  {excelHeaderChangedCount > 99 ? '99+' : excelHeaderChangedCount}
+                </span>
+              )}
+            </button>
+          </div>
+        ) : isKeuanganGroup ? (
           <div className="hidden md:block relative" ref={saldoRef}>
             <div 
               className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"

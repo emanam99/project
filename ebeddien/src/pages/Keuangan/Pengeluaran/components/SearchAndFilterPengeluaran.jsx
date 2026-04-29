@@ -19,6 +19,12 @@ const SearchAndFilterPengeluaran = memo(({
   onTanggalDariChange,
   tanggalSampai,
   onTanggalSampaiChange,
+  tahunHijriyahDari,
+  onTahunHijriyahDariChange,
+  tahunHijriyahSampai,
+  onTahunHijriyahSampaiChange,
+  tahunHijriyahDariConverted,
+  tahunHijriyahSampaiConverted,
   onRefresh,
   lembagaRows = [],
   allowedLembagaIds = null,
@@ -132,6 +138,32 @@ const SearchAndFilterPengeluaran = memo(({
                   className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                   placeholder="Sampai Tanggal"
                 />
+                <input
+                  type="number"
+                  min="1300"
+                  max="1700"
+                  value={tahunHijriyahDari}
+                  onChange={onTahunHijriyahDariChange}
+                  className="border rounded p-1 h-7 w-28 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                  placeholder="Hijriyah Dari"
+                />
+                <input
+                  type="number"
+                  min="1300"
+                  max="1700"
+                  value={tahunHijriyahSampai}
+                  onChange={onTahunHijriyahSampaiChange}
+                  className="border rounded p-1 h-7 w-28 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
+                  placeholder="Hijriyah Sampai"
+                />
+              </div>
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                  <span className="font-medium">Hijriyah Dari:</span> {tahunHijriyahDari || '-'} {tahunHijriyahDariConverted ? `-> ${tahunHijriyahDariConverted}` : ''}
+                </div>
+                <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                  <span className="font-medium">Hijriyah Sampai:</span> {tahunHijriyahSampai || '-'} {tahunHijriyahSampaiConverted ? `-> ${tahunHijriyahSampaiConverted}` : ''}
+                </div>
               </div>
             </div>
           </motion.div>
