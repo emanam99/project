@@ -1,0 +1,49 @@
+AddDefaultCharset UTF-8
+
+# No cache untuk index.html
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
+  Header always set Permissions-Policy "geolocation=(self), microphone=(), camera=(self)"
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://alutsmani.id https://*.alutsmani.id https://api.qrserver.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://alutsmani.id https://*.alutsmani.id https://fonts.googleapis.com https://fonts.gstatic.com ws: wss:; manifest-src 'self'; worker-src 'self' blob:; frame-src 'none'; form-action 'self'; upgrade-insecure-requests"
+  Header always set Content-Security-Policy-Report-Only "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://alutsmani.id https://*.alutsmani.id https://api.qrserver.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://alutsmani.id https://*.alutsmani.id https://fonts.googleapis.com https://fonts.gstatic.com ws: wss:; manifest-src 'self'; worker-src 'self' blob:; frame-src 'none'; form-action 'self'"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" "expr=%{HTTPS} == 'on'"
+
+  # Setara FilesMatch index.html; memakai expr agar tidak ada penutup ">" yang memicu false positive shell
+  Header set Cache-Control "no-cache, no-store, must-revalidate" "expr=%{REQUEST_FILENAME} =~ m#index\\.html$#i"
+  Header set Pragma "no-cache" "expr=%{REQUEST_FILENAME} =~ m#index\\.html$#i"
+  Header set Expires "0" "expr=%{REQUEST_FILENAME} =~ m#index\\.html$#i"
+</IfModule>
+
+# Allow direct access to HTML files in /html/ folder
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  
+  # Allow direct access to HTML files in /html/ folder
+  RewriteCond %{REQUEST_URI} ^/html/.*\.html$ [NC]
+  RewriteRule ^ - [L]
+
+  # SEO files harus dilayani sebagai file asli, bukan fallback SPA
+  RewriteCond %{REQUEST_URI} ^/(robots\.txt|sitemap\.xml)$ [NC]
+  RewriteRule ^ - [L]
+  
+  # Allow direct access to other static files
+  RewriteCond %{REQUEST_URI} \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|json|webmanifest)$ [NC]
+  RewriteRule ^ - [L]
+  
+  # Allow direct access to backend API
+  RewriteCond %{REQUEST_URI} ^/backend/ [NC]
+  RewriteRule ^ - [L]
+  
+  # Allow direct access to gambar folder
+  RewriteCond %{REQUEST_URI} ^/gambar/ [NC]
+  RewriteRule ^ - [L]
+  
+  # For all other requests, redirect to index.html (React Router)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
+

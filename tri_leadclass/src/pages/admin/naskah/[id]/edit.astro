@@ -1,0 +1,190 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import AdminPageHeader from '../../../../components/admin/AdminPageHeader.astro';
+import { getAllCategories } from '../../../../lib/articles.ts';
+import { getManuscriptById } from '../../../../lib/manuscripts.ts';
+import { mediaUrl } from '../../../../lib/uploads.ts';
+
+const id = Number(Astro.params.id);
+const m = id ? getManuscriptById(id) : undefined;
+
+if (!m) {
+  return Astro.redirect('/admin/naskah');
+}
+
+const categories = getAllCategories();
+const coverUrl = mediaUrl(m.cover_image_path) ?? '/icon/icon512.png';
+const isPublished = m.status === 'published';
+---
+
+<AdminLayout title={`Edit Naskah — Admin`}>
+  <div class="admin-page max-w-3xl mx-auto">
+    <AdminPageHeader
+      title="Edit Naskah"
+      subtitle={isPublished ? 'Perubahan langsung tampil di web jurnal.' : 'Perbarui judul, abstrak, dan gambar sampul.'}
+    />
+
+    <div class="mb-4">
+      <a href="/admin/naskah" class="text-sm font-semibold text-emerald-700 hover:text-emerald-800">← Kembali ke daftar naskah</a>
+    </div>
+
+    {isPublished && m.article_slug && (
+      <div class="admin-card rounded-2xl p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm text-slate-600">
+          Artikel live: <a href={`/artikel/${m.article_slug}`} target="_blank" class="font-semibold text-emerald-700 underline">/artikel/{m.article_slug}</a>
+        </p>
+        <button type="button" id="unpublish-btn" class="text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-colors">
+          Batal terbit
+        </button>
+      </div>
+    )}
+
+    <form id="edit-form" class="admin-card rounded-2xl p-5 md:p-6 space-y-5" enctype="multipart/form-data">
+      <div>
+        <label for="title" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Judul *</label>
+        <input
+          type="text"
+          id="title"
+          name="title"
+          required
+          minlength="10"
+          value={m.title}
+          class="w-full text-sm border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+        />
+      </div>
+
+      <div>
+        <label for="abstract" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Abstrak *</label>
+        <p class="text-xs text-slate-400 mb-2">Gunakan baris kosong untuk paragraf baru — akan tampil terpisah di web.</p>
+        <textarea
+          id="abstract"
+          name="abstract"
+          required
+          minlength="50"
+          rows="10"
+          class="w-full text-sm border border-slate-200 rounded-xl px-4 py-3 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+        >{m.abstract}</textarea>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="keywords" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Kata kunci</label>
+          <input type="text" id="keywords" name="keywords" value={m.keywords ?? ''} class="w-full text-sm border border-slate-200 rounded-xl px-4 py-2.5" />
+        </div>
+        <div>
+          <label for="category" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Kategori</label>
+          <select id="category" name="category" class="w-full text-sm border border-slate-200 rounded-xl px-4 py-2.5 bg-white">
+            <option value="">— Pilih —</option>
+            {categories.map((c) => (
+              <option value={c.name} selected={m.category === c.name}>{c.name}</option>
+            ))}
+            {m.category && !categories.some((c) => c.name === m.category) && (
+              <option value={m.category} selected>{m.category}</option>
+            )}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Gambar sampul</label>
+        <div class="flex flex-col sm:flex-row gap-4 items-start">
+          <img id="cover-preview" src={coverUrl} alt="" class="w-full sm:w-40 h-28 sm:h-32 object-cover rounded-xl border border-slate-200 bg-slate-50" />
+          <input
+            type="file"
+            name="cover_image"
+            accept="image/jpeg,image/png,image/webp"
+            data-photo-crop="cover"
+            class="text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-semibold"
+          />
+        </div>
+      </div>
+
+      <p id="form-error" class="text-xs text-red-600 hidden" role="alert"></p>
+      <p id="form-success" class="text-xs text-emerald-700 hidden" role="status"></p>
+
+      <div class="flex flex-col sm:flex-row gap-3 pt-2">
+        <button type="submit" id="save-btn" class="bg-emerald-600 text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-60">
+          Simpan perubahan
+        </button>
+        <a href="/admin/naskah" class="text-center text-sm font-semibold text-slate-600 px-6 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50">Batal</a>
+      </div>
+    </form>
+  </div>
+</AdminLayout>
+
+<script define:vars={{ manuscriptId: id }}>
+  const form = document.getElementById('edit-form');
+  const saveBtn = document.getElementById('save-btn');
+  const errEl = document.getElementById('form-error');
+  const okEl = document.getElementById('form-success');
+  const unpublishBtn = document.getElementById('unpublish-btn');
+  const coverInput = form?.querySelector('input[name="cover_image"]');
+  const coverPreview = document.getElementById('cover-preview');
+
+  coverInput?.addEventListener('change', updateCoverPreview);
+  coverInput?.addEventListener('tri-photo-cropped', updateCoverPreview);
+
+  function updateCoverPreview() {
+    const file = coverInput?.files?.[0];
+    if (file && coverPreview) coverPreview.src = URL.createObjectURL(file);
+  }
+
+  async function postForm(action) {
+    if (!form) return;
+    const fd = new FormData(form);
+    if (action) fd.set('action', action);
+    const res = await fetch(`/api/admin/manuscripts/${manuscriptId}`, {
+      method: 'PATCH',
+      body: fd,
+      credentials: 'same-origin',
+    });
+    return res.json().catch(() => ({}));
+  }
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (saveBtn) saveBtn.disabled = true;
+    errEl?.classList.add('hidden');
+    okEl?.classList.add('hidden');
+
+    try {
+      const data = await postForm('save');
+      if (data.message) {
+        if (okEl) {
+          okEl.textContent = data.message;
+          okEl.classList.remove('hidden');
+        }
+        setTimeout(() => location.reload(), 900);
+        return;
+      }
+      if (errEl) {
+        errEl.textContent = data.error ?? 'Gagal menyimpan.';
+        errEl.classList.remove('hidden');
+      }
+    } catch {
+      if (errEl) {
+        errEl.textContent = 'Gagal menghubungi server.';
+        errEl.classList.remove('hidden');
+      }
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  });
+
+  unpublishBtn?.addEventListener('click', async () => {
+    if (!confirm('Batalkan publikasi? Artikel akan dihapus dari web jurnal.')) return;
+    unpublishBtn.disabled = true;
+    try {
+      const data = await postForm('unpublish');
+      if (data.message) {
+        window.location.href = '/admin/naskah?status=accepted';
+        return;
+      }
+      alert(data.error ?? 'Gagal membatalkan publikasi.');
+    } catch {
+      alert('Gagal menghubungi server.');
+    } finally {
+      unpublishBtn.disabled = false;
+    }
+  });
+</script>

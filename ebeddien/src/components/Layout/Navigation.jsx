@@ -1,0 +1,1547 @@
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useAuthStore } from '../../store/authStore'
+import { useRef, useEffect, useState, useMemo } from 'react'
+import { getNavFavorites, getNavFavoritesSyncId, setNavFavorites, toggleNavFavorite } from '../../utils/navFavorites'
+import api, { authAPI } from '../../services/api'
+import {
+  userHasSuperAdminAccess,
+  userHasAnyAdminCap,
+  userMatchesAllowedRolesOrPermissions,
+  userHasUwabaPaymentNavAccess,
+  userHasPsbNavAccess,
+  userHasUmrohNavAccess,
+  userHasIjinNavAccess,
+  userHasIjinBoyongNavAccess,
+  userHasWiridNavAccess
+} from '../../utils/roleAccess'
+import { buildUnifiedExpandedMenuFromFitur } from '../../utils/sidebarNavFromFiturApi'
+
+const navItems = [
+  {
+    path: '/dashboard-pembayaran',
+    label: 'Dashboard',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+    ),
+    requiresRole: ['admin_uwaba', 'petugas_uwaba', 'super_admin']
+  },
+  {
+    path: '/uwaba',
+    label: 'UWABA',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+    requiresRole: ['petugas_uwaba', 'admin_uwaba', 'super_admin']
+  },
+  {
+    path: '/pendaftaran',
+    label: 'Pendaftaran',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+    requiresRole: ['admin_psb', 'petugas_psb', 'super_admin']
+  },
+  {
+    path: '/laporan',
+    label: 'Laporan',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+    requiresRole: ['admin_uwaba', 'petugas_uwaba', 'admin_psb', 'petugas_psb', 'super_admin']
+  },
+  {
+    path: '/converter',
+    label: 'Converter',
+    icon: (
+      <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16 4l4 4-4 4M20 8H4M8 20l-4-4 4-4M4 16h16" />
+      </svg>
+    ),
+    requiresRole: ['super_admin', 'admin_kalender']
+  },
+  {
+    path: '/manage-users',
+    label: 'User',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+    requiresRole: ['super_admin', 'admin_cashless']
+  },
+  {
+    path: '/pengurus',
+    label: 'Pengurus',
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+    requiresSuperAdmin: true
+  }
+]
+
+function Navigation() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const { user } = useAuthStore()
+  const fiturMenuFromApi = useAuthStore((s) => s.fiturMenuFromApi)
+  const fiturMenuCatalog = useAuthStore((s) => s.fiturMenuCatalog)
+  const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
+  const [aiMenuEnabledNav, setAiMenuEnabledNav] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await api.get('/deepseek/account')
+        if (cancelled) return
+        if (res?.data?.success) {
+          setAiMenuEnabledNav(res.data?.data?.ai_enabled !== false)
+        }
+      } catch (_) {
+        if (!cancelled) setAiMenuEnabledNav(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Ambil NIS/ID dari URL (pembayaran pakai nis, pendaftaran pakai id; bawa keduanya agar data santri tetap)
+  const idFromUrl = searchParams.get('nis') || searchParams.get('id')
+  const [showExpandedMenu, setShowExpandedMenu] = useState(false)
+  // Default terkunci: saat kunci, klik tile = navigasi (mode pakai). Saat tidak kunci, klik tile = toggle favorit.
+  const [menuLocked, setMenuLocked] = useState(true)
+  // Pencarian dalam menu yang diperluas (di-reset tiap kali menu ditutup agar animasi search melebar fresh).
+  const [menuSearchQuery, setMenuSearchQuery] = useState('')
+  // Tampilan grid (default) vs list — disimpan ke localStorage agar konsisten antar sesi.
+  const [menuViewMode, setMenuViewMode] = useState(() => {
+    try {
+      const v = localStorage.getItem('eb_expanded_menu_view')
+      return v === 'list' ? 'list' : 'grid'
+    } catch {
+      return 'grid'
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('eb_expanded_menu_view', menuViewMode)
+    } catch {
+      // diam-diam: localStorage kadang diblokir di mode private
+    }
+  }, [menuViewMode])
+
+  // Grup yang sedang diciutkan (accordion). Disimpan per label grup ke localStorage.
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try {
+      const raw = localStorage.getItem('eb_expanded_menu_collapsed_groups')
+      const arr = raw ? JSON.parse(raw) : []
+      return new Set(Array.isArray(arr) ? arr : [])
+    } catch {
+      return new Set()
+    }
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'eb_expanded_menu_collapsed_groups',
+        JSON.stringify(Array.from(collapsedGroups))
+      )
+    } catch {
+      // diam-diam: localStorage kadang diblokir di mode private
+    }
+  }, [collapsedGroups])
+
+  const toggleGroupCollapsed = (label) => {
+    if (!label) return
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
+
+  // Reset search query saat menu tertutup supaya saat dibuka kembali animasi search melebar dari awal
+  useEffect(() => {
+    if (!showExpandedMenu) {
+      setMenuSearchQuery('')
+    }
+  }, [showExpandedMenu])
+  
+  const userLevel = user?.level?.toLowerCase()
+  const isSuperAdmin = userHasSuperAdminAccess(user)
+  const isAdminOrSuperAdmin = user && (userLevel === 'admin' || userHasAnyAdminCap(user))
+  
+  // Helper untuk cek permission
+  const hasPermission = (permission) => {
+    if (!user || !user.permissions) {
+      return false
+    }
+    return user.permissions.includes(permission)
+  }
+  
+  // Role + permission JWT (manage_*) — selaras RoleRoute / backend
+  const hasRole = (roles) => userMatchesAllowedRolesOrPermissions(user, roles)
+
+  // Tentukan cabang nav dengan prioritas: UWABA > PSB > Umroh > Ijin
+  const hasUwabaRole = userHasUwabaPaymentNavAccess(user)
+  const hasPsbRole = userHasPsbNavAccess(user)
+  const hasUmrohRole = userHasUmrohNavAccess(user)
+  const hasIjinRole = userHasIjinNavAccess(user)
+  const hasWiridOnlyNav =
+    userHasWiridNavAccess(user) && !hasUwabaRole && !hasPsbRole && !hasUmrohRole && !hasIjinRole
+
+  // Grup My Workspace (Beranda + Profil) — ditampilkan untuk semua user di nav bawah
+  const profilGroupItems = [
+    { path: '/beranda', label: 'Beranda', icon: 'beranda' },
+    { path: '/profil', label: 'Profil', icon: 'profil' },
+    { path: '/mybeddian', label: 'MyBeddien', icon: 'mybeddian' }
+  ]
+
+  // Tentukan nav items berdasarkan role; grup My Workspace (Beranda + Profil) selalu di paling atas
+  // Format: [...profilGroupItems, item1, item2, null (menu expanded), item3, item4, ...]
+  const getNavItemsByRole = () => {
+    let roleItems = []
+    if (hasUwabaRole) {
+      roleItems = [
+        { path: '/dashboard-pembayaran', label: 'Dashboard', icon: 'dashboard' },
+        { path: '/uwaba', label: 'UWABA', icon: 'uwaba' },
+        null,
+        { path: '/khusus', label: 'Khusus', icon: 'khusus' },
+        { path: '/tunggakan', label: 'Tunggakan', icon: 'tunggakan' }
+      ]
+    } else if (hasPsbRole) {
+      roleItems = [
+        { path: '/dashboard-pendaftaran', label: 'Dashboard', icon: 'dashboard' },
+        null,
+        { path: '/pendaftaran/data-pendaftar', label: 'Data Pendaftar', icon: 'data' },
+        { path: '/pendaftaran/analisis', label: 'Analisis', icon: 'analisis' },
+        { path: '/laporan', label: 'Laporan', icon: 'laporan' }
+      ]
+    } else if (hasUmrohRole) {
+      roleItems = [
+        { path: '/dashboard-umroh', label: 'Dashboard', icon: 'dashboard' },
+        { path: '/umroh/jamaah', label: 'Jemaah', icon: 'jamaah' },
+        null,
+        { path: '/umroh/tabungan', label: 'Tabungan', icon: 'tabungan' },
+        { path: '/laporan-umroh', label: 'Laporan', icon: 'laporan' }
+      ]
+    } else if (hasIjinRole) {
+      const items = [
+        { path: '/dashboard-ijin', label: 'Dashboard', icon: 'dashboard' },
+        { path: '/ijin/data-ijin', label: 'Data Ijin', icon: 'ijin' },
+        null
+      ]
+      if (userHasIjinBoyongNavAccess(user)) {
+        items.splice(2, 0, { path: '/ijin/data-boyong', label: 'Data Boyong', icon: 'boyong' })
+      }
+      roleItems = items
+    } else if (hasWiridOnlyNav) {
+      roleItems = [{ path: '/wirid/nailul-murod', label: 'Nailul Murod', icon: 'nailul' }, null]
+    }
+    return [...profilGroupItems, ...roleItems]
+  }
+  
+  const roleBasedNavItems = getNavItemsByRole()
+  
+  // Helper untuk render icon
+  const renderIcon = (iconName) => {
+    const iconClass = "w-6 h-6"
+    switch(iconName) {
+      case 'dashboard':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+        )
+      case 'uwaba':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        )
+      case 'tunggakan':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+        )
+      case 'khusus':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.539 1.118l-3.975-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.95-.69l1.52-4.674z" />
+          </svg>
+        )
+      case 'analisis':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        )
+      case 'laporan':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        )
+      case 'pendaftaran':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        )
+      case 'data':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+          </svg>
+        )
+      case 'jamaah':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        )
+      case 'tabungan':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )
+      case 'ijin':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        )
+      case 'boyong':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        )
+      case 'beranda':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+        )
+      case 'nailul':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+        )
+      case 'profil':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        )
+      case 'mybeddian':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        )
+      default:
+        return null
+    }
+  }
+  
+  // Default menu navbar dari akses role (menu pertama yang dirender dari role)
+  const defaultRolePaths = useMemo(() => {
+    const fromRole = roleBasedNavItems.filter(item => item !== null).map(item => item.path)
+    return fromRole.length > 0 ? fromRole : []
+  }, [roleBasedNavItems])
+  
+  const fiturMenuFetchStatus = useAuthStore((s) => s.fiturMenuFetchStatus)
+  const expandedMenuItems = useMemo(
+    () =>
+      buildUnifiedExpandedMenuFromFitur({
+        fiturMenuFromApi,
+        fiturMenuCatalog,
+        fiturMenuCodes,
+        isSuperAdmin,
+        fiturMenuFetchStatus
+      }),
+    [fiturMenuFromApi, fiturMenuCatalog, fiturMenuCodes, isSuperAdmin, fiturMenuFetchStatus]
+  )
+  const expandedGroupIndices = useMemo(() => {
+    const out = []
+    let g = 0
+    for (let i = 0; i < expandedMenuItems.length; i++) {
+      out[i] = g
+      if (expandedMenuItems[i].showSeparator) g++
+    }
+    return out
+  }, [expandedMenuItems])
+
+  const expandedGroupLabels = useMemo(() => {
+    const labels = {}
+    expandedMenuItems.forEach((item, i) => {
+      // groupLabel di item pertama grup; fallback group di setiap item
+      const g = item.groupLabel || item.group
+      if (g) labels[expandedGroupIndices[i]] = g
+    })
+    return labels
+  }, [expandedMenuItems, expandedGroupIndices])
+
+  // Filter expanded menu items dan bawa groupIndex agar pembatas antar grup selalu tampil
+  const filteredExpandedItems = useMemo(() => {
+    const canSee = (item) => {
+      if (item.path === '/chat-ai' && !aiMenuEnabledNav) return false
+      if (item._fromApi) return true
+      if (isSuperAdmin) return true // Super Admin bisa lihat semua menu (termasuk Umroh, Ijin, dll)
+      if (item.requiresRole) return hasRole(item.requiresRole)
+      if (item.requiresSuperAdmin) return isSuperAdmin
+      if (item.requiresAdmin) return isAdminOrSuperAdmin
+      if (item.requiresPermission) return user && hasPermission(item.requiresPermission)
+      return true
+    }
+    return expandedMenuItems
+      .map((item, i) => ({ item, groupIndex: expandedGroupIndices[i] }))
+      .filter(({ item }) => canSee(item))
+  }, [
+    user,
+    expandedMenuItems,
+    expandedGroupIndices,
+    hasRole,
+    isSuperAdmin,
+    isAdminOrSuperAdmin,
+    hasPermission,
+    aiMenuEnabledNav
+  ])
+  
+  // Check if user has any expanded menu items (including permission-based items)
+  const hasExpandedMenuItems = filteredExpandedItems.length > 0
+
+  // Label grup yang bisa di-accordion (selaras logika render grup di panel menu).
+  const collapsibleGroupLabels = useMemo(() => {
+    const labels = []
+    let currentGroup = []
+    let currentGroupIndex = null
+
+    filteredExpandedItems.forEach((entry) => {
+      const { item, groupIndex } = entry
+      if (currentGroupIndex !== null && groupIndex !== currentGroupIndex) {
+        const label = expandedGroupLabels[currentGroupIndex] ?? null
+        if (label) labels.push(label)
+        currentGroup = []
+      }
+      currentGroupIndex = groupIndex
+      currentGroup.push(item)
+    })
+
+    if (currentGroup.length > 0) {
+      const isLastGroup = currentGroup.some((item) => item.requiresSuperAdmin)
+      const label = isLastGroup ? 'Pengaturan' : (expandedGroupLabels[currentGroupIndex] ?? null)
+      if (label) labels.push(label)
+    }
+
+    return [...new Set(labels)]
+  }, [filteredExpandedItems, expandedGroupLabels])
+
+  const allGroupsCollapsed =
+    collapsibleGroupLabels.length > 0 &&
+    collapsibleGroupLabels.every((label) => collapsedGroups.has(label))
+
+  const toggleAllGroupsExpanded = () => {
+    if (collapsibleGroupLabels.length === 0) return
+    if (allGroupsCollapsed) {
+      setCollapsedGroups(new Set())
+    } else {
+      setCollapsedGroups(new Set(collapsibleGroupLabels))
+    }
+  }
+
+  // Daftar path yang boleh tampil di navbar (role + expanded)
+  const allAllowedNavPaths = useMemo(() => {
+    const fromExpanded = filteredExpandedItems.map(e => e.item.path)
+    const combined = [...defaultRolePaths, ...fromExpanded]
+    return [...new Set(combined)]
+  }, [defaultRolePaths, filteredExpandedItems])
+
+  // Map path -> { path, label, icon } untuk item navbar (dari role + expanded)
+  const itemsForNavbar = useMemo(() => {
+    const map = {}
+    filteredExpandedItems.forEach(({ item }) => {
+      map[item.path] = { path: item.path, label: item.label, icon: item.icon }
+    })
+    roleBasedNavItems.forEach(entry => {
+      if (entry && !map[entry.path]) {
+        map[entry.path] = {
+          path: entry.path,
+          label: entry.label,
+          icon: renderIcon(entry.icon)
+        }
+      }
+    })
+    return map
+  }, [filteredExpandedItems, roleBasedNavItems])
+
+  // Favorit navbar: path yang ditampilkan di bottom nav (lokal + sync app___fitur_favorit)
+  const [navFavorites, setNavFavoritesState] = useState([])
+
+  const navFavSyncId = getNavFavoritesSyncId(user)
+  const allowedPathsKey = allAllowedNavPaths.join('\u0001')
+
+  useEffect(() => {
+    if (!navFavSyncId) return
+
+    const defaultPaths = defaultRolePaths.length ? defaultRolePaths : allAllowedNavPaths.slice(0, 5)
+    const localSaved =
+      getNavFavorites(navFavSyncId) ||
+      (user?.id != null && String(user.id) !== String(navFavSyncId) ? getNavFavorites(String(user.id)) : null)
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await authAPI.getMyFiturFavorit({ app_key: 'ebeddien' })
+        if (cancelled) return
+        if (res?.success && Array.isArray(res.data?.paths)) {
+          const fromServer = res.data.paths.filter((p) => allAllowedNavPaths.includes(p))
+          if (fromServer.length > 0) {
+            setNavFavoritesState(fromServer)
+            setNavFavorites(navFavSyncId, fromServer)
+            return
+          }
+        }
+      } catch (_) {
+        /* jaringan / tabel belum ada → fallback lokal */
+      }
+      if (cancelled) return
+
+      if (localSaved && localSaved.length > 0) {
+        const filtered = localSaved.filter((p) => allAllowedNavPaths.includes(p))
+        const next = filtered.length ? filtered : defaultPaths
+        setNavFavoritesState(next)
+        setNavFavorites(navFavSyncId, next)
+        if (filtered.length > 0) {
+          authAPI.putMyFiturFavorit({ app_key: 'ebeddien', ordered_paths: next }).catch(() => {})
+        }
+        return
+      }
+      setNavFavoritesState(defaultPaths)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [navFavSyncId, allowedPathsKey, defaultRolePaths.join('\u0001'), user?.id])
+
+  const handleToggleNavFavorite = (path, add) => {
+    const next = toggleNavFavorite(navFavorites, path, add)
+    if (navFavSyncId) {
+      setNavFavorites(navFavSyncId, next)
+      authAPI.putMyFiturFavorit({ app_key: 'ebeddien', ordered_paths: next }).catch(() => {})
+    }
+    setNavFavoritesState(next)
+  }
+
+  // Item yang tampil di navbar: urutan sesuai favorit user (default = menu pertama dari role)
+  const filteredNavItems = useMemo(() => {
+    const paths = navFavorites.length > 0 ? navFavorites : defaultRolePaths.length ? defaultRolePaths : allAllowedNavPaths.slice(0, 5)
+    return paths.map(path => itemsForNavbar[path]).filter(Boolean)
+  }, [navFavorites, defaultRolePaths, allAllowedNavPaths, itemsForNavbar])
+
+  // Flag untuk menentukan apakah menggunakan role-based navigation
+  const usingRoleBasedNav = roleBasedNavItems.length > 0
+
+  const isActivePath = (path) => {
+    if (path === '/dashboard') {
+      return location.pathname === '/' || location.pathname === '/dashboard'
+    }
+    if (path === '/dashboard-pendaftaran') {
+      return location.pathname === '/dashboard-pendaftaran'
+    }
+    if (path === '/dashboard-umroh') {
+      return location.pathname === '/dashboard-umroh'
+    }
+    if (path === '/dashboard-ijin') {
+      return location.pathname === '/dashboard-ijin'
+    }
+    // Exact match for most paths
+    if (location.pathname === path) {
+      return true
+    }
+    // Special handling for /pendaftaran — sub-path kecuali menu PSB lain (data, analisis, item, …)
+    if (path === '/pendaftaran' && location.pathname.startsWith('/pendaftaran')) {
+      if (location.pathname === '/pendaftaran/data') return false
+      if (location.pathname === '/pendaftaran/data-pendaftar') return false
+      if (location.pathname === '/pendaftaran/analisis') return false
+      if (location.pathname === '/pendaftaran/padukan-data') return false
+      if (location.pathname === '/pendaftaran/pengaturan') return false
+      if (location.pathname === '/pendaftaran/item' || location.pathname.startsWith('/pendaftaran/item/')) return false
+      if (location.pathname === '/pendaftaran/editor') return false
+      return true
+    }
+    // Special handling for /pendaftaran/data
+    if (path === '/pendaftaran/data' && location.pathname === '/pendaftaran/data') {
+      return true
+    }
+    // Special handling for /pendaftaran/data-pendaftar
+    if (path === '/pendaftaran/data-pendaftar' && location.pathname === '/pendaftaran/data-pendaftar') {
+      return true
+    }
+    // Special handling for /pendaftaran/padukan-data
+    if (path === '/pendaftaran/padukan-data' && location.pathname === '/pendaftaran/padukan-data') {
+      return true
+    }
+    // Special handling for /pendaftaran/pengaturan
+    if (path === '/pendaftaran/pengaturan' && location.pathname === '/pendaftaran/pengaturan') {
+      return true
+    }
+    // Special handling for /umroh - also match sub-paths
+    if (path === '/umroh/jamaah' && location.pathname.startsWith('/umroh')) {
+      return true
+    }
+    // Special handling for /laporan-umroh
+    if (path === '/laporan-umroh' && location.pathname === '/laporan-umroh') {
+      return true
+    }
+    // Data Ijin dan Data Boyong: exact path agar hanya satu yang aktif
+    if (path === '/ijin/data-ijin') return location.pathname === '/ijin/data-ijin'
+    if (path === '/ijin/data-boyong') return location.pathname === '/ijin/data-boyong'
+    // Kalender: exact path
+    if (path === '/kalender') return location.pathname === '/kalender'
+    if (path === '/converter') return location.pathname === '/converter'
+    if (path === '/kalender/hari-penting') return location.pathname === '/kalender/hari-penting'
+    if (path === '/kalender/pengaturan') return location.pathname === '/kalender/pengaturan'
+    // Special handling for /juara - also match sub-paths
+    if (path === '/juara/data-juara' && location.pathname.startsWith('/juara')) {
+      return true
+    }
+    // Special handling for /aktivitas-tahun-ajaran
+    if (path === '/aktivitas-tahun-ajaran' && location.pathname === '/aktivitas-tahun-ajaran') {
+      return true
+    }
+    // UGT - Data Madrasah, Laporan, Koordinator
+    if (path === '/ugt/data-madrasah' && location.pathname === '/ugt/data-madrasah') {
+      return true
+    }
+    if (path === '/ugt/guru-tugas' && location.pathname === '/ugt/guru-tugas') {
+      return true
+    }
+    if (path === '/ugt/kompas' && location.pathname === '/ugt/kompas') {
+      return true
+    }
+    if (path === '/ugt/laporan' && (location.pathname === '/ugt/laporan' || location.pathname.startsWith('/ugt/laporan/'))) {
+      return true
+    }
+    if (path === '/koordinator' && location.pathname === '/koordinator') {
+      return true
+    }
+    if (path === '/cashless/data-toko' && location.pathname === '/cashless/data-toko') {
+      return true
+    }
+    if (path === '/cashless/pembuatan-akun' && location.pathname === '/cashless/pembuatan-akun') {
+      return true
+    }
+    if (path === '/cashless/pengaturan' && location.pathname === '/cashless/pengaturan') {
+      return true
+    }
+    if (path === '/cashless/topup' && location.pathname === '/cashless/topup') {
+      return true
+    }
+    if (path === '/beranda') return location.pathname === '/beranda'
+    if (path === '/mybeddian') return location.pathname === '/mybeddian'
+    if (path === '/profil') return location.pathname === '/profil' || location.pathname.startsWith('/profil/')
+    if (path === '/wirid/nailul-murod') return location.pathname === '/wirid/nailul-murod'
+    return false
+  }
+
+  // Split nav items for positioning expanded menu in the middle
+  // Jika menggunakan role-based nav, menu expanded selalu di tengah (setelah 2 item pertama)
+  let firstHalfNavItems, secondHalfNavItems
+  if (usingRoleBasedNav) {
+    // Role-based: [item1, item2, null, item3, item4] -> firstHalf: [item1, item2], secondHalf: [item3, item4]
+    // Menu expanded akan muncul di antara firstHalf dan secondHalf
+    firstHalfNavItems = filteredNavItems.slice(0, 2)
+    secondHalfNavItems = filteredNavItems.slice(2)
+  } else {
+    // Default: split di tengah
+    const midPoint = Math.ceil(filteredNavItems.length / 2)
+    firstHalfNavItems = filteredNavItems.slice(0, midPoint)
+    secondHalfNavItems = filteredNavItems.slice(midPoint)
+  }
+  
+  // Calculate width based on number of items (add 1 if expanded menu exists)
+  // Untuk layar pendek atau menu panjang, gunakan min-width agar bisa di-scroll
+  const totalItems = filteredNavItems.length + (hasExpandedMenuItems ? 1 : 0)
+  const minItemWidth = 70 // Minimum width per item in pixels (diperkecil dari 80)
+  const calculatedWidth = totalItems > 0 ? `${100 / totalItems}%` : '20%'
+  // Jika lebih dari 5 items, gunakan min-width untuk scroll, jika tidak gunakan percentage
+  const itemWidth = totalItems > 5 ? `${minItemWidth}px` : calculatedWidth
+  
+  const navRef = useRef(null)
+  const expandedMenuRef = useRef(null)
+  const expandedMenuScrollRef = useRef(null)
+  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 })
+  const [showScrollbar, setShowScrollbar] = useState(false)
+  const [showExpandedScrollbar, setShowExpandedScrollbar] = useState(false)
+  const scrollTimeoutRef = useRef(null)
+  const expandedScrollTimeoutRef = useRef(null)
+  
+  // Check if any expanded menu item is active
+  const isExpandedMenuActive = filteredExpandedItems.some(item => isActivePath(item.path))
+  
+  // Find active index for sliding indicator - must match the actual render order
+  // Render order: firstHalfNavItems -> Expanded Menu -> secondHalfNavItems
+  let activeIndex = -1
+  const firstHalfActiveIndex = firstHalfNavItems.findIndex(item => isActivePath(item.path))
+  const secondHalfActiveIndex = secondHalfNavItems.findIndex(item => isActivePath(item.path))
+  
+  // Priority: Check navItems first (they are in the main nav bar)
+  if (firstHalfActiveIndex >= 0) {
+    activeIndex = firstHalfActiveIndex
+  } else if (secondHalfActiveIndex >= 0) {
+    activeIndex = firstHalfNavItems.length + (hasExpandedMenuItems ? 1 : 0) + secondHalfActiveIndex
+  } else if (isExpandedMenuActive) {
+    // Only use expanded menu index if no navItems match
+    activeIndex = firstHalfNavItems.length
+  }
+  
+  // Close expanded menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (expandedMenuRef.current && !expandedMenuRef.current.contains(event.target)) {
+        setShowExpandedMenu(false)
+      }
+    }
+    
+    if (showExpandedMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showExpandedMenu])
+  
+  // Update indicator position when active tab changes
+  useEffect(() => {
+    if (navRef.current && activeIndex >= 0) {
+      const navItems = navRef.current.querySelectorAll('[data-nav-item]')
+      if (navItems[activeIndex]) {
+        const activeItem = navItems[activeIndex]
+        const rect = activeItem.getBoundingClientRect()
+        const navRect = navRef.current.getBoundingClientRect()
+        setIndicatorStyle({
+          left: rect.left - navRect.left,
+          width: rect.width
+        })
+      }
+    }
+  }, [location.pathname, activeIndex, firstHalfNavItems.length, secondHalfNavItems.length, hasExpandedMenuItems])
+  
+  // Close menu when route changes
+  useEffect(() => {
+    setShowExpandedMenu(false)
+  }, [location.pathname])
+  
+  // Handle scroll untuk auto-hide scrollbar (horizontal nav)
+  const handleNavScroll = () => {
+    setShowScrollbar(true)
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current)
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+      setShowScrollbar(false)
+    }, 1500) // Hide scrollbar setelah 1.5 detik tidak scroll
+  }
+
+  // Handle scroll untuk auto-hide scrollbar (expanded menu)
+  const handleExpandedMenuScroll = () => {
+    setShowExpandedScrollbar(true)
+    if (expandedScrollTimeoutRef.current) {
+      clearTimeout(expandedScrollTimeoutRef.current)
+    }
+    expandedScrollTimeoutRef.current = setTimeout(() => {
+      setShowExpandedScrollbar(false)
+    }, 1500) // Hide scrollbar setelah 1.5 detik tidak scroll
+  }
+
+  useEffect(() => {
+    const nav = navRef.current
+    if (nav) {
+      nav.addEventListener('scroll', handleNavScroll)
+      return () => {
+        nav.removeEventListener('scroll', handleNavScroll)
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current)
+        }
+      }
+    }
+  }, [])
+
+  // Thread isi pesan di /chat (mobile): sembunyikan bottom nav agar area input tidak tertindih
+  const chatThreadOpenMobile =
+    location.pathname === '/chat' &&
+    (Boolean(searchParams.get('c')?.trim()) || Boolean(searchParams.get('u')?.trim()))
+
+  // Picker kontak chat baru (?new=1): offcanvas portal — sembunyikan nav agar footer OK/Buat Grup tidak tertutup
+  const chatNewContactPickerOpen = searchParams.get('new') === '1'
+
+  // Editor berita website (mobile): layar penuh + toolbar Quill — hindari tab bawah menutupi konten
+  const websiteBeritaEditorMobile = location.pathname.startsWith('/website/berita/editor')
+
+  useEffect(() => {
+    const expandedMenu = expandedMenuScrollRef.current
+    if (expandedMenu) {
+      const handleExpandedMenuMouseEnter = () => {
+        if (expandedScrollTimeoutRef.current) {
+          clearTimeout(expandedScrollTimeoutRef.current)
+        }
+        setShowExpandedScrollbar(true)
+      }
+
+      const handleExpandedMenuMouseLeave = () => {
+        if (expandedScrollTimeoutRef.current) {
+          clearTimeout(expandedScrollTimeoutRef.current)
+        }
+        expandedScrollTimeoutRef.current = setTimeout(() => {
+          setShowExpandedScrollbar(false)
+        }, 500)
+      }
+
+      expandedMenu.addEventListener('scroll', handleExpandedMenuScroll)
+      expandedMenu.addEventListener('mouseenter', handleExpandedMenuMouseEnter)
+      expandedMenu.addEventListener('mouseleave', handleExpandedMenuMouseLeave)
+      return () => {
+        expandedMenu.removeEventListener('scroll', handleExpandedMenuScroll)
+        expandedMenu.removeEventListener('mouseenter', handleExpandedMenuMouseEnter)
+        expandedMenu.removeEventListener('mouseleave', handleExpandedMenuMouseLeave)
+        if (expandedScrollTimeoutRef.current) {
+          clearTimeout(expandedScrollTimeoutRef.current)
+        }
+      }
+    }
+  }, [showExpandedMenu])
+
+  return (
+    <nav 
+      ref={navRef}
+      className={`sm:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.3)] flex justify-around z-[100] border-t border-gray-200 dark:border-gray-700 overflow-x-auto ${
+        chatThreadOpenMobile || chatNewContactPickerOpen || websiteBeritaEditorMobile ? 'hidden' : ''
+      }`}
+      aria-hidden={chatThreadOpenMobile || chatNewContactPickerOpen || websiteBeritaEditorMobile || undefined}
+      style={{ 
+        position: 'fixed', 
+        bottom: 0, 
+        left: 0, 
+        right: 0,
+        height: '64px',
+        paddingBottom: 'env(safe-area-inset-bottom, 0)',
+        scrollbarWidth: showScrollbar ? 'thin' : 'none', // Firefox - thin saat show, none saat hide
+        msOverflowStyle: 'none', // IE and Edge
+        WebkitOverflowScrolling: 'touch' // iOS smooth scrolling
+      }}
+      onScroll={handleNavScroll}
+    >
+      <style>{`
+        /* Horizontal nav scrollbar - kecil, sesuai tema, auto-hide */
+        nav::-webkit-scrollbar {
+          height: ${showScrollbar ? '3px' : '0px'};
+          transition: height 0.3s ease;
+        }
+        nav::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        nav::-webkit-scrollbar-thumb {
+          background: ${showScrollbar ? 'rgba(156, 163, 175, 0.4)' : 'transparent'};
+          border-radius: 3px;
+          transition: background 0.3s ease;
+        }
+        nav::-webkit-scrollbar-thumb:hover {
+          background: rgba(156, 163, 175, 0.6);
+        }
+        /* Dark mode untuk horizontal nav scrollbar */
+        .dark nav::-webkit-scrollbar-thumb {
+          background: ${showScrollbar ? 'rgba(107, 114, 128, 0.4)' : 'transparent'};
+        }
+        .dark nav::-webkit-scrollbar-thumb:hover {
+          background: rgba(107, 114, 128, 0.6);
+        }
+      `}</style>
+      {/* Sliding Indicator */}
+      <motion.div
+        className="absolute top-0 h-1 bg-gradient-to-r from-teal-500 to-teal-600 rounded-b-full pointer-events-none"
+        initial={false}
+        animate={{
+          left: indicatorStyle.left,
+          width: indicatorStyle.width
+        }}
+        transition={{
+          type: 'spring',
+          stiffness: 300,
+          damping: 30
+        }}
+        style={{
+          boxShadow: '0 2px 8px rgba(20, 184, 166, 0.4)',
+          zIndex: 10
+        }}
+      />
+      
+      {/* First Half Nav Items */}
+      {firstHalfNavItems.map((item, index) => {
+        const isActive = isActivePath(item.path)
+        
+        // Path yang relevan untuk menyertakan NIS agar data santri tetap saat pindah (pendaftaran & pembayaran baca nis)
+        const pathsWithNis = ['/pendaftaran', '/uwaba', '/tunggakan', '/khusus']
+        const shouldIncludeNis = pathsWithNis.includes(item.path) && idFromUrl && /^\d{7}$/.test(idFromUrl)
+        const linkTo = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
+        
+        return (
+            <NavLink
+            key={item.path}
+            to={linkTo}
+            data-nav-item
+            className={`relative flex flex-col items-center justify-center py-1.5 px-2 transition-all duration-300 ${
+              isActive 
+                ? 'text-teal-600 dark:text-teal-400' 
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
+            style={{ width: itemWidth }}
+          >
+            {/* Active Background */}
+            <AnimatePresence>
+              {isActive && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="absolute left-0 right-0 top-0 bottom-0 bg-teal-50 dark:bg-teal-900/20 rounded-t-2xl pointer-events-none overflow-hidden"
+                  style={{
+                    marginLeft: '8px',
+                    marginRight: '8px',
+                    zIndex: 1
+                  }}
+                />
+              )}
+            </AnimatePresence>
+            
+            {/* Icon di atas */}
+            <motion.div
+              animate={{ 
+                scale: isActive ? 1.15 : 1,
+                y: isActive ? -2 : 0
+              }}
+              transition={{ 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 25 
+              }}
+              className="relative z-10 mb-0.5"
+            >
+              <div className="w-5 h-5">
+                {item.icon}
+              </div>
+            </motion.div>
+            
+            {/* Nama di bawah icon */}
+            <motion.span 
+              animate={{ 
+                fontSize: isActive ? '0.625rem' : '0.5625rem',
+                fontWeight: isActive ? 600 : 500
+              }}
+              transition={{ 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 25 
+              }}
+              className="relative z-10 leading-tight text-center"
+            >
+              {item.label}
+            </motion.span>
+          </NavLink>
+        )
+      })}
+      
+      {/* Arrow Button for Expanded Menu (Admin/Super Admin or users with permissions) - Placed in the middle */}
+      {hasExpandedMenuItems && (
+        <div className="relative flex items-center justify-center flex-shrink-0" ref={expandedMenuRef} style={{ width: itemWidth, minWidth: itemWidth, height: '64px' }}>
+          <button
+            onClick={() => setShowExpandedMenu(!showExpandedMenu)}
+            data-nav-item
+            className={`relative flex flex-col items-center justify-center py-1.5 px-2 transition-all duration-300 w-full ${
+              showExpandedMenu || isExpandedMenuActive
+                ? 'text-teal-600 dark:text-teal-400' 
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            {/* Active Background */}
+            <AnimatePresence>
+              {(showExpandedMenu || isExpandedMenuActive) && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="absolute left-0 right-0 top-0 bottom-0 bg-teal-50 dark:bg-teal-900/20 rounded-t-2xl pointer-events-none overflow-hidden"
+                  style={{
+                    marginLeft: '8px',
+                    marginRight: '8px',
+                    zIndex: 1
+                  }}
+                />
+              )}
+            </AnimatePresence>
+            
+            {/* Icon di atas, nama di bawah */}
+            <motion.div
+              animate={{ 
+                scale: (showExpandedMenu || isExpandedMenuActive) ? 1.15 : 1,
+                y: (showExpandedMenu || isExpandedMenuActive) ? -2 : 0
+              }}
+              transition={{ 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 25 
+              }}
+              className="relative z-10 w-5 h-5 mb-0.5"
+            >
+              <AnimatePresence mode="wait">
+                {showExpandedMenu ? (
+                  // X Icon (when menu is open)
+                  <motion.svg
+                    key="close"
+                    initial={{ opacity: 0, rotate: -90, scale: 0.8 }}
+                    animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                    exit={{ opacity: 0, rotate: 90, scale: 0.8 }}
+                    transition={{ 
+                      type: 'spring', 
+                      stiffness: 400, 
+                      damping: 25,
+                      duration: 0.2
+                    }}
+                    className="w-5 h-5" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    strokeWidth="2.5"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </motion.svg>
+                ) : (
+                  // Grid Icon (when menu is closed)
+                  <motion.svg
+                    key="grid"
+                    initial={{ opacity: 0, rotate: 90, scale: 0.8 }}
+                    animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                    exit={{ opacity: 0, rotate: -90, scale: 0.8 }}
+                    transition={{ 
+                      type: 'spring', 
+                      stiffness: 400, 
+                      damping: 25,
+                      duration: 0.2
+                    }}
+                    className="w-5 h-5" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    strokeWidth="2.5"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </motion.svg>
+                )}
+              </AnimatePresence>
+            </motion.div>
+            
+            {/* Label */}
+            <motion.span 
+              animate={{ 
+                fontSize: (showExpandedMenu || isExpandedMenuActive) ? '0.625rem' : '0.5625rem',
+                fontWeight: (showExpandedMenu || isExpandedMenuActive) ? 600 : 500
+              }}
+              transition={{ 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 25 
+              }}
+              className="relative z-10 leading-tight"
+            >
+              Menu
+            </motion.span>
+          </button>
+          
+          {/* Expanded Menu */}
+          <AnimatePresence>
+            {showExpandedMenu && (
+              <>
+                {/* Backdrop */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setShowExpandedMenu(false)}
+                  className="fixed inset-0 bg-black bg-opacity-30 z-40"
+                  style={{ top: 0, bottom: '64px' }}
+                />
+                {/* Menu Container */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="fixed bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50 flex flex-col"
+                  style={{
+                    bottom: 'calc(64px + 0.5rem)',
+                    left: '5vw',
+                    right: '5vw',
+                    width: '90vw',
+                    maxWidth: '400px',
+                    // Tinggi tetap (bukan maxHeight) — saat pencarian memfilter, kotak tidak ikut menciut.
+                    height: 'calc(100vh - 64px - 100px - 1rem)',
+                    transform: 'translateX(-50%)'
+                  }}
+                >
+                <div 
+                  ref={expandedMenuScrollRef}
+                  className="p-4 overflow-y-auto expanded-menu-scroll flex-1 min-h-0" 
+                  style={{ 
+                    scrollbarWidth: showExpandedScrollbar ? 'thin' : 'none',
+                    msOverflowStyle: 'none'
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    {/* Search — anchored ke kanan; melebar ke kiri saat menu dibuka */}
+                    <div className="flex-1 min-w-0 flex justify-end">
+                      <motion.div
+                        key={`menu-search-${showExpandedMenu ? 'open' : 'closed'}`}
+                        initial={{ width: '2.25rem' }}
+                        animate={{ width: '100%' }}
+                        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1], delay: 0.35 }}
+                        className="relative max-w-full"
+                      >
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-teal-600 dark:text-teal-300 pointer-events-none">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </span>
+                        <input
+                          type="search"
+                          value={menuSearchQuery}
+                          onChange={(e) => setMenuSearchQuery(e.target.value)}
+                          placeholder="Cari menu..."
+                          aria-label="Cari menu"
+                          className="w-full h-9 pl-8 pr-3 rounded-full bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700/60 text-xs text-gray-900 dark:text-gray-100 placeholder-teal-700/60 dark:placeholder-teal-300/70 focus:outline-none focus:ring-2 focus:ring-teal-500/40 focus:border-teal-500 dark:focus:border-teal-400 focus:bg-white dark:focus:bg-gray-900/60"
+                        />
+                      </motion.div>
+                    </div>
+
+                    {/* Toggle list / grid */}
+                    <button
+                      type="button"
+                      onClick={() => setMenuViewMode((v) => (v === 'grid' ? 'list' : 'grid'))}
+                      className="shrink-0 w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-700/60 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 flex items-center justify-center transition-colors"
+                      title={menuViewMode === 'grid' ? 'Tampilan list' : 'Tampilan grid'}
+                      aria-label={menuViewMode === 'grid' ? 'Tampilan list' : 'Tampilan grid'}
+                    >
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.span
+                          key={menuViewMode}
+                          initial={{ rotate: -90, opacity: 0, scale: 0.6 }}
+                          animate={{ rotate: 0, opacity: 1, scale: 1 }}
+                          exit={{ rotate: 90, opacity: 0, scale: 0.6 }}
+                          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                          className="flex"
+                        >
+                          {menuViewMode === 'grid' ? (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zm0 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+                            </svg>
+                          )}
+                        </motion.span>
+                      </AnimatePresence>
+                    </button>
+
+                    {/* Toggle mode edit favorit (ganti tombol Terkunci/Mode Edit).
+                        Saat mode kunci: tampil ikon pensil (klik = mulai edit).
+                        Saat mode edit: tampil ikon gembok (klik = kunci kembali). Ikon bertukar dengan animasi smooth. */}
+                    <button
+                      type="button"
+                      onClick={() => setMenuLocked(!menuLocked)}
+                      className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
+                        menuLocked
+                          ? 'bg-gray-100 dark:bg-gray-700/60 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300'
+                          : 'bg-teal-100 dark:bg-teal-900/40 hover:bg-teal-200 dark:hover:bg-teal-900/60 text-teal-700 dark:text-teal-300 ring-2 ring-teal-500/40'
+                      }`}
+                      title={menuLocked ? 'Mode edit favorit navbar' : 'Kunci menu'}
+                      aria-label={menuLocked ? 'Mode edit favorit navbar' : 'Kunci menu'}
+                      aria-pressed={!menuLocked}
+                    >
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.span
+                          key={menuLocked ? 'edit' : 'lock'}
+                          initial={{ rotate: -90, opacity: 0, scale: 0.6 }}
+                          animate={{ rotate: 0, opacity: 1, scale: 1 }}
+                          exit={{ rotate: 90, opacity: 0, scale: 0.6 }}
+                          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                          className="flex"
+                        >
+                          {menuLocked ? (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          )}
+                        </motion.span>
+                      </AnimatePresence>
+                    </button>
+
+                    {collapsibleGroupLabels.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={toggleAllGroupsExpanded}
+                        className="shrink-0 w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-700/60 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 flex items-center justify-center transition-colors"
+                        title={allGroupsCollapsed ? 'Buka semua grup' : 'Tutup semua grup'}
+                        aria-label={allGroupsCollapsed ? 'Buka semua grup menu' : 'Tutup semua grup menu'}
+                        aria-pressed={!allGroupsCollapsed}
+                      >
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.span
+                            key={allGroupsCollapsed ? 'expand' : 'collapse'}
+                            initial={{ rotate: -90, opacity: 0, scale: 0.6 }}
+                            animate={{ rotate: 0, opacity: 1, scale: 1 }}
+                            exit={{ rotate: 90, opacity: 0, scale: 0.6 }}
+                            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                            className="flex"
+                          >
+                            {allGroupsCollapsed ? (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7M19 15l-7 7-7-7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7M5 9l7-7 7 7" />
+                              </svg>
+                            )}
+                          </motion.span>
+                        </AnimatePresence>
+                      </button>
+                    )}
+                  </div>
+                  {!menuLocked && (
+                    <p className="text-[10px] text-teal-700 dark:text-teal-300 px-1 mb-2">
+                      Mode edit: ketuk menu untuk menampilkan/menyembunyikan di navbar bawah.
+                    </p>
+                  )}
+                  <style>{`
+                    /* Expanded menu scrollbar - kecil, sesuai tema, auto-hide */
+                    .expanded-menu-scroll::-webkit-scrollbar {
+                      width: ${showExpandedScrollbar ? '3px' : '0px'};
+                      transition: width 0.3s ease;
+                    }
+                    .expanded-menu-scroll::-webkit-scrollbar-track {
+                      background: transparent;
+                    }
+                    .expanded-menu-scroll::-webkit-scrollbar-thumb {
+                      background: ${showExpandedScrollbar ? 'rgba(156, 163, 175, 0.4)' : 'transparent'};
+                      border-radius: 3px;
+                      transition: background 0.3s ease;
+                    }
+                    .expanded-menu-scroll::-webkit-scrollbar-thumb:hover {
+                      background: rgba(156, 163, 175, 0.6);
+                    }
+                    /* Dark mode untuk expanded menu scrollbar */
+                    .dark .expanded-menu-scroll::-webkit-scrollbar-thumb {
+                      background: ${showExpandedScrollbar ? 'rgba(107, 114, 128, 0.4)' : 'transparent'};
+                    }
+                    .dark .expanded-menu-scroll::-webkit-scrollbar-thumb:hover {
+                      background: rgba(107, 114, 128, 0.6);
+                    }
+                  `}</style>
+                  {/* Group items by groupIndex: pembatas selalu tampil antar grup. Filter pencarian
+                      diterapkan SEBELUM pengelompokan agar grup yang kosong setelah filter tidak
+                      menampilkan label/pembatas yang menggantung. */}
+                  {(() => {
+                    const q = menuSearchQuery.trim().toLowerCase()
+                    const visibleEntries = q
+                      ? filteredExpandedItems.filter(({ item }) =>
+                          (item.label && item.label.toLowerCase().includes(q)) ||
+                          (item.path && item.path.toLowerCase().includes(q))
+                        )
+                      : filteredExpandedItems
+
+                    if (visibleEntries.length === 0) {
+                      return (
+                        <p className="text-center text-xs text-gray-500 dark:text-gray-400 py-6">
+                          {q ? 'Tidak ada menu yang cocok.' : 'Belum ada menu.'}
+                        </p>
+                      )
+                    }
+
+                    const groups = []
+                    let currentGroup = []
+                    let currentGroupIndex = null
+
+                    visibleEntries.forEach((entry) => {
+                      const { item, groupIndex } = entry
+                      if (currentGroupIndex !== null && groupIndex !== currentGroupIndex) {
+                        groups.push({
+                          items: currentGroup,
+                          showSeparator: true,
+                          groupLabel: expandedGroupLabels[currentGroupIndex] ?? null
+                        })
+                        currentGroup = []
+                      }
+                      currentGroupIndex = groupIndex
+                      currentGroup.push(item)
+                    })
+
+                    if (currentGroup.length > 0) {
+                      const isLastGroup = currentGroup.some((item) => item.requiresSuperAdmin)
+                      groups.push({
+                        items: currentGroup,
+                        showSeparator: false,
+                        groupLabel: isLastGroup ? 'Pengaturan' : (expandedGroupLabels[currentGroupIndex] ?? null)
+                      })
+                    }
+
+                    const renderStar = (isPinned, sizeCls) => (
+                      isPinned ? (
+                        <svg className={`${sizeCls} text-amber-500`} fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                      ) : (
+                        <svg className={`${sizeCls} text-gray-300 dark:text-gray-500`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.539 1.118l-3.975-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.95-.69l1.52-4.674z" />
+                        </svg>
+                      )
+                    )
+
+                    return groups.map((group, gIdx) => {
+                      // Saat ada query pencarian aktif, semua grup dipaksa terbuka agar hasil cocok terlihat.
+                      const isCollapsible = !!group.groupLabel
+                      const isCollapsed = isCollapsible && !q && collapsedGroups.has(group.groupLabel)
+                      return (
+                      <div key={gIdx}>
+                        {group.groupLabel && (
+                          <button
+                            type="button"
+                            onClick={() => toggleGroupCollapsed(group.groupLabel)}
+                            className="w-full flex items-center justify-between gap-2 mb-2 mt-3 first:mt-0 px-0.5 py-1 rounded text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+                            aria-expanded={!isCollapsed}
+                          >
+                            <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                              {group.groupLabel}
+                            </span>
+                            <motion.span
+                              animate={{ rotate: isCollapsed ? -90 : 0 }}
+                              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                              className="flex text-gray-400 dark:text-gray-500"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </motion.span>
+                          </button>
+                        )}
+                        <AnimatePresence initial={false}>
+                          {!isCollapsed && (
+                            <motion.div
+                              key="items"
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                              style={{ overflow: 'hidden' }}
+                            >
+                        <div className={menuViewMode === 'grid' ? 'grid grid-cols-3 gap-2' : 'flex flex-col gap-1'}>
+                          {group.items.map((item) => {
+                            const isActive = isActivePath(item.path)
+                            const isPinned = navFavorites.includes(item.path)
+                            const pathsWithNis = ['/pendaftaran', '/uwaba', '/tunggakan', '/khusus']
+                            const shouldIncludeNis = pathsWithNis.includes(item.path) && idFromUrl && /^\d{7}$/.test(idFromUrl)
+                            const targetPath = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
+
+                            // Mode kunci: klik tile = navigasi (perilaku normal).
+                            // Mode edit: klik tile = toggle favorit (tidak ada lagi bintang kecil yang mudah salah pencet).
+                            const handleTileClick = () => {
+                              if (!menuLocked) {
+                                handleToggleNavFavorite(item.path, !isPinned)
+                              } else {
+                                navigate(targetPath)
+                                setShowExpandedMenu(false)
+                              }
+                            }
+
+                            // motion.button + prop `layout` & `layoutId`: saat viewMode beralih
+                            // (grid ↔ list), tiap tile bergerak halus dari posisi grid ke posisi list
+                            // (atau sebaliknya) — bukan menghilang/muncul instan.
+                            const tileTransition = { type: 'spring', stiffness: 320, damping: 32, mass: 0.6 }
+
+                            if (menuViewMode === 'list') {
+                              return (
+                                <motion.button
+                                  key={item.path}
+                                  layout
+                                  layoutId={`menu-tile-${item.path}`}
+                                  transition={tileTransition}
+                                  type="button"
+                                  onClick={handleTileClick}
+                                  className={`w-full flex items-center gap-3 px-2 py-2 rounded-lg transition-colors text-left ${
+                                    isActive && menuLocked
+                                      ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
+                                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                  } ${!menuLocked && isPinned ? 'ring-1 ring-amber-300/70 dark:ring-amber-500/40 bg-amber-50/40 dark:bg-amber-900/10' : ''}`}
+                                  aria-pressed={!menuLocked ? isPinned : undefined}
+                                >
+                                  <motion.span layout="position" transition={tileTransition} className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-gray-700/50 flex items-center justify-center shrink-0">
+                                    <span className="w-4 h-4 flex items-center justify-center">{item.icon}</span>
+                                  </motion.span>
+                                  <motion.span layout="position" transition={tileTransition} className="flex-1 text-xs font-medium truncate">{item.label}</motion.span>
+                                  {!menuLocked && (
+                                    <motion.span layout="position" transition={tileTransition} className="shrink-0">{renderStar(isPinned, 'w-4 h-4')}</motion.span>
+                                  )}
+                                </motion.button>
+                              )
+                            }
+
+                            return (
+                              <motion.button
+                                key={item.path}
+                                layout
+                                layoutId={`menu-tile-${item.path}`}
+                                transition={tileTransition}
+                                type="button"
+                                onClick={handleTileClick}
+                                className={`relative flex flex-col items-center justify-center gap-1.5 px-2 py-3 rounded-lg transition-colors w-full ${
+                                  isActive && menuLocked
+                                    ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
+                                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                                } ${!menuLocked && isPinned ? 'ring-1 ring-amber-300/70 dark:ring-amber-500/40 bg-amber-50/40 dark:bg-amber-900/10' : ''}`}
+                                aria-pressed={!menuLocked ? isPinned : undefined}
+                              >
+                                <motion.div layout="position" transition={tileTransition} className="w-5 h-5">{item.icon}</motion.div>
+                                <motion.span layout="position" transition={tileTransition} className="text-xs font-medium text-center leading-tight">{item.label}</motion.span>
+                                {!menuLocked && (
+                                  <motion.span layout="position" transition={tileTransition} className="absolute top-1 right-1">{renderStar(isPinned, 'w-4 h-4')}</motion.span>
+                                )}
+                              </motion.button>
+                            )
+                          })}
+                        </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        {group.showSeparator && gIdx < groups.length - 1 && (
+                          <div className="border-t border-gray-200 dark:border-gray-700 my-3" />
+                        )}
+                      </div>
+                      )
+                    })
+                  })()}
+                </div>
+              </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+      
+      {/* Second Half Nav Items */}
+      {secondHalfNavItems.map((item, index) => {
+        const isActive = isActivePath(item.path)
+        
+        // Path yang relevan untuk menyertakan NIS agar data santri tetap saat pindah (pendaftaran & pembayaran baca nis)
+        const pathsWithNis = ['/pendaftaran', '/uwaba', '/tunggakan', '/khusus']
+        const shouldIncludeNis = pathsWithNis.includes(item.path) && idFromUrl && /^\d{7}$/.test(idFromUrl)
+        const linkTo = shouldIncludeNis ? `${item.path}?nis=${idFromUrl}` : item.path
+        
+        return (
+            <NavLink
+            key={item.path}
+            to={linkTo}
+            data-nav-item
+            className={`relative flex flex-col items-center justify-center py-1.5 px-2 transition-all duration-300 flex-shrink-0 ${
+              isActive 
+                ? 'text-teal-600 dark:text-teal-400' 
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
+            style={{ width: itemWidth, minWidth: itemWidth }}
+          >
+            {/* Active Background */}
+            <AnimatePresence>
+              {isActive && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  className="absolute left-0 right-0 top-0 bottom-0 bg-teal-50 dark:bg-teal-900/20 rounded-t-2xl pointer-events-none overflow-hidden"
+                  style={{
+                    marginLeft: '8px',
+                    marginRight: '8px',
+                    zIndex: 1
+                  }}
+                />
+              )}
+            </AnimatePresence>
+            
+            {/* Icon di atas */}
+            <motion.div
+              animate={{ 
+                scale: isActive ? 1.15 : 1,
+                y: isActive ? -2 : 0
+              }}
+              transition={{ 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 25 
+              }}
+              className="relative z-10 mb-0.5"
+            >
+              <div className="w-5 h-5">
+                {item.icon}
+              </div>
+            </motion.div>
+            
+            {/* Nama di bawah icon */}
+            <motion.span 
+              animate={{ 
+                fontSize: isActive ? '0.625rem' : '0.5625rem',
+                fontWeight: isActive ? 600 : 500
+              }}
+              transition={{ 
+                type: 'spring', 
+                stiffness: 400, 
+                damping: 25 
+              }}
+              className="relative z-10 leading-tight text-center"
+            >
+              {item.label}
+            </motion.span>
+          </NavLink>
+        )
+      })}
+    </nav>
+  )
+}
+
+export default Navigation
+

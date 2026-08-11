@@ -1,0 +1,43 @@
+---
+interface Props {
+  user: { name: string | null; email: string; picture: string | null };
+  id?: string;
+  adminHref?: string;
+}
+
+const { user, id = 'profile-menu', adminHref } = Astro.props;
+const photo = user.picture ?? '/icon/icon96.png';
+---
+
+<div class="profile-menu-wrap" data-profile-menu={id}>
+  <button
+    type="button"
+    class="profile-menu-trigger"
+    aria-expanded="false"
+    aria-haspopup="true"
+    data-profile-trigger={id}
+  >
+    <img src={photo} alt="" class="h-9 w-9 md:h-10 md:w-10 rounded-full object-cover ring-2 ring-emerald-500/30 bg-slate-200" />
+  </button>
+  <div class="profile-menu-dropdown hidden" role="menu" data-profile-dropdown={id}>
+    <div class="profile-menu-user">
+      <p class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{user.name ?? 'Pengguna'}</p>
+      <p class="text-xs text-slate-500 truncate">{user.email}</p>
+    </div>
+    {
+      adminHref && (
+        <a href={adminHref} class="profile-menu-item" role="menuitem">
+          <span aria-hidden="true">⚙</span>
+          <span>Panel Admin</span>
+        </a>
+      )
+    }
+    <button type="button" class="profile-menu-item" data-theme-toggle role="menuitem">
+      <span data-theme-icon>🌙</span>
+      <span data-theme-label>Mode gelap</span>
+    </button>
+    <form method="post" action="/api/auth/logout">
+      <button type="submit" class="profile-menu-item danger w-full" role="menuitem">Keluar</button>
+    </form>
+  </div>
+</div>

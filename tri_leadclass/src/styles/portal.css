@@ -1,0 +1,162 @@
+/* Tema portal (penulis + admin) & menu profil */
+
+/* App bar — dipakai portal penulis & admin */
+.portal-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.5rem 1rem;
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0));
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+@media (min-width: 768px) {
+  .portal-header {
+    min-height: 3.5rem;
+    padding: 0.625rem 1.5rem;
+  }
+}
+
+html[data-theme='dark'] .portal-shell,
+html[data-theme='dark'] .admin-shell,
+html[data-theme='dark'] .author-shell {
+  color: #e2e8f0;
+  background: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #064e3b 100%);
+}
+
+html[data-theme='dark'] .portal-card,
+html[data-theme='dark'] .admin-card,
+html[data-theme='dark'] .author-card {
+  background: rgba(30, 41, 59, 0.92);
+  border-color: rgba(51, 65, 85, 0.9);
+  color: #e2e8f0;
+}
+
+html[data-theme='dark'] .portal-header {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(51, 65, 85, 0.8);
+  color: #f1f5f9;
+}
+
+html[data-theme='dark'] .author-bottom-nav,
+html[data-theme='dark'] .admin-bottom-nav {
+  background: rgba(15, 23, 42, 0.96);
+  border-color: rgba(51, 65, 85, 0.9);
+}
+
+html[data-theme='dark'] .author-bottom-link,
+html[data-theme='dark'] .admin-bottom-link {
+  color: #94a3b8;
+}
+
+html[data-theme='dark'] .author-bottom-link.active,
+html[data-theme='dark'] .admin-bottom-link.active {
+  color: #6ee7b7;
+}
+
+html[data-theme='dark'] .portal-input,
+html[data-theme='dark'] .author-page input:not([readonly]),
+html[data-theme='dark'] .author-page textarea,
+html[data-theme='dark'] .author-page select {
+  background: #1e293b;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+
+html[data-theme='dark'] .portal-text-muted {
+  color: #94a3b8;
+}
+
+html[data-theme='dark'] .portal-text-title {
+  color: #f8fafc;
+}
+
+/* Menu profil dropdown */
+.profile-menu-wrap {
+  position: relative;
+}
+
+.profile-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 2px;
+  transition: box-shadow 0.2s;
+}
+
+.profile-menu-trigger:hover,
+.profile-menu-trigger[aria-expanded='true'] {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.45);
+}
+
+.profile-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  min-width: 12rem;
+  z-index: 100;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: white;
+  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.12);
+  padding: 0.35rem;
+  overflow: hidden;
+}
+
+html[data-theme='dark'] .profile-menu-dropdown {
+  background: #1e293b;
+  border-color: #475569;
+}
+
+.profile-menu-dropdown.hidden {
+  display: none;
+}
+
+.profile-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #334155;
+  border-radius: 0.5rem;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+html[data-theme='dark'] .profile-menu-item {
+  color: #e2e8f0;
+}
+
+.profile-menu-item:hover {
+  background: #f1f5f9;
+}
+
+html[data-theme='dark'] .profile-menu-item:hover {
+  background: #334155;
+}
+
+.profile-menu-item.danger {
+  color: #dc2626;
+}
+
+.profile-menu-user {
+  padding: 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 0.25rem;
+}
+
+html[data-theme='dark'] .profile-menu-user {
+  border-color: #334155;
+}

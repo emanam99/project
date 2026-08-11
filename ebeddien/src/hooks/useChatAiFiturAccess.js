@@ -1,0 +1,66 @@
+import { useMemo } from 'react'
+import { useAuthStore } from '../store/authStore'
+import { userHasSuperAdminAccess } from '../utils/roleAccess'
+import { CHAT_AI_ACTION_CODES } from '../config/chatAiFiturCodes'
+
+/**
+ * Aksi Chat AI dari role___fitur. Jika belum ada kode action.chat_ai.* di API, pakai fallback (biasanya super_admin).
+ */
+export function buildCanChatAiAction(user, fiturMenuCodes) {
+  const isSuper = userHasSuperAdminAccess(user)
+  const useApi = Array.isArray(fiturMenuCodes) && fiturMenuCodes.length > 0
+  const apiHasChatAi =
+    useApi && fiturMenuCodes.some((c) => String(c).startsWith('action.chat_ai.'))
+  return (code, fallback) => {
+    if (isSuper) return true
+    if (!useApi) return fallback()
+    if (apiHasChatAi && String(code).startsWith('action.chat_ai.')) {
+      return fiturMenuCodes.includes(code)
+    }
+    if (fiturMenuCodes.includes(code)) return true
+    return fallback()
+  }
+}
+
+export function useChatAiFiturAccess() {
+  const user = useAuthStore((s) => s.user)
+  const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
+
+  return useMemo(() => {
+    const can = buildCanChatAiAction(user, fiturMenuCodes)
+    const superFb = () => userHasSuperAdminAccess(user)
+    const pageBank = can(CHAT_AI_ACTION_CODES.pageTrainingBank, superFb)
+    const pageTrainingChat = can(CHAT_AI_ACTION_CODES.pageTrainingChat, superFb)
+    const pageDashboard = can(CHAT_AI_ACTION_CODES.pageDashboard, superFb)
+    const pageRiwayat = can(CHAT_AI_ACTION_CODES.pageRiwayat, superFb)
+    const pagePengaturan = can(CHAT_AI_ACTION_CODES.pagePengaturan, superFb)
+    const uiUserAi = can(CHAT_AI_ACTION_CODES.uiUserAiSettings, superFb)
+    const uiModeAlt = can(CHAT_AI_ACTION_CODES.uiModeAlternatif, superFb)
+    const uiSelectProviderManual = can(CHAT_AI_ACTION_CODES.uiSelectProviderManual, superFb)
+    const agentUse = can(CHAT_AI_ACTION_CODES.agentUse, superFb)
+    const agentConfirmWrite = can(CHAT_AI_ACTION_CODES.agentConfirmWrite, superFb)
+    const showPelatihanMenu =
+      pageBank || pageTrainingChat || pageDashboard || pageRiwayat || uiUserAi || pagePengaturan
+    const trainingSectionTabCount = [pageBank, pageTrainingChat, pageDashboard, pageRiwayat].filter(Boolean).length
+    const extraSectionTabCount = trainingSectionTabCount + (uiUserAi ? 1 : 0) + (pagePengaturan ? 1 : 0)
+    /** Tab layout: Obrolan + (pelatihan | User AI); tampil jika ≥2 tab total */
+    const showChatAiSectionTabs = extraSectionTabCount >= 1
+    return {
+      can: (code, fb) => can(code, typeof fb === 'function' ? fb : () => !!fb),
+      pageTrainingBank: pageBank,
+      pageTrainingChat,
+      pageDashboard,
+      pageRiwayat,
+      pagePengaturan,
+      uiUserAiSettings: uiUserAi,
+      modeAlternatif: uiModeAlt,
+      selectProviderManual: uiSelectProviderManual,
+      agentUse,
+      agentConfirmWrite,
+      showPelatihanMenu,
+      trainingSectionTabCount,
+      extraSectionTabCount,
+      showChatAiSectionTabs
+    }
+  }, [user, fiturMenuCodes])
+}

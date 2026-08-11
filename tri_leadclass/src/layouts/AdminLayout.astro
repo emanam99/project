@@ -1,0 +1,433 @@
+---
+import '../styles/global.css';
+import '../styles/motion.css';
+import '../styles/admin.css';
+import '../styles/portal.css';
+import ProfileMenu from '../components/portal/ProfileMenu.astro';
+import PortalScripts from '../components/portal/PortalScripts.astro';
+import MotionScripts from '../components/motion/MotionScripts.astro';
+import PhotoCropEditor from '../components/PhotoCropEditor.astro';
+import { ClientRouter } from 'astro:transitions';
+import { getPublicSiteUrl } from '../lib/auth.ts';
+import { adminPageTransition, adminHeaderTransition, cleanAdminTitle } from '../lib/admin-transitions.ts';
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'Admin — TRI_LEADCLASS' } = Astro.props;
+const user = Astro.locals.user;
+const path = Astro.url.pathname;
+const headerTitle = cleanAdminTitle(title);
+const siteHome = getPublicSiteUrl();
+
+const isSuperAdmin = user?.role === 'super_admin';
+
+type NavItem = { href: string; label: string; icon: string; show?: boolean };
+
+const navItems: NavItem[] = [
+  { href: '/admin', label: 'Dashboard', icon: 'home' },
+  { href: '/admin/naskah', label: 'Naskah', icon: 'doc' },
+  { href: '/admin/kategori', label: 'Kategori', icon: 'tag' },
+  { href: '/admin/halaman', label: 'Halaman', icon: 'pages', show: isSuperAdmin },
+  { href: '/admin/redaksi', label: 'Redaksi', icon: 'board', show: isSuperAdmin },
+  { href: '/admin/penulis', label: 'Penulis', icon: 'pen', show: isSuperAdmin },
+  { href: '/admin/pengguna', label: 'Pengguna', icon: 'users', show: isSuperAdmin },
+];
+
+function isActive(href: string): boolean {
+  if (href === '/admin') return path === '/admin' || path === '/admin/';
+  return path.startsWith(href);
+}
+
+const icons: Record<string, string> = {
+  home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
+  doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/>',
+  tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  pages: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/>',
+  board: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/><path d="M18 7v8"/>',
+  pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+  apps: '<rect width="7" height="7" x="3" y="3" rx="2"/><rect width="7" height="7" x="14" y="3" rx="2"/><rect width="7" height="7" x="3" y="14" rx="2"/><rect width="7" height="7" x="14" y="14" rx="2"/>',
+  menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
+  grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+  list: '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+  chevron: '<path d="m15 18-6-6 6-6"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+
+function isProfilActive(): boolean {
+  return path.startsWith('/admin/profil');
+}
+
+const visibleNavItems = navItems.filter((n) => n.show !== false);
+
+/** Maks. 3 shortcut di bar bawah + Menu + Profil = 5 */
+const bottomBarSlugs = new Set(['/admin', '/admin/naskah', '/admin/kategori']);
+const bottomNavItems = visibleNavItems.filter((item) => bottomBarSlugs.has(item.href));
+
+const menuExtraItems: NavItem[] = [
+  { href: '/admin/profil', label: 'Profil', icon: 'user' },
+  { href: siteHome, label: 'Beranda Jurnal', icon: 'home' },
+];
+---
+
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon/icon512.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon/icon192.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/icon/icon96.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon/icon32.png" />
+    <link rel="apple-touch-icon" href="/icon/icon192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700&display=swap"
+      rel="stylesheet"
+    />
+    <title>{title}</title>
+    {user && <ClientRouter />}
+  </head>
+  <body class="font-sans text-slate-900 antialiased">
+    {
+      user ? (
+        <div class="admin-shell portal-shell" id="admin-shell" data-sidebar-collapsed="false">
+          {/* ── Sidebar desktop ── */}
+          <aside
+            class="admin-sidebar hidden md:flex fixed inset-y-0 left-0 z-40 flex-col bg-slate-950 text-white border-r border-slate-800/80"
+            aria-label="Navigasi admin"
+            transition:persist="admin-sidebar"
+          >
+            <div class="flex items-center justify-between gap-2 p-4 border-b border-slate-800">
+              <a href="/admin" class="flex items-center gap-3 min-w-0 overflow-hidden">
+                <img src="/icon/icon.png" alt="" class="h-9 w-9 object-contain shrink-0" />
+                <div class="admin-brand-text transition-opacity duration-200 min-w-0">
+                  <p class="font-serif font-black text-xs tracking-widest uppercase truncate">TRI_LEADCLASS</p>
+                  <p class="text-[10px] text-emerald-400/90 uppercase tracking-wider">Panel Admin</p>
+                </div>
+              </a>
+              <button
+                type="button"
+                id="sidebar-toggle"
+                class="shrink-0 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                aria-label="Ciutkan sidebar"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons.chevron} />
+              </button>
+            </div>
+
+            <nav class="flex-1 p-3 space-y-1">
+              {
+                navItems.filter((n) => n.show !== false).map((item) => (
+                  <a
+                    href={item.href}
+                    title={item.label}
+                    data-admin-nav={item.href}
+                    class:list={[
+                      'admin-nav-link flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors',
+                      isActive(item.href) && 'active !text-emerald-300',
+                    ]}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0" set:html={icons[item.icon]} />
+                    <span class="admin-nav-label transition-opacity duration-200">{item.label}</span>
+                  </a>
+                ))
+              }
+            </nav>
+
+            <div class="p-3 border-t border-slate-800">
+              <a href={siteHome} class="admin-nav-link flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors">
+                <span class="admin-nav-label">← Beranda Jurnal</span>
+              </a>
+            </div>
+          </aside>
+
+          <div class="admin-main-wrap min-h-screen flex flex-col">
+            <header
+              class="portal-header admin-header"
+              transition:name="admin-header"
+              transition:animate={adminHeaderTransition}
+            >
+              <div class="min-w-0 flex-1">
+                <p class="admin-header-eyebrow hidden md:block">Panel Admin</p>
+                <p class="admin-header-title portal-text-title truncate">{headerTitle}</p>
+              </div>
+              {user && <ProfileMenu user={user} id="admin-profile-menu" />}
+            </header>
+
+            <main class="admin-main flex-1" transition:animate="none">
+              <div class="admin-main-inner" transition:name="admin-main" transition:animate={adminPageTransition}>
+                <slot />
+              </div>
+            </main>
+          </div>
+
+          {/* ── Bottom nav mobile — Menu FAB di tengah ── */}
+          <nav
+            class="admin-bottom-nav fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-lg border-t border-slate-200/90 shadow-[0_-4px_24px_rgba(15,23,42,0.06)]"
+            aria-label="Navigasi bawah"
+            transition:animate="none"
+          >
+            {
+              bottomNavItems.slice(0, 2).map((item) => (
+                <a
+                  href={item.href}
+                  data-admin-bottom={item.href}
+                  class:list={[
+                    'admin-bottom-link flex flex-col items-center justify-end gap-0.5 pb-1.5 pt-2 text-[10px] font-semibold text-slate-500 min-w-0',
+                    isActive(item.href) && 'active',
+                  ]}
+                >
+                  <span class="admin-bottom-icon flex h-8 w-8 items-center justify-center rounded-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons[item.icon]} />
+                  </span>
+                  {item.label}
+                </a>
+              ))
+            }
+            <div class="admin-bottom-nav-center">
+              <button
+                type="button"
+                id="admin-menu-open"
+                class="admin-bottom-menu-fab"
+                aria-expanded="false"
+                aria-controls="admin-menu-sheet"
+                aria-label="Semua menu"
+              >
+                <span class="admin-bottom-menu-ring">
+                  <svg class="admin-bottom-menu-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons.apps} />
+                </span>
+                <span class="admin-bottom-menu-label">Menu</span>
+              </button>
+            </div>
+            {
+              bottomNavItems.slice(2).map((item) => (
+                <a
+                  href={item.href}
+                  data-admin-bottom={item.href}
+                  class:list={[
+                    'admin-bottom-link flex flex-col items-center justify-end gap-0.5 pb-1.5 pt-2 text-[10px] font-semibold text-slate-500 min-w-0',
+                    isActive(item.href) && 'active',
+                  ]}
+                >
+                  <span class="admin-bottom-icon flex h-8 w-8 items-center justify-center rounded-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons[item.icon]} />
+                  </span>
+                  {item.label}
+                </a>
+              ))
+            }
+            <a
+              href="/admin/profil"
+              data-admin-bottom="/admin/profil"
+              class:list={[
+                'admin-bottom-link flex flex-col items-center justify-end gap-0.5 pb-1.5 pt-2 text-[10px] font-semibold text-slate-500 min-w-0',
+                isProfilActive() && 'active',
+              ]}
+            >
+              <span class="admin-bottom-icon flex h-8 w-8 items-center justify-center rounded-xl">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons.user} />
+              </span>
+              Profil
+            </a>
+          </nav>
+
+          {/* Sheet semua menu — HP saja */}
+          <div id="admin-menu-sheet" class="admin-menu-sheet md:hidden" aria-hidden="true" transition:animate="none">
+            <div class="admin-menu-sheet-panel" role="dialog" aria-modal="true" aria-label="Semua menu admin">
+              <header class="admin-menu-sheet-head">
+                <h2 class="admin-menu-sheet-title">Semua Menu</h2>
+                <div class="admin-menu-sheet-actions">
+                  <button type="button" id="admin-menu-view-toggle" class="admin-menu-view-btn" aria-label="Tampilan grid" title="Grid / List">
+                    <svg class="admin-menu-icon-grid" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons.grid} />
+                    <svg class="admin-menu-icon-list hidden" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons.list} />
+                  </button>
+                  <button type="button" id="admin-menu-close" class="admin-menu-close" aria-label="Tutup menu">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons.x} />
+                  </button>
+                </div>
+              </header>
+              <div id="admin-menu-body" class="admin-menu-sheet-body" data-view="grid">
+                {
+                  visibleNavItems.map((item) => (
+                    <a
+                      href={item.href}
+                      class:list={['admin-menu-tile', isActive(item.href) && 'active']}
+                      data-admin-menu-close
+                    >
+                      <span class="admin-menu-tile-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons[item.icon]} />
+                      </span>
+                      <span class="admin-menu-tile-label">{item.label}</span>
+                    </a>
+                  ))
+                }
+                {
+                  menuExtraItems.map((item) => (
+                    <a
+                      href={item.href}
+                      class:list={[
+                        'admin-menu-tile',
+                        item.href === '/admin/profil' && isProfilActive() && 'active',
+                      ]}
+                      data-admin-menu-close
+                    >
+                      <span class="admin-menu-tile-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={icons[item.icon]} />
+                      </span>
+                      <span class="admin-menu-tile-label">{item.label}</span>
+                    </a>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <slot />
+      )
+    }
+
+    <PortalScripts />
+    <PhotoCropEditor />
+    <MotionScripts />
+
+    <script>
+      function adminPathActive(href: string, path: string): boolean {
+        if (href === '/admin') return path === '/admin' || path === '/admin/';
+        return path.startsWith(href);
+      }
+
+      function syncAdminNavActive() {
+        const path = window.location.pathname;
+
+        document.querySelectorAll<HTMLAnchorElement>('[data-admin-nav]').forEach((link) => {
+          const href = link.getAttribute('data-admin-nav') ?? '';
+          link.classList.toggle('active', adminPathActive(href, path));
+          link.classList.toggle('!text-emerald-300', adminPathActive(href, path));
+        });
+
+        document.querySelectorAll<HTMLAnchorElement>('[data-admin-bottom]').forEach((link) => {
+          const href = link.getAttribute('data-admin-bottom') ?? '';
+          link.classList.toggle('active', adminPathActive(href, path));
+        });
+
+        document.querySelectorAll<HTMLAnchorElement>('.admin-menu-tile[href]').forEach((link) => {
+          const href = link.getAttribute('href') ?? '';
+          link.classList.toggle('active', adminPathActive(href, path));
+        });
+      }
+
+      function openAdminMenu() {
+        const sheet = document.getElementById('admin-menu-sheet');
+        const menuOpen = document.getElementById('admin-menu-open');
+        sheet?.classList.add('is-open');
+        sheet?.setAttribute('aria-hidden', 'false');
+        menuOpen?.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('admin-menu-open');
+      }
+
+      function closeAdminMenu() {
+        const sheet = document.getElementById('admin-menu-sheet');
+        const menuOpen = document.getElementById('admin-menu-open');
+        sheet?.classList.remove('is-open');
+        sheet?.setAttribute('aria-hidden', 'true');
+        menuOpen?.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('admin-menu-open');
+      }
+
+      function pulseMenuIcon(btn: HTMLElement) {
+        const icon = btn.querySelector('.admin-bottom-menu-icon');
+        icon?.classList.remove('is-pressed');
+        void icon?.getBoundingClientRect();
+        icon?.classList.add('is-pressed');
+        window.setTimeout(() => icon?.classList.remove('is-pressed'), 320);
+      }
+
+      function initAdminShell() {
+        const shell = document.getElementById('admin-shell');
+        const toggle = document.getElementById('sidebar-toggle');
+        const KEY = 'tri_admin_sidebar_collapsed';
+
+        if (shell && toggle && !toggle.dataset.bound) {
+          toggle.dataset.bound = '1';
+          const saved = localStorage.getItem(KEY);
+          if (saved === 'true') shell.setAttribute('data-sidebar-collapsed', 'true');
+
+          toggle.addEventListener('click', () => {
+            const collapsed = shell.getAttribute('data-sidebar-collapsed') === 'true';
+            shell.setAttribute('data-sidebar-collapsed', collapsed ? 'false' : 'true');
+            localStorage.setItem(KEY, collapsed ? 'false' : 'true');
+          });
+        }
+
+        const menuSheet = document.getElementById('admin-menu-sheet');
+        const menuOpen = document.getElementById('admin-menu-open');
+        const menuBody = document.getElementById('admin-menu-body');
+        const viewToggle = document.getElementById('admin-menu-view-toggle');
+        const VIEW_KEY = 'tri_admin_menu_view';
+
+        function setMenuView(view: string) {
+          if (!menuBody || !viewToggle) return;
+          menuBody.setAttribute('data-view', view);
+          localStorage.setItem(VIEW_KEY, view);
+          const gridIcon = viewToggle.querySelector('.admin-menu-icon-grid');
+          const listIcon = viewToggle.querySelector('.admin-menu-icon-list');
+          if (view === 'grid') {
+            gridIcon?.classList.remove('hidden');
+            listIcon?.classList.add('hidden');
+            viewToggle.setAttribute('aria-label', 'Tampilan grid');
+          } else {
+            gridIcon?.classList.add('hidden');
+            listIcon?.classList.remove('hidden');
+            viewToggle.setAttribute('aria-label', 'Tampilan list');
+          }
+        }
+
+        if (menuBody && !menuBody.dataset.viewReady) {
+          menuBody.dataset.viewReady = '1';
+          const savedView = localStorage.getItem(VIEW_KEY);
+          setMenuView(savedView === 'list' ? 'list' : 'grid');
+        }
+
+        if (menuOpen && !menuOpen.dataset.bound) {
+          menuOpen.dataset.bound = '1';
+          menuOpen.addEventListener('click', () => {
+            pulseMenuIcon(menuOpen);
+            openAdminMenu();
+          });
+        }
+
+        if (menuSheet && !menuSheet.dataset.bound) {
+          menuSheet.dataset.bound = '1';
+
+          menuSheet.querySelector('#admin-menu-close')?.addEventListener('click', closeAdminMenu);
+
+          menuSheet.querySelectorAll('[data-admin-menu-close]').forEach((el) => {
+            el.addEventListener('click', closeAdminMenu);
+          });
+        }
+
+        if (viewToggle && !viewToggle.dataset.bound) {
+          viewToggle.dataset.bound = '1';
+          viewToggle.addEventListener('click', () => {
+            const current = menuBody?.getAttribute('data-view') === 'list' ? 'list' : 'grid';
+            setMenuView(current === 'grid' ? 'list' : 'grid');
+          });
+        }
+
+        syncAdminNavActive();
+      }
+
+      initAdminShell();
+
+      document.addEventListener('astro:after-swap', initAdminShell);
+      document.addEventListener('astro:page-load', initAdminShell);
+    </script>
+  </body>
+</html>

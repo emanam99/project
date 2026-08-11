@@ -1,0 +1,35 @@
+/* Animista flip-scale-up-hor — https://animista.net/play/basic/flip-scale/flip-scale-up-hor */
+@-webkit-keyframes flip-scale-up-hor {
+  0% {
+    -webkit-transform: scale(1) rotateY(0);
+    transform: scale(1) rotateY(0);
+  }
+  50% {
+    -webkit-transform: scale(2.5) rotateY(-90deg);
+    transform: scale(2.5) rotateY(-90deg);
+  }
+  100% {
+    -webkit-transform: scale(1) rotateY(-180deg);
+    transform: scale(1) rotateY(-180deg);
+  }
+}
+@keyframes flip-scale-up-hor {
+  0% {
+    transform: scale(1) rotateY(0);
+  }
+  50% {
+    transform: scale(2.5) rotateY(-90deg);
+  }
+  100% {
+    transform: scale(1) rotateY(-180deg);
+  }
+}
+
+.animista-flip-scale-up-hor {
+  -webkit-animation: flip-scale-up-hor 0.5s linear both;
+  animation: flip-scale-up-hor 0.5s linear both;
+  -webkit-transform-origin: center center;
+  transform-origin: center center;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}

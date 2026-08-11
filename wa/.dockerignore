@@ -1,0 +1,10 @@
+node_modules
+.git
+whatsapp-sessions
+.env
+.env.*
+*.log
+.wwebjs_cache
+coverage
+.DS_Store
+wa-deploy.tar

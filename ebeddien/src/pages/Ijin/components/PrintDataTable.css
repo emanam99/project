@@ -1,0 +1,666 @@
+/* Print Data Table Styles - Landscape */
+
+.print-data-container {
+  width: 100%;
+  background: white;
+  padding: 0;
+  margin: 0;
+}
+
+.print-data-header {
+  margin-bottom: 20px;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.print-data-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.print-data-title-section {
+  flex: 1;
+}
+
+.print-data-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: #1e293b;
+  text-align: center;
+}
+
+.print-data-subtitle {
+  font-size: 14px;
+  margin: 0 0 4px 0;
+  color: #64748b;
+  text-align: center;
+}
+
+.print-data-tahun {
+  font-size: 12px;
+  margin: 0 0 4px 0;
+  color: #64748b;
+  text-align: center;
+}
+
+.print-data-filter {
+  font-size: 11px;
+  margin: 8px 0 4px 0;
+  color: #475569;
+  text-align: center;
+  font-weight: 500;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.print-data-info {
+  font-size: 10px;
+  margin: 4px 0 0 0;
+  color: #64748b;
+  text-align: center;
+}
+
+.print-data-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.print-data-qr-image {
+  width: 100px;
+  height: 100px;
+  border: 2px solid #1e293b;
+  border-radius: 4px;
+  padding: 4px;
+  background: white;
+}
+
+.print-data-qr-label {
+  font-size: 9px;
+  color: #64748b;
+  text-align: center;
+  max-width: 100px;
+  line-height: 1.2;
+}
+
+.print-data-table-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.print-data-table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 0 auto;
+  font-size: var(--table-font-size, 9px);
+  table-layout: auto;
+}
+
+.print-data-table thead {
+  display: table-header-group;
+}
+
+.print-data-table tbody {
+  display: table-row-group;
+}
+
+.print-data-table tr {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.print-data-th,
+.print-data-th-no {
+  background: #1e293b;
+  color: white;
+  padding: 8px 6px;
+  text-align: center;
+  font-weight: 600;
+  border: 1px solid #334155;
+  font-size: var(--table-font-size, 9px);
+  white-space: nowrap;
+}
+
+.print-data-th-no {
+  width: 40px;
+}
+
+.print-data-td,
+.print-data-td-no {
+  padding: 6px 4px;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+  font-size: var(--table-font-size, 9px);
+}
+
+.print-data-td-no {
+  width: 40px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.print-data-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+/* Print Styles */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0.5cm;
+  }
+
+  body.print-data-active {
+    background: white;
+  }
+
+  body.print-data-active * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  /* Pastikan semua elemen print data terlihat - tapi jangan override display untuk tabel */
+  .print-data-container {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-container > * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-header,
+  .print-data-header * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-header-content {
+    display: flex !important;
+  }
+  
+  .print-data-qr {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-qr-image {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* Tabel harus tetap menggunakan display table */
+  .print-data-table-wrapper {
+    display: block !important;
+    visibility: visible !important;
+  }
+  
+  .print-data-table {
+    display: table !important;
+    visibility: visible !important;
+    width: 100% !important;
+  }
+  
+  .print-data-table thead {
+    display: table-header-group !important;
+  }
+  
+  .print-data-table tbody {
+    display: table-row-group !important;
+  }
+  
+  .print-data-table tr {
+    display: table-row !important;
+  }
+  
+  .print-data-table th,
+  .print-data-table td {
+    display: table-cell !important;
+  }
+
+  /* Sembunyikan semua elemen selain print area saat print */
+  body.print-offcanvas-open .print-offcanvas-wrapper {
+    position: static !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+  
+  /* Pastikan konten di dalam offcanvas terlihat */
+  body.print-offcanvas-open .print-offcanvas-wrapper > * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* Pastikan container content terlihat */
+  body.print-offcanvas-open .print-offcanvas-wrapper .flex-1 {
+    overflow: visible !important;
+  }
+  
+  body.print-offcanvas-open .print-offcanvas-wrapper div[style*="padding"] {
+    overflow: visible !important;
+  }
+  
+  body.print-offcanvas-open .print-offcanvas-wrapper div[style*="width"] {
+    overflow: visible !important;
+  }
+  
+  /* Pastikan PrintDataTable dan semua elemennya terlihat - tapi jangan override display untuk tabel */
+  body.print-offcanvas-open .print-data-container {
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  body.print-offcanvas-open .print-data-header {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  body.print-offcanvas-open .print-data-header * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  body.print-offcanvas-open .print-data-header-content {
+    display: flex !important;
+    flex-direction: row !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  body.print-offcanvas-open .print-data-title-section {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  body.print-offcanvas-open .print-data-title,
+  body.print-offcanvas-open .print-data-subtitle,
+  body.print-offcanvas-open .print-data-tahun,
+  body.print-offcanvas-open .print-data-filter,
+  body.print-offcanvas-open .print-data-info {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  body.print-offcanvas-open .print-data-qr {
+    display: flex !important;
+    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  body.print-offcanvas-open .print-data-qr-image {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100px !important;
+    height: 100px !important;
+  }
+  
+  body.print-offcanvas-open .print-data-qr-label {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* Tabel harus tetap menggunakan display table - JANGAN diubah menjadi block */
+  body.print-offcanvas-open .print-data-table-wrapper {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+  
+  body.print-offcanvas-open .print-data-table {
+    display: table !important;
+    visibility: visible !important;
+    width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+  }
+  
+  body.print-offcanvas-open .print-data-table thead {
+    display: table-header-group !important;
+  }
+  
+  body.print-offcanvas-open .print-data-table tbody {
+    display: table-row-group !important;
+  }
+  
+  body.print-offcanvas-open .print-data-table tr {
+    display: table-row !important;
+  }
+  
+  body.print-offcanvas-open .print-data-table th,
+  body.print-offcanvas-open .print-data-table td {
+    display: table-cell !important;
+    white-space: nowrap !important;
+  }
+  
+  body.print-offcanvas-open .no-print {
+    display: none !important;
+  }
+  
+  /* Sembunyikan backdrop dan elemen non-print lainnya */
+  .no-print {
+    display: none !important;
+  }
+  
+  /* Override CSS dari file lain yang mungkin menyembunyikan elemen print-data */
+  body.print-offcanvas-open .print-offcanvas-wrapper div[style*="width"] .print-data-container,
+  body.print-offcanvas-open .print-offcanvas-wrapper .flex-1 .print-data-container,
+  body.print-offcanvas-open .print-offcanvas-wrapper .print-data-container {
+    display: flex !important;
+    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .print-data-container {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0.5cm !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* Pastikan semua elemen di container terlihat - tapi jangan override display untuk tabel */
+  .print-data-container > *:not(.print-data-table-wrapper) {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-container .print-data-table-wrapper {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* Pastikan header dan semua child-nya terlihat */
+  .print-data-header {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    margin-bottom: 15px !important;
+  }
+  
+  .print-data-header * {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-header h1,
+  .print-data-header p {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #1e293b !important;
+  }
+  
+  .print-data-header div {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-header-content {
+    display: flex !important;
+    flex-direction: row !important;
+  }
+  
+  .print-data-header img {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100px !important;
+    height: 100px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Pastikan header content dan QR terlihat - dengan width yang jelas */
+  .print-data-header-content {
+    display: flex !important;
+    flex-direction: row !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  .print-data-title-section {
+    display: block !important;
+    flex: 1 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-qr {
+    display: flex !important;
+    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .print-data-qr-image {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100px !important;
+    height: 100px !important;
+    max-width: 100px !important;
+    max-height: 100px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .print-data-qr-label {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Header berulang di setiap halaman - menggunakan thead yang berulang */
+  .print-data-table thead {
+    display: table-header-group !important;
+  }
+
+  .print-data-table tbody {
+    display: table-row-group !important;
+  }
+  
+  .print-data-table tr {
+    display: table-row !important;
+  }
+  
+  .print-data-table th,
+  .print-data-table td {
+    display: table-cell !important;
+    white-space: nowrap !important;
+  }
+
+  /* Pastikan header muncul di setiap halaman */
+  .print-data-table thead tr {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  
+  /* Tambahkan margin atas pada header yang berulang di halaman berikutnya */
+  /* Gunakan pendekatan dengan menambahkan baris kosong di atas thead */
+  .print-data-table thead::before {
+    content: '';
+    display: table-row;
+    height: 0.5cm;
+  }
+  
+  /* Tabel rata tengah horizontal - PASTIKAN menggunakan display table */
+  .print-data-table-wrapper {
+    width: 100% !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+  
+  .print-data-table {
+    display: table !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+  }
+  
+  /* Pastikan semua elemen tabel menggunakan display yang benar */
+  .print-data-table thead {
+    display: table-header-group !important;
+  }
+  
+  /* Tambahkan margin atas pada header yang berulang menggunakan pseudo-element */
+  .print-data-table thead::before {
+    content: '';
+    display: table-row;
+    height: 0.5cm;
+  }
+  
+  .print-data-table tbody {
+    display: table-row-group !important;
+  }
+  
+  .print-data-table tr {
+    display: table-row !important;
+  }
+  
+  .print-data-table th,
+  .print-data-table td {
+    display: table-cell !important;
+    white-space: nowrap !important;
+  }
+  
+  /* Pastikan header tetap center dan isi tabel rata kiri */
+  .print-data-table th {
+    text-align: center !important;
+    font-size: var(--table-font-size, 9px) !important;
+  }
+  
+  .print-data-table td {
+    text-align: left !important;
+    font-size: var(--table-font-size, 9px) !important;
+  }
+  
+  /* Pastikan font-size tabel juga menggunakan variable di media print */
+  .print-data-table {
+    font-size: var(--table-font-size, 9px) !important;
+  }
+  
+  /* Header tambahan - akan muncul di halaman pertama */
+  .print-data-header {
+    width: 100% !important;
+    margin-bottom: 15px !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* Pastikan semua elemen header terlihat */
+  .print-data-header-content {
+    display: flex !important;
+    flex-direction: row !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+  }
+  
+  .print-data-title-section {
+    display: block !important;
+    flex: 1 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  .print-data-title,
+  .print-data-subtitle,
+  .print-data-tahun,
+  .print-data-filter,
+  .print-data-info {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    color: #1e293b !important;
+  }
+  
+  .print-data-qr {
+    display: flex !important;
+    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .print-data-qr-image {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100px !important;
+    height: 100px !important;
+    max-width: 100px !important;
+    max-height: 100px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .print-data-qr-label {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Pastikan tidak ada page break di tengah baris */
+  .print-data-table tbody tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Warna background tetap terlihat saat print */
+  .print-data-table thead th {
+    background: #1e293b !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-data-table tbody tr:nth-child(even) {
+    background: #f8fafc !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

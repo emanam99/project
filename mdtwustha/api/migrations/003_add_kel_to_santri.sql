@@ -1,0 +1,1 @@
+ALTER TABLE santri ADD COLUMN kel VARCHAR(50) AFTER kelas;

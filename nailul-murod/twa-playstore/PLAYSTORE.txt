@@ -1,0 +1,86 @@
+Trusted Web Activity (TWA) — Nailul Murod untuk Google Play
+============================================================
+
+Konfigurasi Bubblewrap (wajib sebelum twa:update / twa:build)
+-------------------------------------------------------------
+Bubblewrap memerlukan JDK 17 dan Android SDK. Supaya tidak terhenti di pertanyaan interaktif,
+buat berkas (Windows):  %USERPROFILE%\.bubblewrap\config.json
+
+Isi contoh (androidSdkPath tanpa spasi; jdkPath tanpa spasi — di Windows pakai path pendek 8.3 bila JDK di Program Files):
+
+{
+  "jdkPath": "C:\\PROGRA~1\\ECLIPS~1\\JDK-17~1.10-",
+  "androidSdkPath": "C:\\Users\\NAMA_USER\\AppData\\Local\\Android\\Sdk"
+}
+
+Contoh isi disimpan juga di twa-playstore/bubblewrap-user-config.example.json (salin ke config.json dan sesuaikan path).
+
+Prasyarat di PC Windows
+-----------------------
+1. Node.js 18+ (sudah dipakai proyek ini).
+2. JDK 17 dan Android SDK command-line tools (lihat blok di atas).
+   Hindari spasi di path Android SDK.
+   Hindari spasi di jdkPath untuk penandatanganan APK di Windows (Bubblewrap memanggil java/apksigner tanpa kutip yang cukup): pakai path pendek 8.3, contoh jalankan `cmd /c "for %I in (`"%ProgramFiles%\Eclipse Adoptium\jdk-17.0.19.10-hotspot`") do @echo %~sI"` lalu isi hasilnya ke jdkPath.
+
+3. Bubblewrap 1.24 memakai build-tools 34.0.0 — pastikan terpasang:
+     android sdk install "build-tools;34.0.0"
+   (perintah `android` dari Google Android CLI / WinGet.)
+
+4. Folder SDK harus punya subfolder `bin` (sdkmanager). Jika hanya ada `cmdline-tools\latest\bin`, buat junction:
+     mklink /J "%LOCALAPPDATA%\Android\Sdk\bin" "%LOCALAPPDATA%\Android\Sdk\cmdline-tools\latest\bin"
+
+5. iconUrl di twa-manifest harus mengunduh PNG ≥512px dengan HTTP 200. Saat ini URL ikon di alutsmani.id bisa 404; sementara dipakai placeholder dummyimage.com — ganti ke URL ikon Anda yang valid sebelum rilis final, lalu `npm run twa:update`.
+
+Sekali saja: keystore penandatanganan
+--------------------------------------
+Dari folder nailul-murod/twa-playstore, buat android.keystore jika belum ada (sesuai alias di twa-manifest.json):
+
+  keytool -genkeypair -v -keystore android.keystore -alias android -keyalg RSA -keysize 2048 -validity 10000
+
+Ikuti prompt; simpan kata sandi dengan aman. Untuk build otomatis/CI, gunakan variabel lingkungan:
+  BUBBLEWRAP_KEYSTORE_PASSWORD
+  BUBBLEWRAP_KEY_PASSWORD
+
+Menyinkronkan proyek Android dari manifest
+-------------------------------------------
+Dari folder nailul-murod (bukan twa-playstore):
+
+  npm run twa:merge
+  npm run twa:update
+
+Perintah merge menarik perubahan terbaru dari manifest web ke twa-manifest.json (kecuali field yang diabaikan). update membangkitkan ulang folder android/.
+
+Build .aab / .apk untuk Play Store
+----------------------------------
+  npm run twa:build
+
+Keluaran biasanya di twa-playstore/: app-release-bundle.aab dan app-release-signed.apk (cek konsol Bubblewrap).
+
+Validasi PWA sebelum unggah
+---------------------------
+  npm run twa:preflight
+      — cek manifest, ikon, scope, assetlinks (tanpa JDK/SDK; jalankan kapan saja).
+
+  npm run twa:validate
+      — validasi resmi Bubblewrap (perlu config di %USERPROFILE%\.bubblewrap\config.json).
+
+  Alternatif tanpa JDK di Windows: jalankan Docker Desktop, lalu:
+      docker run --rm ghcr.io/googlechromelabs/bubblewrap:latest validate --url=https://nailul-murod.alutsmani.id/
+
+Skrip otomatis path JDK/SDK (PowerShell)
+-----------------------------------------
+  .\twa-playstore\setup-bubblewrap-config.ps1
+      — mencari JDK 17 + Android SDK di lokasi umum; jika ketemu, menulis .bubblewrap\config.json.
+
+Digital Asset Links (wajib agar TWA full screen)
+------------------------------------------------
+1. Setelah keystore ada, ambil sidik jari SHA-256 sertifikat (contoh):
+   keytool -list -v -keystore twa-playstore/android.keystore -alias android
+2. Salin nilai SHA256 ke berkas JSON yang di-host di origin aplikasi web Anda, path pasti:
+   https://nailul-murod.alutsmani.id/.well-known/assetlinks.json
+   Gunakan twa-playstore/assetlinks.template.json sebagai acuan; isi array sha256_cert_fingerprints.
+3. Google memverifikasi origin ini sebelum TWA dianggap terpasang ke domain Anda.
+
+Catatan packageId
+-----------------
+packageId di twa-manifest.json diset com.alutsmani.nailul_murod.twa agar valid di Android (hostname .id memicu masalah kata kunci Java «id» bila dihasilkan otomatis penuh dari domain). Jika Anda sudah mendaftarkan aplikasi di Play Console dengan application id lain, ubah packageId + asset links agar konsisten.

@@ -1,0 +1,13 @@
+﻿# Local / secrets — jangan commit
+.git.bak-local/
+.cursor/
+client_secret*.json
+*.apps.googleusercontent.com.json
+.env
+.env.*
+node_modules/
+vendor/
+app/dist/
+api/uploads/belanja/
+api/uploads/bni-batches/
+api/error.log

@@ -1,0 +1,63 @@
+# Evolution API v2 — stack lokal untuk eBeddien (development).
+# Jalankan dari folder ini: docker compose up -d
+# Dokumentasi: https://doc.evolution-api.com/v2/en/install/docker
+#
+# Port: 8080 (API). Samakan EVOLUTION_API_BASE_URL_LOCAL + EVOLUTION_API_KEY di api/.env
+
+services:
+  api:
+    container_name: evolution_api_local
+    image: evoapicloud/evolution-api:latest
+    restart: unless-stopped
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+
+  redis:
+    container_name: evolution_redis_local
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - evolution_redis:/data
+    networks:
+      - evolution-net
+
+  evolution-postgres:
+    container_name: evolution_postgres_local
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    # Harus sama dengan POSTGRES_USERNAME / POSTGRES_DATABASE di .env (default: evolution / evolution_db)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution -d evolution_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - evolution-net
+
+volumes:
+  evolution_instances:
+  evolution_redis:
+  evolution_postgres_data:
+
+networks:
+  evolution-net:
+    name: evolution-net-local
+    driver: bridge

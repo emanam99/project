@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${TRI_IMAGE_NAME:-tri-leadclass:local}
+    container_name: ${TRI_CONTAINER_NAME:-tri-leadclass}
+    restart: always
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4321
+      DATABASE_PATH: ./data/journal.db
+    volumes:
+      # Persistensi database SQLite + unggahan naskah di host.
+      - ./data:/app/data
+    ports:
+      # nginx (reverse proxy host) mem-proxy ke port lokal ini. TLS ditangani nginx+certbot.
+      - "127.0.0.1:${TRI_HOST_PORT:-4325}:4321"

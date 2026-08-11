@@ -1,0 +1,98 @@
+# ===========================================
+# Tongkrongan AI - Docker Compose
+# Production-ready setup
+# ===========================================
+
+version: '3.8'
+
+services:
+  # ---- PostgreSQL Database ----
+  postgres:
+    image: postgres:16-alpine
+    container_name: tongkrongan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: tongkrongan_ai
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tongkrongan-network
+
+  # ---- Main Application ----
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tongkrongan-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD:-password}@postgres:5432/tongkrongan_ai?schema=public"
+      SOCKET_PORT: 3001
+      NEXT_PUBLIC_SOCKET_URL: "http://localhost:3001"
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: deepseek-chat
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+      AI_RESPONSE_MIN_DELAY: 3000
+      AI_RESPONSE_MAX_DELAY: 15000
+      AI_MEMORY_SIZE: 50
+      AI_COOLDOWN_MIN: 10000
+      AI_COOLDOWN_MAX: 60000
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX_REQUESTS: 30
+      DOCKER_ENV: "true"
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    volumes:
+      - app_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - tongkrongan-network
+
+  # ---- Nginx Reverse Proxy (optional) ----
+  nginx:
+    image: nginx:alpine
+    container_name: tongkrongan-nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - tongkrongan-network
+
+volumes:
+  postgres_data:
+    driver: local
+  app_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  tongkrongan-network:
+    driver: bridge

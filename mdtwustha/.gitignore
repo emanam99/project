@@ -1,0 +1,46 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Frontend (app/)
+app/node_modules
+app/dist
+app/dist-ssr
+.vite
+*.local
+
+# Upload gambar (simpan struktur folder)
+gambar/*
+!gambar/.gitkeep
+
+# Env
+.env
+.env.local
+.env.*.local
+api/.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Deploy artifacts
+mdtw-dist.tar
+api-dist.tar
+api-deploy-temp
+.env.remote
+
+# Ekspor DB & vendor (install via composer di server)
+api/eksport/
+api/vendor/

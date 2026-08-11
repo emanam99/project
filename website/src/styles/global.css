@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* Animasi default View Transitions: fade + slide ringan */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::view-transition-old(root) {
+  animation-name: fadeOut;
+}
+
+::view-transition-new(root) {
+  animation-name: slideUpFadeIn;
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slideUpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Konten artikel/halaman dari konten_html */
+.prose-pesantren {
+  @apply max-w-none text-base leading-relaxed text-slate-700 dark:text-slate-200;
+}
+.prose-pesantren h1,
+.prose-pesantren h2,
+.prose-pesantren h3 {
+  @apply mt-6 mb-2 font-semibold text-slate-900 dark:text-white;
+}
+.prose-pesantren h1 {
+  @apply text-2xl;
+}
+.prose-pesantren h2 {
+  @apply text-xl;
+}
+.prose-pesantren h3 {
+  @apply text-lg;
+}
+.prose-pesantren p {
+  @apply my-3;
+}
+.prose-pesantren a {
+  @apply text-brand-700 underline decoration-brand-500/40 underline-offset-2 hover:text-brand-900 dark:text-brand-500;
+}
+.prose-pesantren ul,
+.prose-pesantren ol {
+  @apply my-3 ml-6 list-disc;
+}
+.prose-pesantren ol {
+  @apply list-decimal;
+}
+.prose-pesantren img {
+  @apply my-4 max-w-full rounded-lg;
+}
+.prose-pesantren blockquote {
+  @apply my-4 border-l-4 border-brand-500/60 pl-4 italic text-slate-600 dark:text-slate-300;
+}

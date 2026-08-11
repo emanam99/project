@@ -1,0 +1,44 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import GoogleLoginButton from '../../components/GoogleLoginButton.astro';
+
+const error = Astro.url.searchParams.get('error');
+---
+
+<AdminLayout title="Login Admin — TRI_LEADCLASS">
+  <div class="min-h-[100dvh] flex items-center justify-center p-4 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950">
+    <div class="max-w-md w-full admin-card rounded-3xl p-8 md:p-10 text-center shadow-2xl shadow-black/20">
+      <div class="flex items-center justify-center gap-4 mb-6">
+        <div class="admin-login-logo-wrap">
+          <span class="admin-login-logo">
+            <img src="/icon/icon.png" alt="TRI Leadclass" width="76" height="76" />
+          </span>
+        </div>
+        <div class="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-white shrink-0">
+          <img src="/icon/untaq.png" alt="Universitas At-Taqwa" class="h-12 w-12 object-contain" />
+        </div>
+      </div>
+      <h1 class="text-2xl font-serif font-black text-slate-900 mb-1">Panel Admin</h1>
+      <p class="text-sm text-slate-500 mb-1">TRI_LEADCLASS Journal</p>
+      <p class="text-[11px] text-emerald-700 uppercase tracking-wider font-semibold mb-8">
+        Universitas At-Taqwa · Angkatan ke-3 · Kelas B
+      </p>
+
+      {error && (
+        <div class="mb-6 p-3 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl text-left">
+          {decodeURIComponent(error)}
+        </div>
+      )}
+
+      <p class="text-slate-600 text-sm mb-6 leading-relaxed">
+        Masuk dengan Google untuk mengelola naskah dan pengguna jurnal.
+      </p>
+
+      <GoogleLoginButton returnTo="/admin" label="Masuk dengan Google" class="w-full !rounded-xl" />
+
+      <p class="mt-8 text-xs text-slate-400">
+        Hanya akun dengan role admin atau super admin.
+      </p>
+    </div>
+  </div>
+</AdminLayout>

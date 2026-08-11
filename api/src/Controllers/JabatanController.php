@@ -1,0 +1,610 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Database;
+use App\Helpers\TextSanitizer;
+use App\Helpers\UserAktivitasLogger;
+use Psr\Http\Message\ResponseInterface as Response;
+use Psr\Http\Message\ServerRequestInterface as Request;
+
+class JabatanController
+{
+    private $db;
+
+    public function __construct()
+    {
+        $this->db = Database::getInstance()->getConnection();
+    }
+
+    /**
+     * GET /api/jabatan - Get all jabatan with pagination and filters
+     */
+    public function getAllJabatan(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            
+            // Pagination
+            $page = isset($queryParams['page']) ? (int)$queryParams['page'] : 1;
+            $limit = isset($queryParams['limit']) ? (int)$queryParams['limit'] : 10;
+            $offset = ($page - 1) * $limit;
+            
+            // Filters
+            $search = $queryParams['search'] ?? '';
+            $kategoriFilter = $queryParams['kategori'] ?? '';
+            $lembagaFilter = $queryParams['lembaga_id'] ?? '';
+            $lembagaIdsCsv = isset($queryParams['lembaga_ids']) ? trim((string) $queryParams['lembaga_ids']) : '';
+            $statusFilter = $queryParams['status'] ?? '';
+            
+            // Build WHERE clause
+            $whereConditions = [];
+            $params = [];
+            
+            if (!empty($search)) {
+                $whereConditions[] = "(j.nama LIKE ? OR j.deskripsi LIKE ?)";
+                $searchParam = "%{$search}%";
+                $params[] = $searchParam;
+                $params[] = $searchParam;
+            }
+            
+            $kategoriList = $this->parseCsvFilterList($kategoriFilter);
+            $this->appendInFilter($whereConditions, $params, 'l.kategori', $kategoriList);
+            
+            if ($lembagaIdsCsv !== '') {
+                $lembagaIds = array_values(array_filter(array_map(static function ($v) {
+                    return trim((string) $v);
+                }, explode(',', $lembagaIdsCsv)), static function ($v) {
+                    return $v !== '';
+                }));
+                if ($lembagaIds !== []) {
+                    $whereConditions[] = 'j.lembaga_id IN (' . implode(',', array_fill(0, count($lembagaIds), '?')) . ')';
+                    foreach ($lembagaIds as $lid) {
+                        $params[] = $lid;
+                    }
+                }
+            } elseif (!empty($lembagaFilter)) {
+                $whereConditions[] = "j.lembaga_id = ?";
+                $params[] = $lembagaFilter;
+            }
+            
+            $statusList = $this->parseCsvFilterList($statusFilter);
+            $this->appendInFilter($whereConditions, $params, 'j.status', $statusList);
+            
+            $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
+            $fromClause = 'FROM jabatan j LEFT JOIN lembaga l ON j.lembaga_id = l.id';
+            
+            // Get total count
+            $countParams = $params;
+            $countSql = "SELECT COUNT(*) as total {$fromClause} {$whereClause}";
+            $countStmt = $this->db->prepare($countSql);
+            $countStmt->execute($countParams);
+            $total = $countStmt->fetch(\PDO::FETCH_ASSOC)['total'];
+            
+            // Get data with pagination
+            $sql = "SELECT 
+                        j.id,
+                        j.nama,
+                        j.tipe,
+                        l.kategori AS lembaga_kategori,
+                        j.lembaga_id,
+                        l.nama as lembaga_nama,
+                        j.deskripsi,
+                        j.urutan,
+                        j.bonus,
+                        j.per_jp,
+                        j.status,
+                        j.tanggal_dibuat,
+                        j.tanggal_update
+                    {$fromClause}
+                    {$whereClause}
+                    ORDER BY j.urutan ASC, j.nama ASC
+                    LIMIT ? OFFSET ?";
+            
+            $params[] = $limit;
+            $params[] = $offset;
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $jabatanList = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $jabatanList = array_map(function (array $jabatan): array {
+                if (array_key_exists('deskripsi', $jabatan)) {
+                    $jabatan['deskripsi'] = TextSanitizer::cleanRichHtmlOrNull($jabatan['deskripsi'] ?? null);
+                }
+                return $jabatan;
+            }, $jabatanList);
+            
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'jabatan' => $jabatanList,
+                    'pagination' => [
+                        'page' => $page,
+                        'limit' => $limit,
+                        'total' => (int)$total,
+                        'total_pages' => ceil($total / $limit)
+                    ]
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            error_log("Get all jabatan error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil data jabatan'
+            ], 500);
+        }
+    }
+    
+    /**
+     * GET /api/jabatan/{id} - Get jabatan by ID
+     */
+    public function getJabatanById(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $jabatanId = $args['id'] ?? '';
+            
+            if (empty($jabatanId)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Jabatan ID diperlukan'
+                ], 400);
+            }
+            
+            $sql = "SELECT 
+                        j.id,
+                        j.nama,
+                        j.tipe,
+                        l.kategori AS lembaga_kategori,
+                        j.lembaga_id,
+                        l.nama as lembaga_nama,
+                        j.deskripsi,
+                        j.urutan,
+                        j.bonus,
+                        j.per_jp,
+                        j.status,
+                        j.tanggal_dibuat,
+                        j.tanggal_update
+                    FROM jabatan j
+                    LEFT JOIN lembaga l ON j.lembaga_id = l.id
+                    WHERE j.id = ?";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$jabatanId]);
+            $jabatan = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$jabatan) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Jabatan tidak ditemukan'
+                ], 404);
+            }
+            $jabatan['deskripsi'] = TextSanitizer::cleanRichHtmlOrNull($jabatan['deskripsi'] ?? null);
+            
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'jabatan' => $jabatan
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            error_log("Get jabatan by ID error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil data jabatan'
+            ], 500);
+        }
+    }
+    
+    /**
+     * POST /api/jabatan - Create new jabatan
+     */
+    public function createJabatan(Request $request, Response $response): Response
+    {
+        try {
+            $data = $request->getParsedBody();
+            $user = $request->getAttribute('user');
+            
+            // Validation
+            if (empty($data['nama']) || trim($data['nama']) === '') {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Nama jabatan tidak boleh kosong'
+                ], 400);
+            }
+            
+            // Validate status
+            $allowedStatus = ['aktif', 'nonaktif'];
+            $status = $data['status'] ?? 'aktif';
+            if (!in_array($status, $allowedStatus)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Status tidak valid. Harus salah satu dari: ' . implode(', ', $allowedStatus)
+                ], 400);
+            }
+            
+            $bonus = $this->parseNullableMoneyField($data['bonus'] ?? null);
+            $perJp = $this->parseNullableMoneyField($data['per_jp'] ?? null);
+            if (array_key_exists('bonus', $data) && $data['bonus'] !== null && $data['bonus'] !== '' && $bonus === null) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Bonus harus berupa angka tidak negatif'], 400);
+            }
+            if (array_key_exists('per_jp', $data) && $data['per_jp'] !== null && $data['per_jp'] !== '' && $perJp === null) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Per JP harus berupa angka tidak negatif'], 400);
+            }
+
+            $tipe = isset($data['tipe']) ? trim((string) $data['tipe']) : '';
+            $tipe = $tipe !== '' ? TextSanitizer::cleanText($tipe) : null;
+
+            // Insert jabatan
+            $sql = 'INSERT INTO jabatan (nama, tipe, lembaga_id, deskripsi, urutan, bonus, per_jp, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                TextSanitizer::cleanText($data['nama'] ?? ''),
+                $tipe,
+                $data['lembaga_id'] ?? null,
+                TextSanitizer::cleanRichHtmlOrNull($data['deskripsi'] ?? null),
+                isset($data['urutan']) ? (int) $data['urutan'] : 0,
+                $bonus,
+                $perJp,
+                $status,
+            ]);
+            
+            $jabatanId = (int) $this->db->lastInsertId();
+            $newRow = $this->db->prepare("SELECT * FROM jabatan WHERE id = ?");
+            $newRow->execute([$jabatanId]);
+            $newRow = $newRow->fetch(\PDO::FETCH_ASSOC);
+            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            if ($newRow && $pengurusId !== null) {
+                UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_CREATE, 'jabatan', $jabatanId, null, $newRow, $request);
+            }
+            
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Jabatan berhasil dibuat',
+                'data' => [
+                    'id' => $jabatanId
+                ]
+            ], 201);
+            
+        } catch (\Exception $e) {
+            error_log("Create jabatan error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal membuat jabatan'
+            ], 500);
+        }
+    }
+    
+    /**
+     * PUT /api/jabatan/{id} - Update jabatan
+     */
+    public function updateJabatan(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $jabatanId = $args['id'] ?? '';
+            $data = $request->getParsedBody();
+            
+            if (empty($jabatanId)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Jabatan ID diperlukan'
+                ], 400);
+            }
+            
+            $checkStmt = $this->db->prepare("SELECT * FROM jabatan WHERE id = ?");
+            $checkStmt->execute([$jabatanId]);
+            $oldJabatan = $checkStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$oldJabatan) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Jabatan tidak ditemukan'
+                ], 404);
+            }
+            
+            // Validation
+            if (isset($data['nama']) && empty(trim($data['nama']))) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Nama jabatan tidak boleh kosong'
+                ], 400);
+            }
+            
+            // Validate status if provided
+            if (isset($data['status'])) {
+                $allowedStatus = ['aktif', 'nonaktif'];
+                if (!in_array($data['status'], $allowedStatus)) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Status tidak valid'
+                    ], 400);
+                }
+            }
+            
+            // Build update query
+            $updateFields = [];
+            $updateParams = [];
+            
+            if (isset($data['nama'])) {
+                $updateFields[] = "nama = ?";
+                $updateParams[] = TextSanitizer::cleanText($data['nama'] ?? '');
+            }
+
+            if (array_key_exists('tipe', $data)) {
+                $tipe = trim((string) ($data['tipe'] ?? ''));
+                $updateFields[] = 'tipe = ?';
+                $updateParams[] = $tipe !== '' ? TextSanitizer::cleanText($tipe) : null;
+            }
+            
+            if (isset($data['lembaga_id'])) {
+                $updateFields[] = "lembaga_id = ?";
+                $updateParams[] = $data['lembaga_id'] ?: null;
+            }
+            
+            if (isset($data['deskripsi'])) {
+                $updateFields[] = "deskripsi = ?";
+                $updateParams[] = TextSanitizer::cleanRichHtmlOrNull($data['deskripsi']) ?: null;
+            }
+            
+            if (isset($data['urutan'])) {
+                $updateFields[] = "urutan = ?";
+                $updateParams[] = (int)$data['urutan'];
+            }
+
+            if (array_key_exists('bonus', $data)) {
+                $bonus = $this->parseNullableMoneyField($data['bonus']);
+                if ($data['bonus'] !== null && $data['bonus'] !== '' && $bonus === null) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'Bonus harus berupa angka tidak negatif'], 400);
+                }
+                $updateFields[] = 'bonus = ?';
+                $updateParams[] = $bonus;
+            }
+
+            if (array_key_exists('per_jp', $data)) {
+                $perJp = $this->parseNullableMoneyField($data['per_jp']);
+                if ($data['per_jp'] !== null && $data['per_jp'] !== '' && $perJp === null) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'Per JP harus berupa angka tidak negatif'], 400);
+                }
+                $updateFields[] = 'per_jp = ?';
+                $updateParams[] = $perJp;
+            }
+            
+            if (isset($data['status'])) {
+                $updateFields[] = "status = ?";
+                $updateParams[] = $data['status'];
+            }
+            
+            if (empty($updateFields)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tidak ada data yang diupdate'
+                ], 400);
+            }
+            
+            $updateParams[] = $jabatanId;
+            
+            $sql = "UPDATE jabatan SET " . implode(", ", $updateFields) . " WHERE id = ?";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($updateParams);
+            $stmtNew = $this->db->prepare("SELECT * FROM jabatan WHERE id = ?");
+            $stmtNew->execute([$jabatanId]);
+            $newJabatan = $stmtNew->fetch(\PDO::FETCH_ASSOC);
+            $user = $request->getAttribute('user');
+            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            if ($newJabatan && $pengurusId !== null) {
+                UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'jabatan', $jabatanId, $oldJabatan, $newJabatan, $request);
+            }
+            
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Jabatan berhasil diperbarui'
+            ], 200);
+            
+        } catch (\Exception $e) {
+            error_log("Update jabatan error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal memperbarui jabatan'
+            ], 500);
+        }
+    }
+    
+    /**
+     * DELETE /api/jabatan/{id} - Delete jabatan
+     */
+    public function deleteJabatan(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $jabatanId = $args['id'] ?? '';
+            
+            if (empty($jabatanId)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Jabatan ID diperlukan'
+                ], 400);
+            }
+            
+            $checkStmt = $this->db->prepare("SELECT * FROM jabatan WHERE id = ?");
+            $checkStmt->execute([$jabatanId]);
+            $oldJabatan = $checkStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$oldJabatan) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Jabatan tidak ditemukan'
+                ], 404);
+            }
+            
+            // Check if jabatan is used in pengurus___jabatan
+            $checkUsedStmt = $this->db->prepare("SELECT COUNT(*) as count FROM pengurus___jabatan WHERE jabatan_id = ?");
+            $checkUsedStmt->execute([$jabatanId]);
+            $usedCount = $checkUsedStmt->fetch(\PDO::FETCH_ASSOC)['count'];
+            
+            if ($usedCount > 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => "Jabatan tidak dapat dihapus karena masih digunakan oleh {$usedCount} pengurus"
+                ], 400);
+            }
+            
+            $deleteStmt = $this->db->prepare("DELETE FROM jabatan WHERE id = ?");
+            $deleteStmt->execute([$jabatanId]);
+            $user = $request->getAttribute('user');
+            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            if ($pengurusId !== null) {
+                UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_DELETE, 'jabatan', $jabatanId, $oldJabatan, null, $request);
+            }
+            
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Jabatan berhasil dihapus'
+            ], 200);
+            
+        } catch (\Exception $e) {
+            error_log("Delete jabatan error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menghapus jabatan'
+            ], 500);
+        }
+    }
+    
+    /**
+     * GET /api/jabatan/list - Get simple list of all jabatan (for dropdowns)
+     */
+    public function getJabatanList(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            $kategoriFilter = $queryParams['kategori'] ?? '';
+            $lembagaFilter = $queryParams['lembaga_id'] ?? '';
+            $lembagaIdsCsv = isset($queryParams['lembaga_ids']) ? trim((string) $queryParams['lembaga_ids']) : '';
+            $statusFilter = $queryParams['status'] ?? 'aktif'; // Default hanya aktif
+            
+            $whereConditions = ["j.status = 'aktif'"]; // Default hanya aktif
+            $params = [];
+            
+            $kategoriList = $this->parseCsvFilterList($kategoriFilter);
+            $this->appendInFilter($whereConditions, $params, 'l.kategori', $kategoriList);
+            
+            if ($lembagaIdsCsv !== '') {
+                $lembagaIds = array_values(array_filter(array_map(static function ($v) {
+                    return trim((string) $v);
+                }, explode(',', $lembagaIdsCsv)), static function ($v) {
+                    return $v !== '';
+                }));
+                if ($lembagaIds !== []) {
+                    $whereConditions[] = 'j.lembaga_id IN (' . implode(',', array_fill(0, count($lembagaIds), '?')) . ')';
+                    foreach ($lembagaIds as $lid) {
+                        $params[] = $lid;
+                    }
+                }
+            } elseif (!empty($lembagaFilter)) {
+                $whereConditions[] = "j.lembaga_id = ?";
+                $params[] = $lembagaFilter;
+            }
+            
+            $statusList = $this->parseCsvFilterList($statusFilter);
+            if ($statusList !== []) {
+                $whereConditions[0] = 'j.status IN (' . implode(',', array_fill(0, count($statusList), '?')) . ')';
+                $params = array_merge($statusList, $params);
+            }
+            
+            $whereClause = "WHERE " . implode(" AND ", $whereConditions);
+            
+            $sql = "SELECT j.id, j.nama, j.tipe, j.urutan, l.kategori AS lembaga_kategori, j.lembaga_id, l.nama as lembaga_nama
+                    FROM jabatan j
+                    LEFT JOIN lembaga l ON j.lembaga_id = l.id
+                    {$whereClause}
+                    ORDER BY j.urutan ASC, j.nama ASC";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $jabatanList = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $jabatanList
+            ], 200);
+            
+        } catch (\Exception $e) {
+            error_log("Get jabatan list error: " . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil data jabatan'
+            ], 500);
+        }
+    }
+    
+    /**
+     * @return list<string>
+     */
+    private function parseCsvFilterList(?string $csv): array
+    {
+        if ($csv === null || trim($csv) === '') {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map('trim', explode(',', $csv)),
+            static fn (string $v): bool => $v !== ''
+        )));
+    }
+
+    /**
+     * @param list<string> $values
+     */
+    private function appendInFilter(array &$whereConditions, array &$params, string $column, array $values): void
+    {
+        if ($values === []) {
+            return;
+        }
+        $whereConditions[] = $column . ' IN (' . implode(',', array_fill(0, count($values), '?')) . ')';
+        foreach ($values as $v) {
+            $params[] = $v;
+        }
+    }
+
+    /**
+     * @param mixed $raw null/kosong = NULL di DB; angka ≥ 0 dibulatkan 2 desimal.
+     */
+    private function parseNullableMoneyField($raw): ?float
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if (is_string($raw)) {
+            $t = trim(str_replace(["\xc2\xa0", ' '], '', $raw));
+            if ($t === '') {
+                return null;
+            }
+            $t = str_replace(',', '.', $t);
+            if (!is_numeric($t)) {
+                return null;
+            }
+            $raw = $t;
+        }
+        if (!is_numeric($raw)) {
+            return null;
+        }
+        $n = (float) $raw;
+        if (!is_finite($n) || $n < 0) {
+            return null;
+        }
+
+        return round($n, 2);
+    }
+
+    /**
+     * Helper method untuk JSON response
+     */
+    private function jsonResponse(Response $response, array $data, int $statusCode = 200): Response
+    {
+        $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus($statusCode);
+    }
+}
+

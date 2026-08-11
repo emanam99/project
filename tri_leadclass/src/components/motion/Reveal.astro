@@ -1,0 +1,19 @@
+---
+interface Props {
+  animation?: string;
+  delay?: number;
+  duration?: number;
+  class?: string;
+}
+
+const { animation = 'fade-up', delay = 0, duration, class: className } = Astro.props;
+---
+
+<div
+  class:list={['motion-reveal', className]}
+  data-aos={animation}
+  data-aos-delay={delay || undefined}
+  data-aos-duration={duration || undefined}
+>
+  <slot />
+</div>

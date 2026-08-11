@@ -1,0 +1,83 @@
+# Environment & rahasia
+.env
+.env.*
+*.env.*
+*.local
+
+# Dependencies
+/vendor/
+node_modules/
+
+# Playwright E2E
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+**/login-payload.json
+
+# Log & cache
+*.log
+error.log
+storage/logs/
+cache/
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Key/credential (jangan commit kunci API, OAuth, JWT, SSH)
+*.keyauth
+.tgtoken
+*.tgtoken
+*.json
+!composer.json
+!package.json
+!package-lock.json
+!**/package-lock.json
+client_secret*.json
+gen-lang-client-*.json
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+*.keystore
+secret_api_key.csv
+
+# Database dump / ekspor (besar, berisi data produksi & PII)
+**/db.sql
+**/*.sql.gz
+**/*.dump
+**/*.bak.sql
+api/db/db.sql
+mdtwustha/api/eksport/
+
+# Upload user API (foto santri, KK, ijazah, berkas chat — PII)
+api/uploads/*
+!api/uploads/.htaccess
+
+# Deploy secrets / dumps / snippets (jangan commit nilai nyata)
+deploy/*.env
+deploy/*.sql
+deploy/env-snippet-*.txt
+*.tar
+*-dist.tar
+ebeddien-dist.tar
+daftar-dist.tar
+mybeddien-dist.tar
+nailul-murod-dist.tar
+api-dist.tar
+mdtw-dist.tar
+
+# Build / dev artefak frontend
+**/dev-dist/
+**/dist-ssr/
+coverage/
+.nyc_output/
+
+# File artefak / debug yang tidak perlu di repo
+api/7.4
+mybeddien/Untitled

@@ -1,0 +1,27 @@
+# Deploy di VPS: /var/www/ra
+# Deploy: docker compose build && docker compose up -d
+#
+# Jangan jalankan `npm start` di host bersamaan dengan container ini — data/whatsapp-session
+# dipakai bersama → Chromium error "profile appears to be in use" (hostname container di pesan error).
+# Lifecycle: restart: always (Docker). Jangan PM2 untuk stack yang sama.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${RA_IMAGE_NAME:-ra-backend:local}
+    container_name: ${RA_CONTAINER_NAME:-ra-app}
+    restart: always
+    init: true
+    shm_size: '1gb'
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    environment:
+      NODE_ENV: production
+      # .env kosong menimpa ENV Dockerfile; di image Chromium ada di sini:
+      CHROME_PATH: /usr/bin/chromium
+      # Opsional: zona .jadwal / pengulangan (default Asia/Jakarta jika tidak di .env)
+      # SCHEDULE_TZ: Asia/Jakarta

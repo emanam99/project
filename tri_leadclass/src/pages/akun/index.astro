@@ -1,0 +1,166 @@
+---
+import AuthorLayout from '../../layouts/AuthorLayout.astro';
+import { getAdminUrl } from '../../lib/auth.ts';
+import { countManuscriptsForUser, listManuscriptsByUser } from '../../lib/manuscripts.ts';
+import { portalRoute } from '../../lib/portal-urls.ts';
+import { isAdminRole } from '../../lib/users.ts';
+import { formatViewCount } from '../../lib/utils.ts';
+
+const user = Astro.locals.user!;
+const onPenulis = Astro.locals.isPenulisHost;
+if (!user) return Astro.redirect(portalRoute('kirimNaskah', onPenulis));
+
+const counts = countManuscriptsForUser(user.id);
+const total = Object.values(counts).reduce((a, b) => a + b, 0);
+const publishedCount = counts.published ?? 0;
+const recent = listManuscriptsByUser(user.id).slice(0, 8);
+
+const firstName = user.name?.split(' ')[0] ?? 'Penulis';
+const avatar = user.picture ?? '/icon/icon96.png';
+const adminDashboardUrl = `${getAdminUrl()}/admin`;
+const showAdminLink = isAdminRole(user.role);
+
+const statusLabels: Record<string, string> = {
+  pending: 'Menunggu',
+  reviewing: 'Ditinjau',
+  revision: 'Revisi',
+  accepted: 'Diterima',
+  rejected: 'Ditolak',
+  published: 'Terbit',
+};
+
+const statusAccent: Record<string, string> = {
+  pending: '#f59e0b',
+  reviewing: '#0ea5e9',
+  revision: '#f97316',
+  accepted: '#10b981',
+  rejected: '#ef4444',
+  published: '#8b5cf6',
+};
+
+const statusBadge: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-800',
+  reviewing: 'bg-sky-100 text-sky-800',
+  revision: 'bg-orange-100 text-orange-800',
+  accepted: 'bg-emerald-100 text-emerald-800',
+  rejected: 'bg-red-100 text-red-800',
+  published: 'bg-violet-100 text-violet-800',
+};
+
+const statOrder = ['pending', 'reviewing', 'revision', 'accepted', 'rejected'] as const;
+const visibleStats = statOrder.filter((k) => (counts[k] ?? 0) > 0);
+---
+
+<AuthorLayout title="Dashboard — TRI_LEADCLASS">
+  <section class="author-hero" aria-label="Selamat datang">
+    <div class="author-hero-row">
+      <img src={avatar} alt="" class="author-hero-avatar" width="52" height="52" />
+      <div>
+        <p class="author-hero-greeting">Selamat datang kembali</p>
+        <p class="author-hero-name">{firstName}</p>
+      </div>
+    </div>
+    <div class="author-hero-stat">
+      <span class="author-hero-stat-num">{total}</span>
+      <span class="author-hero-stat-label">naskah diajukan</span>
+    </div>
+  </section>
+
+  <div class="author-stat-scroll" role="list" aria-label="Ringkasan status">
+    {
+      publishedCount > 0 && (
+        <div class="author-stat-chip author-stat-chip--published" role="listitem">
+          <p class="author-stat-chip-num">{publishedCount}</p>
+          <p class="author-stat-chip-label">Terbit</p>
+        </div>
+      )
+    }
+    {
+      visibleStats.map((status) => (
+        <div class="author-stat-chip" role="listitem">
+          <p class="author-stat-chip-num">{counts[status]}</p>
+          <p class="author-stat-chip-label">{statusLabels[status]}</p>
+        </div>
+      ))
+    }
+    {
+      total === 0 && (
+        <div class="author-stat-chip" role="listitem">
+          <p class="author-stat-chip-num">0</p>
+          <p class="author-stat-chip-label">Naskah</p>
+        </div>
+      )
+    }
+  </div>
+
+  <nav class="author-actions" aria-label="Aksi cepat">
+    <a href={portalRoute('kirimNaskah', onPenulis)} class="author-action-tile">
+      <span class="author-action-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" x2="12" y1="18" y2="12"/><line x1="9" x2="15" y1="15" y2="15"/></svg>
+      </span>
+      <span class="author-action-label">Kirim Naskah</span>
+    </a>
+    <a href={portalRoute('published', onPenulis)} class="author-action-tile">
+      <span class="author-action-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
+      </span>
+      <span class="author-action-label">Terbit</span>
+    </a>
+    <a href={portalRoute('profil', onPenulis)} class="author-action-tile">
+      <span class="author-action-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </span>
+      <span class="author-action-label">Profil</span>
+    </a>
+    {
+      showAdminLink && (
+        <a href={adminDashboardUrl} class="author-action-tile author-action-tile--admin">
+          <span class="author-action-icon" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+          </span>
+          <span class="author-action-label">Panel Admin</span>
+        </a>
+      )
+    }
+  </nav>
+
+  <section class="author-section" aria-labelledby="recent-heading">
+    <div class="author-section-head">
+      <h2 id="recent-heading" class="author-section-title">Naskah terbaru</h2>
+      <a href={portalRoute('kirimNaskah', onPenulis)} class="author-section-link">+ Baru</a>
+    </div>
+
+    {
+      recent.length === 0 ? (
+        <div class="author-empty">
+          <p class="text-slate-500 portal-text-muted text-sm mb-4">Belum ada naskah. Mulai dengan mengirim naskah pertama Anda.</p>
+          <a href={portalRoute('kirimNaskah', onPenulis)} class="author-btn-primary">Kirim naskah</a>
+        </div>
+      ) : (
+        <div class="author-list">
+          {
+            recent.map((m) => (
+              <div class="author-list-item">
+                <span class="author-list-accent" style={`background:${statusAccent[m.status]}`} aria-hidden="true" />
+                <div class="author-list-body">
+                  <p class="author-list-title">{m.title}</p>
+                  <div class="author-list-meta">
+                    <span class:list={['author-badge', statusBadge[m.status]]}>{statusLabels[m.status]}</span>
+                    <span>
+                      {new Date(m.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                    {
+                      m.status === 'published' && m.article_views != null && (
+                        <span>{formatViewCount(m.article_views)}</span>
+                      )
+                    }
+                  </div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      )
+    }
+  </section>
+</AuthorLayout>

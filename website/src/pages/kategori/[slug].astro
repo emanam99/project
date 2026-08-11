@@ -1,0 +1,56 @@
+---
+/** Daftar berita per kategori (SSR). */
+export const prerender = false
+
+import Layout from '../../layouts/Layout.astro'
+import SmartImage from '../../components/SmartImage.astro'
+import { fetchBeritaList, fetchKategoriBerita } from '../../lib/api'
+
+const slug = (Astro.params.slug as string) || ''
+if (!slug) {
+  return new Response('Slug kategori kosong', { status: 400 })
+}
+
+const url = new URL(Astro.request.url)
+const page = Math.max(1, Number(url.searchParams.get('page') || '1'))
+
+const [kategoriList, berita] = await Promise.all([
+  fetchKategoriBerita(),
+  fetchBeritaList({ kategori: slug, page, limit: 12 })
+])
+
+const kategori = kategoriList?.find((k) => k.slug === slug) || null
+if (!kategori) {
+  return new Response('Kategori tidak ditemukan', { status: 404 })
+}
+---
+
+<Layout
+  title={`Kategori: ${kategori.nama}`}
+  description={`Berita kategori ${kategori.nama}.`}
+>
+  <header class="mb-6">
+    <a href="/berita" class="text-sm text-slate-500 hover:underline">← Semua berita</a>
+    <h1 class="mt-1 text-2xl font-bold">{kategori.nama}</h1>
+  </header>
+
+  {(!berita || berita.length === 0) ? (
+    <p class="rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-500 dark:border-slate-700">
+      Belum ada berita di kategori ini.
+    </p>
+  ) : (
+    <ul class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {berita.map((b) => (
+        <li class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+          <a href={`/berita/${b.slug}`} class="block">
+            <SmartImage src={b.cover_url} alt={b.judul} class="aspect-[16/9] w-full object-cover" />
+            <div class="space-y-2 p-4">
+              <h2 class="line-clamp-2 text-base font-semibold">{b.judul}</h2>
+              {b.ringkasan && <p class="line-clamp-3 text-sm text-slate-600 dark:text-slate-300">{b.ringkasan}</p>}
+            </div>
+          </a>
+        </li>
+      ))}
+    </ul>
+  )}
+</Layout>

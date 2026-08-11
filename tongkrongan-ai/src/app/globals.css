@@ -1,0 +1,257 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   Tongkrongan AI - Global Styles
+   ============================================ */
+
+@layer base {
+  * {
+    @apply border-whatsapp-divider;
+  }
+
+  body {
+    @apply bg-whatsapp-background text-whatsapp-text;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-whatsapp-divider rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-whatsapp-text-secondary;
+  }
+
+  /* Hide scrollbar for mobile */
+  @media (max-width: 768px) {
+    ::-webkit-scrollbar {
+      width: 3px;
+    }
+  }
+}
+
+@layer components {
+  /* WhatsApp-like bubble */
+  .chat-bubble {
+    @apply relative max-w-[85%] md:max-w-[70%] px-3 py-2 rounded-lg break-words;
+  }
+
+  .chat-bubble-sent {
+    @apply chat-bubble bg-whatsapp-bubble-sent rounded-br-sm ml-auto;
+  }
+
+  .chat-bubble-received {
+    @apply chat-bubble bg-whatsapp-bubble-received rounded-bl-sm;
+  }
+
+  .chat-bubble-user {
+    @apply chat-bubble bg-whatsapp-green-dark rounded-br-sm ml-auto;
+    background: linear-gradient(135deg, #005c4b 0%, #0b6b58 100%);
+  }
+
+  .chat-bubble-ai {
+    @apply chat-bubble bg-whatsapp-bubble-received rounded-bl-sm;
+    background: linear-gradient(135deg, #1f2c33 0%, #233138 100%);
+  }
+
+  /* Glassmorphism components */
+  .glass {
+    @apply backdrop-blur-xl bg-glass-strong border border-white/5;
+  }
+
+  .glass-light {
+    @apply backdrop-blur-md bg-glass-light border border-white/5;
+  }
+
+  /* Typing indicator dots */
+  .typing-dot {
+    @apply w-1.5 h-1.5 rounded-full bg-whatsapp-typing inline-block mx-0.5;
+    animation: typing 1.4s infinite;
+  }
+
+  .typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  /* Avatar styles */
+  .avatar {
+    @apply w-10 h-10 rounded-full object-cover flex-shrink-0;
+  }
+
+  .avatar-lg {
+    @apply w-12 h-12 rounded-full object-cover flex-shrink-0;
+  }
+
+  .avatar-sm {
+    @apply w-8 h-8 rounded-full object-cover flex-shrink-0;
+  }
+
+  /* Online indicator */
+  .online-dot {
+    @apply w-2.5 h-2.5 rounded-full border-2 border-whatsapp-background absolute -bottom-0.5 -right-0.5;
+  }
+
+  .online-dot.online {
+    @apply bg-green-500;
+  }
+
+  .online-dot.idle {
+    @apply bg-yellow-500;
+  }
+
+  .online-dot.offline {
+    @apply bg-whatsapp-text-secondary;
+  }
+
+  .online-dot.sleeping {
+    @apply bg-blue-400;
+  }
+
+  /* Unread divider */
+  .unread-divider {
+    @apply flex items-center justify-center my-4 px-4;
+  }
+
+  .unread-divider::before,
+  .unread-divider::after {
+    content: '';
+    @apply flex-1 h-px bg-whatsapp-divider;
+  }
+
+  .unread-divider span {
+    @apply px-4 text-xs font-medium text-whatsapp-green;
+  }
+
+  /* Sidebar styles */
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200;
+  }
+
+  .sidebar-item:hover {
+    @apply bg-whatsapp-hover;
+  }
+
+  .sidebar-item.active {
+    @apply bg-whatsapp-active;
+  }
+
+  /* Scrool to bottom button */
+  .scroll-to-bottom {
+    @apply absolute bottom-20 right-8 w-10 h-10 rounded-full bg-whatsapp-primary 
+           flex items-center justify-center cursor-pointer shadow-lg
+           transition-all duration-300 hover:scale-105;
+    @apply animate-fade-in;
+  }
+
+  /* Reply preview */
+  .reply-preview {
+    @apply border-l-4 border-whatsapp-green bg-whatsapp-active/30 rounded-r-lg px-3 py-1.5 mb-1;
+  }
+
+  /* Input area */
+  .chat-input {
+    @apply w-full bg-whatsapp-input-bg text-whatsapp-text rounded-lg px-4 py-3
+           placeholder:text-whatsapp-text-secondary/60
+           outline-none resize-none max-h-32
+           transition-all duration-200;
+  }
+
+  .chat-input:focus {
+    @apply ring-1 ring-whatsapp-primary/30;
+  }
+
+  /* Mood badge */
+  .mood-badge {
+    @apply text-xs px-2 py-0.5 rounded-full font-medium;
+  }
+
+  /* Framer motion overrides */
+  .motion-safe {
+    @apply motion-reduce:transition-none motion-reduce:animate-none;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Smooth transitions for dark mode */
+  .theme-transition {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes typing {
+  0%, 100% { 
+    transform: scaleY(0.4);
+    opacity: 0.4;
+  }
+  20% { 
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  40% { 
+    transform: scaleY(0.4);
+    opacity: 0.4;
+  }
+}
+
+@keyframes bounceIn {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

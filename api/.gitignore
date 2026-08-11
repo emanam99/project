@@ -1,0 +1,49 @@
+# Environment (isi rahasia; gunakan env.local / env.production sebagai template)
+.env
+.env.local
+.env.*.local
+.jwt_secret_warned
+secret_api_key.csv
+
+# Google Service Account key (jangan commit)
+*-e8ecd1f5cf1b.json
+gen-lang-client-*.json
+
+# Composer
+/vendor/
+composer.lock
+
+# Ekspor DB penuh (file besar, data sensitif — pakai Phinx migrate/seed)
+db/db.sql
+db/**/*.sql.gz
+db/**/*.dump
+db/**/backup*.sql
+
+# Upload runtime (foto profil, berkas santri, chat — PII)
+uploads/*
+!uploads/.htaccess
+
+# Error logs
+error.log
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test.php
+test-*.php
+debug.php
+
+# Documentation (optional, bisa di-upload juga)
+README.md
+UPLOAD-GUIDE.md
+

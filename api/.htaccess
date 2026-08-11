@@ -1,0 +1,18 @@
+# Lindungi root API jika diakses lewat alutsmani.id/api atau alutsmani.id/api2
+# (subdomain api*.alutsmani.id biasanya document root = public/)
+<IfModule mod_authz_core.c>
+  <FilesMatch "^(\.env|\.env\..*|config\.php|phinx\.php|composer\.(json|lock)|error\.log|error\.log\..*|error_log)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  <FilesMatch "^(\.env|\.env\..*|config\.php|phinx\.php|composer\.(json|lock)|error\.log|error\.log\..*|error_log)$">
+    Order allow,deny
+    Deny from all
+  </FilesMatch>
+</IfModule>
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^(src|routes|vendor|db)(/|$) - [F,L]
+  RewriteRule ^(config\.php|phinx\.php|composer\.(json|lock)|error\.log|error\.log\..*|error_log)$ - [F,L]
+</IfModule>

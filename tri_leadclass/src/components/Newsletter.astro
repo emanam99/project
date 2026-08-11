@@ -1,0 +1,65 @@
+---
+// Form berlangganan; mengirim ke backend sendiri (/api/subscribe).
+---
+
+<div id="berlangganan" class="bg-emerald-50 p-6 rounded-xl border border-emerald-100 text-center">
+  <h4 class="text-lg font-serif font-bold text-slate-900 mb-2">Notifikasi Terbitan</h4>
+  <p class="text-sm text-gray-600 mb-4">
+    Dapatkan pemberitahuan otomatis saat volume dan isu baru TRI_LEADCLASS diterbitkan.
+  </p>
+  <form class="flex flex-col gap-3" data-subscribe>
+    <input
+      type="email"
+      name="email"
+      required
+      placeholder="Alamat Surel Akademik"
+      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-sm"
+    />
+    <button
+      type="submit"
+      class="w-full bg-emerald-700 text-white font-medium py-2 rounded-lg hover:bg-emerald-800 transition-colors shadow-sm disabled:opacity-60"
+    >
+      Berlangganan
+    </button>
+    <p class="text-xs min-h-[1rem]" data-subscribe-msg></p>
+  </form>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLFormElement>('form[data-subscribe]').forEach((form) => {
+    const msg = form.querySelector<HTMLParagraphElement>('[data-subscribe-msg]');
+    const btn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = (form.elements.namedItem('email') as HTMLInputElement)?.value;
+      if (!msg || !btn) return;
+
+      btn.disabled = true;
+      msg.textContent = 'Memproses...';
+      msg.className = 'text-xs min-h-[1rem] text-gray-500';
+
+      try {
+        const res = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          msg.textContent = data.message ?? 'Berhasil berlangganan!';
+          msg.className = 'text-xs min-h-[1rem] text-emerald-700 font-medium';
+          form.reset();
+        } else {
+          msg.textContent = data.error ?? 'Gagal berlangganan.';
+          msg.className = 'text-xs min-h-[1rem] text-red-600';
+        }
+      } catch {
+        msg.textContent = 'Terjadi kesalahan jaringan.';
+        msg.className = 'text-xs min-h-[1rem] text-red-600';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+</script>

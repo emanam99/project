@@ -1,0 +1,29 @@
+---
+/** Halaman statis (Tentang, Kontak, dll) — SSR. */
+export const prerender = false
+
+import Layout from '../../layouts/Layout.astro'
+import { fetchHalaman } from '../../lib/api'
+import { htmlToText } from '../../lib/seo'
+
+const slug = (Astro.params.slug as string) || ''
+const halaman = slug ? await fetchHalaman(slug) : null
+if (!halaman) {
+  return new Response('Halaman tidak ditemukan', { status: 404 })
+}
+
+const description = htmlToText(halaman.konten_html, 160) || null
+---
+
+<Layout
+  title={halaman.judul}
+  description={description}
+  ogTitle={halaman.og_title || halaman.judul}
+  ogDescription={halaman.og_description || description}
+  ogImage={halaman.og_image}
+>
+  <article class="space-y-4">
+    <h1 class="text-2xl font-bold md:text-3xl">{halaman.judul}</h1>
+    {halaman.konten_html && <div class="prose-pesantren" set:html={halaman.konten_html} />}
+  </article>
+</Layout>

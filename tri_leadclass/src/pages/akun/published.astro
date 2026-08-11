@@ -1,0 +1,78 @@
+---
+import AuthorLayout from '../../layouts/AuthorLayout.astro';
+import { listPublishedManuscriptsByUser } from '../../lib/manuscripts.ts';
+import { mediaUrl } from '../../lib/uploads.ts';
+import { portalRoute } from '../../lib/portal-urls.ts';
+import { getPublicSiteUrl } from '../../lib/auth.ts';
+import { formatViewCount } from '../../lib/utils.ts';
+
+const user = Astro.locals.user!;
+const onPenulis = Astro.locals.isPenulisHost;
+if (!user) return Astro.redirect(portalRoute('kirimNaskah', onPenulis));
+
+const published = listPublishedManuscriptsByUser(user.id);
+const siteUrl = getPublicSiteUrl();
+---
+
+<AuthorLayout title="Published — TRI_LEADCLASS">
+  <div class="mb-6">
+    <h1 class="text-2xl md:text-3xl font-serif font-black text-slate-900 portal-text-title">Naskah Terbit</h1>
+    <p class="text-sm text-slate-500 portal-text-muted mt-1">Naskah yang sudah diterbitkan di jurnal.</p>
+  </div>
+
+  {
+    published.length === 0 ? (
+      <div class="author-card p-8 text-center">
+        <p class="text-slate-500 portal-text-muted mb-2">Belum ada naskah yang terbit.</p>
+        <p class="text-xs text-slate-400">Naskah akan muncul di sini setelah redaksi menerbitkannya.</p>
+      </div>
+    ) : (
+      <div class="space-y-4">
+        {
+          published.map((m) => (
+            <article class="author-card overflow-hidden">
+              <div class="flex flex-col sm:flex-row gap-4 p-4">
+                {
+                  m.cover_image_path && (
+                    <img
+                      src={mediaUrl(m.cover_image_path)}
+                      alt=""
+                      class="w-full sm:w-32 h-32 object-cover rounded-lg shrink-0 bg-slate-100"
+                    />
+                  )
+                }
+                <div class="flex-1 min-w-0">
+                  <span class="inline-block text-[10px] font-bold uppercase tracking-wider text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full mb-2">Terbit</span>
+                  <h2 class="font-serif font-bold text-lg text-slate-900 portal-text-title leading-snug">{m.title}</h2>
+                  {m.category && <p class="text-xs text-slate-500 portal-text-muted mt-1">{m.category}</p>}
+                  <p class="text-xs text-slate-400 mt-2">
+                    Diterbitkan {new Date(m.updated_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    {
+                      m.article_views != null && (
+                        <span> · {formatViewCount(m.article_views)}</span>
+                      )
+                    }
+                  </p>
+                  {
+                    m.article_slug ? (
+                      <a
+                        href={`${siteUrl}/artikel/${m.article_slug}`}
+                        class="inline-flex items-center gap-1 mt-3 text-sm font-semibold text-emerald-700 hover:text-emerald-800"
+                        target="_blank"
+                        rel="noopener"
+                      >
+                        Baca artikel →
+                      </a>
+                    ) : (
+                      <p class="text-xs text-amber-600 mt-2">Artikel sedang disinkronkan.</p>
+                    )
+                  }
+                </div>
+              </div>
+            </article>
+          ))
+        }
+      </div>
+    )
+  }
+</AuthorLayout>

@@ -1,0 +1,11 @@
+android.keystore
+.keystore-credentials.txt
+*.jks
+android/
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.idsig
+decompressed/

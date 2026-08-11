@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://daftar.alutsmani.id/sitemap.xml

@@ -1,0 +1,29 @@
+---
+description: Wajib catat changelog seed & katalog kemampuan Chat AI saat fitur terkait berubah
+alwaysApply: true
+---
+
+# Changelog aplikasi & kemampuan Chat AI
+
+## Kemampuan Chat AI (eBeddien)
+
+Setiap penambahan atau perubahan **kemampuan asisten** (konteks server / RAG / sisipan prompt / endpoint Deepseek yang mempengaruhi apa yang bisa ditanyakan pengguna):
+
+1. **Selalu** perbarui daftar pengguna di `ebeddien/src/config/chatAiSkillsCatalog.js` (judul + deskripsi + `requiresAccess`).
+2. Jika kemampuan **tergantung izin** (menu JWT / role): tambahkan atau sesuaikan pembangun akses di `ebeddien/src/config/chatAiKemampuanAccess.js`, lalu rujuk key yang sama dari `requiresAccess` di katalog.
+
+Tanpa ini, tab **Chat AI → Kemampuan** dan panel ringkasan akan ketinggalan jauh dari perilaku backend.
+
+## Changelog seed (`app_version_changelog`)
+
+Setiap ada pembaruan **bermakna** pada aplikasi:
+
+- **ebeddien** (staff)
+- **mybeddien** (portal santri/pengguna)
+- **nailul-murod** (jika repo ini ikut dirilis bersama)
+
+**Selalu** tambahkan entri baru di `api/db/seeds/ChangelogVersionSeed.php` (array `$entries`), ikuti format baris yang sudah ada (`app`, `version`, `role_id`, `title`, `changelog`, `released_at`), lalu jalankan dari folder `api`:
+
+`php vendor/bin/phinx seed:run -s ChangelogVersionSeed`
+
+Sesuaikan `version` dengan kebijakan rilis; untuk API, selaraskan juga `api_version` di `api/config.php` bila naik versi backend resmi.

@@ -1,0 +1,21 @@
+---
+description: MD Twustha memakai API PHP Slim, bukan Google Apps Script
+globs: mdtwustha/**
+alwaysApply: false
+---
+
+# MD Twustha — backend & client API
+
+## Backend
+- Satu-satunya backend: **`mdtwustha/api`** (PHP Slim, `public/index.php`).
+- Migrasi: `php migrate.php` di folder `api`.
+- Jangan membuat, mengedit, atau mengarahkan fitur ke **Google Apps Script**, **Google Sheet**, `Code.gs`, `doPost`, atau `VITE_APPSCRIPT_URL`.
+
+## Frontend
+- Client HTTP: **`mdtwustha/app/src/api/apiClient.ts`** (bukan nama `appScript`).
+- Kalender helper: `kalenderApi.ts` (tetap lewat base URL PHP yang sama).
+- Endpoint baru: tambah route di `api/public/index.php` + controller PHP, lalu fungsi fetch di `apiClient.ts`.
+
+## Larangan
+- Jangan menyarankan deploy Web App Apps Script atau menyimpan data di Sheet.
+- Jangan menghidupkan kembali folder/file legacy Apps Script jika sudah dihapus.

@@ -1,0 +1,68 @@
+.excel-pengurus-editor .luckysheet-input-box,
+.excel-pengurus-editor .luckysheet-input-box *,
+.excel-pengurus-editor .luckysheet-formula-editor-input,
+.excel-pengurus-editor .luckysheet-formula-editor-input *,
+.excel-pengurus-editor .luckysheet-rich-text-editor,
+.excel-pengurus-editor .luckysheet-rich-text-editor * {
+  color: #111827 !important;
+}
+
+.dark .excel-pengurus-editor .luckysheet-input-box,
+.dark .excel-pengurus-editor .luckysheet-input-box *,
+.dark .excel-pengurus-editor .luckysheet-formula-editor-input,
+.dark .excel-pengurus-editor .luckysheet-formula-editor-input *,
+.dark .excel-pengurus-editor .luckysheet-rich-text-editor,
+.dark .excel-pengurus-editor .luckysheet-rich-text-editor * {
+  color: #111827 !important;
+}
+
+/* FortuneSheet kadang render editor/input via portal di luar wrapper komponen. */
+.dark .luckysheet-input-box,
+.dark .luckysheet-input-box *,
+.dark .luckysheet-formula-editor-input,
+.dark .luckysheet-formula-editor-input *,
+.dark .luckysheet-rich-text-editor,
+.dark .luckysheet-rich-text-editor * {
+  color: #111827 !important;
+}
+
+/* Perbaiki pengalaman sentuh di HP agar scroll area sheet lebih halus. */
+.excel-pengurus-editor {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.excel-pengurus-editor .luckysheet,
+.excel-pengurus-editor .luckysheet-cell-main,
+.excel-pengurus-editor .luckysheet-grid-window {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.excel-pengurus-editor .luckysheet-cell-main *,
+.excel-pengurus-editor .luckysheet-grid-window * {
+  touch-action: pan-x pan-y;
+}
+
+/* Aktifkan scrolling native viewport grid di mobile. */
+.excel-pengurus-editor .luckysheet-grid-window {
+  overflow: auto !important;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 768px) {
+  .excel-pengurus-page {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .excel-pengurus-editor {
+    min-height: calc(100vh - 220px);
+  }
+
+  .excel-pengurus-editor .luckysheet-grid-window,
+  .excel-pengurus-editor .luckysheet-cell-main {
+    will-change: auto;
+    contain: none;
+  }
+}

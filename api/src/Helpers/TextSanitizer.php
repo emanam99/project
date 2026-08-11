@@ -1,0 +1,352 @@
+<?php
+
+namespace App\Helpers;
+
+/**
+ * Helper untuk memastikan teks bersih: valid UTF-8, aman untuk MySQL (utf8mb4) dan tampilan (WhatsApp, dll).
+ * Mencegah data dari pendaftar dengan font/encoding aneh tampil sebagai '????????'.
+ */
+class TextSanitizer
+{
+    /** Allowlist tag editor deskripsi sederhana: teks + daftar + judul/subjudul. */
+    private const ALLOWED_RICH_HTML_TAGS = '<p><br><strong><b><em><i><u><ul><ol><li><h2><h3>';
+    /**
+     * Daftar field yang dianggap numerik/tanggal — tidak di-sanitize dengan cleanText (tetap trim).
+     * Untuk field lain (string bebas) gunakan cleanText.
+     */
+    /**
+     * Field request myBeddien (auth/daftar/lupa NIS) yang harus dibersihkan sebagai teks bebas.
+     */
+    public const MYBEDDIAN_AUTH_TEXT_FIELDS = [
+        'nama', 'nama_toko', 'nama_profil', 'nama_pjgt', 'nama_pengasuh', 'identitas', 'email',
+        'penanggung_jawab_nama',
+    ];
+
+    /**
+     * Field request myBeddien yang hanya trim (angka/kode), bukan cleanText agresif.
+     */
+    public const MYBEDDIAN_AUTH_CODE_FIELDS = [
+        'id_pengurus', 'nik', 'no_wa', 'nis', 'username', 'no_wa_baru', 'no_wa_konfirmasi',
+        'username_baru', 'otp', 'santri_id', 'tanggal_lahir', 'status', 'kode_toko',
+    ];
+
+    /** Field teks panjang (paragraf) pada laporan UGT — pertahankan baris baru. */
+    public const UGT_LAPORAN_MULTILINE_FIELDS = [
+        'usulan', 'tugas_selanjutnya', 'masalah', 'solusi', 'saran',
+    ];
+
+    /** Field kode/angka laporan UGT — hanya trim, tanpa cleanText. */
+    public const UGT_LAPORAN_CODE_FIELDS = [
+        'id', 'id_madrasah', 'id_santri', 'id_santri_gt', 'id_koordinator', 'id_pembuat',
+        'bulan', 'pulang', 'sakit', 'udzur', 'id_tahun_ajaran',
+    ];
+
+    public const NUMERIC_OR_SPECIAL_FIELDS = [
+        'id', 'grup', 'nis', 'nik', 'nisn', 'nik_ayah', 'nik_ibu', 'nik_wali', 'no_kk',
+        'rt', 'rw', 'kode_pos', 'anak_ke', 'jumlah_saudara', 'saudara_di_pesantren',
+        'id_kamar', 'id_diniyah', 'id_formal', 'id_admin', 'id_santri', 'id_registrasi',
+        'tanggal_lahir', 'tanggal_lahir_ayah', 'tanggal_lahir_ibu', 'tanggal_lahir_wali',
+        'lulus_madrasah', 'lulus_sekolah', 'npsn', 'nsm',
+        'penghasilan_ayah', 'penghasilan_ibu', 'penghasilan_wali',
+        'nim_diniyah', 'nim_formal', 'kelas_lttq', 'kel_lttq',
+    ];
+
+    /**
+     * Membersihkan string agar selalu teks yang valid dan terbaca.
+     * - Memastikan encoding UTF-8 valid (menghapus byte invalid)
+     * - Menghapus karakter kontrol (kecuali tab, newline, carriage return)
+     * - Menghapus karakter Private Use / pengganti yang sering bikin ? di MySQL/WA
+     * - Normalisasi spasi berlebih dan trim
+     *
+     * @param string|null $value Input dari user (bisa dari form, copy-paste font aneh, dll)
+     * @return string Teks bersih, tidak null (kosong "" jika input null/invalid)
+     */
+    public static function cleanText(?string $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        // Pastikan kita bekerja dengan string (bisa dapat dari JSON/array)
+        $value = (string) $value;
+
+        // 1) Hapus byte invalid UTF-8 (konversi ke UTF-8 dari UTF-8 = drop invalid bytes)
+        $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        if ($value === false) {
+            return '';
+        }
+
+        // 2) Hapus karakter kontrol (0x00-0x1F kecuali \t\n\r, dan 0x7F)
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value);
+
+        // 3) Hapus Unicode Replacement Character (U+FFFD) yang sering muncul sebagai ?
+        $value = str_replace("\xEF\xBF\xBD", '', $value);
+
+        // 4) Hapus Private Use Area (sering dari font khusus) — U+E000–U+F8FF
+        $value = preg_replace('/[\x{E000}-\x{F8FF}]/u', '', $value);
+
+        // 5) Normalisasi bentuk Unicode ke NFC (satu karakter = satu glyph konsisten)
+        if (class_exists('Normalizer') && method_exists('Normalizer', 'normalize')) {
+            $nfc = \Normalizer::normalize($value, \Normalizer::FORM_C);
+            if ($nfc !== false) {
+                $value = $nfc;
+            }
+        }
+
+        // 6) Normalisasi spasi: ganti multiple space/tab/newline dengan satu spasi, lalu trim
+        $value = preg_replace('/[\s]+/u', ' ', $value);
+        $value = trim($value);
+
+        return $value;
+    }
+
+    /**
+     * Seperti cleanText tetapi mempertahankan baris baru untuk pesan WA multi-paragraf.
+     * Hanya merapikan spasi/tab dalam satu baris, tidak menggabungkan paragraf jadi satu baris.
+     */
+    public static function cleanMultilineMessage(?string $value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        $value = (string) $value;
+        $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        if ($value === false) {
+            return '';
+        }
+
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value);
+        $value = str_replace("\xEF\xBF\xBD", '', $value);
+        $value = preg_replace('/[\x{E000}-\x{F8FF}]/u', '', $value);
+
+        if (class_exists('Normalizer') && method_exists('Normalizer', 'normalize')) {
+            $nfc = \Normalizer::normalize($value, \Normalizer::FORM_C);
+            if ($nfc !== false) {
+                $value = $nfc;
+            }
+        }
+
+        $value = preg_replace('/\R/u', "\n", $value);
+        $lines = explode("\n", $value);
+        $lines = array_map(static function ($line) {
+            return preg_replace('/[ \t]+/u', ' ', trim($line));
+        }, $lines);
+        $value = implode("\n", $lines);
+        $value = preg_replace("/\n{4,}/u", "\n\n\n", $value) ?? $value;
+
+        return trim($value);
+    }
+
+    /**
+     * Membersihkan teks; jika hasil kosong kembalikan null (untuk field opsional di DB).
+     *
+     * @param string|null $value
+     * @return string|null
+     */
+    public static function cleanTextOrNull(?string $value): ?string
+    {
+        $cleaned = self::cleanText($value);
+        return $cleaned === '' ? null : $cleaned;
+    }
+
+    /**
+     * Sanitasi rich text HTML dengan allowlist tag sederhana untuk editor deskripsi.
+     * Semua atribut dihapus agar event handler/JS URL tidak bisa disisipkan.
+     */
+    public static function cleanRichHtmlOrNull(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $value = mb_convert_encoding((string) $value, 'UTF-8', 'UTF-8');
+        if ($value === false) {
+            return null;
+        }
+
+        $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $value) ?? '';
+        $value = str_replace("\xEF\xBF\xBD", '', $value);
+        $value = preg_replace('/[\x{E000}-\x{F8FF}]/u', '', $value) ?? $value;
+
+        // Hapus tag berbahaya beserta kontennya.
+        $value = preg_replace('/<(script|style|iframe|object|embed|svg|math)[^>]*>.*?<\/\1>/is', '', $value) ?? $value;
+
+        // Sisakan hanya tag yang diizinkan.
+        $value = strip_tags($value, self::ALLOWED_RICH_HTML_TAGS);
+
+        // Hapus seluruh atribut dari tag yang diizinkan (onerror, style, class, dst).
+        $value = preg_replace('/<([a-z0-9]+)(\s+[^>]*)>/i', '<$1>', $value) ?? $value;
+
+        // Rapikan karakter spasi non-breaking.
+        $value = str_replace('&nbsp;', ' ', $value);
+        $value = trim($value);
+
+        // Jika setelah dibersihkan tidak ada teks bermakna, simpan null.
+        $plainText = trim(strip_tags($value));
+        return $plainText === '' ? null : $value;
+    }
+
+    /**
+     * Sanitasi array input: setiap nilai string (yang key-nya bukan numerik/special) di-cleanText.
+     * Nilai non-string (int, float, bool, array) tidak diubah. Key tetap.
+     *
+     * @param array $input Data mentah dari request (getParsedBody)
+     * @param array $stringKeys Daftar key yang harus di-sanitize sebagai teks. Jika kosong, semua key string dianggap teks kecuali yang di NUMERIC_OR_SPECIAL_FIELDS
+     * @return array Array yang sama dengan nilai string sudah dibersihkan
+     */
+    public static function sanitizeStringValues(array $input, array $stringKeys = []): array
+    {
+        $useWhitelist = !empty($stringKeys);
+        $out = [];
+        foreach ($input as $key => $val) {
+            if (!is_string($val)) {
+                $out[$key] = $val;
+                continue;
+            }
+            if ($useWhitelist) {
+                $out[$key] = in_array($key, $stringKeys, true) ? self::cleanText($val) : $val;
+            } else {
+                $out[$key] = in_array($key, self::NUMERIC_OR_SPECIAL_FIELDS, true) ? trim($val) : self::cleanText($val);
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Sanitasi body request publik myBeddien (daftar, lupa NIS, lupa password, PJGT).
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public static function sanitizeMybeddianAuthBody(array $input): array
+    {
+        return self::sanitizeStringValues(
+            $input,
+            array_merge(self::MYBEDDIAN_AUTH_TEXT_FIELDS, self::MYBEDDIAN_AUTH_CODE_FIELDS)
+        );
+    }
+
+    /**
+     * Sanitasi body create/update laporan UGT (koordinator, GT, PJGT).
+     * Teks pendek: cleanText; paragraf: cleanMultilineMessage; masalah_list: per item multiline.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public static function sanitizeUgtLaporanBody(array $input): array
+    {
+        $out = [];
+        foreach ($input as $key => $val) {
+            if ($key === 'masalah_list' && is_array($val)) {
+                $out[$key] = self::sanitizeUgtMasalahList($val);
+                continue;
+            }
+            if ($key === 'foto_list' && is_array($val)) {
+                $out[$key] = $val;
+                continue;
+            }
+            if (!is_string($val)) {
+                $out[$key] = $val;
+                continue;
+            }
+            if (in_array($key, self::UGT_LAPORAN_CODE_FIELDS, true)
+                || in_array($key, self::NUMERIC_OR_SPECIAL_FIELDS, true)) {
+                $out[$key] = trim($val);
+            } elseif (in_array($key, self::UGT_LAPORAN_MULTILINE_FIELDS, true)) {
+                $out[$key] = self::cleanMultilineMessage($val);
+            } else {
+                $out[$key] = self::cleanText($val);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<int, mixed> $list
+     * @return list<array{masalah: string, solusi: string, saran: string}>
+     */
+    public static function sanitizeUgtMasalahList(array $list): array
+    {
+        $out = [];
+        foreach ($list as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $out[] = [
+                'masalah' => isset($item['masalah']) && is_string($item['masalah'])
+                    ? self::cleanMultilineMessage($item['masalah']) : '',
+                'solusi' => isset($item['solusi']) && is_string($item['solusi'])
+                    ? self::cleanMultilineMessage($item['solusi']) : '',
+                'saran' => isset($item['saran']) && is_string($item['saran'])
+                    ? self::cleanMultilineMessage($item['saran']) : '',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Apakah string masih punya huruf (Latin, Arab, dll.) setelah dibersihkan.
+     */
+    public static function hasReadableLetters(string $value): bool
+    {
+        return $value !== '' && preg_match('/\p{L}/u', $value) === 1;
+    }
+
+    /**
+     * Deteksi teks rusak (hanya ?, tanpa huruf, atau terlalu banyak tanda tanya).
+     */
+    public static function isCorruptedText(string $value): bool
+    {
+        if ($value === '') {
+            return true;
+        }
+        if (!self::hasReadableLetters($value)) {
+            return true;
+        }
+        $len = mb_strlen($value, 'UTF-8');
+        if ($len < 1) {
+            return true;
+        }
+        $q = substr_count($value, '?');
+        if ($q > 0 && $q >= max(2, (int) ceil($len * 0.15))) {
+            return true;
+        }
+        $compact = preg_replace('/\s+/u', '', $value) ?? '';
+        if ($compact !== '' && preg_match('/^\?+$/u', $compact) === 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Bersihkan + validasi nama orang / madrasah dari input pengguna.
+     *
+     * @return array{text: string, error: ?string}
+     */
+    public static function validatePersonName(?string $value, int $minLen = 2, int $maxLen = 255): array
+    {
+        $cleaned = self::cleanText($value);
+        if ($cleaned === '') {
+            return ['text' => '', 'error' => 'Nama wajib diisi.'];
+        }
+        if (self::isCorruptedText($cleaned)) {
+            return [
+                'text' => '',
+                'error' => 'Nama tidak valid. Ketik ulang (hindari salin dari font khusus atau PDF).',
+            ];
+        }
+        $len = mb_strlen($cleaned, 'UTF-8');
+        if ($len < $minLen) {
+            return ['text' => '', 'error' => 'Nama terlalu pendek (minimal ' . $minLen . ' karakter).'];
+        }
+        if ($len > $maxLen) {
+            $cleaned = mb_substr($cleaned, 0, $maxLen, 'UTF-8');
+        }
+
+        return ['text' => $cleaned, 'error' => null];
+    }
+}

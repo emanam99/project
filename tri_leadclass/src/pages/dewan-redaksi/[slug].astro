@@ -1,0 +1,60 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Icon from '../../components/Icon.astro';
+import {
+  formatBoardMemberName,
+  getBoardMemberBySlug,
+  getBoardMemberPhoto,
+} from '../../lib/editorial-board.ts';
+import { mediaUrl } from '../../lib/uploads.ts';
+
+const { slug } = Astro.params;
+const member = slug ? getBoardMemberBySlug(slug) : undefined;
+
+if (!member) {
+  return new Response('Anggota redaksi tidak ditemukan', { status: 404 });
+}
+
+function photoSrc(): string {
+  const p = getBoardMemberPhoto(member);
+  if (p?.startsWith('uploads/')) return mediaUrl(p) ?? '/icon/icon96.png';
+  return '/icon/icon96.png';
+}
+---
+
+<Layout title={`${formatBoardMemberName(member)} — Dewan Redaksi TRI_LEADCLASS`}>
+  <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <a href="/dewan-redaksi" class="flex items-center text-sm font-medium text-gray-500 hover:text-emerald-700 mb-8 transition-colors w-fit">
+      <Icon name="arrow-left" size={16} class="mr-2" /> Dewan Redaksi
+    </a>
+
+    <div class="flex flex-col sm:flex-row items-start gap-6 mb-10 pb-8 border-b border-gray-200">
+      <img src={photoSrc()} alt="" class="h-32 w-32 rounded-2xl object-cover ring-4 ring-emerald-50 shadow-sm" />
+      <div>
+        <h1 class="text-3xl md:text-4xl font-serif font-black text-slate-900 leading-tight">
+          {formatBoardMemberName(member)}
+        </h1>
+        {member.editorial_role && (
+          <p class="text-emerald-700 font-medium mt-2">{member.editorial_role}</p>
+        )}
+        {member.position_status && (
+          <p class="text-gray-600 mt-1">{member.position_status}</p>
+        )}
+        {member.institution && <p class="text-gray-600 mt-1">{member.institution}</p>}
+        <div class="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+          {member.email && <span>{member.email}</span>}
+          {member.phone && <span>{member.phone}</span>}
+          {member.id_number && <span>{member.id_number}</span>}
+        </div>
+      </div>
+    </div>
+
+    {
+      member.bio ? (
+        <div class="article-body text-slate-700 whitespace-pre-wrap leading-relaxed">{member.bio}</div>
+      ) : (
+        <p class="text-gray-500 text-sm">Profil lengkap akan segera diperbarui.</p>
+      )
+    }
+  </div>
+</Layout>

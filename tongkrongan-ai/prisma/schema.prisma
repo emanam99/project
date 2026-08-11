@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ AI CHARACTERS ============
+
+model AiCharacter {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  gender          String   // "male" | "female"
+  age             Int
+  personality     String   // JSON string of personality traits
+  prompt          String   // Full system prompt for DeepSeek
+  avatar          String   // Avatar URL or identifier
+  color           String   // Accent color for the character
+  typingSpeed     Int      @default(50) // chars per second
+  responseChance  Float    @default(0.7) // 0.0 - 1.0 probability
+  cooldownMin     Int      @default(10000) // min ms before next response
+  cooldownMax     Int      @default(60000) // max ms before next response
+  isActive        Boolean  @default(true)
+  isOnline        Boolean  @default(true)
+  mood            String   @default("happy") // happy, malas, aktif, ngantuk, sensitif, absurd
+  sleepSchedule   String?  // JSON: {activeStart: "08:00", activeEnd: "23:00"}
+  interests       String   // JSON array of keywords this AI is interested in
+  affiliation     String?  // Which AIs this character likes to reply to
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  messages        Message[]
+  typingStatus    TypingStatus?
+  replies         Reply[]  // replies given to messages
+
+  @@map("ai_characters")
+}
+
+// ============ MESSAGES ============
+
+model Message {
+  id          String   @id @default(uuid())
+  content     String
+  senderId    String?  // null if sent by AI (we use senderName + senderType)
+  senderName  String
+  senderType  String   @default("ai") // "ai" | "user"
+  senderAvatar String? // avatar URL
+  replyToId   String?  // if this message is a reply
+  replyTo     Message? @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies     Message[] @relation("MessageReplies")
+  aiCharacterId String? // if sender is AI
+  aiCharacter AiCharacter? @relation(fields: [aiCharacterId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([aiCharacterId])
+  @@map("messages")
+}
+
+// ============ TYPING STATUS ============
+
+model TypingStatus {
+  id            String      @id @default(uuid())
+  aiCharacterId String      @unique
+  aiCharacter   AiCharacter @relation(fields: [aiCharacterId], references: [id])
+  isTyping      Boolean     @default(false)
+  startedAt     DateTime?   @default(now())
+  duration      Int?        // expected duration in ms
+  messageLength Int?        // predicted message length
+
+  @@map("typing_statuses")
+}
+
+// ============ REPLY THREADS ============
+
+model Reply {
+  id            String      @id @default(uuid())
+  messageId     String
+  message       Message     @relation(fields: [messageId], references: [id])
+  aiCharacterId String
+  aiCharacter   AiCharacter @relation(fields: [aiCharacterId], references: [id])
+  response      String      // AI's response text
+  createdAt     DateTime    @default(now())
+
+  @@map("replies")
+}
+
+// ============ AI MEMORY ============
+
+model AiMemory {
+  id            String   @id @default(uuid())
+  aiCharacterId String
+  context       String   // JSON stored memory context
+  lastUpdated   DateTime @default(now())
+
+  @@unique([aiCharacterId])
+  @@map("ai_memories")
+}
+
+// ============ CHAT CONFIG ============
+
+model ChatConfig {
+  id    String @id @default("default")
+  name  String @default("Tongkrongan AI")
+  theme String @default("dark")
+  // future: multiple groups, etc.
+
+  @@map("chat_configs")
+}

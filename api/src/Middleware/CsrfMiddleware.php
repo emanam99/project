@@ -1,0 +1,231 @@
+<?php
+
+namespace App\Middleware;
+
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Nyholm\Psr7\Response;
+
+class CsrfMiddleware implements MiddlewareInterface
+{
+    private $excludedMethods = ['GET', 'HEAD', 'OPTIONS'];
+    private $tokenName = 'X-CSRF-Token';
+    private $sessionKey = 'csrf_token';
+
+    /** Endpoint yang state-less / tidak pakai session browser → skip CSRF */
+    private $excludedPaths = [
+        'api/auth/login',
+        'api/auth/login-nik',
+        'api/auth/daftar-wa-prepare',
+        'api/auth/daftar-wa-consume',
+        'api/alumni/login-nik',
+        'api/alumni/biodata',
+        'api/alumni/me', // GET Bearer JWT alumni — tanpa session CSRF browser
+        'api/alumni/', // endpoint alumni lain dilindungi Bearer JWT
+        'api/auth/verify',
+        'api/auth/csrf-token',
+        'api/v2/auth/login',
+        'api/v2/auth/webauthn/login/options',
+        'api/v2/auth/webauthn/login/verify',
+        'api/v2/auth/webauthn/register/options',
+        'api/v2/auth/webauthn/register/verify',
+        'api/v2/auth/webauthn/credentials',
+        'api/v2/auth/daftar-check',
+        'api/v2/auth/daftar-konfirmasi',
+        'api/v2/auth/lupa-password-request',
+        'api/v2/auth/setup-token',
+        'api/v2/auth/setup-akun',
+        // Mybeddian — semua v2 memakai Bearer JWT, bukan session CSRF browser
+        'api/mybeddian/v2',
+        'api/mybeddian/v2/auth/login',
+        'api/mybeddian/v2/auth/daftar-check',
+        'api/mybeddian/v2/auth/daftar-konfirmasi',
+        'api/mybeddian/v2/auth/daftar-check-pjgt',
+        'api/mybeddian/v2/auth/daftar-konfirmasi-pjgt',
+        'api/mybeddian/v2/auth/daftar-pjgt-hubung-akun',
+        'api/mybeddian/v2/auth/daftar-santri-hubung-akun',
+        'api/mybeddian/v2/auth/daftar-check-toko',
+        'api/mybeddian/v2/auth/daftar-konfirmasi-toko',
+        'api/mybeddian/v2/auth/daftar-toko-hubung-akun',
+        'api/mybeddian/v2/auth/tambah-akses-consume',
+        'api/mybeddian/v2/auth/setup-token',
+        'api/mybeddian/v2/auth/setup-akun',
+        'api/mybeddian/v2/auth/lupa-password-request',
+        'api/mybeddian/v2/auth/lupa-password-request-pjgt',
+        'api/mybeddian/v2/auth/lupa-password-request-toko',
+        'api/mybeddian/v2/auth/lupa-username-request',
+        'api/mybeddian/v2/auth/logout',
+        'api/mybeddian/v2/profil',
+        'api/mybeddian/v2/profil/foto',
+        'api/mybeddian/v2/laporan-pjgt', // CRUD laporan PJGT Mybeddian — Bearer + RoleMiddleware pjgt
+        'api/mybeddian/v2/laporan-gt', // CRUD laporan GT Mybeddian — Bearer + RoleMiddleware santri (guru tugas)
+        'api/mybeddian/v2/auth/switch-santri',
+        'api/mybeddian/v2/barang',  // GET/POST/PUT/DELETE dilindungi Bearer token
+        'api/v2/auth/request-ubah-password',
+        'api/v2/auth/ubah-password-token',
+        'api/v2/auth/ubah-password',
+        'api/v2/auth/verify-email-token',
+        'api/v2/auth/verify-email',
+        'api/v2/auth/send-verify-email',
+        'api/v2/auth/email-reminder-snooze',
+        'api/v2/auth/ubah-username-langsung',
+        'api/v2/auth/send-otp-ganti-wa',
+        'api/v2/auth/verify-otp-ganti-wa',
+        'api/v2/auth/request-ubah-username',
+        'api/v2/auth/ubah-username-token',
+        'api/v2/auth/ubah-username',
+        'api/v2/profil/foto',
+        'api/v2/auth/sessions', // DELETE revoke session dilindungi Bearer token
+        'api/v2/auth/logout',    // POST logout dilindungi Bearer token
+        'api/v2/auth/logout-all', // POST logout-all dilindungi Bearer token
+        'api/payment-transaction/callback', // POST dari payment gateway eksternal
+        'api/payment-transaction/callback/xendit', // POST webhook Xendit
+        'api/payment-transaction/create',   // POST dilindungi Bearer (mybeddian/uwaba dari mybeddian2/uwaba2)
+        'api/payment-transaction/',         // PUT/POST cancel, update dilindungi Bearer
+        'api/wa/check',   // POST cek nomor WA — dilindungi Bearer (fetch di frontend tanpa CSRF)
+        'api/payment/public-token', // POST token signed pembayaran publik — Bearer (myBeddien tanpa session CSRF)
+        'api/public/wa/check', // POST cek nomor WA untuk halaman publik (daftar/lupa password)
+        'api/wa/send',    // POST kirim WA — dilindungi Bearer
+        'api/wa/edit-message', // POST edit pesan WA — dilindungi Bearer
+        'api/wa/incoming', // POST webhook pesan masuk dari server WA (tanpa session browser)
+        'api/wa/message-status', // POST update status pesan (sent/delivered/read) dari server WA
+        'api/wa/official/webhook', // POST webhook WhatsApp Cloud API (Meta) — tanpa session browser
+        'api/watzap/webhook', // POST webhook pesan masuk dari WatZap (tanpa session browser)
+        'api/public/evolution-webhook', // POST webhook Evolution (MESSAGES_UPSERT) → Chat AI / balasan otomatis
+        'api/app-install-activity/track', // POST tracking lintas app (browser/pwa) tanpa session browser
+        'api/live/chat/message', // POST dari live server (Socket.IO) — auth via X-API-Key, bukan session browser
+        'api/live/presence', // POST update last_seen dari live server — sama, X-API-Key
+        'api/iclock/', // POST/GET mesin absensi sidik jari (iClock), tanpa session browser
+    ];
+
+    private function normalizePath(string $path): string
+    {
+        $normalized = trim($path, '/');
+        // Jika API di subfolder /api/public, klien memakai base …/api/public/api + /public/…
+        // sehingga path bisa jadi api/public/api/public/… — buang prefix api/public/ berulang.
+        while (str_starts_with($normalized, 'api/public/')) {
+            $normalized = substr($normalized, strlen('api/public/'));
+        }
+        if (str_starts_with($normalized, 'public/')) {
+            $normalized = substr($normalized, strlen('public/'));
+        }
+        return trim($normalized, '/');
+    }
+
+    private function isExcludedPath(string $path): bool
+    {
+        $normalizedPath = $this->normalizePath($path);
+        foreach ($this->excludedPaths as $excluded) {
+            $normalizedExcluded = $this->normalizePath((string) $excluded);
+            if ($normalizedExcluded === '') {
+                continue;
+            }
+
+            $isExactMatch = ($normalizedPath === $normalizedExcluded);
+            $isPrefixMatch = str_starts_with($normalizedPath, $normalizedExcluded . '/');
+            if ($isExactMatch || $isPrefixMatch) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        $method = $request->getMethod();
+
+        // Skip CSRF check untuk method yang aman
+        if (in_array($method, $this->excludedMethods)) {
+            return $handler->handle($request);
+        }
+
+        $path = $request->getUri()->getPath();
+        if ($this->isExcludedPath($path)) {
+            return $handler->handle($request);
+        }
+
+        // Start session jika belum ada
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        // Generate token jika belum ada
+        if (!isset($_SESSION[$this->sessionKey])) {
+            $_SESSION[$this->sessionKey] = $this->generateToken();
+        }
+
+        // Validasi token untuk method yang memerlukan CSRF protection
+        $token = $this->getTokenFromRequest($request);
+        $sessionToken = $_SESSION[$this->sessionKey] ?? null;
+
+        if (!$token || !$sessionToken || !hash_equals($sessionToken, $token)) {
+            $response = new Response();
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'CSRF token tidak valid atau tidak ditemukan'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response
+                ->withStatus(403)
+                ->withHeader('Content-Type', 'application/json; charset=utf-8');
+        }
+
+        // Regenerate token setelah validasi berhasil (optional, untuk security tambahan)
+        // $_SESSION[$this->sessionKey] = $this->generateToken();
+
+        return $handler->handle($request);
+    }
+
+    /**
+     * Generate CSRF token
+     */
+    private function generateToken(): string
+    {
+        return bin2hex(random_bytes(32));
+    }
+
+    /**
+     * Get token dari request (dari header atau body)
+     */
+    private function getTokenFromRequest(ServerRequestInterface $request): ?string
+    {
+        // Cek dari header
+        $headerToken = $request->getHeaderLine($this->tokenName);
+        if (!empty($headerToken)) {
+            return $headerToken;
+        }
+
+        // Cek dari body (untuk form data)
+        $body = $request->getParsedBody();
+        if (is_array($body) && isset($body['csrf_token'])) {
+            return $body['csrf_token'];
+        }
+
+        // Cek dari query params (untuk GET dengan token, meskipun tidak recommended)
+        $queryParams = $request->getQueryParams();
+        if (isset($queryParams['csrf_token'])) {
+            return $queryParams['csrf_token'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Get current CSRF token (untuk digunakan di frontend)
+     */
+    public static function getToken(): ?string
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        
+        if (!isset($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+        
+        return $_SESSION['csrf_token'];
+    }
+}
+

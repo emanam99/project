@@ -1,0 +1,52 @@
+.rumus-formula-editor {
+  position: relative;
+}
+
+.rumus-formula-editor .rumus-formula-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  border-radius: 0.5rem;
+  z-index: 0;
+}
+
+.rumus-formula-editor .rumus-formula-backdrop .rumus-seg {
+  color: rgb(107 114 128);
+}
+
+.dark .rumus-formula-editor .rumus-formula-backdrop .rumus-seg {
+  color: rgb(156 163 175);
+}
+
+.rumus-formula-editor .rumus-formula-backdrop .rumus-seg-active {
+  color: rgb(17 24 39);
+  font-weight: 700;
+}
+
+.dark .rumus-formula-editor .rumus-formula-backdrop .rumus-seg-active {
+  color: rgb(243 244 246);
+  font-weight: 700;
+}
+
+.rumus-formula-editor .rumus-formula-input {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  resize: vertical;
+  background: transparent !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  caret-color: rgb(17 24 39);
+}
+
+.dark .rumus-formula-editor .rumus-formula-input {
+  caret-color: rgb(243 244 246);
+}
+
+.rumus-formula-tooltip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}

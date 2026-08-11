@@ -1,0 +1,214 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import AdminPageHeader from '../../components/admin/AdminPageHeader.astro';
+import { listAllManuscripts } from '../../lib/manuscripts.ts';
+import { mediaUrl } from '../../lib/uploads.ts';
+import type { ManuscriptStatus } from '../../lib/types.ts';
+
+const statusFilter = Astro.url.searchParams.get('status') as ManuscriptStatus | null;
+const manuscripts = listAllManuscripts(statusFilter ?? undefined);
+
+const statusLabels: Record<string, string> = {
+  pending: 'Menunggu',
+  reviewing: 'Ditinjau',
+  revision: 'Perlu Revisi',
+  accepted: 'Diterima',
+  rejected: 'Ditolak',
+  published: 'Diterbitkan',
+};
+
+const statusColors: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-800 ring-amber-200/60',
+  reviewing: 'bg-sky-100 text-sky-800 ring-sky-200/60',
+  revision: 'bg-orange-100 text-orange-800 ring-orange-200/60',
+  accepted: 'bg-emerald-100 text-emerald-800 ring-emerald-200/60',
+  rejected: 'bg-red-100 text-red-800 ring-red-200/60',
+  published: 'bg-violet-100 text-violet-800 ring-violet-200/60',
+};
+
+const filters = ['', 'pending', 'reviewing', 'revision', 'accepted', 'rejected', 'published'];
+---
+
+<AdminLayout title="Kelola Naskah — Admin">
+  <div class="admin-page admin-manuscripts-page mx-auto">
+    <AdminPageHeader title="Kelola Naskah" subtitle={`${manuscripts.length} naskah ditampilkan`} />
+
+    <div class="admin-filter-scroll flex gap-2 mb-6 overflow-x-auto pb-1 -mx-1 px-1">
+      {
+        filters.map((f) => (
+          <a
+            href={f ? `/admin/naskah?status=${f}` : '/admin/naskah'}
+            class:list={[
+              'shrink-0 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wide transition-all',
+              (statusFilter ?? '') === f
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                : 'admin-card text-slate-600 hover:border-emerald-300',
+            ]}
+          >
+            {f ? statusLabels[f] : 'Semua'}
+          </a>
+        ))
+      }
+    </div>
+
+    {
+      manuscripts.length === 0 ? (
+        <div class="admin-card rounded-2xl p-10 text-center">
+          <p class="text-4xl mb-3">📭</p>
+          <p class="text-slate-600 font-medium">Belum ada pengajuan naskah</p>
+          <p class="text-sm text-slate-400 mt-1">Naskah dari penulis akan muncul di sini.</p>
+        </div>
+      ) : (
+        <div class="space-y-4">
+          {
+            manuscripts.map((m) => {
+              const cover = mediaUrl(m.cover_image_path) ?? '/icon/icon512.png';
+              return (
+              <article class="admin-card admin-manuscript-card rounded-2xl overflow-hidden" data-manuscript={m.id}>
+                <div class="flex flex-col md:flex-row">
+                  <a
+                    href={m.status === 'published' ? `/admin/naskah/${m.id}/edit` : undefined}
+                    class="admin-manuscript-cover shrink-0 md:w-44 lg:w-52 block"
+                    tabindex={m.status === 'published' ? 0 : -1}
+                  >
+                    <img src={cover} alt="" class="w-full h-36 md:h-full md:min-h-[11rem] object-cover" loading="lazy" />
+                  </a>
+
+                  <div class="flex-1 p-4 md:p-5 min-w-0">
+                    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2">
+                      <div class="min-w-0 flex-1">
+                        <span class:list={['inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ring-1 ring-inset', statusColors[m.status]]}>
+                          {statusLabels[m.status]}
+                        </span>
+                        <h2 class="text-base md:text-lg font-serif font-bold text-slate-900 mt-2 leading-snug line-clamp-3">{m.title}</h2>
+                        <p class="text-xs md:text-sm text-slate-500 mt-2 break-words">
+                          {m.submitter_name} · {m.submitter_email}
+                        </p>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                          {new Date(m.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </p>
+                      </div>
+                      <div class="flex flex-wrap gap-2 shrink-0">
+                        {m.status === 'published' && (
+                          <a
+                            href={`/admin/naskah/${m.id}/edit`}
+                            class="inline-flex items-center justify-center text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-xl transition-colors"
+                          >
+                            Edit
+                          </a>
+                        )}
+                        {m.article_slug && (
+                          <a
+                            href={`/artikel/${m.article_slug}`}
+                            target="_blank"
+                            class="inline-flex items-center justify-center text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-colors"
+                          >
+                            Lihat web
+                          </a>
+                        )}
+                        {m.file_path && (
+                          <a
+                            href={`/api/files/${m.file_path.replace('uploads/', '')}`}
+                            class="inline-flex items-center justify-center text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl transition-colors"
+                            target="_blank"
+                          >
+                            Word
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    <div class="prose-abstract text-sm text-slate-600 mb-3 line-clamp-4">{m.abstract}</div>
+
+                    <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
+                      {m.keywords && <span><strong class="text-slate-600">Kata kunci:</strong> {m.keywords}</span>}
+                      {m.category && <span><strong class="text-slate-600">Kategori:</strong> {m.category}</span>}
+                    </div>
+
+                    {m.author_notes && (
+                      <p class="text-xs bg-slate-50 rounded-xl p-3 mb-3 text-slate-600">
+                        <strong class="text-slate-700">Catatan penulis:</strong> {m.author_notes}
+                      </p>
+                    )}
+                    {m.admin_notes && (
+                      <p class="text-xs bg-emerald-50/80 rounded-xl p-3 mb-4 text-emerald-900">
+                        <strong>Catatan admin:</strong> {m.admin_notes}
+                      </p>
+                    )}
+
+                    <form class="space-y-3 border-t border-slate-100 pt-4" data-update-form>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Status</label>
+                          <select name="status" class="w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500">
+                            {Object.entries(statusLabels).map(([val, label]) => (
+                              <option value={val} selected={m.status === val}>{label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Catatan admin</label>
+                          <input
+                            type="text"
+                            name="admin_notes"
+                            value={m.admin_notes ?? ''}
+                            placeholder="Pesan untuk penulis..."
+                            class="w-full text-sm border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="submit"
+                        class="w-full sm:w-auto bg-slate-900 text-white text-sm font-semibold px-6 py-2.5 rounded-xl hover:bg-slate-800 active:scale-[0.98] transition-all"
+                      >
+                        Simpan status
+                      </button>
+                      <p class="text-xs hidden" data-msg></p>
+                    </form>
+                  </div>
+                </div>
+              </article>
+            );})
+          }
+        </div>
+      )
+    }
+  </div>
+</AdminLayout>
+
+<script>
+  document.querySelectorAll('[data-update-form]').forEach((form) => {
+    const article = form.closest('[data-manuscript]');
+    const id = Number(article?.getAttribute('data-manuscript'));
+    const msg = form.querySelector('[data-msg]');
+    const btn = form.querySelector('button[type="submit"]');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (btn) btn.disabled = true;
+      const statusEl = form.elements.namedItem('status');
+      const notesEl = form.elements.namedItem('admin_notes');
+      const status = statusEl?.value ?? '';
+      const admin_notes = notesEl?.value ?? '';
+
+      const res = await fetch('/api/admin/manuscripts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status, admin_notes }),
+      });
+      const data = await res.json();
+      if (msg) {
+        msg.textContent = res.ok
+          ? (data.message ?? '✓ Status diperbarui')
+          : (data.error ?? 'Gagal.');
+        msg.classList.remove('hidden');
+        msg.classList.toggle('text-red-600', !res.ok);
+        msg.classList.toggle('text-emerald-600', res.ok);
+      }
+      if (res.ok && (status === 'published' || status !== 'published')) {
+        setTimeout(() => location.reload(), 1200);
+      }
+      if (btn) btn.disabled = false;
+    });
+  });
+</script>

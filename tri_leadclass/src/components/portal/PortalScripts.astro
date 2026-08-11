@@ -1,0 +1,44 @@
+<script is:inline>
+  (function () {
+    var KEY = 'tri_theme';
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelectorAll('[data-theme-label]').forEach(function (el) {
+        el.textContent = theme === 'dark' ? 'Mode terang' : 'Mode gelap';
+      });
+      document.querySelectorAll('[data-theme-icon]').forEach(function (el) {
+        el.textContent = theme === 'dark' ? '☀️' : '🌙';
+      });
+    }
+
+    var saved = localStorage.getItem(KEY);
+    if (saved === 'dark' || saved === 'light') applyTheme(saved);
+
+    document.addEventListener('click', function (e) {
+      var toggle = e.target.closest('[data-theme-toggle]');
+      if (toggle) {
+        var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        localStorage.setItem(KEY, next);
+        applyTheme(next);
+        return;
+      }
+
+      document.querySelectorAll('[data-profile-menu]').forEach(function (wrap) {
+        var id = wrap.getAttribute('data-profile-menu');
+        var trigger = wrap.querySelector('[data-profile-trigger="' + id + '"]');
+        var dropdown = wrap.querySelector('[data-profile-dropdown="' + id + '"]');
+        if (!trigger || !dropdown) return;
+        if (wrap.contains(e.target)) {
+          if (e.target.closest('[data-profile-trigger]')) {
+            var open = dropdown.classList.toggle('hidden') === false;
+            trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+          }
+        } else {
+          dropdown.classList.add('hidden');
+          trigger.setAttribute('aria-expanded', 'false');
+        }
+      });
+    });
+  })();
+</script>

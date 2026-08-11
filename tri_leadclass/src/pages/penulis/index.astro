@@ -1,0 +1,58 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import {
+  formatContributorName,
+  getContributorPhoto,
+  listPublishedContributors,
+} from '../../lib/contributors.ts';
+import { mediaUrl } from '../../lib/uploads.ts';
+
+const contributors = listPublishedContributors();
+
+function photoSrc(c: (typeof contributors)[0]): string {
+  const p = getContributorPhoto(c);
+  if (p?.startsWith('uploads/')) return mediaUrl(p) ?? '/icon/icon96.png';
+  if (p?.startsWith('http')) return p;
+  return '/icon/icon96.png';
+}
+---
+
+<Layout title="Penulis — TRI_LEADCLASS">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <header class="mb-12 border-b border-gray-200 pb-8">
+      <p class="text-sm font-bold text-emerald-700 uppercase tracking-wider mb-2">Kontributor</p>
+      <h1 class="text-4xl md:text-5xl font-serif font-black text-slate-900">Penulis</h1>
+      <p class="text-gray-500 mt-3">Daftar penulis yang telah menerbitkan artikel di TRI_LEADCLASS.</p>
+    </header>
+
+    {
+      contributors.length === 0 ? (
+        <p class="text-gray-500 text-center py-16">Belum ada penulis dengan artikel terbit.</p>
+      ) : (
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {
+            contributors.map((c) => (
+              <a
+                href={`/penulis/${c.slug}`}
+                class="group flex items-center gap-4 p-5 bg-white border border-gray-100 rounded-2xl hover:border-emerald-200 hover:shadow-md transition-all"
+              >
+                <img
+                  src={photoSrc(c)}
+                  alt=""
+                  class="h-16 w-16 rounded-full object-cover ring-2 ring-emerald-50 group-hover:ring-emerald-100"
+                />
+                <div class="min-w-0">
+                  <p class="font-serif font-bold text-slate-900 leading-snug group-hover:text-emerald-800 transition-colors">
+                    {formatContributorName(c)}
+                  </p>
+                  {c.institution && <p class="text-xs text-gray-500 mt-1 truncate">{c.institution}</p>}
+                  {c.position_status && <p class="text-xs text-emerald-700 mt-0.5">{c.position_status}</p>}
+                </div>
+              </a>
+            ))
+          }
+        </div>
+      )
+    }
+  </div>
+</Layout>
