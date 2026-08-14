@@ -361,6 +361,29 @@ function Ensure-ViteLocalEnvFile {
     return $envPath
 }
 
+function Invoke-FrontendNpmBuild {
+    param([Parameter(Mandatory = $true)][string]$AppDir)
+    Push-Location $AppDir
+    try {
+        $nm = Join-Path $AppDir 'node_modules'
+        $viteBin = Join-Path $nm '.bin/vite'
+        $viteCmd = Join-Path $nm '.bin/vite.cmd'
+        if (-not (Test-Path $nm) -or (-not (Test-Path $viteBin) -and -not (Test-Path $viteCmd))) {
+            Write-Host "  npm dependencies belum ada — menjalankan npm ci/install..." -ForegroundColor Yellow
+            if (Test-Path (Join-Path $AppDir 'package-lock.json')) {
+                npm ci
+            } else {
+                npm install
+            }
+            if ($LASTEXITCODE -ne 0) { throw "npm install/ci gagal (exit $LASTEXITCODE)" }
+        }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "npm run build gagal (exit $LASTEXITCODE)" }
+    } finally {
+        Pop-Location
+    }
+}
+
 # ========== FRONTEND (ebeddien) ==========
 if ($doEbeddien) {
     Set-Location $ebeddienDir
@@ -398,7 +421,7 @@ if ($doEbeddien) {
 
     Write-Host "[Frontend ebeddien] Build..." -ForegroundColor Cyan
     try {
-        npm run build
+        Invoke-FrontendNpmBuild -AppDir $ebeddienDir
     } finally {
         Restore-DotEnvProductionFile
         Restore-ViteBuildProcessEnv
@@ -466,7 +489,7 @@ if ($doDaftar) {
 
     Write-Host "[Frontend daftar] Build..." -ForegroundColor Cyan
     try {
-        npm run build
+        Invoke-FrontendNpmBuild -AppDir $daftarDir
     } finally {
         Restore-DotEnvProductionFile
         Restore-ViteBuildProcessEnv
@@ -529,7 +552,7 @@ if ($doMybeddien) {
 
     Write-Host "[Frontend mybeddien] Build..." -ForegroundColor Cyan
     try {
-        npm run build
+        Invoke-FrontendNpmBuild -AppDir $mybeddienDir
     } finally {
         Restore-DotEnvProductionFile
         Restore-ViteBuildProcessEnv
@@ -592,7 +615,7 @@ if ($doNailul) {
 
     Write-Host "[Frontend nailul-murod] Build..." -ForegroundColor Cyan
     try {
-        npm run build
+        Invoke-FrontendNpmBuild -AppDir $nailulDir
     } finally {
         Restore-DotEnvProductionFile
         Restore-ViteBuildProcessEnv
