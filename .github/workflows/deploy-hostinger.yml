@@ -1,0 +1,116 @@
+# Deploy staging/production via deploy.ps1 (SSH ke Hostinger).
+# Jalankan: Actions → Deploy Hostinger → Run workflow
+#
+# Secret wajib di repo:
+#   DEPLOY_SSH_KEY  — isi private key (PEM) yang sudah diizinkan login SSH Hostinger
+# Opsional:
+#   DEPLOY_SSH_USER / DEPLOY_SSH_HOST / DEPLOY_SSH_PORT
+
+name: Deploy Hostinger
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target lingkungan
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      scope:
+        description: Scope deploy
+        required: true
+        type: choice
+        options:
+          - frontend
+          - api
+          - both
+        default: both
+      frontend:
+        description: App frontend (jika scope frontend/both)
+        required: true
+        type: choice
+        options:
+          - ebeddien
+          - daftar
+          - mybeddien
+          - nailul
+          - all
+        default: ebeddien
+      migrate:
+        description: Jalankan phinx migrate setelah upload API
+        required: false
+        type: boolean
+        default: false
+      seed:
+        description: Jalankan ChangelogVersionSeed setelah upload API
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: inputs.scope == 'frontend' || inputs.scope == 'both'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure SSH for Hostinger
+        shell: pwsh
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_KEY)) {
+            throw "Secret DEPLOY_SSH_KEY belum di-set (Settings → Secrets and variables → Actions)."
+          }
+
+          $user = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_USER)) { 'u264984103' } else { $env:DEPLOY_SSH_USER }
+          $hostName = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_HOST)) { '145.223.108.9' } else { $env:DEPLOY_SSH_HOST }
+          $port = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_PORT)) { '65002' } else { $env:DEPLOY_SSH_PORT }
+
+          $sshDir = Join-Path $env:USERPROFILE '.ssh'
+          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+          $keyPath = Join-Path $sshDir 'id_ed25519'
+          $key = ($env:DEPLOY_SSH_KEY -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd() + "`n"
+          [System.IO.File]::WriteAllText($keyPath, $key)
+          icacls $keyPath /inheritance:r | Out-Null
+          icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+          $known = Join-Path $sshDir 'known_hosts'
+          ssh-keyscan -p $port $hostName 2>$null | Out-File -FilePath $known -Encoding ascii
+
+          "DEPLOY_SSH_USER=$user" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "DEPLOY_SSH_HOST=$hostName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "DEPLOY_SSH_PORT=$port" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          ssh -i $keyPath -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=25 "${user}@${hostName}" "echo SSH_OK"
+
+      - name: Run deploy.ps1
+        shell: pwsh
+        env:
+          DEPLOY_SSH_USER: ${{ env.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_HOST: ${{ env.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ env.DEPLOY_SSH_PORT }}
+        run: |
+          $deployArgs = @(
+            '-Target', '${{ inputs.target }}',
+            '-Scope', '${{ inputs.scope }}',
+            '-Frontend', '${{ inputs.frontend }}'
+          )
+          if ('${{ inputs.migrate }}' -eq 'true') { $deployArgs += '-Migrate' }
+          if ('${{ inputs.seed }}' -eq 'true') { $deployArgs += '-Seed' }
+          Write-Host "Menjalankan: .\deploy.ps1 $($deployArgs -join ' ')"
+          & .\deploy.ps1 @deployArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

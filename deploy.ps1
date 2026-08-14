@@ -63,10 +63,10 @@ function Resolve-DeployChoice {
     throw "Mode non-interaktif: wajib isi parameter deploy (mis. -Target production -Scope both -Frontend all)."
 }
 
-# --- Konfigurasi SSH ---
-$SSH_USER   = "u264984103"
-$SSH_HOST   = "145.223.108.9"
-$SSH_PORT   = 65002
+# --- Konfigurasi SSH (bisa dioverride via env untuk GitHub Actions) ---
+$SSH_USER   = if ($env:DEPLOY_SSH_USER) { $env:DEPLOY_SSH_USER } else { "u264984103" }
+$SSH_HOST   = if ($env:DEPLOY_SSH_HOST) { $env:DEPLOY_SSH_HOST } else { "145.223.108.9" }
+$SSH_PORT   = if ($env:DEPLOY_SSH_PORT) { [int]$env:DEPLOY_SSH_PORT } else { 65002 }
 $TAR_FILE         = "ebeddien-dist.tar"
 $DAFTAR_TAR       = "daftar-dist.tar"
 $MYBEDDIEN_TAR    = "mybeddien-dist.tar"
