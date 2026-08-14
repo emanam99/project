@@ -108,9 +108,14 @@ class SettingsController
             }
 
             $apps = RoleConfig::APPS;
+            /** Role portal MyBeddien — tidak dikelola di Role & Akses eBeddien. */
+            $portalRoleKeys = ['santri', 'wali_santri'];
             $roles = [];
             foreach ($rows as $row) {
                 $roleKey = (string) ($row['key'] ?? '');
+                if (in_array($roleKey, $portalRoleKeys, true)) {
+                    continue;
+                }
                 $allowedApps = RolePolicyResolver::getAllowedApps($roleKey);
                 // Halaman Role hanya menampilkan role yang punya akses ke aplikasi UWABA
                 if (!in_array('uwaba', $allowedApps, true)) {
@@ -640,15 +645,19 @@ class SettingsController
             } catch (\Throwable $e) {
                 error_log('SettingsController::getEbeddienMenuFitur pengurus_count ' . $e->getMessage());
             }
-            $allRoles = array_map(function ($r) use ($countMap) {
+            $allRoles = array_values(array_filter(array_map(function ($r) use ($countMap) {
                 $rid = (int) ($r['id'] ?? 0);
+                $key = (string) ($r['key'] ?? '');
+                if (in_array($key, ['santri', 'wali_santri'], true)) {
+                    return null;
+                }
                 return [
                     'id' => $rid,
-                    'key' => (string) ($r['key'] ?? ''),
+                    'key' => $key,
                     'label' => (string) ($r['label'] ?? ''),
                     'pengurus_count' => $countMap[$rid] ?? 0,
                 ];
-            }, $rolesStmt->fetchAll(\PDO::FETCH_ASSOC));
+            }, $rolesStmt->fetchAll(\PDO::FETCH_ASSOC))));
 
             $fiturStmt = $this->db->prepare(
                 'SELECT `id`, `parent_id`, `code`, `label`, `path`, `icon_key`, `group_label`, `sort_order`, `type` '

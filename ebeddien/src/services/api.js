@@ -3213,6 +3213,12 @@ export const manageUsersAPI = {
     return response.data
   },
 
+  /** Hapus role (+ cabut dari pengurus / fitur terkait). */
+  deleteRole: async (roleId) => {
+    const response = await api.delete(`/manage-users/roles/${roleId}`)
+    return response.data
+  },
+
   addUserRole: async (userId, roleData) => {
     const response = await api.post(`/manage-users/${userId}/roles`, roleData)
     return response.data

@@ -245,6 +245,74 @@ function Invoke-RemoteTarExtractAndVerify {
     Write-Host "  Verifikasi server: $assetPath OK" -ForegroundColor Green
 }
 
+# Vite mode=production memuat .env.production (lebih tinggi dari .env).
+# Process env mengalahkan semua file .env — wajib di-set agar staging tidak ke-bake ke api.alutsmani.id.
+function Set-ViteBuildProcessEnv {
+    param(
+        [Parameter(Mandatory = $true)][string]$ApiUrl,
+        [Parameter(Mandatory = $true)][string]$EnvLabel,
+        [Parameter(Mandatory = $true)][string]$GambarBase,
+        [hashtable]$Extra = @{}
+    )
+    $script:PrevViteBuildEnv = @{}
+    $keys = @('VITE_API_BASE_URL', 'VITE_APP_ENV', 'VITE_GAMBAR_BASE') + @($Extra.Keys)
+    foreach ($k in ($keys | Select-Object -Unique)) {
+        $script:PrevViteBuildEnv[$k] = [Environment]::GetEnvironmentVariable($k, 'Process')
+    }
+    $env:VITE_API_BASE_URL = $ApiUrl
+    $env:VITE_APP_ENV = $EnvLabel
+    $env:VITE_GAMBAR_BASE = $GambarBase
+    foreach ($k in $Extra.Keys) {
+        Set-Item -Path "Env:$k" -Value ([string]$Extra[$k])
+    }
+    Write-Host "  Process env Vite: VITE_API_BASE_URL=$ApiUrl VITE_APP_ENV=$EnvLabel" -ForegroundColor Gray
+}
+
+function Restore-ViteBuildProcessEnv {
+    if (-not $script:PrevViteBuildEnv) { return }
+    foreach ($k in $script:PrevViteBuildEnv.Keys) {
+        $prev = $script:PrevViteBuildEnv[$k]
+        if ($null -eq $prev -or $prev -eq '') {
+            Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue
+        } else {
+            Set-Item -Path "Env:$k" -Value $prev
+        }
+    }
+    $script:PrevViteBuildEnv = $null
+}
+
+# Juga patch .env.production bila ada (supaya file di disk selaras; process env tetap sumber utama).
+function Update-DotEnvProductionFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$AppDir,
+        [Parameter(Mandatory = $true)][hashtable]$Values
+    )
+    $prodPath = Join-Path $AppDir '.env.production'
+    if (-not (Test-Path $prodPath)) { return $null }
+    $raw = Get-Content $prodPath -Raw -Encoding UTF8
+    $script:PrevDotEnvProduction = @{ Path = $prodPath; Content = $raw }
+    foreach ($k in $Values.Keys) {
+        $v = [string]$Values[$k]
+        if ($raw -match "(?m)^$([regex]::Escape($k))=.*") {
+            $raw = $raw -replace "(?m)^$([regex]::Escape($k))=.*", "$k=$v"
+        } else {
+            $raw = $raw.TrimEnd("`r", "`n") + "`r`n$k=$v`r`n"
+        }
+    }
+    [System.IO.File]::WriteAllText($prodPath, $raw, [System.Text.UTF8Encoding]::new($false))
+    return $prodPath
+}
+
+function Restore-DotEnvProductionFile {
+    if (-not $script:PrevDotEnvProduction) { return }
+    [System.IO.File]::WriteAllText(
+        $script:PrevDotEnvProduction.Path,
+        $script:PrevDotEnvProduction.Content,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $script:PrevDotEnvProduction = $null
+}
+
 # ========== FRONTEND (ebeddien) ==========
 if ($doEbeddien) {
     Set-Location $ebeddienDir
@@ -271,8 +339,25 @@ if ($doEbeddien) {
     [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
     Write-Host "[Frontend ebeddien] .env diset ke $envLabel (VITE_MYBEDDIEN_APP_URL=$mybeddienPublicUrl)" -ForegroundColor Gray
 
+    Set-ViteBuildProcessEnv -ApiUrl $apiUrl -EnvLabel $envLabel -GambarBase $gambarBase -Extra @{
+        VITE_APP_BASE            = '/'
+        VITE_MYBEDDIEN_APP_URL   = $mybeddienPublicUrl
+    }
+    Update-DotEnvProductionFile -AppDir $ebeddienDir -Values @{
+        VITE_API_BASE_URL      = $apiUrl
+        VITE_APP_ENV           = $envLabel
+        VITE_GAMBAR_BASE       = $gambarBase
+        VITE_APP_BASE          = '/'
+        VITE_MYBEDDIEN_APP_URL = $mybeddienPublicUrl
+    } | Out-Null
+
     Write-Host "[Frontend ebeddien] Build..." -ForegroundColor Cyan
-    npm run build
+    try {
+        npm run build
+    } finally {
+        Restore-DotEnvProductionFile
+        Restore-ViteBuildProcessEnv
+    }
     if (-not (Test-Path "dist")) {
         Write-Error "Folder dist tidak ada setelah build."
     }
@@ -330,8 +415,20 @@ if ($doDaftar) {
     [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
     Write-Host "[Frontend daftar] .env diset ke $envLabel" -ForegroundColor Gray
 
+    Set-ViteBuildProcessEnv -ApiUrl $apiUrl -EnvLabel $envLabel -GambarBase $gambarBase
+    Update-DotEnvProductionFile -AppDir $daftarDir -Values @{
+        VITE_API_BASE_URL = $apiUrl
+        VITE_APP_ENV      = $envLabel
+        VITE_GAMBAR_BASE  = $gambarBase
+    } | Out-Null
+
     Write-Host "[Frontend daftar] Build..." -ForegroundColor Cyan
-    npm run build
+    try {
+        npm run build
+    } finally {
+        Restore-DotEnvProductionFile
+        Restore-ViteBuildProcessEnv
+    }
     if (-not (Test-Path "dist")) {
         Write-Error "Folder dist tidak ada setelah build daftar."
     }
@@ -381,8 +478,23 @@ if ($doMybeddien) {
     [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
     Write-Host "[Frontend mybeddien] .env diset ke $envLabel (VITE_EBEDDien_APP_URL=$ebeddienPublicUrl)" -ForegroundColor Gray
 
+    Set-ViteBuildProcessEnv -ApiUrl $apiUrl -EnvLabel $envLabel -GambarBase $gambarBase -Extra @{
+        VITE_EBEDDien_APP_URL = $ebeddienPublicUrl
+    }
+    Update-DotEnvProductionFile -AppDir $mybeddienDir -Values @{
+        VITE_API_BASE_URL     = $apiUrl
+        VITE_APP_ENV          = $envLabel
+        VITE_GAMBAR_BASE      = $gambarBase
+        VITE_EBEDDien_APP_URL = $ebeddienPublicUrl
+    } | Out-Null
+
     Write-Host "[Frontend mybeddien] Build..." -ForegroundColor Cyan
-    npm run build
+    try {
+        npm run build
+    } finally {
+        Restore-DotEnvProductionFile
+        Restore-ViteBuildProcessEnv
+    }
     if (-not (Test-Path "dist")) {
         Write-Error "Folder dist tidak ada setelah build mybeddien."
     }
@@ -422,14 +534,6 @@ if ($doNailul) {
     Set-Location $nailulDir
     $envPath = Join-Path $nailulDir ".env"
     $hasEnvFile = Test-Path $envPath
-    $prevApiBase = $env:VITE_API_BASE
-    $prevApiBaseUrl = $env:VITE_API_BASE_URL
-    $prevAppEnv = $env:VITE_APP_ENV
-    $prevGambarBase = $env:VITE_GAMBAR_BASE
-    $hadPrevApiBase = $null -ne $prevApiBase
-    $hadPrevApiBaseUrl = $null -ne $prevApiBaseUrl
-    $hadPrevAppEnv = $null -ne $prevAppEnv
-    $hadPrevGambarBase = $null -ne $prevGambarBase
 
     if ($hasEnvFile) {
         $envContent = Get-Content $envPath -Raw -Encoding UTF8
@@ -439,16 +543,25 @@ if ($doNailul) {
         $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=$gambarBase"
         [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
         Write-Host "[Frontend nailul-murod] .env diset ke $envLabel" -ForegroundColor Gray
-    } else {
-        $env:VITE_API_BASE = $apiUrl
-        $env:VITE_API_BASE_URL = $apiUrl
-        $env:VITE_APP_ENV = $envLabel
-        $env:VITE_GAMBAR_BASE = $gambarBase
-        Write-Host "[Frontend nailul-murod] .env tidak ada, pakai environment variable sementara untuk build." -ForegroundColor Yellow
     }
 
+    Set-ViteBuildProcessEnv -ApiUrl $apiUrl -EnvLabel $envLabel -GambarBase $gambarBase -Extra @{
+        VITE_API_BASE = $apiUrl
+    }
+    Update-DotEnvProductionFile -AppDir $nailulDir -Values @{
+        VITE_API_BASE     = $apiUrl
+        VITE_API_BASE_URL = $apiUrl
+        VITE_APP_ENV      = $envLabel
+        VITE_GAMBAR_BASE  = $gambarBase
+    } | Out-Null
+
     Write-Host "[Frontend nailul-murod] Build..." -ForegroundColor Cyan
-    npm run build
+    try {
+        npm run build
+    } finally {
+        Restore-DotEnvProductionFile
+        Restore-ViteBuildProcessEnv
+    }
     if (-not (Test-Path "dist")) {
         Write-Error "Folder dist tidak ada setelah build nailul-murod."
     }
@@ -473,12 +586,6 @@ if ($doNailul) {
         $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=/gambar"
         [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
         Write-Host "[Frontend nailul-murod] .env dikembalikan ke local." -ForegroundColor Gray
-    } else {
-        if ($hadPrevApiBase) { $env:VITE_API_BASE = $prevApiBase } else { Remove-Item Env:VITE_API_BASE -ErrorAction SilentlyContinue }
-        if ($hadPrevApiBaseUrl) { $env:VITE_API_BASE_URL = $prevApiBaseUrl } else { Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue }
-        if ($hadPrevAppEnv) { $env:VITE_APP_ENV = $prevAppEnv } else { Remove-Item Env:VITE_APP_ENV -ErrorAction SilentlyContinue }
-        if ($hadPrevGambarBase) { $env:VITE_GAMBAR_BASE = $prevGambarBase } else { Remove-Item Env:VITE_GAMBAR_BASE -ErrorAction SilentlyContinue }
-        Write-Host "[Frontend nailul-murod] Environment variable sementara dibersihkan." -ForegroundColor Gray
     }
 
     Write-Host "[Frontend nailul-murod] Selesai." -ForegroundColor Green

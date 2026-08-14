@@ -1361,6 +1361,13 @@ class ManageUsersController
                     'message' => 'Key role hanya boleh mengandung huruf kecil, angka, dan underscore'
                 ], 400);
             }
+
+            if (in_array($key, ['santri', 'wali_santri'], true)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Role portal MyBeddien tidak dibuat dari eBeddien',
+                ], 400);
+            }
             
             // Check if key already exists
             $checkStmt = $this->db->prepare("SELECT id FROM `role` WHERE `key` = ?");
@@ -1504,6 +1511,129 @@ class ManageUsersController
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal memperbarui role'
+            ], 500);
+        }
+    }
+
+    /**
+     * DELETE /api/manage-users/roles/{id} — Hapus role + relasi penugasan/fitur.
+     * Pengurus yang punya role ini kehilangan akses terkait role tersebut.
+     */
+    public function deleteRole(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $roleId = isset($args['id']) ? (int) $args['id'] : 0;
+            if ($roleId < 1) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Role ID diperlukan',
+                ], 400);
+            }
+
+            $checkStmt = $this->db->prepare('SELECT id, `key`, label FROM `role` WHERE id = ?');
+            $checkStmt->execute([$roleId]);
+            $existingRole = $checkStmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$existingRole) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Role tidak ditemukan',
+                ], 404);
+            }
+
+            $roleKey = (string) ($existingRole['key'] ?? '');
+            $protectedKeys = ['super_admin', 'santri', 'wali_santri'];
+            if (in_array($roleKey, $protectedKeys, true)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Role ini tidak boleh dihapus',
+                ], 400);
+            }
+
+            $pengurusCount = 0;
+            try {
+                $cntStmt = $this->db->prepare(
+                    'SELECT COUNT(DISTINCT `pengurus_id`) FROM `pengurus___role` WHERE `role_id` = ?'
+                );
+                $cntStmt->execute([$roleId]);
+                $pengurusCount = (int) $cntStmt->fetchColumn();
+            } catch (\Throwable $e) {
+                error_log('ManageUsersController::deleteRole pengurus_count ' . $e->getMessage());
+            }
+
+            $this->db->beginTransaction();
+            try {
+                $delPr = $this->db->prepare('DELETE FROM `pengurus___role` WHERE `role_id` = ?');
+                $delPr->execute([$roleId]);
+
+                try {
+                    $delRf = $this->db->prepare('DELETE FROM `role___fitur` WHERE `role_id` = ?');
+                    $delRf->execute([$roleId]);
+                } catch (\Throwable $e) {
+                    error_log('ManageUsersController::deleteRole role___fitur ' . $e->getMessage());
+                }
+
+                try {
+                    $delBa = $this->db->prepare(
+                        'DELETE FROM `role___boleh_assign_role`
+                         WHERE `role_id` = ? OR `assignable_role_id` = ?'
+                    );
+                    $delBa->execute([$roleId, $roleId]);
+                } catch (\Throwable $e) {
+                    error_log('ManageUsersController::deleteRole role___boleh_assign_role ' . $e->getMessage());
+                }
+
+                try {
+                    $delLegacy = $this->db->prepare(
+                        'DELETE FROM `ebeddien_legacy_route_role` WHERE `role_key` = ?'
+                    );
+                    $delLegacy->execute([$roleKey]);
+                } catch (\Throwable $e) {
+                    error_log('ManageUsersController::deleteRole ebeddien_legacy_route_role ' . $e->getMessage());
+                }
+
+                $delRole = $this->db->prepare('DELETE FROM `role` WHERE id = ?');
+                $delRole->execute([$roleId]);
+
+                $this->db->commit();
+            } catch (\Throwable $e) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                throw $e;
+            }
+
+            $actor = $request->getAttribute('user');
+            $pengurusId = isset($actor['user_id']) ? (int) $actor['user_id'] : (isset($actor['id']) ? (int) $actor['id'] : null);
+            if ($pengurusId !== null) {
+                UserAktivitasLogger::log(
+                    null,
+                    $pengurusId,
+                    UserAktivitasLogger::ACTION_DELETE,
+                    'role',
+                    $roleId,
+                    $existingRole,
+                    null,
+                    $request
+                );
+            }
+
+            RolePolicyResolver::clearCache();
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Role berhasil dihapus',
+                'data' => [
+                    'id' => $roleId,
+                    'key' => $roleKey,
+                    'pengurus_detached' => $pengurusCount,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Delete role error: ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menghapus role',
             ], 500);
         }
     }

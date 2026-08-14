@@ -44,6 +44,7 @@ return function (\Slim\App $app): void {
         $group->get('/roles/list', [ManageUsersController::class, 'getRolesList']);
         $group->post('/roles', [ManageUsersController::class, 'createRole']);
         $group->put('/roles/{id}', [ManageUsersController::class, 'updateRole']);
+        $group->delete('/roles/{id}', [ManageUsersController::class, 'deleteRole']);
         $group->post('/{id}/roles', [ManageUsersController::class, 'addUserRole']);
         $group->delete('/{id}/roles/{pengurusRoleId}', [ManageUsersController::class, 'removeUserRole']);
         $group->post('/{id}/jabatan', [ManageUsersController::class, 'addUserJabatan']);
