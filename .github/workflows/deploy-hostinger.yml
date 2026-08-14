@@ -52,7 +52,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -78,7 +78,7 @@ jobs:
           $port = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_PORT)) { '65002' } else { $env:DEPLOY_SSH_PORT.Trim() }
           if ($port -notmatch '^\d+$') { throw "DEPLOY_SSH_PORT tidak valid: [$port]" }
 
-          $sshDir = Join-Path $env:USERPROFILE '.ssh'
+          $sshDir = Join-Path $HOME '.ssh'
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
           $keyPath = Join-Path $sshDir 'id_ed25519'
 
@@ -91,8 +91,12 @@ jobs:
             throw "Secret DEPLOY_SSH_KEY_B64 atau DEPLOY_SSH_KEY wajib di-set."
           }
 
-          icacls $keyPath /inheritance:r | Out-Null
-          icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+          if ($IsWindows) {
+            icacls $keyPath /inheritance:r | Out-Null
+            icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+          } else {
+            chmod 600 $keyPath
+          }
           ssh-keygen -lf $keyPath
 
           $known = Join-Path $sshDir 'known_hosts'
@@ -110,13 +114,21 @@ jobs:
           )
           [System.IO.File]::WriteAllText((Join-Path $sshDir 'config'), ($configLines -join "`n") + "`n")
 
-          Add-Content -Path $env:GITHUB_ENV -Value "DEPLOY_SSH_USER=$user" -Encoding utf8NoBOM
-          Add-Content -Path $env:GITHUB_ENV -Value "DEPLOY_SSH_HOST=$hostName" -Encoding utf8NoBOM
-          Add-Content -Path $env:GITHUB_ENV -Value "DEPLOY_SSH_PORT=$port" -Encoding utf8NoBOM
+          "DEPLOY_SSH_USER=$user" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "DEPLOY_SSH_HOST=$hostName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "DEPLOY_SSH_PORT=$port" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-          Write-Host "SSH target ${user}@${hostName} port=${port}"
-          ssh -i $keyPath -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$known -o ConnectTimeout=40 "${user}@${hostName}" "echo SSH_OK"
-          if ($LASTEXITCODE -ne 0) { throw "SSH ke Hostinger gagal (exit $LASTEXITCODE)" }
+          Write-Host "SSH target ${user}@${hostName}:${port}"
+          $ok = $false
+          for ($i = 1; $i -le 5; $i++) {
+            Write-Host "SSH attempt $i/5..."
+            ssh -i $keyPath -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$known -o ConnectTimeout=40 "${user}@${hostName}" "echo SSH_OK"
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Start-Sleep -Seconds (5 * $i)
+          }
+          if (-not $ok) {
+            throw "SSH ke Hostinger gagal setelah retry. Hostinger mungkin memblokir IP runner GitHub — pakai self-hosted runner atau deploy lokal via deploy.ps1."
+          }
 
       - name: Run deploy.ps1
         shell: pwsh
