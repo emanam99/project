@@ -56,13 +56,13 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
         if: inputs.scope == 'frontend' || inputs.scope == 'both'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Configure SSH for Hostinger
         shell: pwsh
@@ -76,9 +76,9 @@ jobs:
             throw "Secret DEPLOY_SSH_KEY belum di-set (Settings → Secrets and variables → Actions)."
           }
 
-          $user = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_USER)) { 'u264984103' } else { $env:DEPLOY_SSH_USER }
-          $hostName = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_HOST)) { '145.223.108.9' } else { $env:DEPLOY_SSH_HOST }
-          $port = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_PORT)) { '65002' } else { $env:DEPLOY_SSH_PORT }
+          $user = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_USER)) { 'u264984103' } else { $env:DEPLOY_SSH_USER.Trim() }
+          $hostName = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_HOST)) { '145.223.108.9' } else { $env:DEPLOY_SSH_HOST.Trim() }
+          $port = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_PORT)) { '65002' } else { $env:DEPLOY_SSH_PORT.Trim() }
 
           $sshDir = Join-Path $env:USERPROFILE '.ssh'
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
@@ -89,13 +89,34 @@ jobs:
           icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
 
           $known = Join-Path $sshDir 'known_hosts'
-          ssh-keyscan -p $port $hostName 2>$null | Out-File -FilePath $known -Encoding ascii
+          $scan = & ssh-keyscan -p $port -T 15 $hostName 2>&1
+          $scanLines = @($scan | Where-Object { $_ -is [string] -and $_ -notmatch '^\s*#' -and $_.Trim() -ne '' })
+          if ($scanLines.Count -eq 0) {
+            Write-Warning "ssh-keyscan kosong; pakai StrictHostKeyChecking=accept-new"
+            '' | Set-Content -Path $known -Encoding ascii
+          } else {
+            $scanLines | Set-Content -Path $known -Encoding ascii
+            Write-Host "known_hosts entries: $($scanLines.Count)"
+          }
+
+          $config = @"
+Host *
+  IdentityFile $keyPath
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+  UserKnownHostsFile $known
+  ServerAliveInterval 30
+  ServerAliveCountMax 10
+  TCPKeepAlive yes
+"@
+          [System.IO.File]::WriteAllText((Join-Path $sshDir 'config'), $config)
 
           "DEPLOY_SSH_USER=$user" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "DEPLOY_SSH_HOST=$hostName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "DEPLOY_SSH_PORT=$port" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-          ssh -i $keyPath -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=25 "${user}@${hostName}" "echo SSH_OK"
+          ssh -i $keyPath -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$known -o ConnectTimeout=25 "${user}@${hostName}" "echo SSH_OK"
+          if ($LASTEXITCODE -ne 0) { throw "SSH ke Hostinger gagal (exit $LASTEXITCODE)" }
 
       - name: Run deploy.ps1
         shell: pwsh
