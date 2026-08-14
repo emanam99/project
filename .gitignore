@@ -36,6 +36,14 @@ Thumbs.db
 !package.json
 !package-lock.json
 !**/package-lock.json
+!ebeddien/src/**/*.json
+!daftar/src/**/*.json
+!mybeddien/src/**/*.json
+!nailul-murod/src/**/*.json
+!**/tsconfig*.json
+!**/jsconfig.json
+!**/components.json
+!**/manifest.json
 client_secret*.json
 gen-lang-client-*.json
 *.pem
