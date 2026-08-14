@@ -2,7 +2,7 @@
 # Jalankan: Actions → Deploy Hostinger → Run workflow
 #
 # Secret wajib di repo:
-#   DEPLOY_SSH_KEY  — isi private key (PEM) yang sudah diizinkan login SSH Hostinger
+#   DEPLOY_SSH_KEY  — private key yang sudah diizinkan login SSH Hostinger
 # Opsional:
 #   DEPLOY_SSH_USER / DEPLOY_SSH_HOST / DEPLOY_SSH_PORT
 
@@ -56,11 +56,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         if: inputs.scope == 'frontend' || inputs.scope == 'both'
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
 
@@ -99,17 +99,17 @@ jobs:
             Write-Host "known_hosts entries: $($scanLines.Count)"
           }
 
-          $config = @"
-Host *
-  IdentityFile $keyPath
-  IdentitiesOnly yes
-  StrictHostKeyChecking accept-new
-  UserKnownHostsFile $known
-  ServerAliveInterval 30
-  ServerAliveCountMax 10
-  TCPKeepAlive yes
-"@
-          [System.IO.File]::WriteAllText((Join-Path $sshDir 'config'), $config)
+          $configLines = @(
+            'Host *',
+            "  IdentityFile $keyPath",
+            '  IdentitiesOnly yes',
+            '  StrictHostKeyChecking accept-new',
+            "  UserKnownHostsFile $known",
+            '  ServerAliveInterval 30',
+            '  ServerAliveCountMax 10',
+            '  TCPKeepAlive yes'
+          )
+          [System.IO.File]::WriteAllText((Join-Path $sshDir 'config'), ($configLines -join "`n") + "`n")
 
           "DEPLOY_SSH_USER=$user" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "DEPLOY_SSH_HOST=$hostName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
