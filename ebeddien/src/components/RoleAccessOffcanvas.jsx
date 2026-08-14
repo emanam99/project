@@ -113,18 +113,11 @@ function buildGroupSectionsFromRoots(roots) {
 }
 
 /**
- * Satu panel: tab (1) aplikasi + izin modul API, (2) menu & aksi eBeddien — dua lapisan akses untuk role yang sama.
+ * Panel kanan: checklist menu & aksi eBeddien untuk satu role (role___fitur).
  */
 export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, onReload }) {
   const { showNotification } = useNotification()
   const [showPortal, setShowPortal] = useState(false)
-  const [tab, setTab] = useState('api')
-
-  const [catalogLoading, setCatalogLoading] = useState(false)
-  const [catalogErr, setCatalogErr] = useState(null)
-  const [appRows, setAppRows] = useState([])
-  const [permRows, setPermRows] = useState([])
-  const [policyPatching, setPolicyPatching] = useState(false)
 
   const [fiturLoading, setFiturLoading] = useState(false)
   const [fiturError, setFiturError] = useState(null)
@@ -155,17 +148,16 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
 
   const rk = roleKey != null && String(roleKey).trim() !== '' ? String(roleKey).trim() : ''
   const roleId = role?.id != null ? Number(role.id) : 0
+  const roleLabel = role?.label || rk || 'Role'
 
   const close = useCallback(() => {
     onClose()
-    setCatalogErr(null)
     setFiturError(null)
     setSearchQuery('')
     setGroupFilter('')
-    setTab('api')
     setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft']))
     setKalenderPengaturanAccordionOpen(new Set(['bulan', 'hari_penting']))
-    setAbsenAccordionOpen(new Set(['riwayat', 'absen', 'ngabsen']))
+    setAbsenAccordionOpen(new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen']))
     setUgtLaporanAccordionOpen(new Set(['koordinator', 'gt', 'pjgt']))
     setLaporanUwabaAccordionOpen(new Set(['tunggakan', 'khusus', 'uwaba', 'pendaftaran']))
   }, [onClose])
@@ -175,33 +167,6 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
   useEffect(() => {
     if (isOpen) setShowPortal(true)
   }, [isOpen])
-
-  useEffect(() => {
-    if (isOpen) setTab('api')
-  }, [isOpen, rk])
-
-  const loadCatalog = useCallback(async () => {
-    setCatalogLoading(true)
-    setCatalogErr(null)
-    try {
-      const res = await settingsAPI.getRolePolicyCatalog()
-      if (!res?.success) {
-        setCatalogErr(res?.message || 'Gagal memuat katalog')
-        setAppRows([])
-        setPermRows([])
-        return
-      }
-      const d = res.data || {}
-      setAppRows(Array.isArray(d.apps) ? d.apps : [])
-      setPermRows(Array.isArray(d.permissions) ? d.permissions : [])
-    } catch (err) {
-      setCatalogErr(err.response?.data?.message || err.message || 'Gagal memuat katalog')
-      setAppRows([])
-      setPermRows([])
-    } finally {
-      setCatalogLoading(false)
-    }
-  }, [])
 
   const loadFitur = useCallback(async () => {
     setFiturLoading(true)
@@ -224,95 +189,8 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
 
   useEffect(() => {
     if (!isOpen || !rk) return
-    loadCatalog()
     if (roleId >= 1) loadFitur()
-  }, [isOpen, rk, roleId, loadCatalog, loadFitur])
-
-  const allowedSet = new Set((role?.allowed_apps || []).map((x) => String(x).toLowerCase()))
-  const permSet = new Set((role?.permissions || []).map((x) => String(x).toLowerCase()))
-  const roleMissing = !role
-
-  const appsSrc = role?.allowed_apps_policy_source || 'php'
-  const permSrc = role?.permissions_policy_source || 'php'
-
-  const patchApps = async (nextKeys) => {
-    if (!rk || policyPatching) return
-    const norm = [...new Set(nextKeys.map((x) => String(x).toLowerCase().trim()).filter(Boolean))].sort()
-    setPolicyPatching(true)
-    try {
-      const res = await settingsAPI.patchRolePolicy(rk, { allowed_apps: norm })
-      if (!res?.success) {
-        showNotification(res?.message || 'Gagal menyimpan aplikasi', 'error')
-        return
-      }
-      showNotification(res.message || 'Aplikasi disimpan', 'success')
-      await onReload?.()
-    } catch (err) {
-      showNotification(err.response?.data?.message || err.message || 'Gagal menyimpan', 'error')
-    } finally {
-      setPolicyPatching(false)
-    }
-  }
-
-  const patchPerms = async (nextKeys) => {
-    if (!rk || policyPatching) return
-    const norm = [...new Set(nextKeys.map((x) => String(x).toLowerCase().trim()).filter(Boolean))].sort()
-    setPolicyPatching(true)
-    try {
-      const res = await settingsAPI.patchRolePolicy(rk, { permissions: norm })
-      if (!res?.success) {
-        showNotification(res?.message || 'Gagal menyimpan', 'error')
-        return
-      }
-      showNotification(res.message || 'Izin modul disimpan', 'success')
-      await onReload?.()
-    } catch (err) {
-      showNotification(err.response?.data?.message || err.message || 'Gagal menyimpan', 'error')
-    } finally {
-      setPolicyPatching(false)
-    }
-  }
-
-  const toggleApp = (appKey, checked) => {
-    const k = String(appKey).toLowerCase()
-    const next = new Set(allowedSet)
-    if (checked) next.add(k)
-    else next.delete(k)
-    patchApps([...next])
-  }
-
-  const togglePerm = (permKey, checked) => {
-    const k = String(permKey).toLowerCase()
-    const next = new Set(permSet)
-    if (checked) next.add(k)
-    else next.delete(k)
-    patchPerms([...next])
-  }
-
-  const revertPolicyToPhp = async () => {
-    if (!rk || policyPatching) return
-    if (
-      !window.confirm(
-        'Hapus penyimpanan di database untuk aplikasi & izin modul API role ini? Nilai kembali mengikuti RoleConfig.php.'
-      )
-    ) {
-      return
-    }
-    setPolicyPatching(true)
-    try {
-      const res = await settingsAPI.patchRolePolicy(rk, { permissions: null, allowed_apps: null })
-      if (!res?.success) {
-        showNotification(res?.message || 'Gagal', 'error')
-        return
-      }
-      showNotification(res.message || 'Mengikuti RoleConfig.php', 'success')
-      await onReload?.()
-    } catch (err) {
-      showNotification(err.response?.data?.message || err.message || 'Gagal', 'error')
-    } finally {
-      setPolicyPatching(false)
-    }
-  }
+  }, [isOpen, rk, roleId, loadFitur])
 
   const rootItemsForGroups = useMemo(
     () => items.filter((it) => it.parent_id == null || it.parent_id === ''),
@@ -409,11 +287,40 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
       const auth = useAuthStore.getState()
       auth.fetchFiturMenu({ background: true }).catch(() => {})
       auth.fetchFiturMenuCatalog().catch(() => {})
+      onReload?.()
     } catch (err) {
       showNotification(err.response?.data?.message || err.message || 'Gagal menyimpan', 'error')
     } finally {
       setPatchingId(null)
     }
+  }
+
+  const renderChildCheckboxRow = (child, plClass = 'pl-14') => {
+    const cChecked = roleHasFitur(child)
+    const cBusy = patchingId === child.id
+    const cDis = actionToggleDisabled(child)
+    return (
+      <div
+        key={child.id}
+        className={`flex items-stretch gap-2 ${plClass} pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50`}
+      >
+        <div className="flex-1 min-w-0">
+          <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">Aksi</span>
+          <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
+          <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
+        </div>
+        <label className="flex items-center shrink-0 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={cChecked}
+            disabled={cBusy || cDis}
+            title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
+            onChange={(e) => handleToggleFitur(child, e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
+          />
+        </label>
+      </div>
+    )
   }
 
   if (!isOpen && !showPortal) return null
@@ -451,18 +358,14 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
                     </svg>
                   </button>
                   <div className="min-w-0">
-                    <h2 className="text-base font-semibold text-gray-900 dark:text-white leading-snug">Kelola akses role</h2>
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 mt-1">{role?.label ?? rk}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{rk}</p>
+                    <h2 className="text-base font-semibold text-gray-900 dark:text-white leading-snug">
+                      Kelola Akses ({roleLabel})
+                    </h2>
                     {!role && (
                       <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
                         Data role tidak ditemukan. Tutup lalu buka lagi.
                       </p>
                     )}
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">
-                      Dua lapisan untuk role yang sama: (1) izin di server &amp; token — (2) menu &amp; aksi di aplikasi eBeddien. Keduanya
-                      melengkapi; bukan duplikat.
-                    </p>
                   </div>
                 </div>
                 <button
@@ -476,557 +379,214 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
                   </svg>
                 </button>
               </div>
-
-              <div className="flex gap-1 mt-4 p-1 rounded-xl bg-gray-100 dark:bg-gray-700/80">
-                <button
-                  type="button"
-                  onClick={() => setTab('api')}
-                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
-                    tab === 'api'
-                      ? 'bg-white dark:bg-gray-800 text-teal-800 dark:text-teal-200 shadow-sm'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                  }`}
-                >
-                  Aplikasi &amp; modul API
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTab('menu')}
-                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
-                    tab === 'menu'
-                      ? 'bg-white dark:bg-gray-800 text-teal-800 dark:text-teal-200 shadow-sm'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                  }`}
-                >
-                  Menu &amp; aksi eBeddien
-                </button>
-              </div>
             </div>
 
-            {tab === 'api' ? (
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-                {catalogLoading ? (
-                  <div className="flex justify-center py-16">
-                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600" />
-                  </div>
-                ) : catalogErr ? (
-                  <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-800 dark:text-red-200">
-                    {catalogErr}
-                    <button
-                      type="button"
-                      onClick={loadCatalog}
-                      className="mt-3 px-3 py-1.5 rounded-lg bg-red-100 dark:bg-red-900/40 text-xs font-medium"
-                    >
-                      Coba lagi
-                    </button>
-                  </div>
-                ) : roleMissing ? null : (
-                  <>
-                    <div className="flex flex-wrap gap-1.5 px-0.5">
-                      <span
-                        className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${
-                          appsSrc === 'database'
-                            ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200'
-                            : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
-                        }`}
-                      >
-                        App: {appsSrc === 'database' ? 'DB' : 'PHP'}
-                      </span>
-                      <span
-                        className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${
-                          permSrc === 'database'
-                            ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200'
-                            : 'bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300'
-                        }`}
-                      >
-                        Modul API: {permSrc === 'database' ? 'DB' : 'PHP'}
-                      </span>
-                    </div>
+            <div className="flex-shrink-0 px-4 py-3 space-y-2 border-b border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-800/90">
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari menu, aksi, path, kode…"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white"
+              />
+              <select
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+                className="w-full border rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100"
+              >
+                <option value="">Semua grup</option>
+                {groupOptions.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-                    <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
-                      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80">
-                        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Aplikasi (token / multi-app)</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Aplikasi mana saja yang boleh dibuka dengan JWT role ini.
-                        </p>
-                      </div>
-                      <ul className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                        {appRows.map((row) => {
-                          const k = String(row.key || '').toLowerCase()
-                          const checked = allowedSet.has(k)
-                          return (
-                            <li key={k} className="flex items-center justify-between gap-3 px-4 py-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{row.label || k}</p>
-                                <p className="text-[10px] font-mono text-gray-400 truncate">{k}</p>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={policyPatching || roleMissing}
-                                onChange={(e) => toggleApp(k, e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 shrink-0"
-                              />
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </section>
-
-                    <section className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
-                      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80">
-                        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Izin modul (API backend)</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Otorisasi di server (laporan, keuangan, pengaturan, dll.). Ini bukan daftar menu sidebar — menu di tab berikut.
-                        </p>
-                      </div>
-                      <ul className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                        {permRows.map((row) => {
-                          const k = String(row.key || '').toLowerCase()
-                          const checked = permSet.has(k)
-                          return (
-                            <li key={k} className="flex items-center justify-between gap-3 px-4 py-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{row.label || k}</p>
-                                <p className="text-[10px] font-mono text-gray-400 truncate">{k}</p>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={policyPatching || roleMissing}
-                                onChange={(e) => togglePerm(k, e.target.checked)}
-                                className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 shrink-0"
-                              />
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </section>
-
-                    <div className="pt-1 pb-4">
-                      <button
-                        type="button"
-                        disabled={policyPatching || roleMissing}
-                        onClick={revertPolicyToPhp}
-                        className="w-full px-4 py-3 text-sm font-medium rounded-xl border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-100 bg-amber-50/80 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 disabled:opacity-50"
-                      >
-                        Kembalikan aplikasi &amp; modul API ke RoleConfig.php
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="flex-shrink-0 px-4 py-3 space-y-2 border-b border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-800/90">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Menu &amp; aksi yang tampil di sidebar eBeddien (tabel <span className="font-mono">role___fitur</span>). Melengkapi izin
-                    modul API di tab sebelumnya. Menu Lembaga (Santri, Rombel, Jabatan, Mapel, Ujian, Bisyaroh): centang menu induk
-                    mengatur akses halaman — baris aksi «Akses halaman» tidak ditampilkan di daftar anak.
-                  </p>
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari menu, aksi, path, kode…"
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white"
-                  />
-                  <select
-                    value={groupFilter}
-                    onChange={(e) => setGroupFilter(e.target.value)}
-                    className="w-full border rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100"
+            <div className="flex-1 overflow-y-auto p-4 min-h-0">
+              {roleId < 1 ? (
+                <p className="text-sm text-gray-500 text-center py-8">Role tidak valid.</p>
+              ) : fiturLoading ? (
+                <div className="flex justify-center py-16">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600" />
+                </div>
+              ) : fiturError ? (
+                <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-800 dark:text-red-200">
+                  {fiturError}
+                  <button
+                    type="button"
+                    onClick={loadFitur}
+                    className="mt-3 px-3 py-1.5 rounded-lg bg-red-100 dark:bg-red-900/40 text-xs font-medium"
                   >
-                    <option value="">Semua grup</option>
-                    {groupOptions.map((g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ))}
-                  </select>
+                    Coba lagi
+                  </button>
                 </div>
+              ) : items.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">Belum ada data menu.</p>
+              ) : groupSections.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">Tidak ada yang cocok filter.</p>
+              ) : (
+                <div className="space-y-4">
+                  {groupSections.map((section) => (
+                    <div
+                      key={section.groupLabel}
+                      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
+                    >
+                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/40 border-b border-gray-200 dark:border-gray-600">
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{section.groupLabel}</span>
+                      </div>
+                      <div className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                        {section.items.map((node) => {
+                          const kids = node.children || []
+                          const hasKids = kids.length > 0
+                          const isOpenRow = expandedIds.has(node.id)
+                          const checked = roleHasFitur(node)
+                          const busy = patchingId === node.id
 
-                <div className="flex-1 overflow-y-auto p-4 min-h-0">
-                  {roleId < 1 ? (
-                    <p className="text-sm text-gray-500 text-center py-8">Role tidak valid.</p>
-                  ) : fiturLoading ? (
-                    <div className="flex justify-center py-16">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600" />
-                    </div>
-                  ) : fiturError ? (
-                    <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-800 dark:text-red-200">
-                      {fiturError}
-                      <button
-                        type="button"
-                        onClick={loadFitur}
-                        className="mt-3 px-3 py-1.5 rounded-lg bg-red-100 dark:bg-red-900/40 text-xs font-medium"
-                      >
-                        Coba lagi
-                      </button>
-                    </div>
-                  ) : items.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">Belum ada data menu.</p>
-                  ) : groupSections.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">Tidak ada yang cocok filter.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {groupSections.map((section) => (
-                        <div
-                          key={section.groupLabel}
-                          className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
-                        >
-                          <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700/40 border-b border-gray-200 dark:border-gray-600">
-                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{section.groupLabel}</span>
-                          </div>
-                          <div className="divide-y divide-gray-100 dark:divide-gray-700/60">
-                            {section.items.map((node) => {
-                              const kids = node.children || []
-                              const hasKids = kids.length > 0
-                              const isOpenRow = expandedIds.has(node.id)
-                              const checked = roleHasFitur(node)
-                              const busy = patchingId === node.id
-
-                              return (
-                                <Fragment key={node.id}>
-                                  <div className="flex items-stretch gap-2 px-3 py-3 hover:bg-gray-50/80 dark:hover:bg-gray-700/20">
-                                    <div className="flex items-center shrink-0 w-9 justify-center">
-                                      {hasKids ? (
-                                        <button
-                                          type="button"
-                                          aria-expanded={isOpenRow}
-                                          onClick={() => toggleExpand(node.id)}
-                                          className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300"
-                                        >
-                                          <svg
-                                            className={`w-4 h-4 transition-transform ${isOpenRow ? 'rotate-180' : ''}`}
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                          >
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                                          </svg>
-                                        </button>
-                                      ) : (
-                                        <span className="w-8" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      {node.type === 'action' && (
-                                        <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">Aksi</span>
-                                      )}
-                                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{node.label}</p>
-                                      <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">{node.code}</p>
-                                    </div>
-                                    <label className="flex items-center gap-2 shrink-0 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        disabled={busy || actionToggleDisabled(node)}
-                                        title={
-                                          actionToggleDisabled(node)
-                                            ? 'Aktifkan menu induk untuk role ini terlebih dahulu'
-                                            : undefined
-                                        }
-                                        onChange={(e) => handleToggleFitur(node, e.target.checked)}
-                                        className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                      />
-                                    </label>
-                                  </div>
-                                  {hasKids && isOpenRow ? (
-                                    node.code === PENGELUARAN_MENU_CODE ? (
-                                      <PengeluaranFiturTabAccordions
-                                        children={kids}
-                                        openKeys={pengeluaranAccordionOpen}
-                                        onToggleKey={(key) => {
-                                          setPengeluaranAccordionOpen((prev) => {
-                                            const next = new Set(prev)
-                                            if (next.has(key)) next.delete(key)
-                                            else next.add(key)
-                                            return next
-                                          })
-                                        }}
-                                        renderRow={(child) => {
-                                          const cChecked = roleHasFitur(child)
-                                          const cBusy = patchingId === child.id
-                                          const cDis = actionToggleDisabled(child)
-                                          return (
-                                            <div
-                                              key={child.id}
-                                              className="flex items-stretch gap-2 pl-14 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
-                                                  Aksi
-                                                </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
-                                                <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
-                                              </div>
-                                              <label className="flex items-center shrink-0 cursor-pointer">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={cChecked}
-                                                  disabled={cBusy || cDis}
-                                                  title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
-                                                  onChange={(e) => handleToggleFitur(child, e.target.checked)}
-                                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                                />
-                                              </label>
-                                            </div>
-                                          )
-                                        }}
-                                      />
-                                    ) : node.code === ABSEN_MENU_CODE ? (
-                                      <AbsenFiturTabAccordions
-                                        children={kids}
-                                        openKeys={absenAccordionOpen}
-                                        onToggleKey={(key) => {
-                                          setAbsenAccordionOpen((prev) => {
-                                            const next = new Set(prev)
-                                            if (next.has(key)) next.delete(key)
-                                            else next.add(key)
-                                            return next
-                                          })
-                                        }}
-                                        renderRow={(child) => {
-                                          const cChecked = roleHasFitur(child)
-                                          const cBusy = patchingId === child.id
-                                          const cDis = actionToggleDisabled(child)
-                                          return (
-                                            <div
-                                              key={child.id}
-                                              className="flex items-stretch gap-2 pl-14 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
-                                                  Aksi
-                                                </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
-                                                <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
-                                              </div>
-                                              <label className="flex items-center shrink-0 cursor-pointer">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={cChecked}
-                                                  disabled={cBusy || cDis}
-                                                  title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
-                                                  onChange={(e) => handleToggleFitur(child, e.target.checked)}
-                                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                                />
-                                              </label>
-                                            </div>
-                                          )
-                                        }}
-                                      />
-                                    ) : node.code === KALENDER_PENGATURAN_MENU_CODE ? (
-                                      <KalenderPengaturanFiturTabAccordions
-                                        children={kids}
-                                        openKeys={kalenderPengaturanAccordionOpen}
-                                        onToggleKey={(key) => {
-                                          setKalenderPengaturanAccordionOpen((prev) => {
-                                            const next = new Set(prev)
-                                            if (next.has(key)) next.delete(key)
-                                            else next.add(key)
-                                            return next
-                                          })
-                                        }}
-                                        renderRow={(child) => {
-                                          const cChecked = roleHasFitur(child)
-                                          const cBusy = patchingId === child.id
-                                          const cDis = actionToggleDisabled(child)
-                                          return (
-                                            <div
-                                              key={child.id}
-                                              className="flex items-stretch gap-2 pl-14 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
-                                                  Aksi
-                                                </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
-                                                <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
-                                              </div>
-                                              <label className="flex items-center shrink-0 cursor-pointer">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={cChecked}
-                                                  disabled={cBusy || cDis}
-                                                  title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
-                                                  onChange={(e) => handleToggleFitur(child, e.target.checked)}
-                                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                                />
-                                              </label>
-                                            </div>
-                                          )
-                                        }}
-                                      />
-                                    ) : node.code === UGT_LAPORAN_MENU_CODE ? (
-                                      <UgtLaporanFiturTabAccordions
-                                        children={kids}
-                                        openKeys={ugtLaporanAccordionOpen}
-                                        onToggleKey={(key) => {
-                                          setUgtLaporanAccordionOpen((prev) => {
-                                            const next = new Set(prev)
-                                            if (next.has(key)) next.delete(key)
-                                            else next.add(key)
-                                            return next
-                                          })
-                                        }}
-                                        renderRow={(child) => {
-                                          const cChecked = roleHasFitur(child)
-                                          const cBusy = patchingId === child.id
-                                          const cDis = actionToggleDisabled(child)
-                                          return (
-                                            <div
-                                              key={child.id}
-                                              className="flex items-stretch gap-2 pl-14 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
-                                                  Aksi
-                                                </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
-                                                <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
-                                              </div>
-                                              <label className="flex items-center shrink-0 cursor-pointer">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={cChecked}
-                                                  disabled={cBusy || cDis}
-                                                  title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
-                                                  onChange={(e) => handleToggleFitur(child, e.target.checked)}
-                                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                                />
-                                              </label>
-                                            </div>
-                                          )
-                                        }}
-                                      />
-                                    ) : node.code === UGT_KOMPAS_MENU_CODE ? (
-                                      <UgtKompasFiturTabAccordions
-                                        children={kids}
-                                        openKeys={ugtKompasAccordionOpen}
-                                        onToggleKey={(key) => {
-                                          setUgtKompasAccordionOpen((prev) => {
-                                            const next = new Set(prev)
-                                            if (next.has(key)) next.delete(key)
-                                            else next.add(key)
-                                            return next
-                                          })
-                                        }}
-                                        renderRow={(child) => {
-                                          const cChecked = roleHasFitur(child)
-                                          const cBusy = patchingId === child.id
-                                          const cDis = actionToggleDisabled(child)
-                                          return (
-                                            <div
-                                              key={child.id}
-                                              className="flex items-stretch gap-2 pl-14 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
-                                                  Aksi
-                                                </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
-                                                <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
-                                              </div>
-                                              <label className="flex items-center shrink-0 cursor-pointer">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={cChecked}
-                                                  disabled={cBusy || cDis}
-                                                  title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
-                                                  onChange={(e) => handleToggleFitur(child, e.target.checked)}
-                                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                                />
-                                              </label>
-                                            </div>
-                                          )
-                                        }}
-                                      />
-                                    ) : node.code === LAPORAN_MENU_CODE ? (
-                                      <LaporanUwabaFiturTabAccordions
-                                        children={kids}
-                                        openKeys={laporanUwabaAccordionOpen}
-                                        onToggleKey={(key) => {
-                                          setLaporanUwabaAccordionOpen((prev) => {
-                                            const next = new Set(prev)
-                                            if (next.has(key)) next.delete(key)
-                                            else next.add(key)
-                                            return next
-                                          })
-                                        }}
-                                        renderRow={(child) => {
-                                          const cChecked = roleHasFitur(child)
-                                          const cBusy = patchingId === child.id
-                                          const cDis = actionToggleDisabled(child)
-                                          return (
-                                            <div
-                                              key={child.id}
-                                              className="flex items-stretch gap-2 pl-14 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
-                                                  Aksi
-                                                </span>
-                                                <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
-                                                <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
-                                              </div>
-                                              <label className="flex items-center shrink-0 cursor-pointer">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={cChecked}
-                                                  disabled={cBusy || cDis}
-                                                  title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
-                                                  onChange={(e) => handleToggleFitur(child, e.target.checked)}
-                                                  className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                                />
-                                              </label>
-                                            </div>
-                                          )
-                                        }}
-                                      />
-                                    ) : (
-                                      kids.map((child) => {
-                                        const cChecked = roleHasFitur(child)
-                                        const cBusy = patchingId === child.id
-                                        const cDis = actionToggleDisabled(child)
-                                        return (
-                                          <div
-                                            key={child.id}
-                                            className="flex items-stretch gap-2 pl-12 pr-3 py-2.5 bg-gray-50/60 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700/50"
-                                          >
-                                            <div className="flex-1 min-w-0">
-                                              <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">
-                                                Aksi
-                                              </span>
-                                              <p className="text-sm text-gray-800 dark:text-gray-200">{child.label}</p>
-                                              <p className="text-[10px] font-mono text-gray-400 truncate">{child.code}</p>
-                                            </div>
-                                            <label className="flex items-center shrink-0 cursor-pointer">
-                                              <input
-                                                type="checkbox"
-                                                checked={cChecked}
-                                                disabled={cBusy || cDis}
-                                                title={cDis ? 'Aktifkan menu induk untuk role ini terlebih dahulu' : undefined}
-                                                onChange={(e) => handleToggleFitur(child, e.target.checked)}
-                                                className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
-                                              />
-                                            </label>
-                                          </div>
-                                        )
+                          return (
+                            <Fragment key={node.id}>
+                              <div className="flex items-stretch gap-2 px-3 py-3 hover:bg-gray-50/80 dark:hover:bg-gray-700/20">
+                                <div className="flex items-center shrink-0 w-9 justify-center">
+                                  {hasKids ? (
+                                    <button
+                                      type="button"
+                                      aria-expanded={isOpenRow}
+                                      onClick={() => toggleExpand(node.id)}
+                                      className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300"
+                                    >
+                                      <svg
+                                        className={`w-4 h-4 transition-transform ${isOpenRow ? 'rotate-180' : ''}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                      </svg>
+                                    </button>
+                                  ) : (
+                                    <span className="w-8" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  {node.type === 'action' && (
+                                    <span className="text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-300">Aksi</span>
+                                  )}
+                                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{node.label}</p>
+                                  <p className="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">{node.code}</p>
+                                </div>
+                                <label className="flex items-center gap-2 shrink-0 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={busy || actionToggleDisabled(node)}
+                                    title={
+                                      actionToggleDisabled(node)
+                                        ? 'Aktifkan menu induk untuk role ini terlebih dahulu'
+                                        : undefined
+                                    }
+                                    onChange={(e) => handleToggleFitur(node, e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500 disabled:opacity-40"
+                                  />
+                                </label>
+                              </div>
+                              {hasKids && isOpenRow ? (
+                                node.code === PENGELUARAN_MENU_CODE ? (
+                                  <PengeluaranFiturTabAccordions
+                                    children={kids}
+                                    openKeys={pengeluaranAccordionOpen}
+                                    onToggleKey={(key) => {
+                                      setPengeluaranAccordionOpen((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(key)) next.delete(key)
+                                        else next.add(key)
+                                        return next
                                       })
-                                    )
-                                  ) : null}
-                                </Fragment>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                                    }}
+                                    renderRow={(child) => renderChildCheckboxRow(child)}
+                                  />
+                                ) : node.code === ABSEN_MENU_CODE ? (
+                                  <AbsenFiturTabAccordions
+                                    children={kids}
+                                    openKeys={absenAccordionOpen}
+                                    onToggleKey={(key) => {
+                                      setAbsenAccordionOpen((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(key)) next.delete(key)
+                                        else next.add(key)
+                                        return next
+                                      })
+                                    }}
+                                    renderRow={(child) => renderChildCheckboxRow(child)}
+                                  />
+                                ) : node.code === KALENDER_PENGATURAN_MENU_CODE ? (
+                                  <KalenderPengaturanFiturTabAccordions
+                                    children={kids}
+                                    openKeys={kalenderPengaturanAccordionOpen}
+                                    onToggleKey={(key) => {
+                                      setKalenderPengaturanAccordionOpen((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(key)) next.delete(key)
+                                        else next.add(key)
+                                        return next
+                                      })
+                                    }}
+                                    renderRow={(child) => renderChildCheckboxRow(child)}
+                                  />
+                                ) : node.code === UGT_LAPORAN_MENU_CODE ? (
+                                  <UgtLaporanFiturTabAccordions
+                                    children={kids}
+                                    openKeys={ugtLaporanAccordionOpen}
+                                    onToggleKey={(key) => {
+                                      setUgtLaporanAccordionOpen((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(key)) next.delete(key)
+                                        else next.add(key)
+                                        return next
+                                      })
+                                    }}
+                                    renderRow={(child) => renderChildCheckboxRow(child)}
+                                  />
+                                ) : node.code === UGT_KOMPAS_MENU_CODE ? (
+                                  <UgtKompasFiturTabAccordions
+                                    children={kids}
+                                    openKeys={ugtKompasAccordionOpen}
+                                    onToggleKey={(key) => {
+                                      setUgtKompasAccordionOpen((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(key)) next.delete(key)
+                                        else next.add(key)
+                                        return next
+                                      })
+                                    }}
+                                    renderRow={(child) => renderChildCheckboxRow(child)}
+                                  />
+                                ) : node.code === LAPORAN_MENU_CODE ? (
+                                  <LaporanUwabaFiturTabAccordions
+                                    children={kids}
+                                    openKeys={laporanUwabaAccordionOpen}
+                                    onToggleKey={(key) => {
+                                      setLaporanUwabaAccordionOpen((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(key)) next.delete(key)
+                                        else next.add(key)
+                                        return next
+                                      })
+                                    }}
+                                    renderRow={(child) => renderChildCheckboxRow(child)}
+                                  />
+                                ) : (
+                                  kids.map((child) => renderChildCheckboxRow(child, 'pl-12'))
+                                )
+                              ) : null}
+                            </Fragment>
+                          )
+                        })}
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
-              </>
-            )}
+              )}
+            </div>
           </motion.div>
         </Fragment>
       )}

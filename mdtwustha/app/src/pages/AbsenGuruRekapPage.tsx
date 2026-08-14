@@ -12,6 +12,7 @@ import PickDateHijriMasehi, {
 } from '../components/PickDateHijri/PickDateHijriMasehi'
 import { exportAbsenGuruRekapToExcel } from '../utils/exportExcel'
 import MaterialIcon from '../components/MaterialIcon'
+import OffcanvasAbsenGuruRekapPublish from '../components/OffcanvasAbsenGuruRekapPublish'
 import { getStoredUser } from '../utils/auth'
 
 const STATUS_LABEL: Record<JurnalStatus, string> = {
@@ -113,6 +114,7 @@ export default function AbsenGuruRekapPage() {
   const [error, setError] = useState('')
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
+  const [publishOpen, setPublishOpen] = useState(false)
 
   useEffect(() => {
     const user = getStoredUser()
@@ -293,15 +295,33 @@ export default function AbsenGuruRekapPage() {
           <p className="ui-subtitle mt-1">
             Ringkasan kehadiran guru berdasarkan jurnal mengajar (mengajar, izin, sakit) per jam pelajaran.
           </p>
+          <Link
+            to="/absen-guru/hasil-rekap"
+            className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+          >
+            <MaterialIcon name="publish" size={14} /> Hasil Rekap Guru (publish)
+          </Link>
         </div>
-        <button
-          type="button"
-          onClick={handleExportExcel}
-          disabled={exporting || loading || rows.length === 0}
-          className="px-4 py-2.5 text-sm ui-btn-secondary shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {exporting ? 'Mengekspor…' : 'Ekspor Excel'}
-        </button>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setPublishOpen(true)}
+              disabled={loading || !tanggalDari?.masehi || !tanggalSampai?.masehi}
+              className="px-4 py-2.5 text-sm ui-btn-primary disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+            >
+              <MaterialIcon name="publish" size={18} /> Publish
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={exporting || loading || rows.length === 0}
+            className="px-4 py-2.5 text-sm ui-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? 'Mengekspor…' : 'Ekspor Excel'}
+          </button>
+        </div>
       </div>
 
       {exportError && <div className="ui-error-box px-4 py-3 text-sm">{exportError}</div>}
@@ -562,6 +582,16 @@ export default function AbsenGuruRekapPage() {
           </table>
         </div>
       </div>
+
+      <OffcanvasAbsenGuruRekapPublish
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        onSaved={() => navigate('/absen-guru/hasil-rekap')}
+        kelasList={kelasList}
+        initialKelasIds={selectedIdsArr}
+        initialDari={tanggalDari}
+        initialSampai={tanggalSampai}
+      />
     </motion.div>
   )
 }

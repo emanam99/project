@@ -61,6 +61,7 @@ const PilihAksesPage = lazy(() => import('./pages/PilihAksesPage'))
 const LengkapiPortal = lazy(() => import('./pages/LengkapiPortal'))
 const SyaratKetentuan = lazy(() => import('./pages/legal/SyaratKetentuan'))
 const KebijakanPengembalianDana = lazy(() => import('./pages/legal/KebijakanPengembalianDana'))
+const KebijakanPrivasi = lazy(() => import('./pages/legal/KebijakanPrivasi'))
 const FAQ = lazy(() => import('./pages/legal/FAQ'))
 
 /** Belum login → /login dengan redirect ke path yang diminta (mis. QR kwitansi). */
@@ -258,6 +259,8 @@ function App() {
       <Route path="/setup-akun" element={isAuthenticated ? <Navigate to="/" replace /> : <SetupAkun />} />
       <Route path="/ubah-password" element={<UbahPassword />} />
       <Route path="/ubah-username" element={<UbahUsername />} />
+      {/* Publik — untuk Play Store & tanpa login */}
+      <Route path="/kebijakan-privasi" element={<KebijakanPrivasi />} />
       <Route
         path="/pilih-akses"
         element={<RequireAuth><PilihAksesPage /></RequireAuth>}
@@ -303,6 +306,7 @@ function App() {
 
         <Route path="syarat-ketentuan" element={<SyaratKetentuan />} />
         <Route path="kebijakan-pengembalian-dana" element={<KebijakanPengembalianDana />} />
+        <Route path="kebijakan-privasi" element={<KebijakanPrivasi />} />
         <Route path="faq" element={<FAQ />} />
 
         <Route path="biodata" element={<Navigate to="/santri/biodata" replace />} />

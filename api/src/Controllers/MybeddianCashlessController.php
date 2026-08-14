@@ -498,25 +498,25 @@ class MybeddianCashlessController
     }
 
     /**
-     * GET /api/mybeddian/v2/cashless/wallet-lookup?code=
+     * GET /api/mybeddian/v2/cashless/wallet-lookup?code=&akses=
      */
     public function lookupWallet(Request $request, Response $response): Response
     {
         try {
-            $santriId = $this->resolveSantriId($request);
-            if ($santriId === null) {
-                return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk santri'], 403);
+            $ctx = $this->resolveWalletContext($request);
+            if ($ctx === null) {
+                return $this->json($response, ['success' => false, 'message' => 'Akses wallet tidak tersedia'], 403);
             }
 
             $params = $request->getQueryParams();
             $code = isset($params['code']) ? (string) $params['code'] : '';
+            $excludeAccountId = $this->resolveWalletAccountId($ctx);
             $svc = new CashlessTopUpService($this->db);
-            $result = $svc->lookupSantriWalletByCode($code, $santriId);
+            $result = $svc->lookupWalletByCode($code, $excludeAccountId);
             if (!($result['success'] ?? false)) {
                 return $this->json($response, $result, 404);
             }
 
-            // Jangan kirim santri_id ke klien � cukup kode + nama untuk konfirmasi
             $data = $result['data'] ?? [];
             return $this->json($response, [
                 'success' => true,
@@ -533,14 +533,19 @@ class MybeddianCashlessController
 
     /**
      * POST /api/mybeddian/v2/cashless/transfer
-     * Body: { dest_code, nominal, catatan? }
+     * Body: { dest_code, nominal, catatan?, akses? }
      */
     public function transfer(Request $request, Response $response): Response
     {
         try {
-            $santriId = $this->resolveSantriId($request);
-            if ($santriId === null) {
-                return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk santri'], 403);
+            $ctx = $this->resolveWalletContext($request);
+            if ($ctx === null) {
+                return $this->json($response, ['success' => false, 'message' => 'Akses wallet tidak tersedia'], 403);
+            }
+
+            $sourceAccountId = $this->resolveWalletAccountId($ctx);
+            if ($sourceAccountId === null) {
+                return $this->json($response, ['success' => false, 'message' => 'Belum punya akun wallet'], 400);
             }
 
             $raw = is_array($request->getParsedBody()) ? $request->getParsedBody() : [];
@@ -557,7 +562,7 @@ class MybeddianCashlessController
             $idemKey = CashlessMoneyLimitsHelper::resolveIdempotencyKey(
                 isset($raw['idempotency_key']) ? (string) $raw['idempotency_key'] : (isset($body['idempotency_key']) ? (string) $body['idempotency_key'] : null),
                 'TRANSFER',
-                'from:' . $santriId . '|to:' . $destCode,
+                'from:' . $sourceAccountId . '|to:' . $destCode,
                 $nominal,
                 $actorUserId,
                 $limits['duplicate_window_sec']
@@ -568,7 +573,13 @@ class MybeddianCashlessController
             }
 
             $svc = new CashlessTopUpService($this->db);
-            $result = $svc->transferByWalletCode($santriId, $destCode, $nominal, $catatan, $actorUserId);
+            $result = $svc->transferByWalletCodeFromAccount(
+                $sourceAccountId,
+                $destCode,
+                $nominal,
+                $catatan,
+                $actorUserId
+            );
             $ok = (bool) ($result['success'] ?? false);
             $status = $ok ? 200 : 400;
             $journalId = isset($result['data']['journal_id']) ? (int) $result['data']['journal_id'] : null;
@@ -578,6 +589,22 @@ class MybeddianCashlessController
             error_log('MybeddianCashlessController::transfer ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'message' => 'Gagal transfer'], 500);
         }
+    }
+
+    /**
+     * @param array{mode: 'santri'|'toko', entity_id: int} $ctx
+     */
+    private function resolveWalletAccountId(array $ctx): ?int
+    {
+        $entityType = $ctx['mode'] === 'toko' ? 'PEDAGANG' : 'SANTRI';
+        $stmt = $this->db->prepare(
+            "SELECT id FROM cashless___accounts
+             WHERE entity_type = ? AND entity_id = ? AND type = 'LIABILITY'
+             LIMIT 1"
+        );
+        $stmt->execute([$entityType, $ctx['entity_id']]);
+        $id = $stmt->fetchColumn();
+        return $id ? (int) $id : null;
     }
 
     /**

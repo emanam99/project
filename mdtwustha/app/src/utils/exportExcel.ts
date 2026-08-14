@@ -365,7 +365,7 @@ function rowNilaiStats(row: NilaiRekapRow, mapel: MapelRow[]) {
     if (v !== null && v !== undefined && !Number.isNaN(v)) values.push(v)
   }
   const sum = values.reduce((a, b) => a + b, 0)
-  const avg = values.length ? Math.round((sum / values.length) * 100) / 100 : null
+  const avg = values.length ? Math.round((sum / values.length) * 10) / 10 : null
   return { sum: values.length ? Math.round(sum * 100) / 100 : null, avg, count: values.length }
 }
 
@@ -428,7 +428,7 @@ export async function exportNilaiRekapToExcel(rows: NilaiRekapRow[], options: Ex
     }
     if (showNilai) {
       const stats = rowNilaiStats(row, mapel)
-      out.push(stats.sum ?? '-', stats.avg ?? '-')
+      out.push(stats.sum ?? '-', stats.avg !== null ? Number(stats.avg.toFixed(1)) : '-')
     }
     return out
   })

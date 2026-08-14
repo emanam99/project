@@ -10,6 +10,7 @@ use App\Controllers\BniNotifyController;
 use App\Controllers\DashboardController;
 use App\Controllers\ExportArsipController;
 use App\Controllers\KategoriController;
+use App\Controllers\PorsiController;
 use App\Controllers\RekeningController;
 use App\Controllers\UserController;
 use App\Helpers\AuthHelper;
@@ -58,6 +59,7 @@ $users = new UserController();
 $rekening = new RekeningController();
 $kategori = new KategoriController();
 $exportArsip = new ExportArsipController();
+$porsi = new PorsiController();
 
 $app->get('/auth/google', [$auth, 'googleStart']);
 $app->get('/auth/google/callback', [$auth, 'googleCallback']);
@@ -67,7 +69,7 @@ $bniNotify = new BniNotifyController();
 $app->map(['GET', 'POST'], '/cron/bni-email-poll', [$bniNotify, 'poll']);
 $app->post('/cron/bni-email-hook', [$bniNotify, 'hook']);
 
-$app->group('', function (RouteCollectorProxy $group) use ($auth, $belanja, $belanjaFile, $dashboard, $users, $rekening, $kategori, $exportArsip) {
+$app->group('', function (RouteCollectorProxy $group) use ($auth, $belanja, $belanjaFile, $dashboard, $users, $rekening, $kategori, $exportArsip, $porsi) {
     $group->get('/auth/me', [$auth, 'me']);
     $group->post('/auth/logout', [$auth, 'logout']);
 
@@ -98,6 +100,16 @@ $app->group('', function (RouteCollectorProxy $group) use ($auth, $belanja, $bel
     $group->post('/belanja/{id}/items', [$belanja, 'addItem']);
     $group->put('/belanja/{id}/items/{itemId}', [$belanja, 'updateItem']);
     $group->delete('/belanja/{id}/items/{itemId}', [$belanja, 'deleteItem']);
+
+    $group->get('/porsi', [$porsi, 'index']);
+    $group->get('/porsi/item-options', [$porsi, 'itemOptions']);
+    $group->get('/porsi/{id}/foto', [$porsi, 'downloadFoto']);
+    $group->post('/porsi/{id}/foto', [$porsi, 'uploadFoto']);
+    $group->delete('/porsi/{id}/foto', [$porsi, 'deleteFoto']);
+    $group->get('/porsi/{id}', [$porsi, 'show']);
+    $group->post('/porsi', [$porsi, 'create']);
+    $group->put('/porsi/{id}', [$porsi, 'update']);
+    $group->delete('/porsi/{id}', [$porsi, 'delete']);
 
     $group->get('/users', [$users, 'index']);
     $group->post('/users', [$users, 'create']);

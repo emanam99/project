@@ -23,7 +23,7 @@ export default function DaftarAuthLeftPanel({ tahunHijriyah, tahunMasehi }) {
           className="max-w-md"
         >
           <motion.img
-            src={APP_LOGO_URL()}
+            src={APP_LOGO_URL('dark')}
             alt="Logo Pendaftaran Santri"
             className="w-40 h-40 object-contain mb-4 drop-shadow-2xl"
             whileHover={{ scale: 1.03 }}

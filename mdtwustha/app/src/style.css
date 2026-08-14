@@ -113,7 +113,7 @@
     @apply min-h-screen flex items-center justify-center p-5 sm:p-6 relative overflow-hidden bg-gradient-to-br from-slate-100 via-blue-50/40 to-slate-200 dark:from-slate-950 dark:via-slate-900 dark:to-slate-900;
   }
   .ui-login-card {
-    @apply relative w-full bg-white/92 dark:bg-slate-800/75 backdrop-blur-2xl border border-slate-200/90 dark:border-white/[0.08] rounded-[1.75rem] p-7 sm:p-8 shadow-[0_24px_60px_-20px_rgba(15,23,42,0.28)] dark:shadow-[0_24px_60px_-18px_rgba(0,0,0,0.55)];
+    @apply relative w-full bg-white/90 dark:bg-slate-800/75 backdrop-blur-2xl border border-slate-200/90 dark:border-white/[0.08] rounded-[1.75rem] p-7 sm:p-8 shadow-[0_24px_60px_-20px_rgba(15,23,42,0.28)] dark:shadow-[0_24px_60px_-18px_rgba(0,0,0,0.55)];
   }
 
   .ui-error-box {

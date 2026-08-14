@@ -79,6 +79,34 @@ class SettingsController
             );
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+            $pengurusCountMap = [];
+            try {
+                $cntStmt = $this->db->query(
+                    'SELECT `role_id`, COUNT(DISTINCT `pengurus_id`) AS `cnt`
+                     FROM `pengurus___role`
+                     GROUP BY `role_id`'
+                );
+                foreach ($cntStmt->fetchAll(\PDO::FETCH_ASSOC) as $cr) {
+                    $pengurusCountMap[(int) ($cr['role_id'] ?? 0)] = (int) ($cr['cnt'] ?? 0);
+                }
+            } catch (\Throwable $e) {
+                error_log('SettingsController::getRolesConfig pengurus_count ' . $e->getMessage());
+            }
+
+            $fiturCountMap = [];
+            try {
+                $fiturCntStmt = $this->db->query(
+                    'SELECT `role_id`, COUNT(*) AS `cnt`
+                     FROM `role___fitur`
+                     GROUP BY `role_id`'
+                );
+                foreach ($fiturCntStmt->fetchAll(\PDO::FETCH_ASSOC) as $fr) {
+                    $fiturCountMap[(int) ($fr['role_id'] ?? 0)] = (int) ($fr['cnt'] ?? 0);
+                }
+            } catch (\Throwable $e) {
+                error_log('SettingsController::getRolesConfig fitur_count ' . $e->getMessage());
+            }
+
             $apps = RoleConfig::APPS;
             $roles = [];
             foreach ($rows as $row) {
@@ -88,10 +116,11 @@ class SettingsController
                 if (!in_array('uwaba', $allowedApps, true)) {
                     continue;
                 }
+                $roleId = (int) ($row['id'] ?? 0);
                 $permRaw = $row['permissions_json'] ?? null;
                 $appsRaw = $row['allowed_apps_json'] ?? null;
                 $roles[] = [
-                    'id' => (int) ($row['id'] ?? 0),
+                    'id' => $roleId,
                     'key' => $roleKey,
                     'label' => $row['label'] ?? RoleConfig::getRoleLabel($roleKey),
                     'allowed_apps' => $allowedApps,
@@ -101,6 +130,8 @@ class SettingsController
                     'permissions' => RolePolicyResolver::getPermissions($roleKey),
                     'permissions_policy_source' => ($permRaw === null || $permRaw === '') ? 'php' : 'database',
                     'allowed_apps_policy_source' => ($appsRaw === null || $appsRaw === '') ? 'php' : 'database',
+                    'pengurus_count' => $pengurusCountMap[$roleId] ?? 0,
+                    'fitur_count' => $fiturCountMap[$roleId] ?? 0,
                 ];
             }
 

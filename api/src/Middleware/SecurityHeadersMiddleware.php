@@ -13,9 +13,10 @@ class SecurityHeadersMiddleware implements MiddlewareInterface
 
     public function __construct()
     {
-        $this->isProduction = getenv('APP_ENV') === 'production' || 
-                              (file_exists(__DIR__ . '/../../.env') && 
-                               strpos(file_get_contents(__DIR__ . '/../../.env'), 'APP_ENV=production') !== false);
+        $this->isProduction = getenv('APP_ENV') === 'production';
+        if (!$this->isProduction && file_exists(__DIR__ . '/../../.env')) {
+            $this->isProduction = HttpsMiddleware::envFileHasExactKeyValue(__DIR__ . '/../../.env', 'APP_ENV', 'production');
+        }
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface

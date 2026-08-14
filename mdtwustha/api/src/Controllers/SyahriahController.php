@@ -763,9 +763,17 @@ class SyahriahController {
         if (!$stmt->fetch()) {
             return $this->jsonResponse($response, ['success' => false, 'message' => 'Pembayaran khusus tidak ditemukan']);
         }
+        $stmtC = $db->prepare('SELECT COUNT(*) FROM santri___syahriah_khusus_bayar WHERE khusus_id = :id');
+        $stmtC->execute(['id' => $id]);
+        if ((int) $stmtC->fetchColumn() > 0) {
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Tidak bisa dihapus: masih ada riwayat pembayaran. Hapus pembayarannya dulu.',
+            ]);
+        }
         $stmt = $db->prepare('DELETE FROM santri___syahriah_khusus WHERE id = :id');
         $stmt->execute(['id' => $id]);
-        return $this->jsonResponse($response, ['success' => true, 'message' => 'Pembayaran khusus dihapus']);
+        return $this->jsonResponse($response, ['success' => true, 'message' => 'Kewajiban khusus dihapus']);
     }
 
     public function batchDeleteKhusus(Request $request, Response $response): Response {
@@ -784,12 +792,31 @@ class SyahriahController {
 
         $db = Database::getInstance();
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmtCheck = $db->prepare("
+            SELECT k.id, k.nama, COUNT(b.id) AS jumlah_bayar
+            FROM santri___syahriah_khusus k
+            LEFT JOIN santri___syahriah_khusus_bayar b ON b.khusus_id = k.id
+            WHERE k.id IN ($placeholders)
+            GROUP BY k.id, k.nama
+            HAVING jumlah_bayar > 0
+        ");
+        $stmtCheck->execute($ids);
+        $blocked = $stmtCheck->fetchAll();
+        if ($blocked) {
+            $names = array_map(static fn($r) => (string) $r['nama'], $blocked);
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Tidak bisa dihapus: masih ada riwayat pembayaran pada ' . implode(', ', array_slice($names, 0, 3))
+                    . (count($names) > 3 ? '…' : '') . '. Hapus pembayarannya dulu.',
+            ]);
+        }
+
         $stmt = $db->prepare("DELETE FROM santri___syahriah_khusus WHERE id IN ($placeholders)");
         $stmt->execute($ids);
         $count = $stmt->rowCount();
         return $this->jsonResponse($response, [
             'success' => true,
-            'message' => "Pembayaran khusus dihapus ($count)",
+            'message' => "Kewajiban khusus dihapus ($count)",
         ]);
     }
 

@@ -334,21 +334,32 @@ class NilaiController {
         $placeholders = implode(',', array_fill(0, count($kelasIds), '?'));
 
         $stmt = $db->prepare("
-            SELECT DISTINCT mp.id,
+            SELECT mp.id,
                    mp.kitab_id,
                    mp.dari,
                    mp.sampai,
                    k.fan,
                    k.nama AS kitab_nama,
-                   k.musonnif
+                   k.musonnif,
+                   GROUP_CONCAT(DISTINCT km.kelas_id ORDER BY km.kelas_id SEPARATOR ',') AS kelas_ids
             FROM mapel mp
             INNER JOIN kitab k ON k.id = mp.kitab_id
             INNER JOIN kelas___mapel km ON km.mapel_id = mp.id
             WHERE km.kelas_id IN ($placeholders)
+            GROUP BY mp.id, mp.kitab_id, mp.dari, mp.sampai, k.fan, k.nama, k.musonnif
             ORDER BY k.fan ASC, k.nama ASC, mp.dari ASC
         ");
         $stmt->execute($kelasIds);
         $mapelList = $stmt->fetchAll();
+        foreach ($mapelList as &$m) {
+            $raw = trim((string) ($m['kelas_ids'] ?? ''));
+            $m['kelas_ids'] = $raw === ''
+                ? []
+                : array_values(array_filter(array_map('strval', explode(',', $raw))));
+            $m['id'] = (string) $m['id'];
+            $m['kitab_id'] = (string) $m['kitab_id'];
+        }
+        unset($m);
 
         $stmt = $db->prepare("
             SELECT s.id AS santri_id,
@@ -382,16 +393,22 @@ class NilaiController {
         $stmt->execute(array_merge($kelasIds, [$tanggalAwal, $tanggalAkhir]));
         $nilaiRows = $stmt->fetchAll();
 
-        // Entri terakhir per santri+kelas+mapel dalam rentang
+        // Entri terakhir per santri+kelas+mapel dalam rentang.
+        // Absen: selalu dari tanggal terbaru.
+        // Nilai: dari entri terbaru yang punya nilai (jangan tertimpa baris absen-only bernilai NULL).
         $cellMap = [];
         foreach ($nilaiRows as $row) {
             $sid = (string) $row['santri_id'];
             $kid = (string) $row['kelas_id'];
             $mid = (string) $row['mapel_id'];
+            $nilai = $row['nilai'] === null ? null : (float) $row['nilai'];
+            $prev = $cellMap[$sid][$kid][$mid] ?? null;
             $cellMap[$sid][$kid][$mid] = [
-                'nilai' => $row['nilai'] === null ? null : (float) $row['nilai'],
+                'nilai' => $nilai !== null ? $nilai : ($prev['nilai'] ?? null),
                 'absen' => $row['absen'],
-                'tanggal' => $row['tanggal_ujian'],
+                'tanggal' => $nilai !== null
+                    ? $row['tanggal_ujian']
+                    : ($prev['tanggal'] ?? $row['tanggal_ujian']),
             ];
         }
 

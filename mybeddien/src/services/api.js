@@ -35,6 +35,25 @@ function envApiUrlIsLocal(envUrl) {
   }
 }
 
+function envApiUrlPointsToLocalMachine(url) {
+  try {
+    const h = new URL(url.trim()).hostname
+    return h === 'localhost' || h === '127.0.0.1'
+  } catch {
+    return false
+  }
+}
+
+/** Derive production API URL from current hostname (api.{rootDomain}/api). */
+function deriveRemoteApiBaseUrl(hostname, protocol) {
+  const parts = hostname.split('.')
+  const rootDomain = parts.length > 2 ? parts.slice(-2).join('.') : hostname
+  if (!rootDomain || rootDomain.includes('localhost')) {
+    return 'http://localhost/api/public/api'
+  }
+  return `${protocol}//api.${rootDomain}/api`
+}
+
 /**
  * Sama konsep eBeddien getSlimApiUrl.
  * Dev lokal/LAN: pakai proxy Vite → Apache lokal agar cek WA memakai WA Node yang sama (api/.env).
@@ -55,14 +74,27 @@ export const getApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL
   if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
     const url = envUrl.trim().replace(/\/$/, '')
-    if (!import.meta.env.DEV || envApiUrlIsLocal(url)) {
-      return url
+    const onRemoteHost = typeof window !== 'undefined' && !isLocalDevHost(window.location.hostname)
+    if (!onRemoteHost || !envApiUrlPointsToLocalMachine(url)) {
+      if (!import.meta.env.DEV || envApiUrlIsLocal(url)) {
+        return url
+      }
+    } else if (typeof console !== 'undefined') {
+      console.warn(
+        '[myBeddien] VITE_API_BASE_URL mengarah ke localhost di host production — pakai API remote:',
+        deriveRemoteApiBaseUrl(window.location.hostname, protocol)
+      )
     }
+  } else if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '' && import.meta.env.DEV && !envApiUrlIsLocal(envUrl)) {
     if (typeof console !== 'undefined') {
       console.warn(
         '[myBeddien] VITE_API_BASE_URL mengarah ke server jauh saat dev — diabaikan, pakai API lokal agar cek WA ikut wa/ di mesin ini.'
       )
     }
+  }
+
+  if (typeof window !== 'undefined' && !isLocalDevHost(window.location.hostname)) {
+    return deriveRemoteApiBaseUrl(window.location.hostname, protocol)
   }
 
   if (isLocalDevHost(hostname)) {
@@ -1229,10 +1261,12 @@ export const cashlessAPI = {
       throw e
     }
   },
-  lookupWallet: async (code) => {
+  lookupWallet: async (code, akses) => {
     try {
+      const params = { code }
+      if (akses === 'toko' || akses === 'santri') params.akses = akses
       const response = await api.get(mybeddianPath('/v2/cashless/wallet-lookup'), {
-        params: { code },
+        params,
       })
       return response.data
     } catch (e) {
@@ -1240,9 +1274,11 @@ export const cashlessAPI = {
       throw e
     }
   },
-  transfer: async (body) => {
+  transfer: async (body, akses) => {
     try {
-      const response = await api.post(mybeddianPath('/v2/cashless/transfer'), body)
+      const payload = { ...body }
+      if (akses === 'toko' || akses === 'santri') payload.akses = akses
+      const response = await api.post(mybeddianPath('/v2/cashless/transfer'), payload)
       return response.data
     } catch (e) {
       if (e.response?.data) return e.response.data

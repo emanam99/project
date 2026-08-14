@@ -16,6 +16,7 @@ use App\Services\CashlessKartuService;
 use App\Services\CashlessPurchaseService;
 use App\Services\CashlessReconcileService;
 use App\Services\CashlessReversalService;
+use App\Services\CashlessStatementService;
 use App\Services\CashlessTopUpService;
 use App\Services\CashlessWithdrawService;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -1704,6 +1705,41 @@ class CashlessController
         } catch (\Exception $e) {
             error_log('CashlessController::getWithdrawHistory ' . $e->getMessage());
             return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal memuat riwayat tarik tunai'], 500);
+        }
+    }
+
+    /**
+     * GET /api/v2/cashless/statement/history — Riwayat mutasi wallet (top-up, tarik, belanja, transfer).
+     * Query: santri_id | pedagang_id (toko_id), limit
+     */
+    public function getStatementHistory(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $santriId = isset($params['santri_id']) ? (int) $params['santri_id'] : 0;
+            $pedagangId = isset($params['pedagang_id']) ? (int) $params['pedagang_id'] : 0;
+            if ($pedagangId <= 0 && isset($params['toko_id'])) {
+                $pedagangId = (int) $params['toko_id'];
+            }
+            $limit = isset($params['limit']) ? (int) $params['limit'] : 50;
+
+            $hasSantri = $santriId > 0;
+            $hasToko = $pedagangId > 0;
+            if ($hasSantri === $hasToko) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Isi salah satu: santri_id atau pedagang_id (toko_id)',
+                ], 400);
+            }
+
+            $svc = new CashlessStatementService($this->db);
+            $result = $hasSantri
+                ? $svc->listForSantri($santriId, $limit)
+                : $svc->listForPedagang($pedagangId, $limit);
+            return $this->jsonResponse($response, $result, 200);
+        } catch (\Exception $e) {
+            error_log('CashlessController::getStatementHistory ' . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal memuat riwayat transaksi'], 500);
         }
     }
 

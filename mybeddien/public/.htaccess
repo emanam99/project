@@ -27,6 +27,15 @@ AddDefaultCharset UTF-8
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  RewriteCond %{REQUEST_URI} ^/\.well-known/ [NC]
+  RewriteRule ^ - [L]
+
+  # Kebijakan Privasi publik (Play Store) — tanpa login / tanpa SPA
+  RewriteRule ^kebijakan-privasi/?$ /kebijakan-privasi.html [L]
+
+  # Permintaan hapus akun & data (Play Store Account deletion)
+  RewriteRule ^hapus-akun/?$ /hapus-akun.html [L]
+
   RewriteCond %{REQUEST_URI} ^/(robots\.txt|sitemap\.xml)$ [NC]
   RewriteRule ^ - [L]
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -166,11 +167,22 @@ export default function MapelPage() {
     } else alert(res.message || 'Gagal menyimpan')
   }
 
-  const handleDeleteKitab = async (row: KitabRow) => {
-    if (!confirm(`Hapus kitab "${formatKitabLabel(row)}"?`)) return
-    const res = await deleteKitab(row.id)
-    if (res.success) fetchLists()
-    else alert(res.message || 'Gagal menghapus')
+  const handleDeleteKitab = async () => {
+    if (kitabFormMode !== 'edit' || !kitabEditingId) return
+    const label = formatKitabLabel({
+      id: kitabEditingId,
+      fan: kitabForm.fan,
+      nama: kitabForm.nama,
+      musonnif: kitabForm.musonnif,
+    })
+    if (!confirm(`Hapus kitab "${label}"?`)) return
+    setKitabSubmitLoading(true)
+    const res = await deleteKitab(kitabEditingId)
+    setKitabSubmitLoading(false)
+    if (res.success) {
+      setKitabCanvasOpen(false)
+      fetchLists()
+    } else alert(res.message || 'Gagal menghapus')
   }
 
   const openAddMapel = () => {
@@ -248,11 +260,25 @@ export default function MapelPage() {
     } else alert(res.message || 'Gagal menyimpan')
   }
 
-  const handleDeleteMapel = async (row: MapelRow) => {
-    if (!confirm(`Hapus mapel "${formatMapelLabel(row)}"?`)) return
-    const res = await deleteMapel(row.id)
+  const handleDeleteMapel = async () => {
+    if (mapelFormMode !== 'edit' || !mapelEditingId) return
+    const kitab = kitabList.find((k) => k.id === mapelForm.kitab_id)
+    const label = formatMapelLabel({
+      id: mapelEditingId,
+      kitab_id: mapelForm.kitab_id,
+      dari: mapelForm.dari,
+      sampai: mapelForm.sampai,
+      fan: kitab?.fan,
+      kitab_nama: kitab?.nama,
+      musonnif: kitab?.musonnif,
+    })
+    if (!confirm(`Hapus mapel "${label}"?`)) return
+    setMapelSubmitLoading(true)
+    const res = await deleteMapel(mapelEditingId)
+    setMapelSubmitLoading(false)
     if (res.success) {
-      fetchLists()
+      setMapelCanvasOpen(false)
+      await fetchLists()
       refreshSummary()
     } else alert(res.message || 'Gagal menghapus')
   }
@@ -310,36 +336,32 @@ export default function MapelPage() {
                   <th className="px-4 py-3 font-medium">Fan</th>
                   <th className="px-4 py-3 font-medium">Nama Kitab</th>
                   <th className="px-4 py-3 font-medium">Musonnif</th>
-                  <th className="px-4 py-3 font-medium text-right w-32">Aksi</th>
                 </tr>
               </thead>
               <tbody className="ui-table-body">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-4">
+                    <td colSpan={3} className="px-3 py-4">
                       <ContentSkeleton rows={4} />
                     </td>
                   </tr>
                 ) : kitabList.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center ui-text-muted">
+                    <td colSpan={3} className="px-6 py-8 text-center ui-text-muted">
                       Belum ada kitab.
                     </td>
                   </tr>
                 ) : (
                   kitabList.map((row) => (
-                    <tr key={row.id} className="ui-table-row">
+                    <tr
+                      key={row.id}
+                      className="ui-table-row cursor-pointer"
+                      onClick={() => openEditKitab(row)}
+                      title="Klik untuk edit"
+                    >
                       <td className="px-4 py-3 font-medium">{row.fan}</td>
                       <td className="px-4 py-3">{row.nama}</td>
                       <td className="px-4 py-3 ui-text-muted">{row.musonnif || '—'}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button type="button" onClick={() => openEditKitab(row)} className="text-blue-600 dark:text-blue-400 hover:underline text-sm mr-3">
-                          Edit
-                        </button>
-                        <button type="button" onClick={() => handleDeleteKitab(row)} className="text-red-600 dark:text-red-400 hover:underline text-sm">
-                          Hapus
-                        </button>
-                      </td>
                     </tr>
                   ))
                 )}
@@ -376,37 +398,33 @@ export default function MapelPage() {
                   <th className="px-4 py-3 font-medium">Kitab</th>
                   <th className="px-4 py-3 font-medium">Musonnif</th>
                   <th className="px-4 py-3 font-medium">Dari – Sampai</th>
-                  <th className="px-4 py-3 font-medium text-right w-32">Aksi</th>
                 </tr>
               </thead>
               <tbody className="ui-table-body">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-4">
+                    <td colSpan={4} className="px-3 py-4">
                       <ContentSkeleton rows={4} />
                     </td>
                   </tr>
                 ) : mapelList.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center ui-text-muted">
+                    <td colSpan={4} className="px-6 py-8 text-center ui-text-muted">
                       {kitabList.length === 0 ? 'Tambah kitab dulu.' : 'Belum ada mapel.'}
                     </td>
                   </tr>
                 ) : (
                   mapelList.map((row) => (
-                    <tr key={row.id} className="ui-table-row">
+                    <tr
+                      key={row.id}
+                      className="ui-table-row cursor-pointer"
+                      onClick={() => void openEditMapel(row)}
+                      title="Klik untuk edit"
+                    >
                       <td className="px-4 py-3 font-medium">{row.fan}</td>
                       <td className="px-4 py-3">{row.kitab_nama || '—'}</td>
                       <td className="px-4 py-3 ui-text-muted">{row.musonnif || '—'}</td>
                       <td className="px-4 py-3 ui-text-muted">{formatMapelBatas(row)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button type="button" onClick={() => openEditMapel(row)} className="text-blue-600 dark:text-blue-400 hover:underline text-sm mr-3">
-                          Edit
-                        </button>
-                        <button type="button" onClick={() => handleDeleteMapel(row)} className="text-red-600 dark:text-red-400 hover:underline text-sm">
-                          Hapus
-                        </button>
-                      </td>
                     </tr>
                   ))
                 )}
@@ -461,121 +479,187 @@ export default function MapelPage() {
         </motion.div>
       </AnimatePresence>
 
-      {/* Offcanvas Kitab */}
-      <AnimatePresence>
-        {kitabCanvasOpen && (
+      {/* Portal ke body: fixed tidak terpengaruh transform RouteFade (gap di atas header) */}
+      {typeof document !== 'undefined' &&
+        createPortal(
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-40" onClick={() => setKitabCanvasOpen(false)} />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-              className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-slate-900 shadow-2xl z-50 flex flex-col"
-            >
-              <div className="px-5 py-4 border-b ui-divider flex items-center justify-between">
-                <h2 className="font-semibold text-lg">{kitabFormMode === 'add' ? 'Tambah Kitab' : 'Edit Kitab'}</h2>
-                <button type="button" onClick={() => setKitabCanvasOpen(false)} className="ui-text-muted text-xl">×</button>
-              </div>
-              <form onSubmit={handleKitabSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
-                <div>
-                  <label className="ui-label mb-1.5 block">Fan *</label>
-                  <input type="text" value={kitabForm.fan} onChange={(e) => setKitabForm((f) => ({ ...f, fan: e.target.value }))} className="ui-input w-full" required />
-                </div>
-                <div>
-                  <label className="ui-label mb-1.5 block">Nama Kitab *</label>
-                  <input type="text" value={kitabForm.nama} onChange={(e) => setKitabForm((f) => ({ ...f, nama: e.target.value }))} className="ui-input w-full" required />
-                </div>
-                <div>
-                  <label className="ui-label mb-1.5 block">Musonnif</label>
-                  <input type="text" value={kitabForm.musonnif} onChange={(e) => setKitabForm((f) => ({ ...f, musonnif: e.target.value }))} className="ui-input w-full" />
-                </div>
-                <button type="submit" disabled={kitabSubmitLoading} className="w-full ui-btn-primary disabled:opacity-60">
-                  {kitabSubmitLoading ? 'Menyimpan...' : 'Simpan'}
-                </button>
-              </form>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Offcanvas Mapel */}
-      <AnimatePresence>
-        {mapelCanvasOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 z-40" onClick={() => setMapelCanvasOpen(false)} />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-              className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-slate-900 shadow-2xl z-50 flex flex-col"
-            >
-              <div className="px-5 py-4 border-b ui-divider flex items-center justify-between">
-                <h2 className="font-semibold text-lg">{mapelFormMode === 'add' ? 'Tambah Mapel' : 'Edit Mapel'}</h2>
-                <button type="button" onClick={() => setMapelCanvasOpen(false)} className="ui-text-muted text-xl">×</button>
-              </div>
-              <form onSubmit={handleMapelSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
-                <div>
-                  <label className="ui-label mb-1.5 block">Kitab *</label>
-                  <select
-                    value={mapelForm.kitab_id}
-                    onChange={(e) => setMapelForm((f) => ({ ...f, kitab_id: e.target.value }))}
-                    className="ui-input w-full appearance-none"
-                    required
+            <AnimatePresence>
+              {kitabCanvasOpen && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000]"
+                    onClick={() => setKitabCanvasOpen(false)}
+                    aria-hidden
+                  />
+                  <motion.aside
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'tween', duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                    className="ui-offcanvas z-[1001]"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={kitabFormMode === 'add' ? 'Tambah kitab' : 'Edit kitab'}
                   >
-                    <option value="">Pilih kitab...</option>
-                    {kitabList.map((k) => (
-                      <option key={k.id} value={k.id}>
-                        {formatKitabLabel(k)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="ui-label mb-1.5 block">Dari</label>
-                    <input type="text" value={mapelForm.dari} onChange={(e) => setMapelForm((f) => ({ ...f, dari: e.target.value }))} className="ui-input w-full" placeholder="Bab / halaman awal" />
-                  </div>
-                  <div>
-                    <label className="ui-label mb-1.5 block">Sampai</label>
-                    <input type="text" value={mapelForm.sampai} onChange={(e) => setMapelForm((f) => ({ ...f, sampai: e.target.value }))} className="ui-input w-full" placeholder="Bab / halaman akhir" />
-                  </div>
-                </div>
-                <p className="text-xs ui-text-muted">Dari–sampai = batas lingkup pelajaran mapel ini.</p>
-
-                <div className="pt-2 border-t ui-divider space-y-2">
-                  <label className="ui-label block">Rombel</label>
-                  <p className="text-xs ui-text-muted">Centang rombel yang mempelajari mapel ini.</p>
-                  {kelasList.length === 0 ? (
-                    <p className="text-sm ui-text-muted italic">Belum ada rombel.</p>
-                  ) : (
-                    <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                      {kelasList.map((k) => (
-                        <label
-                          key={k.id}
-                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg border ui-divider cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/30 text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={mapelForm.kelas_ids.has(k.id)}
-                            onChange={() => toggleMapelKelas(k.id)}
-                          />
-                          {formatKelasLabel(k.nama_kelas, k.kel)}
-                        </label>
-                      ))}
+                    <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b ui-divider">
+                      <h2 className="font-semibold text-lg m-0">{kitabFormMode === 'add' ? 'Tambah Kitab' : 'Edit Kitab'}</h2>
+                      <button type="button" onClick={() => setKitabCanvasOpen(false)} aria-label="Tutup" className="ui-btn-close">
+                        ✕
+                      </button>
                     </div>
-                  )}
-                </div>
+                    <form onSubmit={handleKitabSubmit} className="flex-1 flex flex-col min-h-0">
+                      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                        <div>
+                          <label className="ui-label mb-1.5 block">Fan *</label>
+                          <input type="text" value={kitabForm.fan} onChange={(e) => setKitabForm((f) => ({ ...f, fan: e.target.value }))} className="ui-input w-full" required />
+                        </div>
+                        <div>
+                          <label className="ui-label mb-1.5 block">Nama Kitab *</label>
+                          <input type="text" value={kitabForm.nama} onChange={(e) => setKitabForm((f) => ({ ...f, nama: e.target.value }))} className="ui-input w-full" required />
+                        </div>
+                        <div>
+                          <label className="ui-label mb-1.5 block">Musonnif</label>
+                          <input type="text" value={kitabForm.musonnif} onChange={(e) => setKitabForm((f) => ({ ...f, musonnif: e.target.value }))} className="ui-input w-full" />
+                        </div>
+                      </div>
+                      <div
+                        className="flex-shrink-0 flex gap-3 px-5 py-4 border-t ui-divider"
+                        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
+                      >
+                        {kitabFormMode === 'edit' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteKitab()}
+                            disabled={kitabSubmitLoading}
+                            className="flex-1 py-2.5 px-4 text-sm font-medium rounded-lg text-red-600 dark:text-red-400 border border-red-500/30 hover:bg-red-500/10 transition disabled:opacity-50"
+                          >
+                            Hapus
+                          </button>
+                        )}
+                        <button type="submit" disabled={kitabSubmitLoading} className="flex-1 py-2.5 px-4 ui-btn-primary disabled:opacity-60">
+                          {kitabSubmitLoading ? 'Menyimpan...' : 'Simpan'}
+                        </button>
+                      </div>
+                    </form>
+                  </motion.aside>
+                </>
+              )}
+            </AnimatePresence>
 
-                <button type="submit" disabled={mapelSubmitLoading || (mapelFormMode === 'edit' && !kelasRombelLoaded)} className="w-full ui-btn-primary disabled:opacity-60">
-                  {mapelSubmitLoading ? 'Menyimpan...' : mapelFormMode === 'edit' && !kelasRombelLoaded ? 'Memuat rombel...' : 'Simpan'}
-                </button>
-              </form>
-            </motion.div>
-          </>
+            <AnimatePresence>
+              {mapelCanvasOpen && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000]"
+                    onClick={() => setMapelCanvasOpen(false)}
+                    aria-hidden
+                  />
+                  <motion.aside
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'tween', duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                    className="ui-offcanvas z-[1001]"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={mapelFormMode === 'add' ? 'Tambah mapel' : 'Edit mapel'}
+                  >
+                    <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b ui-divider">
+                      <h2 className="font-semibold text-lg m-0">{mapelFormMode === 'add' ? 'Tambah Mapel' : 'Edit Mapel'}</h2>
+                      <button type="button" onClick={() => setMapelCanvasOpen(false)} aria-label="Tutup" className="ui-btn-close">
+                        ✕
+                      </button>
+                    </div>
+                    <form onSubmit={handleMapelSubmit} className="flex-1 flex flex-col min-h-0">
+                      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                        <div>
+                          <label className="ui-label mb-1.5 block">Kitab *</label>
+                          <select
+                            value={mapelForm.kitab_id}
+                            onChange={(e) => setMapelForm((f) => ({ ...f, kitab_id: e.target.value }))}
+                            className="ui-input w-full appearance-none"
+                            required
+                          >
+                            <option value="">Pilih kitab...</option>
+                            {kitabList.map((k) => (
+                              <option key={k.id} value={k.id}>
+                                {formatKitabLabel(k)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="ui-label mb-1.5 block">Dari</label>
+                            <input type="text" value={mapelForm.dari} onChange={(e) => setMapelForm((f) => ({ ...f, dari: e.target.value }))} className="ui-input w-full" placeholder="Bab / halaman awal" />
+                          </div>
+                          <div>
+                            <label className="ui-label mb-1.5 block">Sampai</label>
+                            <input type="text" value={mapelForm.sampai} onChange={(e) => setMapelForm((f) => ({ ...f, sampai: e.target.value }))} className="ui-input w-full" placeholder="Bab / halaman akhir" />
+                          </div>
+                        </div>
+                        <p className="text-xs ui-text-muted">Dari–sampai = batas lingkup pelajaran mapel ini.</p>
+
+                        <div className="pt-2 border-t ui-divider space-y-2">
+                          <label className="ui-label block">Rombel</label>
+                          <p className="text-xs ui-text-muted">Centang rombel yang mempelajari mapel ini.</p>
+                          {kelasList.length === 0 ? (
+                            <p className="text-sm ui-text-muted italic">Belum ada rombel.</p>
+                          ) : (
+                            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                              {kelasList.map((k) => (
+                                <label
+                                  key={k.id}
+                                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg border ui-divider cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/30 text-sm"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={mapelForm.kelas_ids.has(k.id)}
+                                    onChange={() => toggleMapelKelas(k.id)}
+                                  />
+                                  {formatKelasLabel(k.nama_kelas, k.kel)}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div
+                        className="flex-shrink-0 flex gap-3 px-5 py-4 border-t ui-divider"
+                        style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}
+                      >
+                        {mapelFormMode === 'edit' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteMapel()}
+                            disabled={mapelSubmitLoading}
+                            className="flex-1 py-2.5 px-4 text-sm font-medium rounded-lg text-red-600 dark:text-red-400 border border-red-500/30 hover:bg-red-500/10 transition disabled:opacity-50"
+                          >
+                            Hapus
+                          </button>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={mapelSubmitLoading || (mapelFormMode === 'edit' && !kelasRombelLoaded)}
+                          className="flex-1 py-2.5 px-4 ui-btn-primary disabled:opacity-60"
+                        >
+                          {mapelSubmitLoading ? 'Menyimpan...' : mapelFormMode === 'edit' && !kelasRombelLoaded ? 'Memuat...' : 'Simpan'}
+                        </button>
+                      </div>
+                    </form>
+                  </motion.aside>
+                </>
+              )}
+            </AnimatePresence>
+          </>,
+          document.body,
         )}
-      </AnimatePresence>
     </div>
   )
 }

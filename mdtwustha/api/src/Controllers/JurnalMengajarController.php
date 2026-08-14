@@ -12,7 +12,7 @@ class JurnalMengajarController {
     private const VALID_JAM = ['jam_1', 'jam_2'];
     private const VALID_STATUS = ['mengajar', 'ijin', 'sakit'];
     private const TIMEZONE = 'Asia/Jakarta';
-    private const LOCK_HOUR = 18;
+    private const LOCK_HOUR = 24;
 
     public function index(Request $request, Response $response): Response {
         $params = $request->getQueryParams();
@@ -120,7 +120,7 @@ class JurnalMengajarController {
         if ($this->isLocked()) {
             return $this->jsonResponse($response, [
                 'success' => false,
-                'message' => 'Jurnal hari ini sudah ditutup (setelah pukul 18.00). Silakan isi lagi besok.',
+                'message' => 'Jurnal hari ini sudah ditutup (setelah pukul 24.00). Silakan isi lagi besok.',
             ]);
         }
 

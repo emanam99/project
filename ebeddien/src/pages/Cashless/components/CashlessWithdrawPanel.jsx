@@ -15,6 +15,7 @@ export default function CashlessWithdrawPanel({
   santriId,
   tokoId,
   onSuccess,
+  hideHistory = false,
 }) {
   const { showNotification } = useNotification()
   const [history, setHistory] = useState([])
@@ -39,7 +40,7 @@ export default function CashlessWithdrawPanel({
   }, [account?.id, account?.balance_cached])
 
   const loadHistory = useCallback(async () => {
-    if (!hasWallet) {
+    if (hideHistory || !hasWallet) {
       setHistory([])
       return
     }
@@ -54,7 +55,7 @@ export default function CashlessWithdrawPanel({
     } finally {
       setLoadingHistory(false)
     }
-  }, [hasWallet, isToko, sid, tid])
+  }, [hideHistory, hasWallet, isToko, sid, tid])
 
   useEffect(() => {
     loadHistory()
@@ -148,13 +149,15 @@ export default function CashlessWithdrawPanel({
           Tarik tunai mengurangi saldo wallet dan saldo kas sistem (jurnal WITHDRAWAL).
         </p>
 
-        <CashlessTopUpHistoryList
-          items={history}
-          loading={loadingHistory}
-          maxHeightClass="max-h-none"
-          title="Riwayat tarik tunai"
-          emptyText="Belum ada riwayat tarik tunai."
-        />
+        {!hideHistory ? (
+          <CashlessTopUpHistoryList
+            items={history}
+            loading={loadingHistory}
+            maxHeightClass="max-h-none"
+            title="Riwayat tarik tunai"
+            emptyText="Belum ada riwayat tarik tunai."
+          />
+        ) : null}
       </div>
 
       <div className="shrink-0 border-t border-gray-200 bg-white pt-3 dark:border-gray-700 dark:bg-gray-800">

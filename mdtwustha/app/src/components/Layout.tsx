@@ -385,18 +385,28 @@ export default function Layout() {
         </header>
 
         <main
-          className={`flex-1 min-h-0 overflow-x-hidden px-4 sm:px-6 lg:px-8 pb-[5.5rem] landscape:pb-6 lg:pb-6 ${
+          className={`flex-1 min-h-0 overflow-x-hidden px-4 sm:px-6 lg:px-8 ${
             location.pathname.startsWith('/pembayaran')
-              ? 'overflow-hidden py-3 sm:py-4'
-              : 'overflow-y-auto py-6'
+              ? 'overflow-hidden pt-3 sm:pt-4 pb-3 sm:pb-4 flex flex-col'
+              : 'overflow-y-auto pt-6 pb-6'
           }`}
         >
           <RouteFade
             routeKey={routeAnimKey(location.pathname)}
-            className={location.pathname.startsWith('/pembayaran') ? 'h-full min-h-0' : undefined}
+            className={
+              location.pathname.startsWith('/pembayaran')
+                ? 'flex-1 min-h-0'
+                : 'min-h-0'
+            }
           >
             {outlet}
           </RouteFade>
+          {/* Ruang kosong: konten tidak tertutup nav bawah (portrait HP/tablet) */}
+          <div
+            className="landscape:hidden lg:hidden shrink-0 pointer-events-none"
+            style={{ height: 'calc(5.75rem + env(safe-area-inset-bottom, 0px))' }}
+            aria-hidden
+          />
         </main>
       </div>
 

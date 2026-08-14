@@ -25,8 +25,14 @@ class UserAgentHelper
             'os_version' => null,
         ];
 
-        // Browser (order matters: Edge/Edg before Chrome)
-        if (preg_match('/Edg\/([0-9.]+)/i', $ua, $m)) {
+        // Browser (order matters: app native & Edge before Chrome)
+        if (preg_match('/myBeddienApp\/([0-9.]+)/i', $ua, $m)) {
+            $result['browser_name'] = 'Aplikasi Android';
+            $result['browser_version'] = $m[1];
+        } elseif (preg_match('/eBeddienApp\/([0-9.]+)/i', $ua, $m)) {
+            $result['browser_name'] = 'Aplikasi Android';
+            $result['browser_version'] = $m[1];
+        } elseif (preg_match('/Edg\/([0-9.]+)/i', $ua, $m)) {
             $result['browser_name'] = 'Edge';
             $result['browser_version'] = $m[1];
         } elseif (preg_match('/OPR\/([0-9.]+)/i', $ua, $m)) {

@@ -260,10 +260,13 @@ export function LoginFormCard() {
       }
     } catch (err) {
       console.error('WebAuthn login error:', err)
-      const msg =
-        err?.name === 'NotAllowedError'
-          ? 'Login dibatalkan atau tidak diizinkan.'
-          : err?.message || 'Login passkey gagal. Pastikan perangkat mendukung dan passkey sudah didaftarkan.'
+      let msg = err?.message || 'Login passkey gagal. Pastikan perangkat mendukung dan passkey sudah didaftarkan.'
+      if (err?.name === 'NotAllowedError') {
+        msg =
+          'Login sidik jari dibatalkan atau passkey tidak cocok di perangkat ini. Coba lagi, atau daftar ulang passkey dari Profil setelah login password.'
+      } else if (err?.name === 'InvalidStateError') {
+        msg = 'Passkey tidak tersedia di perangkat ini. Login dengan password, lalu daftar passkey ulang di Profil.'
+      }
       setError(msg)
     } finally {
       setLoading(false)

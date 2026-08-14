@@ -56,6 +56,36 @@ export function getHistoryBadge(item) {
   }
 }
 
+/** Badge riwayat statement ledger (masuk/keluar/belanja). */
+export function getStatementBadge(item) {
+  const journalType = String(item?.journal_type || '').toUpperCase()
+  const direction = String(item?.direction || '').toLowerCase()
+  const label = item?.label || item?.description || journalType || 'Transaksi'
+
+  if (journalType === 'PURCHASE' || label === 'Belanja') {
+    return { label: 'Belanja', color: '#ea580c' }
+  }
+  if (journalType === 'WITHDRAWAL' || label === 'Penarikan') {
+    return { label: 'Tarik', color: '#dc2626' }
+  }
+  if (journalType === 'REVERSAL') {
+    return { label: 'Batal', color: '#64748b' }
+  }
+  if (journalType === 'TOPUP' || (journalType === 'TRANSFER' && direction === 'in')) {
+    return { label: label === 'Top-up' ? 'Top-up' : label, color: '#059669' }
+  }
+  if (journalType === 'TRANSFER') {
+    return { label: direction === 'in' ? 'Masuk' : 'Keluar', color: '#0d9488' }
+  }
+  if (direction === 'in') {
+    return { label: 'Masuk', color: '#059669' }
+  }
+  if (direction === 'out') {
+    return { label: 'Keluar', color: '#dc2626' }
+  }
+  return { label, color: '#64748b' }
+}
+
 export function resolveActorLabel(item) {
   if (item?.actor_username) return item.actor_username
   if (item?.actor_user_id) return `user #${item.actor_user_id}`

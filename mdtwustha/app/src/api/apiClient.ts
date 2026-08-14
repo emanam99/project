@@ -244,6 +244,8 @@ export interface MapelRow {
   fan?: string
   kitab_nama?: string
   musonnif?: string
+  /** Kelas yang memakai mapel ini (dari rekap multi-kelas) */
+  kelas_ids?: string[]
 }
 
 export interface GetMapelResponse {
@@ -355,6 +357,82 @@ export interface GetAbsenRekapResponse {
     tanggal_akhir: string
     hari_efektif: number
   }
+}
+
+export interface AbsenRekapPublishBaris {
+  id?: string | number
+  santri_id: string
+  nomer_induk?: string | null
+  nama: string
+  h: number
+  s: number
+  i: number
+  a: number
+  jam1_h: number
+  jam1_s: number
+  jam1_i: number
+  jam1_a: number
+  jam2_h: number
+  jam2_s: number
+  jam2_i: number
+  jam2_a: number
+  urutan?: number
+}
+
+export interface AbsenRekapPublishRow {
+  id: string
+  kelas_id: string
+  judul: string
+  catatan?: string | null
+  tanggal_awal: string
+  tanggal_akhir: string
+  hijri_awal?: string | null
+  hijri_akhir?: string | null
+  publish_at: string
+  published_by?: string | null
+  publisher_nama?: string | null
+  nama_kelas?: string | null
+  kel?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  is_live?: boolean
+  seconds_until?: number
+  can_view_content?: boolean
+}
+
+export interface AbsenRekapPublishPayload {
+  judul: string
+  catatan?: string
+  kelas_id: string
+  tanggal_awal: string
+  tanggal_akhir: string
+  hijri_awal?: string
+  hijri_akhir?: string
+  publish_at: string
+  published_by?: string
+  akses?: string
+  baris: AbsenRekapPublishBaris[]
+}
+
+export function absenRekapRowsToPublishBaris(rows: AbsenRekapRow[]): AbsenRekapPublishBaris[] {
+  return rows.map((row, index) => ({
+    santri_id: String(row.santri_id),
+    nomer_induk: row.nomer_induk || null,
+    nama: row.nama,
+    h: (row.jam_1?.H ?? 0) + (row.jam_2?.H ?? 0),
+    s: (row.jam_1?.S ?? 0) + (row.jam_2?.S ?? 0),
+    i: (row.jam_1?.I ?? 0) + (row.jam_2?.I ?? 0),
+    a: (row.jam_1?.A ?? 0) + (row.jam_2?.A ?? 0),
+    jam1_h: row.jam_1?.H ?? 0,
+    jam1_s: row.jam_1?.S ?? 0,
+    jam1_i: row.jam_1?.I ?? 0,
+    jam1_a: row.jam_1?.A ?? 0,
+    jam2_h: row.jam_2?.H ?? 0,
+    jam2_s: row.jam_2?.S ?? 0,
+    jam2_i: row.jam_2?.I ?? 0,
+    jam2_a: row.jam_2?.A ?? 0,
+    urutan: index + 1,
+  }))
 }
 
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
@@ -557,6 +635,436 @@ export async function getAbsenRekap(
     return (await res.json()) as GetAbsenRekapResponse
   } catch {
     return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function getAbsenRekapPublishOccupied(
+  kelasId: string,
+  akses: string,
+  excludeId?: string
+): Promise<{ success: boolean; message?: string; data: string[] }> {
+  const params = new URLSearchParams({ kelas_id: kelasId, akses })
+  if (excludeId) params.set('exclude_id', excludeId)
+  const base = getBaseUrl() + '/absen/rekap/publish/occupied?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: string[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function listAbsenRekapPublish(
+  akses: string,
+  kelasId?: string
+): Promise<{ success: boolean; message?: string; data: AbsenRekapPublishRow[] }> {
+  const params = new URLSearchParams({ akses })
+  if (kelasId) params.set('kelas_id', kelasId)
+  const base = getBaseUrl() + '/absen/rekap/publish?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: AbsenRekapPublishRow[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function getAbsenRekapPublish(
+  id: string,
+  akses: string
+): Promise<{
+  success: boolean
+  message?: string
+  data?: AbsenRekapPublishRow
+  baris?: AbsenRekapPublishBaris[]
+  meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+}> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/absen/rekap/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: AbsenRekapPublishRow
+      baris?: AbsenRekapPublishBaris[]
+      meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+    }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}` }
+    return out
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function createAbsenRekapPublish(
+  payload: AbsenRekapPublishPayload
+): Promise<{ success: boolean; message?: string; data?: { id: number }; occupied?: string[] }> {
+  const base = getBaseUrl() + '/absen/rekap/publish'
+  try {
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: { id: number }
+      occupied?: string[]
+    }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function updateAbsenRekapPublish(
+  id: string,
+  payload: AbsenRekapPublishPayload
+): Promise<{ success: boolean; message?: string; occupied?: string[] }> {
+  const base = getBaseUrl() + '/absen/rekap/publish/' + encodeURIComponent(id)
+  try {
+    const res = await fetch(base, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as { success: boolean; message?: string; occupied?: string[] }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function deleteAbsenRekapPublish(
+  id: string,
+  akses: string
+): Promise<{ success: boolean; message?: string }> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/absen/rekap/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'DELETE', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}` }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export interface AbsenGuruRekapPublishBaris {
+  id?: string | number
+  pengurus_id: string
+  pengurus_nama: string
+  mengajar: number
+  ijin: number
+  sakit: number
+  jam1_mengajar: number
+  jam1_ijin: number
+  jam1_sakit: number
+  jam2_mengajar: number
+  jam2_ijin: number
+  jam2_sakit: number
+  urutan?: number
+}
+
+export interface AbsenGuruRekapPublishRow {
+  id: string
+  judul: string
+  catatan?: string | null
+  tanggal_awal: string
+  tanggal_akhir: string
+  hijri_awal?: string | null
+  hijri_akhir?: string | null
+  publish_at: string
+  published_by?: string | null
+  publisher_nama?: string | null
+  semua_kelas?: boolean
+  kelas_ids?: string[]
+  kelas_labels?: string[]
+  kelas_label?: string
+  created_at?: string | null
+  updated_at?: string | null
+  is_live?: boolean
+  seconds_until?: number
+  can_view_content?: boolean
+}
+
+export interface AbsenGuruRekapPublishPayload {
+  judul: string
+  catatan?: string
+  kelas_ids?: string[]
+  semua_kelas?: boolean
+  tanggal_awal: string
+  tanggal_akhir: string
+  hijri_awal?: string
+  hijri_akhir?: string
+  publish_at: string
+  published_by?: string
+  akses?: string
+  baris: AbsenGuruRekapPublishBaris[]
+}
+
+export function absenGuruRekapRowsToPublishBaris(rows: AbsenGuruRekapRow[]): AbsenGuruRekapPublishBaris[] {
+  return rows.map((row, index) => {
+    const total = row.total ?? {
+      mengajar: (row.jam_1?.mengajar ?? 0) + (row.jam_2?.mengajar ?? 0),
+      ijin: (row.jam_1?.ijin ?? 0) + (row.jam_2?.ijin ?? 0),
+      sakit: (row.jam_1?.sakit ?? 0) + (row.jam_2?.sakit ?? 0),
+    }
+    return {
+      pengurus_id: String(row.pengurus_id),
+      pengurus_nama: row.pengurus_nama,
+      mengajar: total.mengajar,
+      ijin: total.ijin,
+      sakit: total.sakit,
+      jam1_mengajar: row.jam_1?.mengajar ?? 0,
+      jam1_ijin: row.jam_1?.ijin ?? 0,
+      jam1_sakit: row.jam_1?.sakit ?? 0,
+      jam2_mengajar: row.jam_2?.mengajar ?? 0,
+      jam2_ijin: row.jam_2?.ijin ?? 0,
+      jam2_sakit: row.jam_2?.sakit ?? 0,
+      urutan: index + 1,
+    }
+  })
+}
+
+export async function getAbsenGuruRekapPublishOccupied(
+  akses: string,
+  kelasIds?: string[],
+  excludeId?: string
+): Promise<{ success: boolean; message?: string; data: string[] }> {
+  const params = new URLSearchParams({ akses })
+  if (kelasIds?.length) params.set('kelas_ids', kelasIds.join(','))
+  if (excludeId) params.set('exclude_id', excludeId)
+  const base = getBaseUrl() + '/absen/jurnal/rekap-absen-guru/publish/occupied?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: string[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function listAbsenGuruRekapPublish(
+  akses: string
+): Promise<{ success: boolean; message?: string; data: AbsenGuruRekapPublishRow[] }> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/absen/jurnal/rekap-absen-guru/publish?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: AbsenGuruRekapPublishRow[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function getAbsenGuruRekapPublish(
+  id: string,
+  akses: string
+): Promise<{
+  success: boolean
+  message?: string
+  data?: AbsenGuruRekapPublishRow
+  baris?: AbsenGuruRekapPublishBaris[]
+  meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+}> {
+  const params = new URLSearchParams({ akses })
+  const base =
+    getBaseUrl() + '/absen/jurnal/rekap-absen-guru/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: AbsenGuruRekapPublishRow
+      baris?: AbsenGuruRekapPublishBaris[]
+      meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+    }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}` }
+    return out
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function createAbsenGuruRekapPublish(
+  payload: AbsenGuruRekapPublishPayload
+): Promise<{ success: boolean; message?: string; data?: { id: number }; occupied?: string[] }> {
+  const base = getBaseUrl() + '/absen/jurnal/rekap-absen-guru/publish'
+  try {
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: { id: number }
+      occupied?: string[]
+    }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function updateAbsenGuruRekapPublish(
+  id: string,
+  payload: AbsenGuruRekapPublishPayload
+): Promise<{ success: boolean; message?: string; occupied?: string[] }> {
+  const base = getBaseUrl() + '/absen/jurnal/rekap-absen-guru/publish/' + encodeURIComponent(id)
+  try {
+    const res = await fetch(base, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as { success: boolean; message?: string; occupied?: string[] }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function deleteAbsenGuruRekapPublish(
+  id: string,
+  akses: string
+): Promise<{ success: boolean; message?: string }> {
+  const params = new URLSearchParams({ akses })
+  const base =
+    getBaseUrl() + '/absen/jurnal/rekap-absen-guru/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'DELETE', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}` }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export type JadwalHari = 'senin' | 'selasa' | 'rabu' | 'kamis' | 'jumat' | 'sabtu' | 'ahad'
+
+export interface JadwalRow {
+  id: string
+  kelas_id: string
+  mapel_id: string
+  pengurus_id: string
+  hari: JadwalHari | string
+  jam_dari: string
+  jam_sampai: string
+  ket_jam: number
+  aktif: boolean
+  nama_kelas?: string | null
+  kel?: string | null
+  pengurus_nama?: string | null
+  pengurus_nip?: string | null
+  mapel_fan?: string | null
+  mapel_kitab?: string | null
+  mapel_musonnif?: string | null
+  mapel_dari?: string | null
+  mapel_sampai?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface JadwalListFilters {
+  akses: string
+  kelas_id?: string
+  mapel_id?: string
+  pengurus_id?: string
+  hari?: string
+  aktif?: 'all' | '1' | '0'
+}
+
+export interface JadwalPayload {
+  kelas_id: string
+  mapel_id: string
+  pengurus_id: string
+  hari: string
+  jam_dari: string
+  jam_sampai: string
+  ket_jam: number
+  aktif?: boolean
+  akses?: string
+}
+
+export async function getJadwal(
+  filters: JadwalListFilters
+): Promise<{ success: boolean; message?: string; data: JadwalRow[] }> {
+  const params = new URLSearchParams({ akses: filters.akses })
+  if (filters.kelas_id) params.set('kelas_id', filters.kelas_id)
+  if (filters.mapel_id) params.set('mapel_id', filters.mapel_id)
+  if (filters.pengurus_id) params.set('pengurus_id', filters.pengurus_id)
+  if (filters.hari) params.set('hari', filters.hari)
+  if (filters.aktif && filters.aktif !== 'all') params.set('aktif', filters.aktif)
+  const base = getBaseUrl() + '/jadwal?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: JadwalRow[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function createJadwal(
+  payload: JadwalPayload
+): Promise<{ success: boolean; message?: string; data?: JadwalRow }> {
+  const base = getBaseUrl() + '/jadwal'
+  try {
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: JadwalRow }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}` }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function updateJadwal(
+  id: string,
+  payload: Partial<JadwalPayload> & { aktif?: boolean; akses?: string }
+): Promise<{ success: boolean; message?: string; data?: JadwalRow }> {
+  const base = getBaseUrl() + '/jadwal/' + encodeURIComponent(id)
+  try {
+    const res = await fetch(base, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: JadwalRow }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}` }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function deleteJadwal(
+  id: string,
+  akses: string
+): Promise<{ success: boolean; message?: string }> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/jadwal/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'DELETE', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}` }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
   }
 }
 
@@ -850,6 +1358,366 @@ export async function getNilaiRekap(
     return out
   } catch {
     return { success: false, message: 'Koneksi gagal', mapel: [], data: [] }
+  }
+}
+
+export interface NilaiRekapPublishRow {
+  id: string
+  judul: string
+  catatan?: string | null
+  tanggal_awal: string
+  tanggal_akhir: string
+  hijri_awal?: string | null
+  hijri_akhir?: string | null
+  tampil?: NilaiRekapTampil | string
+  publish_at: string
+  published_by?: string | null
+  publisher_nama?: string | null
+  kelas_ids?: string[]
+  kelas_labels?: string[]
+  kelas_label?: string
+  created_at?: string | null
+  updated_at?: string | null
+  is_live?: boolean
+  seconds_until?: number
+  can_view_content?: boolean
+}
+
+export interface NilaiRekapPublishPayload {
+  judul: string
+  catatan?: string
+  kelas_ids: string[]
+  tanggal_awal: string
+  tanggal_akhir: string
+  hijri_awal?: string
+  hijri_akhir?: string
+  tampil?: NilaiRekapTampil | string
+  publish_at: string
+  published_by?: string
+  akses?: string
+  mapel: MapelRow[]
+  baris: NilaiRekapRow[]
+}
+
+export async function getNilaiRekapPublishOccupied(
+  akses: string,
+  kelasIds: string[],
+  excludeId?: string
+): Promise<{ success: boolean; message?: string; data: string[] }> {
+  const params = new URLSearchParams({ akses, kelas_ids: kelasIds.join(',') })
+  if (excludeId) params.set('exclude_id', excludeId)
+  const base = getBaseUrl() + '/nilai/rekap/publish/occupied?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: string[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function listNilaiRekapPublish(
+  akses: string
+): Promise<{ success: boolean; message?: string; data: NilaiRekapPublishRow[] }> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/nilai/rekap/publish?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: NilaiRekapPublishRow[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function getNilaiRekapPublish(
+  id: string,
+  akses: string
+): Promise<{
+  success: boolean
+  message?: string
+  data?: NilaiRekapPublishRow
+  mapel?: MapelRow[]
+  baris?: NilaiRekapRow[]
+  meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+}> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/nilai/rekap/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: NilaiRekapPublishRow
+      mapel?: MapelRow[]
+      baris?: NilaiRekapRow[]
+      meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+    }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}` }
+    return out
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function createNilaiRekapPublish(
+  payload: NilaiRekapPublishPayload
+): Promise<{ success: boolean; message?: string; data?: { id: number }; occupied?: string[] }> {
+  const base = getBaseUrl() + '/nilai/rekap/publish'
+  try {
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: { id: number }
+      occupied?: string[]
+    }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function updateNilaiRekapPublish(
+  id: string,
+  payload: NilaiRekapPublishPayload
+): Promise<{ success: boolean; message?: string; occupied?: string[] }> {
+  const base = getBaseUrl() + '/nilai/rekap/publish/' + encodeURIComponent(id)
+  try {
+    const res = await fetch(base, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as { success: boolean; message?: string; occupied?: string[] }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function deleteNilaiRekapPublish(
+  id: string,
+  akses: string
+): Promise<{ success: boolean; message?: string }> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/nilai/rekap/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'DELETE', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}` }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+/** Publish gabungan nilai + absen santri */
+export interface RekapPublishAbsenBaris {
+  santri_id: string
+  nomer_induk?: string | null
+  nama: string
+  kelas_id: string
+  nama_kelas?: string | null
+  kel?: string | null
+  h: number
+  s: number
+  i: number
+  a: number
+  jam1_h: number
+  jam1_s: number
+  jam1_i: number
+  jam1_a: number
+  jam2_h: number
+  jam2_s: number
+  jam2_i: number
+  jam2_a: number
+  urutan?: number
+}
+
+export interface RekapPublishRow {
+  id: string
+  judul: string
+  catatan?: string | null
+  nilai_tanggal_awal: string
+  nilai_tanggal_akhir: string
+  nilai_hijri_awal?: string | null
+  nilai_hijri_akhir?: string | null
+  absen_tanggal_awal: string
+  absen_tanggal_akhir: string
+  absen_hijri_awal?: string | null
+  absen_hijri_akhir?: string | null
+  tampil_nilai?: NilaiRekapTampil | string
+  publish_at: string
+  published_by?: string | null
+  publisher_nama?: string | null
+  kelas_ids?: string[]
+  kelas_labels?: string[]
+  kelas_label?: string
+  created_at?: string | null
+  updated_at?: string | null
+  is_live?: boolean
+  seconds_until?: number
+  can_view_content?: boolean
+}
+
+export interface RekapPublishPayload {
+  judul: string
+  catatan?: string
+  kelas_ids: string[]
+  nilai_tanggal_awal: string
+  nilai_tanggal_akhir: string
+  nilai_hijri_awal?: string
+  nilai_hijri_akhir?: string
+  absen_tanggal_awal: string
+  absen_tanggal_akhir: string
+  absen_hijri_awal?: string
+  absen_hijri_akhir?: string
+  tampil_nilai?: NilaiRekapTampil | string
+  publish_at: string
+  published_by?: string
+  akses?: string
+  mapel: MapelRow[]
+  baris_nilai: NilaiRekapRow[]
+  baris_absen: RekapPublishAbsenBaris[]
+}
+
+export function absenRekapToUnifiedBaris(
+  rows: AbsenRekapRow[],
+  kelasId: string,
+  namaKelas?: string,
+  kel?: string
+): RekapPublishAbsenBaris[] {
+  return absenRekapRowsToPublishBaris(rows).map((b) => ({
+    ...b,
+    kelas_id: kelasId,
+    nama_kelas: namaKelas || null,
+    kel: kel || null,
+  }))
+}
+
+export async function getRekapPublishOccupied(
+  akses: string,
+  kelasIds: string[],
+  excludeId?: string
+): Promise<{ success: boolean; message?: string; data: string[] }> {
+  const params = new URLSearchParams({ akses, kelas_ids: kelasIds.join(',') })
+  if (excludeId) params.set('exclude_id', excludeId)
+  const base = getBaseUrl() + '/rekap/publish/occupied?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: string[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function listRekapPublish(
+  akses: string
+): Promise<{ success: boolean; message?: string; data: RekapPublishRow[] }> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/rekap/publish?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string; data?: RekapPublishRow[] }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}`, data: [] }
+    return { success: true, data: out.data || [] }
+  } catch {
+    return { success: false, message: 'Koneksi gagal', data: [] }
+  }
+}
+
+export async function getRekapPublish(
+  id: string,
+  akses: string
+): Promise<{
+  success: boolean
+  message?: string
+  data?: RekapPublishRow
+  mapel?: MapelRow[]
+  baris_nilai?: NilaiRekapRow[]
+  baris_absen?: RekapPublishAbsenBaris[]
+  meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+}> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/rekap/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'GET', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: RekapPublishRow
+      mapel?: MapelRow[]
+      baris_nilai?: NilaiRekapRow[]
+      baris_absen?: RekapPublishAbsenBaris[]
+      meta?: { locked?: boolean; publish_at?: string; seconds_until?: number }
+    }
+    if (!res.ok) return { success: false, message: out.message || `Error ${res.status}` }
+    return out
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function createRekapPublish(
+  payload: RekapPublishPayload
+): Promise<{ success: boolean; message?: string; data?: { id: number }; occupied?: string[] }> {
+  const base = getBaseUrl() + '/rekap/publish'
+  try {
+    const res = await fetch(base, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as {
+      success: boolean
+      message?: string
+      data?: { id: number }
+      occupied?: string[]
+    }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function updateRekapPublish(
+  id: string,
+  payload: RekapPublishPayload
+): Promise<{ success: boolean; message?: string; occupied?: string[] }> {
+  const base = getBaseUrl() + '/rekap/publish/' + encodeURIComponent(id)
+  try {
+    const res = await fetch(base, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const out = (await res.json()) as { success: boolean; message?: string; occupied?: string[] }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}`, occupied: out.occupied }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
+  }
+}
+
+export async function deleteRekapPublish(
+  id: string,
+  akses: string
+): Promise<{ success: boolean; message?: string }> {
+  const params = new URLSearchParams({ akses })
+  const base = getBaseUrl() + '/rekap/publish/' + encodeURIComponent(id) + '?' + params.toString()
+  try {
+    const res = await fetch(base, { method: 'DELETE', headers: { Accept: 'application/json' } })
+    const out = (await res.json()) as { success: boolean; message?: string }
+    return res.ok ? out : { success: false, message: out.message || `Error ${res.status}` }
+  } catch {
+    return { success: false, message: 'Koneksi gagal' }
   }
 }
 

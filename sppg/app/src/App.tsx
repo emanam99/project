@@ -13,6 +13,9 @@ import BniDirectPage from './pages/BniDirectPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import MenungguAksesPage from './pages/MenungguAksesPage'
+import PorsiDetailPage from './pages/PorsiDetailPage'
+import PorsiFormPage from './pages/PorsiFormPage'
+import PorsiListPage from './pages/PorsiListPage'
 import RekeningPage from './pages/RekeningPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
@@ -89,6 +92,16 @@ export default function App() {
                 }
               />
               <Route path="/belanja/:id" element={<BelanjaDetailPage />} />
+              <Route path="/porsi" element={<PorsiListPage />} />
+              <Route
+                path="/porsi/baru"
+                element={
+                  <ManagerOnly>
+                    <PorsiFormPage />
+                  </ManagerOnly>
+                }
+              />
+              <Route path="/porsi/:id" element={<PorsiDetailPage />} />
               <Route path="/rekening" element={<RekeningPage />} />
               <Route path="/pengaturan" element={<SettingsPage />} />
               <Route

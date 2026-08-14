@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   getKelas,
@@ -21,6 +21,11 @@ import PickDateHijriMasehi, {
 import { formatMapelLabel } from '../utils/formatMapel'
 import { exportNilaiRekapToExcel } from '../utils/exportExcel'
 import MaterialIcon from '../components/MaterialIcon'
+import { getStoredUser } from '../utils/auth'
+
+function isAdminAkses(akses?: string) {
+  return akses === 'super_admin' || akses === 'admin'
+}
 
 const TAMPIL_OPTIONS: { value: NilaiRekapTampil; label: string }[] = [
   { value: 'nilai', label: 'Nilai saja' },
@@ -58,11 +63,14 @@ function rowNilaiStats(row: NilaiRekapRow, mapel: MapelRow[]) {
     if (v !== null && v !== undefined && !Number.isNaN(Number(v))) values.push(Number(v))
   }
   const sum = values.reduce((a, b) => a + b, 0)
-  const avg = values.length ? Math.round((sum / values.length) * 100) / 100 : null
+  const avg = values.length ? Math.round((sum / values.length) * 10) / 10 : null
   return { sum: values.length ? Math.round(sum * 100) / 100 : null, avg, count: values.length }
 }
 
 export default function NilaiRekapPage() {
+  const navigate = useNavigate()
+  const user = getStoredUser()
+  const canPublish = isAdminAkses(user?.akses)
   const masehiMax = masehiMaxRekap()
   const [kelasList, setKelasList] = useState<KelasRow[]>([])
   const [selectedKelasIds, setSelectedKelasIds] = useState<Set<string>>(new Set())
@@ -240,10 +248,42 @@ export default function NilaiRekapPage() {
         <Link to="/nilai" className="text-xs text-blue-600 dark:text-blue-400 hover:underline mb-1 inline-flex items-center gap-1">
           <MaterialIcon name="arrow_back" size={14} /> Kembali ke Nilai
         </Link>
-        <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Rekap Nilai</h1>
-        <p className="text-xs ui-text-muted mt-0.5">
-          Nilai/absen per santri, mapel sebagai kolom, rentang tanggal ujian.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Rekap Nilai</h1>
+            <p className="text-xs ui-text-muted mt-0.5">
+              Nilai/absen per santri, mapel sebagai kolom, rentang tanggal ujian.
+            </p>
+            <Link
+              to="/rekap/hasil"
+              className="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+            >
+              <MaterialIcon name="publish" size={14} /> Hasil Rekap (publish)
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-1.5 shrink-0">
+            {canPublish && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate('/rekap/publish', {
+                    state: {
+                      from: 'nilai',
+                      kelas_ids: selectedIdsArr,
+                      nilai_dari: tanggalDari,
+                      nilai_sampai: tanggalSampai,
+                      tampil_nilai: tampil,
+                    },
+                  })
+                }
+                disabled={loading || selectedIdsArr.length === 0 || !tanggalDari?.masehi || !tanggalSampai?.masehi}
+                className="px-2.5 py-1.5 text-xs ui-btn-primary rounded-md disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                <MaterialIcon name="publish" size={16} /> Publish
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="ui-card p-3 space-y-2.5">
@@ -375,7 +415,7 @@ export default function NilaiRekapPage() {
                   </th>
                 )}
                 <th
-                  className="px-2 py-1.5 font-medium sticky left-0 bg-inherit min-w-[8rem]"
+                  className="px-2 py-1.5 font-medium sticky left-0 z-30 bg-slate-100 dark:bg-slate-900 min-w-[8rem] shadow-[4px_0_8px_-4px_rgba(0,0,0,0.25)]"
                   rowSpan={tampil === 'keduanya' ? 2 : 1}
                 >
                   Nama Santri
@@ -459,14 +499,14 @@ export default function NilaiRekapPage() {
                 rows.map((row, index) => {
                   const stats = showNilai ? rowNilaiStats(row, mapelCols) : null
                   return (
-                    <tr key={`${row.kelas_id || ''}-${row.santri_id}`} className="ui-table-row">
+                    <tr key={`${row.kelas_id || ''}-${row.santri_id}`} className="ui-table-row group">
                       <td className="px-1 py-1 text-center ui-text-muted tabular-nums">{index + 1}</td>
                       {showKelasCol && (
                         <td className="px-2 py-1 ui-text-muted">
                           {formatKelasLabel(row.nama_kelas || '', row.kel)}
                         </td>
                       )}
-                      <td className="px-2 py-1 sticky left-0 bg-inherit">
+                      <td className="px-2 py-1 sticky left-0 z-20 bg-white dark:bg-slate-800 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/95 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.2)]">
                         <div className="font-medium text-slate-800 dark:text-slate-200 leading-tight">{row.nama}</div>
                         {row.nomer_induk && (
                           <div className="text-[10px] ui-text-muted leading-tight">{row.nomer_induk}</div>
@@ -525,7 +565,7 @@ export default function NilaiRekapPage() {
                             {stats.sum !== null ? stats.sum : <span className="ui-text-muted font-normal">—</span>}
                           </td>
                           <td className="px-1.5 py-1 text-center border-l ui-divider tabular-nums font-semibold bg-slate-50/60 dark:bg-slate-800/30">
-                            {stats.avg !== null ? stats.avg : <span className="ui-text-muted font-normal">—</span>}
+                            {stats.avg !== null ? stats.avg.toFixed(1) : <span className="ui-text-muted font-normal">—</span>}
                           </td>
                         </>
                       )}
@@ -541,7 +581,7 @@ export default function NilaiRekapPage() {
       {rows.length > 0 && mapelCols.length > 0 && (
         <p className="text-[10px] ui-text-muted leading-snug">
           Total & rata-rata dihitung dari nilai mapel yang terisi. Jika ada beberapa ujian mapel dalam
-          rentang, dipakai tanggal ujian terakhir.
+          rentang, dipakai nilai terakhir yang terisi (baris absen tanpa nilai tidak menimpa nilai sebelumnya).
         </p>
       )}
     </motion.div>

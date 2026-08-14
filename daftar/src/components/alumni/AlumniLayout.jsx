@@ -54,7 +54,7 @@ function AlumniLayout() {
           <div className="flex items-center gap-3 min-w-0">
             <Link to={alumniPath()} className="shrink-0">
               <img
-                src={APP_LOGO_URL()}
+                src={APP_LOGO_URL(theme)}
                 alt="Logo"
                 className="w-10 h-10 object-contain"
               />

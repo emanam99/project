@@ -32,7 +32,8 @@ export function getGambarUrl(path) {
   return `${base}${p}`
 }
 
-/** Logo aplikasi daftar (santri & alumni) + favicon — path CDN `/logo.png` */
-export function APP_LOGO_URL() {
-  return getGambarUrl('/logo.png')
+/** Logo aplikasi daftar (santri & alumni) — light.webp / dark.webp di folder gambar. */
+export function APP_LOGO_URL(theme = 'light') {
+  const file = theme === 'dark' ? '/dark.webp' : '/light.webp'
+  return getGambarUrl(file)
 }

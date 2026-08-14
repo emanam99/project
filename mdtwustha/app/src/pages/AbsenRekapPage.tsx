@@ -12,6 +12,11 @@ import PickDateHijriMasehi, {
 } from '../components/PickDateHijri/PickDateHijriMasehi'
 import { exportAbsenRekapToExcel } from '../utils/exportExcel'
 import MaterialIcon from '../components/MaterialIcon'
+import { getStoredUser } from '../utils/auth'
+
+function isAdminAkses(akses?: string) {
+  return akses === 'super_admin' || akses === 'admin'
+}
 
 const STATUS_LABEL: Record<AbsenStatus, string> = {
   H: 'Hadir',
@@ -64,6 +69,8 @@ function CountCell({ value, status }: { value: number; status: AbsenStatus }) {
 
 export default function AbsenRekapPage() {
   const navigate = useNavigate()
+  const user = getStoredUser()
+  const canPublish = isAdminAkses(user?.akses)
   const masehiMax = masehiMaxRekap()
   const [kelasList, setKelasList] = useState<KelasRow[]>([])
   const [kelasId, setKelasId] = useState('')
@@ -205,15 +212,42 @@ export default function AbsenRekapPage() {
           <p className="ui-subtitle mt-1">
             Pilih rentang tanggal (Hijriyah & Masehi). Hari tanpa data dihitung Hadir (H).
           </p>
+          <Link
+            to="/rekap/hasil"
+            className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+          >
+            <MaterialIcon name="publish" size={14} /> Hasil Rekap (publish)
+          </Link>
         </div>
-        <button
-          type="button"
-          onClick={handleExportExcel}
-          disabled={exporting || loading || rows.length === 0}
-          className="px-4 py-2.5 text-sm ui-btn-secondary shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {exporting ? 'Mengekspor…' : 'Ekspor Excel'}
-        </button>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {canPublish && (
+            <button
+              type="button"
+              onClick={() =>
+                navigate('/rekap/publish', {
+                  state: {
+                    from: 'absen',
+                    kelas_ids: kelasId ? [kelasId] : [],
+                    absen_dari: tanggalDari,
+                    absen_sampai: tanggalSampai,
+                  },
+                })
+              }
+              disabled={loading || !kelasId || !tanggalDari?.masehi || !tanggalSampai?.masehi}
+              className="px-4 py-2.5 text-sm ui-btn-primary disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+            >
+              <MaterialIcon name="publish" size={18} /> Publish
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={exporting || loading || rows.length === 0}
+            className="px-4 py-2.5 text-sm ui-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? 'Mengekspor…' : 'Ekspor Excel'}
+          </button>
+        </div>
       </div>
 
       {exportError && <div className="ui-error-box px-4 py-3 text-sm">{exportError}</div>}

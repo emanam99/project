@@ -39,6 +39,7 @@ return function (\Slim\App $app): void {
         $group->get('/topup/history', [CashlessController::class, 'getTopUpHistory']);
         $group->post('/withdraw', [CashlessController::class, 'withdraw']);
         $group->get('/withdraw/history', [CashlessController::class, 'getWithdrawHistory']);
+        $group->get('/statement/history', [CashlessController::class, 'getStatementHistory']);
         $group->post('/journal/{id}/reverse', [CashlessController::class, 'reverseJournal']);
         $group->post('/reconcile', [CashlessController::class, 'reconcileAccounts']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::cashlessAdminSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::CASHLESS_ADMIN_SELECTORS)))->add(new AuthMiddleware());

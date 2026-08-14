@@ -5,7 +5,7 @@ import { useNotification } from '../../../contexts/NotificationContext'
 import { formatSaldo, METODE_OPTIONS } from '../TopUpCashlessFormat'
 import CashlessTopUpHistoryList from './CashlessTopUpHistoryList'
 
-export default function CetakKartuSantriTopUpPanel({ account, santriId, onSuccess }) {
+export default function CetakKartuSantriTopUpPanel({ account, santriId, onSuccess, hideHistory = false }) {
   const { showNotification } = useNotification()
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -25,7 +25,7 @@ export default function CetakKartuSantriTopUpPanel({ account, santriId, onSucces
   }, [account?.id, account?.balance_cached])
 
   const loadHistory = useCallback(async () => {
-    if (!sid || !hasWallet) {
+    if (hideHistory || !sid || !hasWallet) {
       setHistory([])
       return
     }
@@ -38,7 +38,7 @@ export default function CetakKartuSantriTopUpPanel({ account, santriId, onSucces
     } finally {
       setLoadingHistory(false)
     }
-  }, [sid, hasWallet])
+  }, [hideHistory, sid, hasWallet])
 
   useEffect(() => {
     loadHistory()
@@ -120,11 +120,13 @@ export default function CetakKartuSantriTopUpPanel({ account, santriId, onSucces
           </strong>
         </div>
 
-        <CashlessTopUpHistoryList
-          items={history}
-          loading={loadingHistory}
-          maxHeightClass="max-h-none"
-        />
+        {!hideHistory ? (
+          <CashlessTopUpHistoryList
+            items={history}
+            loading={loadingHistory}
+            maxHeightClass="max-h-none"
+          />
+        ) : null}
       </div>
 
       <div className="shrink-0 border-t border-gray-200 bg-white pt-3 dark:border-gray-700 dark:bg-gray-800">

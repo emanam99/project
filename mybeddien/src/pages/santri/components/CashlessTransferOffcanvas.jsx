@@ -22,6 +22,7 @@ export default function CashlessTransferOffcanvas({
   saldo = 0,
   onSuccess,
   onNotify,
+  akses = 'santri',
 }) {
   const handleClose = useOffcanvasBackClose(isOpen, onClose)
   const [isDesktop, setIsDesktop] = useState(() => isDesktopLayout())
@@ -65,7 +66,7 @@ export default function CashlessTransferOffcanvas({
       setBusy(true)
       setError('')
       try {
-        const res = await cashlessAPI.lookupWallet(normalized)
+        const res = await cashlessAPI.lookupWallet(normalized, akses)
         if (res?.success && res.data?.code) {
           setDestCode(res.data.code)
           setDestNama(res.data.nama || '—')
@@ -79,7 +80,7 @@ export default function CashlessTransferOffcanvas({
         setBusy(false)
       }
     },
-    []
+    [akses]
   )
 
   const submitTransfer = useCallback(async () => {
@@ -102,7 +103,7 @@ export default function CashlessTransferOffcanvas({
           typeof crypto !== 'undefined' && crypto.randomUUID
             ? `xfer-${crypto.randomUUID()}`
             : `xfer-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-      })
+      }, akses)
       if (res?.success) {
         onNotify?.('Transfer berhasil', 'success')
         onSuccess?.(res.data)
@@ -115,7 +116,7 @@ export default function CashlessTransferOffcanvas({
     } finally {
       setBusy(false)
     }
-  }, [nominal, saldo, destCode, catatan, onNotify, onSuccess, handleClose])
+  }, [nominal, saldo, destCode, catatan, onNotify, onSuccess, handleClose, akses])
 
   const title =
     step === 'dest' ? 'Transfer' : step === 'confirm' ? 'Konfirmasi tujuan' : 'Nominal transfer'

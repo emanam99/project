@@ -5,9 +5,11 @@ client_secret*.json
 *.apps.googleusercontent.com.json
 .env
 .env.*
+!.env.example
 node_modules/
 vendor/
 app/dist/
 api/uploads/belanja/
 api/uploads/bni-batches/
+api/uploads/porsi/
 api/error.log

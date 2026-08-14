@@ -189,7 +189,11 @@ export default function NilaiPage() {
     setError('')
     const res = await getNilai(kelasId, mapelId, tanggal)
     if (res.success) {
-      const ordered = withUrutan(res.data)
+      const ordered = withUrutan(res.data).map((row) => ({
+        ...row,
+        santri_id: String(row.santri_id),
+        nilai_id: row.nilai_id != null ? String(row.nilai_id) : null,
+      }))
       setRows(ordered)
       const draft: Record<string, string> = {}
       for (const row of ordered) {
@@ -238,9 +242,11 @@ export default function NilaiPage() {
     const res = await saveNilai({
       kelas_id: kelasId,
       mapel_id: mapelId,
-      santri_id: row.santri_id,
+      santri_id: String(row.santri_id),
       tanggal,
       absen: next,
+      // Sertakan nilai tersimpan agar update absen tidak menimpa / mengosongkan nilai
+      nilai: row.nilai,
       idp: pengurusId || undefined,
     })
     if (!res.success) {
@@ -250,7 +256,12 @@ export default function NilaiPage() {
       setRows((prev) =>
         prev.map((r) =>
           r.santri_id === row.santri_id
-            ? { ...r, absen: res.data!.absen, nilai_id: String(res.data!.id) }
+            ? {
+                ...r,
+                absen: res.data!.absen,
+                nilai: res.data!.nilai ?? r.nilai,
+                nilai_id: String(res.data!.id),
+              }
             : r
         )
       )
@@ -336,7 +347,7 @@ export default function NilaiPage() {
       const res = await saveNilai({
         kelas_id: kelasId,
         mapel_id: mapelId,
-        santri_id: row.santri_id,
+        santri_id: String(row.santri_id),
         tanggal,
         nilai,
         absen: row.absen,
@@ -346,7 +357,7 @@ export default function NilaiPage() {
         failed += 1
         continue
       }
-      const idx = nextRows.findIndex((r) => r.santri_id === row.santri_id)
+      const idx = nextRows.findIndex((r) => String(r.santri_id) === String(row.santri_id))
       if (idx >= 0 && res.data) {
         nextRows[idx] = {
           ...nextRows[idx],
@@ -479,6 +490,12 @@ export default function NilaiPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5 shrink-0">
+          <Link
+            to="/nilai/hasil-rekap"
+            className="px-2.5 py-1.5 text-xs ui-btn-secondary inline-flex items-center rounded-md"
+          >
+            Hasil Rekap
+          </Link>
           <Link
             to="/nilai/rekap"
             className="px-2.5 py-1.5 text-xs ui-btn-secondary inline-flex items-center rounded-md"

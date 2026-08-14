@@ -93,7 +93,7 @@ export default function KalenderPage() {
       : null
 
   return (
-    <div className="kalender-page h-[calc(100dvh-7rem)] min-h-[520px] flex flex-col overflow-hidden -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+    <div className="kalender-page h-[calc(100dvh-12.5rem)] landscape:h-[calc(100dvh-7rem)] lg:h-[calc(100dvh-7rem)] min-h-[420px] flex flex-col overflow-hidden -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
       <div className="kalender-page__header flex-shrink-0">
         <h1 className="kalender-page__title">Kalender</h1>
         {todayInfo && (

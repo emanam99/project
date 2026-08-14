@@ -376,7 +376,7 @@ function Login() {
                   style={{ transformStyle: 'preserve-3d' }}
                 >
                   <motion.img
-                    src={APP_LOGO_URL()}
+                    src={APP_LOGO_URL(theme)}
                     alt="Logo Pendaftaran Santri"
                     className="w-32 h-32 mx-auto object-contain drop-shadow-lg mb-1"
                     whileHover={{ scale: 1.03 }}

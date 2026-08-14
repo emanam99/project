@@ -12,14 +12,30 @@ class HttpsMiddleware implements MiddlewareInterface
 {
     private $forceHttps;
 
+    /** Hindari false positive (mis. VITE_APP_ENV=production). */
+    public static function envFileHasExactKeyValue(string $path, string $key, string $value): bool
+    {
+        $content = @file_get_contents($path);
+        if ($content === false) {
+            return false;
+        }
+        foreach (preg_split('/\r\n|\r|\n/', $content) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') {
+                continue;
+            }
+            if (preg_match('/^' . preg_quote($key, '/') . '\s*=\s*(.+)$/i', $line, $m)) {
+                return strcasecmp(trim($m[1], " \t\"'"), $value) === 0;
+            }
+        }
+        return false;
+    }
+
     public function __construct()
     {
         $isProduction = getenv('APP_ENV') === 'production';
         if (!$isProduction && file_exists(__DIR__ . '/../../.env')) {
-            $content = @file_get_contents(__DIR__ . '/../../.env');
-            if ($content !== false && strpos($content, 'APP_ENV=production') !== false) {
-                $isProduction = true;
-            }
+            $isProduction = self::envFileHasExactKeyValue(__DIR__ . '/../../.env', 'APP_ENV', 'production');
         }
         $forceHttpsEnv = getenv('FORCE_HTTPS');
         if ($forceHttpsEnv === false || $forceHttpsEnv === '') {

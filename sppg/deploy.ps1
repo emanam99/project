@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 
 # --- Konfigurasi SSH (akun Hostinger yang sama dengan mdtwustha) ---
 $SSH_USER  = "u264984103"
@@ -30,23 +31,40 @@ $publicUrl          = "https://sppg.alutsmani.id"
 $apiUrl             = "https://sppg.alutsmani.id/api/public"
 $gambarUrl          = "https://sppg.alutsmani.id/gambar"
 
+function Invoke-Ssh {
+    param([Parameter(Mandatory = $true)][string]$Command)
+    & ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "SSH gagal (exit $LASTEXITCODE): $Command"
+    }
+}
+
+function Get-RemoteEnvValue {
+    param([Parameter(Mandatory = $true)][string]$Key)
+    try {
+        $raw = & ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" "grep -E '^${Key}=' $REMOTE_API_PATH/.env 2>/dev/null | head -1 | cut -d= -f2-"
+        if ($LASTEXITCODE -eq 0 -and $raw) { return "$raw".Trim() }
+    } catch { }
+    return ''
+}
+
+function Get-LocalEnvValue {
+    param([Parameter(Mandatory = $true)][string]$Key)
+    $envLocal = Join-Path $scriptDir '.env.local'
+    if (-not (Test-Path $envLocal)) { return '' }
+    $line = Get-Content $envLocal | Where-Object { $_ -match "^${Key}=" } | Select-Object -First 1
+    if (-not $line) { return '' }
+    return $line.Split('=', 2)[1].Trim()
+}
+
 # Google OAuth - sama dengan lokal (tambahkan redirect URI production di Google Cloud Console)
 $GOOGLE_CLIENT_ID     = "224363197922-2r1rtacusg44iclq8h717c95nnjq50lc.apps.googleusercontent.com"
 $GOOGLE_CLIENT_SECRET = $env:GOOGLE_CLIENT_SECRET
 if ([string]::IsNullOrWhiteSpace($GOOGLE_CLIENT_SECRET)) {
-    # Ambil dari .env.local (jangan commit ke git!)
-    $envLocal = Join-Path $scriptDir ".env.local"
-    if (Test-Path $envLocal) {
-        $line = (Get-Content $envLocal | Where-Object { $_ -match '^GOOGLE_CLIENT_SECRET=' } | Select-Object -First 1)
-        if ($line) { $GOOGLE_CLIENT_SECRET = $line.Split('=', 2)[1].Trim() }
-    }
+    $GOOGLE_CLIENT_SECRET = Get-LocalEnvValue 'GOOGLE_CLIENT_SECRET'
 }
 if ([string]::IsNullOrWhiteSpace($GOOGLE_CLIENT_SECRET)) {
-    # Fallback terakhir: ambil dari .env remote yang sudah ada
-    try {
-        $remoteSecret = Invoke-Ssh "grep -E '^GOOGLE_CLIENT_SECRET=' $REMOTE_API_PATH/.env 2>/dev/null | head -1 | cut -d= -f2-"
-        if ($remoteSecret) { $GOOGLE_CLIENT_SECRET = $remoteSecret.Trim() }
-    } catch { }
+    $GOOGLE_CLIENT_SECRET = Get-RemoteEnvValue 'GOOGLE_CLIENT_SECRET'
 }
 $SUPER_ADMIN_EMAIL    = "em.anam999@gmail.com"
 
@@ -56,33 +74,19 @@ $DB_NAME = "u264984103_sppg"
 $DB_USER = "u264984103_sppg"
 $DB_PASS = $env:DB_PASS
 if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
-    $envLocal = Join-Path $scriptDir ".env.local"
-    if (Test-Path $envLocal) {
-        $line = (Get-Content $envLocal | Where-Object { $_ -match '^DB_PASS=' } | Select-Object -First 1)
-        if ($line) { $DB_PASS = $line.Split('=', 2)[1].Trim() }
-    }
+    $DB_PASS = Get-LocalEnvValue 'DB_PASS'
 }
 if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
-    try {
-        $remoteDbPass = Invoke-Ssh "grep -E '^DB_PASS=' $REMOTE_API_PATH/.env 2>/dev/null | head -1 | cut -d= -f2-"
-        if ($remoteDbPass) { $DB_PASS = $remoteDbPass.Trim() }
-    } catch { }
+    $DB_PASS = Get-RemoteEnvValue 'DB_PASS'
 }
 
 # Auto-approve BNI dari email mbeddien@gmail.com (IMAP). Isi App Password di server / biarkan deploy mempertahankan nilai lama.
 $BNI_CRON_KEY           = $env:BNI_CRON_KEY
 if ([string]::IsNullOrWhiteSpace($BNI_CRON_KEY)) {
-    $envLocal = Join-Path $scriptDir ".env.local"
-    if (Test-Path $envLocal) {
-        $line = (Get-Content $envLocal | Where-Object { $_ -match '^BNI_CRON_KEY=' } | Select-Object -First 1)
-        if ($line) { $BNI_CRON_KEY = $line.Split('=', 2)[1].Trim() }
-    }
+    $BNI_CRON_KEY = Get-LocalEnvValue 'BNI_CRON_KEY'
 }
 if ([string]::IsNullOrWhiteSpace($BNI_CRON_KEY)) {
-    try {
-        $remoteBni = Invoke-Ssh "grep -E '^BNI_CRON_KEY=' $REMOTE_API_PATH/.env 2>/dev/null | head -1 | cut -d= -f2-"
-        if ($remoteBni) { $BNI_CRON_KEY = $remoteBni.Trim() }
-    } catch { }
+    $BNI_CRON_KEY = Get-RemoteEnvValue 'BNI_CRON_KEY'
 }
 $BNI_NOTIFY_IMAP_HOST   = "imap.gmail.com"
 $BNI_NOTIFY_IMAP_PORT   = "993"
@@ -115,10 +119,14 @@ $runMigrations = 'n'
 if ($doApi) {
     if ($Migrate) {
         $runMigrations = 'y'
-    } else {
+    } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
         Write-Host ""
         Write-Host "  Setelah upload API nanti:" -ForegroundColor White
-        $runMigrations = Read-Host '  Jalankan migrasi database di server? [y/N]'
+        try {
+            $runMigrations = Read-Host '  Jalankan migrasi database di server? [y/N]'
+        } catch {
+            $runMigrations = 'n'
+        }
     }
 }
 
@@ -129,7 +137,6 @@ if ($doApi) {
 }
 Write-Host ""
 
-$scriptDir  = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
 $apiPath    = Join-Path $scriptDir "api"
 $appPath    = Join-Path $scriptDir "app"
 $gambarPath = Join-Path $scriptDir "gambar"
@@ -151,14 +158,6 @@ function Invoke-ScpWithRetry {
         }
     }
     throw "Upload gagal setelah $MaxAttempts percobaan (scp exit $LASTEXITCODE). Cek koneksi internet/VPN."
-}
-
-function Invoke-Ssh {
-    param([Parameter(Mandatory = $true)][string]$Command)
-    & ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $Command
-    if ($LASTEXITCODE -ne 0) {
-        throw "SSH gagal (exit $LASTEXITCODE): $Command"
-    }
 }
 
 # ========== FRONTEND (app/) ==========
@@ -277,12 +276,16 @@ if ($doApi) {
 
     Write-Host "[API] Mengatur .env di server..." -ForegroundColor Cyan
     if ([string]::IsNullOrWhiteSpace($BNI_NOTIFY_IMAP_PASS)) {
-        try {
-            $remotePass = Invoke-Ssh "grep -E '^BNI_NOTIFY_IMAP_PASS=' $REMOTE_API_PATH/.env 2>/dev/null | head -1 | cut -d= -f2-"
-            if ($remotePass) { $BNI_NOTIFY_IMAP_PASS = $remotePass.Trim() }
-        } catch {
-            # ignore
-        }
+        $BNI_NOTIFY_IMAP_PASS = Get-RemoteEnvValue 'BNI_NOTIFY_IMAP_PASS'
+    }
+    if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
+        Write-Error "DB_PASS kosong. Isi di .env.local atau environment sebelum deploy API agar .env production tidak tertimpa kosong."
+    }
+    if ([string]::IsNullOrWhiteSpace($GOOGLE_CLIENT_SECRET)) {
+        Write-Error "GOOGLE_CLIENT_SECRET kosong. Isi di .env.local sebelum deploy API."
+    }
+    if ([string]::IsNullOrWhiteSpace($BNI_CRON_KEY)) {
+        Write-Error "BNI_CRON_KEY kosong. Isi di .env.local sebelum deploy API agar hook Apps Script BNI tetap jalan."
     }
     $envContent = @"
 DB_HOST=$DB_HOST
@@ -308,6 +311,19 @@ BNI_NOTIFY_IMAP_FOLDER=$BNI_NOTIFY_IMAP_FOLDER
     [System.IO.File]::WriteAllText($envPathLocal, $envContent.Trim() + "`n", [System.Text.UTF8Encoding]::new($false))
     Invoke-ScpWithRetry -LocalPath $envPathLocal -RemoteSpec "${SSH_USER}@${SSH_HOST}:${REMOTE_API_PATH}/.env"
     Remove-Item $envPathLocal -Force -ErrorAction SilentlyContinue
+
+    # Simpan secret lokal agar deploy berikutnya tidak butuh SSH untuk DB_PASS
+    $envLocalPath = Join-Path $scriptDir '.env.local'
+    $localLines = @()
+    if (Test-Path $envLocalPath) {
+        $localLines = @(Get-Content $envLocalPath | Where-Object { $_ -notmatch '^(DB_PASS|GOOGLE_CLIENT_SECRET|BNI_CRON_KEY)=' })
+    }
+    $localLines += "DB_PASS=$DB_PASS"
+    $localLines += "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET"
+    if (-not [string]::IsNullOrWhiteSpace($BNI_CRON_KEY)) {
+        $localLines += "BNI_CRON_KEY=$BNI_CRON_KEY"
+    }
+    [System.IO.File]::WriteAllText($envLocalPath, ($localLines -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 
     if ($runMigrations -eq 'y' -or $runMigrations -eq 'Y') {
         Write-Host "[API] Menjalankan migrasi database (php migrate.php)..." -ForegroundColor Cyan

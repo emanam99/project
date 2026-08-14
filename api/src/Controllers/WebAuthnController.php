@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Database;
 use App\Repositories\UsersWebAuthnCredentialRepository;
 use App\Services\WebAuthnFactory;
+use App\Helpers\AndroidWebAuthnOrigin;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAgentHelper;
 use Cose\Algorithms;
@@ -19,10 +20,12 @@ use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\AuthenticatorAttestationResponseValidator;
 use Webauthn\AuthenticatorSelectionCriteria;
+use Webauthn\PublicKeyCredentialDescriptor;
 use Webauthn\PublicKeyCredentialCreationOptions;
 use Webauthn\PublicKeyCredentialParameters;
 use Webauthn\PublicKeyCredentialRequestOptions;
 use Webauthn\PublicKeyCredentialRpEntity;
+use Webauthn\PublicKeyCredentialSource;
 use Webauthn\PublicKeyCredentialUserEntity;
 use Webauthn\TokenBinding\TokenBindingNotSupportedHandler;
 
@@ -175,6 +178,80 @@ final class WebAuthnController
         return $id !== null && $id !== '' ? [$id] : ['localhost'];
     }
 
+    private function friendlyWebAuthnError(\Throwable $e): string
+    {
+        $msg = $e->getMessage();
+        if (stripos($msg, 'origin') !== false || stripos($msg, 'rpId') !== false) {
+            return 'Verifikasi passkey gagal (origin aplikasi). Pastikan aplikasi myBeddien terbaru dan assetlinks sudah aktif, lalu coba daftar ulang.';
+        }
+        if (stripos($msg, 'challenge') !== false) {
+            return 'Challenge passkey kedaluwarsa atau tidak cocok. Coba daftar lagi.';
+        }
+
+        return 'Verifikasi passkey gagal.';
+    }
+
+    /** Portal myBeddien / aplikasi Android — prioritaskan sidik jari perangkat. */
+    private function preferPlatformAuthenticator(Request $request): bool
+    {
+        $client = strtolower(trim($request->getHeaderLine('X-Client-App')));
+        if ($client === 'mybeddien' || $client === 'mybeddian') {
+            return true;
+        }
+        $ua = (string) ($request->getHeaderLine('User-Agent') ?: '');
+        if (stripos($ua, 'myBeddienApp') !== false) {
+            return true;
+        }
+        $host = $this->pageHostFromRequest($request);
+
+        return str_contains($host, 'mybeddien') || str_contains($host, 'mybeddian');
+    }
+
+    /**
+     * Descriptor login untuk myBeddien:
+     * - transport kosong → Android sering menampilkan NFC/USB
+     * - hanya `internal` → gagal NotAllowedError jika passkey tersimpan sebagai hybrid (Google Password Manager)
+     * Solusi: izinkan internal + hybrid, buang usb/nfc/ble/cable.
+     */
+    private function descriptorForAssertion(PublicKeyCredentialSource $src, bool $preferPlatform): PublicKeyCredentialDescriptor
+    {
+        $desc = $src->getPublicKeyCredentialDescriptor();
+        if (!$preferPlatform) {
+            return $desc;
+        }
+
+        $transports = $desc->getTransports();
+        $allowed = ['internal', 'hybrid'];
+        $filtered = array_values(array_intersect($transports, $allowed));
+        if ($filtered === []) {
+            $filtered = $allowed;
+        }
+
+        return PublicKeyCredentialDescriptor::create(
+            $desc->getType(),
+            $desc->getId(),
+            $filtered
+        );
+    }
+
+    /**
+     * @param PublicKeyCredentialDescriptor[] $descriptors
+     * @return array<string, mixed>
+     */
+    private function requestOptionsToArray(PublicKeyCredentialRequestOptions $req, bool $preferPlatform): array
+    {
+        $arr = json_decode(json_encode($req, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($arr)) {
+            return [];
+        }
+        if ($preferPlatform) {
+            // WebAuthn L3 — minta authenticator di perangkat ini (sidik jari), bukan security key
+            $arr['hints'] = ['client-device'];
+        }
+
+        return $arr;
+    }
+
     private function deleteExpiredChallenges(): void
     {
         $this->db->exec('DELETE FROM webauthn_challenges WHERE expires_at < NOW()');
@@ -266,8 +343,15 @@ final class WebAuthnController
                 ->setTimeout(120000);
 
             $sel = AuthenticatorSelectionCriteria::create()
-                ->setAuthenticatorAttachment(AuthenticatorSelectionCriteria::AUTHENTICATOR_ATTACHMENT_NO_PREFERENCE)
                 ->setUserVerification(AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED);
+            if ($this->preferPlatformAuthenticator($request)) {
+                // Sidik jari / screen lock di HP — hindari security key NFC/USB
+                $sel = $sel
+                    ->setAuthenticatorAttachment(AuthenticatorSelectionCriteria::AUTHENTICATOR_ATTACHMENT_PLATFORM)
+                    ->setResidentKey(AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_PREFERRED);
+            } else {
+                $sel = $sel->setAuthenticatorAttachment(AuthenticatorSelectionCriteria::AUTHENTICATOR_ATTACHMENT_NO_PREFERENCE);
+            }
             $options = $options->setAuthenticatorSelection($sel);
 
             $repo = new UsersWebAuthnCredentialRepository($this->db);
@@ -355,6 +439,10 @@ final class WebAuthnController
                 return $this->json($response, ['success' => false, 'message' => 'Jenis respons tidak valid'], 400);
             }
 
+            // WebView Android: origin = android:apk-key-hash:... (bukan https://portal)
+            $webOrigin = AndroidWebAuthnOrigin::httpsOriginForRpId($this->resolveRpId($request));
+            $attResp = AndroidWebAuthnOrigin::normalizeAttestationResponse($attResp, $webOrigin);
+
             $repo = new UsersWebAuthnCredentialRepository($this->db);
             $csm = WebAuthnFactory::createAttestationStatementSupportManager();
             $validator = AuthenticatorAttestationResponseValidator::create(
@@ -387,8 +475,9 @@ final class WebAuthnController
         } catch (\Throwable $e) {
             error_log('WebAuthnController::registerVerify ' . $e->getMessage());
             error_log($e->getTraceAsString());
+            $hint = $this->friendlyWebAuthnError($e);
 
-            return $this->json($response, ['success' => false, 'message' => 'Verifikasi passkey gagal.'], 400);
+            return $this->json($response, ['success' => false, 'message' => $hint], 400);
         }
     }
 
@@ -476,14 +565,15 @@ final class WebAuthnController
                 'SELECT credential_json FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
             );
             $stmt->execute([$usersId]);
+            $preferPlatform = $this->preferPlatformAuthenticator($request);
             $descriptors = [];
             while ($crow = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 if (empty($crow['credential_json'])) {
                     continue;
                 }
                 $srcData = json_decode((string) $crow['credential_json'], true, 512, JSON_THROW_ON_ERROR);
-                $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
-                $descriptors[] = $src->getPublicKeyCredentialDescriptor();
+                $src = PublicKeyCredentialSource::createFromArray($srcData);
+                $descriptors[] = $this->descriptorForAssertion($src, $preferPlatform);
             }
             if ($descriptors === []) {
                 return $this->json($response, ['success' => false, 'message' => 'Data passkey tidak lengkap'], 500);
@@ -498,7 +588,7 @@ final class WebAuthnController
             return $this->json($response, [
                 'success' => true,
                 'data' => [
-                    'options' => $req,
+                    'options' => $this->requestOptionsToArray($req, $preferPlatform),
                     'challengeId' => $challengeId,
                 ],
             ], 200);
@@ -559,14 +649,15 @@ final class WebAuthnController
                 'SELECT credential_json FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
             );
             $stmt->execute([$usersId]);
+            $preferPlatform = $this->preferPlatformAuthenticator($request);
             $descriptors = [];
             while ($crow = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 if (empty($crow['credential_json'])) {
                     continue;
                 }
                 $srcData = json_decode((string) $crow['credential_json'], true, 512, JSON_THROW_ON_ERROR);
-                $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
-                $descriptors[] = $src->getPublicKeyCredentialDescriptor();
+                $src = PublicKeyCredentialSource::createFromArray($srcData);
+                $descriptors[] = $this->descriptorForAssertion($src, $preferPlatform);
             }
             if ($descriptors === []) {
                 return $this->json($response, ['success' => false, 'message' => 'Passkey tidak ada'], 400);
@@ -584,6 +675,9 @@ final class WebAuthnController
             if (!$assertResp instanceof AuthenticatorAssertionResponse) {
                 return $this->json($response, ['success' => false, 'message' => 'Jenis respons tidak valid'], 400);
             }
+
+            $webOrigin = AndroidWebAuthnOrigin::httpsOriginForRpId($this->resolveRpId($request));
+            $assertResp = AndroidWebAuthnOrigin::normalizeAssertionResponse($assertResp, $webOrigin);
 
             $repo = new UsersWebAuthnCredentialRepository($this->db);
             $assertValidator = AuthenticatorAssertionResponseValidator::create(
@@ -675,14 +769,15 @@ final class WebAuthnController
                 'SELECT credential_json FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
             );
             $stmt->execute([$usersId]);
+            $preferPlatform = $this->preferPlatformAuthenticator($request);
             $descriptors = [];
             while ($crow = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 if (empty($crow['credential_json'])) {
                     continue;
                 }
                 $srcData = json_decode((string) $crow['credential_json'], true, 512, JSON_THROW_ON_ERROR);
-                $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
-                $descriptors[] = $src->getPublicKeyCredentialDescriptor();
+                $src = PublicKeyCredentialSource::createFromArray($srcData);
+                $descriptors[] = $this->descriptorForAssertion($src, $preferPlatform);
             }
             if ($descriptors === []) {
                 return $this->json($response, [
@@ -712,7 +807,7 @@ final class WebAuthnController
             return $this->json($response, [
                 'success' => true,
                 'data' => [
-                    'options' => $req,
+                    'options' => $this->requestOptionsToArray($req, $preferPlatform),
                     'challengeId' => $challengeId,
                 ],
             ], 200);
@@ -768,14 +863,15 @@ final class WebAuthnController
                 'SELECT credential_json FROM user___webauthn WHERE users_id = ? ORDER BY id ASC'
             );
             $stmt->execute([$usersId]);
+            $preferPlatform = $this->preferPlatformAuthenticator($request);
             $descriptors = [];
             while ($crow = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 if (empty($crow['credential_json'])) {
                     continue;
                 }
                 $srcData = json_decode((string) $crow['credential_json'], true, 512, JSON_THROW_ON_ERROR);
-                $src = \Webauthn\PublicKeyCredentialSource::createFromArray($srcData);
-                $descriptors[] = $src->getPublicKeyCredentialDescriptor();
+                $src = PublicKeyCredentialSource::createFromArray($srcData);
+                $descriptors[] = $this->descriptorForAssertion($src, $preferPlatform);
             }
             if ($descriptors === []) {
                 return [
@@ -798,6 +894,9 @@ final class WebAuthnController
             if (!$assertResp instanceof AuthenticatorAssertionResponse) {
                 return ['success' => false, 'message' => 'Jenis respons tidak valid', 'http' => 400];
             }
+
+            $webOrigin = AndroidWebAuthnOrigin::httpsOriginForRpId($this->resolveRpId($request));
+            $assertResp = AndroidWebAuthnOrigin::normalizeAssertionResponse($assertResp, $webOrigin);
 
             $repo = new UsersWebAuthnCredentialRepository($this->db);
             $assertValidator = AuthenticatorAssertionResponseValidator::create(

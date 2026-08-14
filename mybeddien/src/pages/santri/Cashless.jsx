@@ -187,9 +187,13 @@ export default function Cashless({ mode = 'santri' }) {
   }, [showToast, wallet?.account?.id, isToko])
 
   const handleTransfer = useCallback(() => {
-    if (isToko) return
     if (!wallet?.account?.id) {
-      showToast('Belum cetak kartu. Silakan ke kantor UWABA atau hubungi WhatsApp untuk info lebih lanjut.', 'error')
+      showToast(
+        isToko
+          ? 'Toko belum punya akun wallet. Hubungi admin cashless.'
+          : 'Belum cetak kartu. Silakan ke kantor UWABA atau hubungi WhatsApp untuk info lebih lanjut.',
+        'error'
+      )
       return
     }
     setTransferOpen(true)
@@ -288,7 +292,7 @@ export default function Cashless({ mode = 'santri' }) {
                 live
                 collapseProgress={walletCollapse}
                 onTopUp={handleTopUp}
-                onTransfer={isToko ? undefined : handleTransfer}
+                onTransfer={handleTransfer}
                 onAturPin={isToko ? undefined : handleAturPin}
                 onUbahPin={isToko ? undefined : handleUbahPin}
               />
@@ -320,15 +324,14 @@ export default function Cashless({ mode = 'santri' }) {
         onNotify={showToast}
       />
 
-      {!isToko ? (
-        <CashlessTransferOffcanvas
-          isOpen={transferOpen}
-          onClose={() => setTransferOpen(false)}
-          saldo={account?.balance_cached ?? 0}
-          onSuccess={handleTransferSuccess}
-          onNotify={showToast}
-        />
-      ) : null}
+      <CashlessTransferOffcanvas
+        isOpen={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        saldo={account?.balance_cached ?? 0}
+        onSuccess={handleTransferSuccess}
+        onNotify={showToast}
+        akses={akses}
+      />
 
       {!isToko ? (
         <CashlessPinOffcanvas

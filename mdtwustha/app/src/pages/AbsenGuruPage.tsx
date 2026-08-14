@@ -10,6 +10,12 @@ const REKAP_CARDS = [
     desc: 'Ringkasan jumlah mengajar, izin, dan sakit per guru berdasarkan jurnal (Jam 1 & Jam 2).',
   },
   {
+    to: '/absen-guru/hasil-rekap',
+    icon: 'publish',
+    title: 'Hasil Rekap Guru',
+    desc: 'Rekap yang sudah dipublish admin (snapshot). Bisa mencakup semua kelas; hitung mundur sebelum tayang.',
+  },
+  {
     to: '/absen-guru/jurnal-rekap',
     icon: 'assignment',
     title: 'Rekap Jurnal Mengajar',

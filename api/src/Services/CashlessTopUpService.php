@@ -81,6 +81,159 @@ class CashlessTopUpService
     }
 
     /**
+     * Cari wallet (santri atau toko) by kode 7 digit — untuk transfer P2P.
+     *
+     * @return array{success: bool, message?: string, data?: array{code: string, nama: string, account_id: int, entity_type: string, entity_id: int}}
+     */
+    public function lookupWalletByCode(string $code, ?int $excludeAccountId = null): array
+    {
+        $code = preg_replace('/\D+/', '', $code) ?? '';
+        if (strlen($code) !== 7) {
+            return ['success' => false, 'message' => 'No Wallet harus 7 digit'];
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT a.id AS account_id, a.code, a.entity_type, a.entity_id, a.name AS account_name,
+                    s.nama AS santri_nama,
+                    p.nama_toko AS toko_nama
+             FROM cashless___accounts a
+             LEFT JOIN santri s ON a.entity_type = 'SANTRI' AND s.id = a.entity_id
+             LEFT JOIN cashless___pedagang p ON a.entity_type = 'PEDAGANG' AND p.id = a.entity_id
+             WHERE a.type = 'LIABILITY' AND a.code = ?
+             LIMIT 1"
+        );
+        $stmt->execute([$code]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            return ['success' => false, 'message' => 'No Wallet tidak ditemukan'];
+        }
+
+        $accountId = (int) $row['account_id'];
+        if ($excludeAccountId !== null && $excludeAccountId > 0 && $accountId === $excludeAccountId) {
+            return ['success' => false, 'message' => 'Tidak bisa transfer ke wallet sendiri'];
+        }
+
+        $entityType = (string) ($row['entity_type'] ?? '');
+        $nama = $entityType === 'PEDAGANG'
+            ? (string) ($row['toko_nama'] ?? $row['account_name'] ?? '—')
+            : (string) ($row['santri_nama'] ?? $row['account_name'] ?? '—');
+
+        return [
+            'success' => true,
+            'data' => [
+                'code' => (string) $row['code'],
+                'nama' => $nama,
+                'account_id' => $accountId,
+                'entity_type' => $entityType,
+                'entity_id' => (int) ($row['entity_id'] ?? 0),
+            ],
+        ];
+    }
+
+    /**
+     * Transfer antar wallet (santri atau toko) by No Wallet tujuan.
+     *
+     * @return array{success: bool, message?: string, data?: array}
+     */
+    public function transferByWalletCodeFromAccount(
+        int $sourceAccountId,
+        string $destCode,
+        float $nominal,
+        ?string $catatan,
+        ?int $actorUserId
+    ): array {
+        if ($sourceAccountId <= 0) {
+            return ['success' => false, 'message' => 'Akun pengirim tidak valid'];
+        }
+
+        $limits = CashlessMoneyLimitsHelper::getLimits($this->db);
+        $chk = CashlessMoneyLimitsHelper::assertMaxPerTx(
+            $nominal,
+            $limits['transfer_max_per_tx'],
+            'Transfer'
+        );
+        if (!($chk['ok'] ?? false)) {
+            return ['success' => false, 'message' => $chk['message'] ?? 'Nominal tidak valid'];
+        }
+
+        $lookup = $this->lookupWalletByCode($destCode, $sourceAccountId);
+        if (!($lookup['success'] ?? false)) {
+            return $lookup;
+        }
+        $dest = $lookup['data'];
+        $destAccountId = (int) ($dest['account_id'] ?? 0);
+        if ($destAccountId <= 0) {
+            return ['success' => false, 'message' => 'Wallet tujuan tidak valid'];
+        }
+
+        $stmtSource = $this->db->prepare(
+            'SELECT id, type, entity_type, entity_id, balance_cached, name, code FROM cashless___accounts WHERE id = ? LIMIT 1'
+        );
+        $stmtSource->execute([$sourceAccountId]);
+        $sourceRow = $stmtSource->fetch(\PDO::FETCH_ASSOC);
+        if (!$sourceRow || ($sourceRow['type'] ?? '') !== 'LIABILITY') {
+            return ['success' => false, 'message' => 'Anda belum punya akun wallet'];
+        }
+
+        $sourceEntityType = (string) ($sourceRow['entity_type'] ?? '');
+        $sourceEntityId = (int) ($sourceRow['entity_id'] ?? 0);
+        if ($sourceEntityType === 'SANTRI' && $sourceEntityId > 0 && SantriStatusHelper::isBoyong($this->db, $sourceEntityId)) {
+            return ['success' => false, 'message' => 'Wallet Anda tidak aktif untuk transfer'];
+        }
+
+        $destEntityType = (string) ($dest['entity_type'] ?? '');
+        $destEntityId = (int) ($dest['entity_id'] ?? 0);
+        if ($destEntityType === 'SANTRI' && $destEntityId > 0 && SantriStatusHelper::isBoyong($this->db, $destEntityId)) {
+            return ['success' => false, 'message' => 'Wallet tujuan tidak aktif (santri Boyong)'];
+        }
+
+        $daily = CashlessMoneyLimitsHelper::assertTransferDaily(
+            $this->db,
+            $sourceAccountId,
+            $nominal,
+            $limits['transfer_daily_max']
+        );
+        if (!($daily['ok'] ?? false)) {
+            return ['success' => false, 'message' => $daily['message'] ?? 'Limit transfer harian terlampaui'];
+        }
+
+        $stmtDest = $this->db->prepare(
+            'SELECT id, code, name, balance_cached FROM cashless___accounts WHERE id = ? LIMIT 1'
+        );
+        $stmtDest->execute([$destAccountId]);
+        $destWallet = $stmtDest->fetch(\PDO::FETCH_ASSOC);
+        if (!$destWallet) {
+            return ['success' => false, 'message' => 'Wallet tujuan tidak ditemukan'];
+        }
+        $destWallet['entity_type'] = $destEntityType;
+        $destWallet['entity_id'] = $destEntityId;
+
+        $destBal = (float) ($destWallet['balance_cached'] ?? 0);
+        $cap = CashlessMoneyLimitsHelper::assertWalletSaldoCap($destBal, $nominal, $limits['wallet_saldo_max']);
+        if (!($cap['ok'] ?? false)) {
+            return ['success' => false, 'message' => $cap['message'] ?? 'Saldo tujuan melebihi batas'];
+        }
+
+        $catatan = $catatan !== null ? trim($catatan) : null;
+        if ($catatan === '') {
+            $catatan = null;
+        }
+        if ($catatan !== null && mb_strlen($catatan) > 200) {
+            return ['success' => false, 'message' => 'Catatan maksimal 200 karakter'];
+        }
+
+        return $this->transferPeerToPeer(
+            $sourceAccountId,
+            $sourceRow,
+            $destWallet,
+            (string) ($dest['nama'] ?? '—'),
+            $nominal,
+            $catatan,
+            $actorUserId
+        );
+    }
+
+    /**
      * Transfer antar wallet santri (sumber = fromSantriId, tujuan = No Wallet).
      *
      * @return array{success: bool, message?: string, data?: array}
@@ -95,75 +248,24 @@ class CashlessTopUpService
         if ($fromSantriId <= 0) {
             return ['success' => false, 'message' => 'Santri pengirim tidak valid'];
         }
-        $limits = CashlessMoneyLimitsHelper::getLimits($this->db);
-        $chk = CashlessMoneyLimitsHelper::assertMaxPerTx(
-            $nominal,
-            $limits['transfer_max_per_tx'],
-            'Transfer'
-        );
-        if (!($chk['ok'] ?? false)) {
-            return ['success' => false, 'message' => $chk['message'] ?? 'Nominal tidak valid'];
-        }
-
-        $lookup = $this->lookupSantriWalletByCode($destCode, $fromSantriId);
-        if (!($lookup['success'] ?? false)) {
-            return $lookup;
-        }
-        $dest = $lookup['data'];
-        $destSantriId = (int) $dest['santri_id'];
-
-        if (SantriStatusHelper::isBoyong($this->db, $destSantriId)) {
-            return ['success' => false, 'message' => 'Wallet tujuan tidak aktif (santri Boyong)'];
-        }
-        if (SantriStatusHelper::isBoyong($this->db, $fromSantriId)) {
-            return ['success' => false, 'message' => 'Wallet Anda tidak aktif untuk transfer'];
-        }
 
         $stmtSource = $this->db->prepare(
-            "SELECT id, balance_cached FROM cashless___accounts
+            "SELECT id FROM cashless___accounts
              WHERE entity_type = 'SANTRI' AND entity_id = ? AND type = 'LIABILITY'
              LIMIT 1"
         );
         $stmtSource->execute([$fromSantriId]);
-        $sourceRow = $stmtSource->fetch(\PDO::FETCH_ASSOC);
-        $sourceAccountId = (int) ($sourceRow['id'] ?? 0);
+        $sourceAccountId = (int) ($stmtSource->fetchColumn() ?: 0);
         if ($sourceAccountId <= 0) {
             return ['success' => false, 'message' => 'Anda belum punya akun wallet'];
         }
 
-        $daily = CashlessMoneyLimitsHelper::assertTransferDaily(
-            $this->db,
+        return $this->transferByWalletCodeFromAccount(
             $sourceAccountId,
-            $nominal,
-            $limits['transfer_daily_max']
-        );
-        if (!($daily['ok'] ?? false)) {
-            return ['success' => false, 'message' => $daily['message'] ?? 'Limit transfer harian terlampaui'];
-        }
-
-        $stmtBal = $this->db->prepare('SELECT balance_cached FROM cashless___accounts WHERE id = ? LIMIT 1');
-        $stmtBal->execute([(int) $dest['account_id']]);
-        $destBal = (float) ($stmtBal->fetchColumn() ?: 0);
-        $cap = CashlessMoneyLimitsHelper::assertWalletSaldoCap($destBal, $nominal, $limits['wallet_saldo_max']);
-        if (!($cap['ok'] ?? false)) {
-            return ['success' => false, 'message' => $cap['message'] ?? 'Saldo tujuan melebihi batas'];
-        }
-
-        $catatan = $catatan !== null ? trim($catatan) : null;
-        if ($catatan === '') {
-            $catatan = null;
-        }
-        if ($catatan !== null && mb_strlen($catatan) > 200) {
-            return ['success' => false, 'message' => 'Catatan maksimal 200 karakter'];
-        }
-
-        return $this->topUp(
-            $destSantriId,
+            $destCode,
             $nominal,
             $catatan,
-            'transfer',
-            $actorUserId,
-            $sourceAccountId
+            $actorUserId
         );
     }
 
@@ -684,6 +786,121 @@ class CashlessTopUpService
             }
             error_log('CashlessTopUpService::externalTopUp ' . $e->getMessage());
             return ['success' => false, 'message' => 'Gagal melakukan top-up'];
+        }
+    }
+
+    /**
+     * Transfer P2P antar wallet LIABILITY (santri ↔ santri, toko ↔ santri/toko).
+     *
+     * @param array<string, mixed> $sourceRow
+     * @param array<string, mixed> $destWallet
+     * @return array{success: bool, message?: string, data?: array}
+     */
+    private function transferPeerToPeer(
+        int $sourceAccountId,
+        array $sourceRow,
+        array $destWallet,
+        string $destNama,
+        float $nominal,
+        ?string $referensi,
+        ?int $actorUserId
+    ): array {
+        $destWalletId = (int) ($destWallet['id'] ?? 0);
+        if ($destWalletId <= 0) {
+            return ['success' => false, 'message' => 'Wallet tujuan tidak valid'];
+        }
+        if ($sourceAccountId === $destWalletId) {
+            return ['success' => false, 'message' => 'Akun sumber dan tujuan tidak boleh sama'];
+        }
+
+        if ((float) ($sourceRow['balance_cached'] ?? 0) < $nominal) {
+            return ['success' => false, 'message' => 'Saldo akun sumber tidak mencukupi'];
+        }
+
+        if ($actorUserId !== null && $actorUserId > 0) {
+            $actorWallet = $this->accountResolver->resolveWalletByUserId($actorUserId);
+            if ($actorWallet !== null && (int) $actorWallet['id'] !== $sourceAccountId) {
+                return ['success' => false, 'message' => 'Akun sumber harus milik pengguna yang login'];
+            }
+        }
+
+        $destEntityType = (string) ($destWallet['entity_type'] ?? '');
+        $destEntityId = (int) ($destWallet['entity_id'] ?? 0);
+        $santriIdForMeta = $destEntityType === 'SANTRI' ? $destEntityId : 0;
+        $extra = [
+            'source_account_id' => $sourceAccountId,
+            'source_entity_type' => $sourceRow['entity_type'] ?? null,
+            'source_entity_id' => isset($sourceRow['entity_id']) ? (int) $sourceRow['entity_id'] : null,
+            'source_name' => $sourceRow['name'] ?? null,
+            'source_code' => $sourceRow['code'] ?? null,
+            'dest_code' => $destWallet['code'] ?? null,
+            'dest_nama' => $destNama,
+        ];
+        if ($destEntityType === 'PEDAGANG' && $destEntityId > 0) {
+            $extra['pedagang_id'] = $destEntityId;
+        }
+
+        $meta = $this->buildMeta(
+            $santriIdForMeta,
+            'transfer',
+            $referensi,
+            $actorUserId,
+            $extra,
+            'wallet'
+        );
+
+        $description = 'Transfer ke wallet ' . $destNama
+            . ' dari ' . ($sourceRow['name'] ?? 'wallet #' . $sourceAccountId);
+        $reference = 'XFER-' . $sourceAccountId . '-' . $destWalletId . '-' . date('YmdHis');
+
+        try {
+            $this->db->beginTransaction();
+
+            $posted = $this->ledger->postJournal(
+                'TRANSFER',
+                $reference,
+                $description,
+                [
+                    ['account_id' => $sourceAccountId, 'debit' => $nominal, 'credit' => 0.0],
+                    ['account_id' => $destWalletId, 'debit' => 0.0, 'credit' => $nominal],
+                ],
+                $actorUserId,
+                $sourceAccountId,
+                $destWalletId,
+                'wallet',
+                $meta
+            );
+
+            if (!($posted['success'] ?? false)) {
+                $this->db->rollBack();
+                return ['success' => false, 'message' => $posted['message'] ?? 'Gagal posting transfer'];
+            }
+
+            $this->db->commit();
+
+            return [
+                'success' => true,
+                'message' => 'Transfer berhasil',
+                'data' => [
+                    'journal_id' => (int) ($posted['journal_id'] ?? 0),
+                    'journal_type' => 'TRANSFER',
+                    'channel' => 'wallet',
+                    'account_id' => $destWalletId,
+                    'source_account_id' => $sourceAccountId,
+                    'actor_user_id' => $actorUserId,
+                    'nominal' => $nominal,
+                    'metode' => 'transfer',
+                    'metode_label' => self::METODE_LABELS['transfer'] ?? 'TF',
+                    'balance_cached' => (float) ($destWallet['balance_cached'] ?? 0) + $nominal,
+                    'reference' => $reference,
+                ],
+            ];
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log('CashlessTopUpService::transferPeerToPeer ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Gagal melakukan transfer'];
         }
     }
 

@@ -66,8 +66,31 @@ $app->get('/absen', [new \App\Controllers\AbsenController(), 'index']);
 $app->get('/absen/rekap', [new \App\Controllers\AbsenController(), 'rekap']);
 $app->put('/absen/jam', [new \App\Controllers\AbsenController(), 'updateJam']);
 
+$absenRekapPublish = new \App\Controllers\AbsenRekapPublishController();
+$app->get('/absen/rekap/publish/occupied', [$absenRekapPublish, 'occupied']);
+$app->get('/absen/rekap/publish', [$absenRekapPublish, 'index']);
+$app->get('/absen/rekap/publish/{id}', [$absenRekapPublish, 'show']);
+$app->post('/absen/rekap/publish', [$absenRekapPublish, 'create']);
+$app->put('/absen/rekap/publish/{id}', [$absenRekapPublish, 'update']);
+$app->delete('/absen/rekap/publish/{id}', [$absenRekapPublish, 'delete']);
+
+$guruRekapPublish = new \App\Controllers\AbsenGuruRekapPublishController();
+$app->get('/absen/jurnal/rekap-absen-guru/publish/occupied', [$guruRekapPublish, 'occupied']);
+$app->get('/absen/jurnal/rekap-absen-guru/publish', [$guruRekapPublish, 'index']);
+$app->get('/absen/jurnal/rekap-absen-guru/publish/{id}', [$guruRekapPublish, 'show']);
+$app->post('/absen/jurnal/rekap-absen-guru/publish', [$guruRekapPublish, 'create']);
+$app->put('/absen/jurnal/rekap-absen-guru/publish/{id}', [$guruRekapPublish, 'update']);
+$app->delete('/absen/jurnal/rekap-absen-guru/publish/{id}', [$guruRekapPublish, 'delete']);
+
 $app->get('/nilai', [new \App\Controllers\NilaiController(), 'index']);
 $app->get('/nilai/rekap', [new \App\Controllers\NilaiController(), 'rekap']);
+$nilaiRekapPublish = new \App\Controllers\NilaiRekapPublishController();
+$app->get('/nilai/rekap/publish/occupied', [$nilaiRekapPublish, 'occupied']);
+$app->get('/nilai/rekap/publish', [$nilaiRekapPublish, 'index']);
+$app->get('/nilai/rekap/publish/{id}', [$nilaiRekapPublish, 'show']);
+$app->post('/nilai/rekap/publish', [$nilaiRekapPublish, 'create']);
+$app->put('/nilai/rekap/publish/{id}', [$nilaiRekapPublish, 'update']);
+$app->delete('/nilai/rekap/publish/{id}', [$nilaiRekapPublish, 'delete']);
 $app->put('/nilai', [new \App\Controllers\NilaiController(), 'save']);
 $app->put('/nilai/urutan', [new \App\Controllers\NilaiController(), 'reorder']);
 $app->post('/nilai/ubah-tanggal', [new \App\Controllers\NilaiController(), 'ubahTanggal']);
@@ -92,6 +115,21 @@ $app->get('/kelas/{id}/mapel', [new \App\Controllers\MapelController(), 'listFor
 $app->put('/kelas/{id}/mapel', [new \App\Controllers\MapelController(), 'syncKelasMapel']);
 
 $app->get('/kalender', [new \App\Controllers\KalenderProxyController(), 'proxy']);
+
+$rekapPublish = new \App\Controllers\RekapPublishController();
+$app->get('/rekap/publish/occupied', [$rekapPublish, 'occupied']);
+$app->get('/rekap/publish', [$rekapPublish, 'index']);
+$app->get('/rekap/publish/{id}', [$rekapPublish, 'show']);
+$app->post('/rekap/publish', [$rekapPublish, 'create']);
+$app->put('/rekap/publish/{id}', [$rekapPublish, 'update']);
+$app->delete('/rekap/publish/{id}', [$rekapPublish, 'delete']);
+
+$jadwal = new \App\Controllers\JadwalController();
+$app->get('/jadwal', [$jadwal, 'index']);
+$app->get('/jadwal/{id}', [$jadwal, 'show']);
+$app->post('/jadwal', [$jadwal, 'create']);
+$app->put('/jadwal/{id}', [$jadwal, 'update']);
+$app->delete('/jadwal/{id}', [$jadwal, 'delete']);
 
 $app->get('/dashboard', [new \App\Controllers\DashboardController(), 'index']);
 

@@ -2,8 +2,66 @@
 # Cara pakai: jalankan dari folder htdocs di PowerShell: .\deploy.ps1
 # - Frontend: pilih ebeddien, daftar, mybeddien, dan/atau nailul-murod → build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddien2/mybeddien, nailul-murod2/nailul-murod
 # - API: upload isi folder api (production only)
+#
+# Non-interaktif (CI / agent): .\deploy.ps1 -Target production -Scope both -Frontend all
+#   -Target: staging|production|1|2
+#   -Scope: frontend|api|both|1|2|3
+#   -Frontend: ebeddien|daftar|mybeddien|nailul|all|1|2|3|4|5  (hanya jika -Scope frontend/both)
+#   -Migrate / -Seed: jalankan phinx di server setelah upload API
+
+param(
+    [ValidateSet('1', '2', 'staging', 'production', '')]
+    [string]$Target = '',
+    [ValidateSet('1', '2', '3', 'frontend', 'api', 'both', '')]
+    [string]$Scope = '',
+    [ValidateSet('1', '2', '3', '4', '5', 'ebeddien', 'daftar', 'mybeddien', 'nailul', 'all', '')]
+    [string]$Frontend = '',
+    [switch]$Migrate,
+    [switch]$Seed
+)
 
 $ErrorActionPreference = "Stop"
+
+$script:NonInteractiveDeploy = ($Target -ne '') -or ($Scope -ne '') -or ($Frontend -ne '') -or $Migrate.IsPresent -or $Seed.IsPresent
+
+function Resolve-DeployChoice {
+    param(
+        [Parameter(Mandatory = $true)][string]$Prompt,
+        [Parameter(Mandatory = $true)][string[]]$Valid,
+        [string]$Provided = '',
+        [string]$Default = ''
+    )
+    if ($Provided -ne '') {
+        $p = $Provided.Trim().ToLower()
+        switch ($p) {
+            'staging' { return '1' }
+            'production' { return '2' }
+            'frontend' { return '1' }
+            'api' { return '2' }
+            'both' { return '3' }
+            'ebeddien' { return '1' }
+            'daftar' { return '2' }
+            'mybeddien' { return '3' }
+            'nailul' { return '4' }
+            'all' { return '5' }
+            default {
+                if ($Valid -contains $p) { return $p }
+                throw "Pilihan tidak valid untuk $Prompt : '$Provided'. Valid: $($Valid -join ', ')"
+            }
+        }
+    }
+    if ($script:NonInteractiveDeploy) {
+        if ($Default -ne '') { return $Default }
+        throw "Mode non-interaktif: wajib isi parameter deploy (mis. -Target production -Scope both -Frontend all)."
+    }
+    if ([Environment]::UserInteractive) {
+        $inputVal = Read-Host $Prompt
+        if ($inputVal -eq '' -and $Default -ne '') { return $Default }
+        return $inputVal
+    }
+    if ($Default -ne '') { return $Default }
+    throw "Mode non-interaktif: wajib isi parameter deploy (mis. -Target production -Scope both -Frontend all)."
+}
 
 # --- Konfigurasi SSH ---
 $SSH_USER   = "u264984103"
@@ -21,7 +79,7 @@ Write-Host "  Pilih target deploy:" -ForegroundColor White
 Write-Host '    1) Staging   (ebeddien2 + api2.alutsmani.id)' -ForegroundColor Yellow
 Write-Host '    2) Production (ebeddien + api.alutsmani.id)' -ForegroundColor Green
 Write-Host ""
-$choice = Read-Host '  Masukkan pilihan (1 atau 2)'
+$choice = Resolve-DeployChoice -Prompt '  Masukkan pilihan (1 atau 2)' -Valid @('1', '2') -Provided $Target
 
 $isStaging = $choice -eq "1"
 if (-not $isStaging -and $choice -ne "2") {
@@ -59,7 +117,7 @@ Write-Host '    1) Frontend saja   - build + upload (pilih ebeddien/daftar/mybed
 Write-Host '    2) API saja        - upload api (hanya file production)' -ForegroundColor Magenta
 Write-Host '    3) Frontend + API  - keduanya' -ForegroundColor Green
 Write-Host ""
-$scope = Read-Host '  Masukkan pilihan (1, 2, atau 3)'
+$scope = Resolve-DeployChoice -Prompt '  Masukkan pilihan (1, 2, atau 3)' -Valid @('1', '2', '3') -Provided $Scope
 if ($scope -notmatch '^[123]$') {
     Write-Error 'Pilihan tidak valid. Gunakan 1, 2, atau 3.'
 }
@@ -81,7 +139,7 @@ if ($doFrontend) {
     Write-Host '    4) nailul-murod saja - build + upload ke nailul-murod2/nailul-murod' -ForegroundColor Blue
     Write-Host '    5) semuanya       - ebeddien, daftar, mybeddien, nailul-murod' -ForegroundColor Green
     Write-Host ""
-    $front = Read-Host '  Masukkan pilihan (1, 2, 3, 4, atau 5)'
+    $front = Resolve-DeployChoice -Prompt '  Masukkan pilihan (1, 2, 3, 4, atau 5)' -Valid @('1', '2', '3', '4', '5') -Provided $Frontend
     if ($front -notmatch '^[12345]$') {
         Write-Error 'Pilihan tidak valid. Gunakan 1, 2, 3, 4, atau 5.'
     }
@@ -97,8 +155,20 @@ $runSeeds = 'n'
 if ($doApi) {
     Write-Host ""
     Write-Host "  Setelah upload API nanti:" -ForegroundColor White
-    $runMigrations = Read-Host '  Jalankan migrasi database (phinx migrate) di server? [y/N]'
-    $runSeeds = Read-Host '  Jalankan seed (RoleSeed + ChangelogVersionSeed)? [y/N]'
+    if ($Migrate.IsPresent) {
+        $runMigrations = 'y'
+    } elseif ($script:NonInteractiveDeploy) {
+        $runMigrations = 'n'
+    } else {
+        $runMigrations = Read-Host '  Jalankan migrasi database (phinx migrate) di server? [y/N]'
+    }
+    if ($Seed.IsPresent) {
+        $runSeeds = 'y'
+    } elseif ($script:NonInteractiveDeploy) {
+        $runSeeds = 'n'
+    } else {
+        $runSeeds = Read-Host '  Jalankan seed (RoleSeed + ChangelogVersionSeed)? [y/N]'
+    }
 }
 
 Write-Host ""

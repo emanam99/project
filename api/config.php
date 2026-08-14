@@ -161,7 +161,7 @@ if (!function_exists('resolve_mybeddian_app_url_default')) {
 
 return [
     // Versi backend (API) saat ini — dipakai endpoint GET /api/version dan tampilan frontend (uwaba BACKEND_VERSION)
-    'api_version' => '2.13.71',
+    'api_version' => '2.13.74',
     /** Chat user-to-user (centang baca, edit window, pin, undangan) */
     'chat' => [
         'edit_window_minutes' => max(1, (int) env('CHAT_EDIT_WINDOW_MINUTES', 15)),

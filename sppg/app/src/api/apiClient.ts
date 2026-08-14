@@ -626,3 +626,156 @@ export type BelanjaItemOptions = {
 export async function listBelanjaItemOptions() {
   return request<BelanjaItemOptions>('/belanja/item-options')
 }
+
+export type PorsiUkuran = 'besar' | 'kecil'
+
+export type PorsiRow = {
+  id: number
+  tanggal: string
+  judul?: string | null
+  ukuran: PorsiUkuran
+  energi_kkal: number | string
+  karbohidrat_gr: number | string
+  protein_gr: number | string
+  lemak_gr: number | string
+  serat_gr: number | string
+  foto_nama?: string | null
+  foto_simpan?: string | null
+  foto_path?: string | null
+  foto_tipe?: string | null
+  foto_ukuran?: number | string
+  created_by?: number | null
+  created_by_name?: string | null
+  created_by_email?: string | null
+  created_at?: string
+  updated_at?: string
+  menu_count?: number | string
+  total_pb?: number | string
+  total_pk?: number | string
+  total_harga?: number | string
+}
+
+export type PorsiMenuItem = {
+  id: number
+  porsi_id: number
+  nama: string
+  pb: number | string
+  pk: number | string | null
+  urutan: number
+  created_at?: string
+}
+
+export type PorsiDetail = {
+  porsi: PorsiRow
+  menu: PorsiMenuItem[]
+}
+
+export type PorsiMenuOption = {
+  nama: string
+  pb: number | null
+  pk: number | null
+}
+
+export type PorsiPayload = {
+  tanggal: string
+  judul: string
+  ukuran: PorsiUkuran
+  energi_kkal: number
+  karbohidrat_gr: number
+  protein_gr: number
+  lemak_gr: number
+  serat_gr: number
+  menu?: Array<{ nama: string; harga: number }>
+}
+
+export async function listPorsi(params: {
+  from?: string
+  to?: string
+  q?: string
+  ukuran?: PorsiUkuran
+} = {}) {
+  const qs = new URLSearchParams()
+  if (params.from) qs.set('from', params.from)
+  if (params.to) qs.set('to', params.to)
+  if (params.q) qs.set('q', params.q)
+  if (params.ukuran) qs.set('ukuran', params.ukuran)
+  const query = qs.toString()
+  return request<PorsiRow[]>(`/porsi${query ? `?${query}` : ''}`)
+}
+
+export async function getPorsi(id: number) {
+  return request<PorsiDetail>(`/porsi/${id}`)
+}
+
+export async function createPorsi(payload: PorsiPayload) {
+  return request<PorsiDetail>('/porsi', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updatePorsi(id: number, payload: PorsiPayload) {
+  return request<PorsiDetail>(`/porsi/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deletePorsi(id: number) {
+  return request(`/porsi/${id}`, { method: 'DELETE' })
+}
+
+export async function listPorsiItemOptions() {
+  return request<{ menu: PorsiMenuOption[] }>('/porsi/item-options')
+}
+
+export async function uploadPorsiFoto(porsiId: number, file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const headers = new Headers()
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  try {
+    const res = await fetch(`${API_URL}/porsi/${porsiId}/foto`, {
+      method: 'POST',
+      headers,
+      body: form,
+      credentials: 'include',
+    })
+    const json = (await res.json().catch(() => ({}))) as ApiResult<PorsiRow>
+    if (res.status === 401) clearSession()
+    if (!res.ok && json.success === undefined) {
+      return { success: false, message: json.message || `HTTP ${res.status}` }
+    }
+    return json
+  } catch {
+    return { success: false, message: 'Koneksi gagal saat meng-upload foto.' }
+  }
+}
+
+export async function deletePorsiFoto(porsiId: number) {
+  return request<PorsiRow>(`/porsi/${porsiId}/foto`, { method: 'DELETE' })
+}
+
+export async function downloadPorsiFotoBlob(
+  porsiId: number,
+): Promise<{ success: true; blob: Blob } | { success: false; message: string }> {
+  const headers = new Headers()
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  try {
+    const res = await fetch(`${API_URL}/porsi/${porsiId}/foto`, {
+      headers,
+      credentials: 'include',
+    })
+    const type = res.headers.get('Content-Type') || ''
+    if (!res.ok || type.includes('application/json')) {
+      const json = (await res.json().catch(() => ({}))) as { message?: string }
+      if (res.status === 401) clearSession()
+      return { success: false, message: json.message || `Gagal unduh (HTTP ${res.status})` }
+    }
+    return { success: true, blob: await res.blob() }
+  } catch {
+    return { success: false, message: 'Koneksi gagal saat mengunduh foto.' }
+  }
+}

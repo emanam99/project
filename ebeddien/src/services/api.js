@@ -15,6 +15,24 @@ export const getAppEnv = () => {
   return import.meta.env.DEV ? 'development' : 'production'
 }
 
+function envApiUrlPointsToLocalMachine(url) {
+  try {
+    const h = new URL(url.trim()).hostname
+    return h === 'localhost' || h === '127.0.0.1'
+  } catch {
+    return false
+  }
+}
+
+function deriveRemoteApiBaseUrl(hostname, protocol) {
+  const parts = hostname.split('.')
+  const rootDomain = parts.length > 2 ? parts.slice(-2).join('.') : hostname
+  if (!rootDomain || rootDomain.includes('localhost')) {
+    return 'http://localhost/api/public/api'
+  }
+  return `${protocol}//api.${rootDomain}/api`
+}
+
 // Helper untuk mendapatkan base URL API
 // Saat akses dari HP/device lain lewat IP (10.x, 192.168.x): selalu pakai hostname agar API ke PC yang sama
 // Saat localhost atau production: pakai VITE_API_BASE_URL atau fallback
@@ -39,8 +57,21 @@ export const getSlimApiUrl = () => {
 
   const envUrl = import.meta.env.VITE_API_BASE_URL
   if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
-    const url = envUrl.trim()
-    return url.endsWith('/') ? url.slice(0, -1) : url
+    const url = envUrl.trim().replace(/\/$/, '')
+    const onRemoteHost = typeof window !== 'undefined' && !isPrivateOrIp && hostname !== 'localhost' && hostname !== '127.0.0.1'
+    if (!onRemoteHost || !envApiUrlPointsToLocalMachine(url)) {
+      return url.endsWith('/') ? url.slice(0, -1) : url
+    }
+    if (typeof console !== 'undefined') {
+      console.warn(
+        '[eBeddien] VITE_API_BASE_URL mengarah ke localhost di host production — pakai API remote:',
+        deriveRemoteApiBaseUrl(hostname, protocol)
+      )
+    }
+  }
+
+  if (typeof window !== 'undefined' && !isPrivateOrIp && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+    return deriveRemoteApiBaseUrl(hostname, protocol)
   }
 
   // Fallback jika .env belum di-set
@@ -4528,6 +4559,16 @@ export const cashlessAPI = {
     if (pedagangId) params.pedagang_id = pedagangId
     if (tokoId) params.toko_id = tokoId
     const response = await api.get('/v2/cashless/withdraw/history', { params })
+    return response.data
+  },
+
+  /** Riwayat mutasi wallet lengkap (top-up, tarik, belanja, transfer). */
+  getStatementHistory: async ({ santriId, pedagangId, tokoId, limit = 50 } = {}) => {
+    const params = { limit }
+    if (santriId) params.santri_id = santriId
+    if (pedagangId) params.pedagang_id = pedagangId
+    if (tokoId) params.toko_id = tokoId
+    const response = await api.get('/v2/cashless/statement/history', { params })
     return response.data
   },
 

@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS jadwal (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    kelas_id INT NOT NULL,
+    mapel_id INT NOT NULL,
+    pengurus_id INT NOT NULL,
+    hari VARCHAR(10) NOT NULL,
+    jam_dari TIME NOT NULL,
+    jam_sampai TIME NOT NULL,
+    ket_jam TINYINT NOT NULL,
+    aktif TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (kelas_id) REFERENCES kelas(id) ON DELETE CASCADE,
+    FOREIGN KEY (mapel_id) REFERENCES mapel(id) ON DELETE CASCADE,
+    FOREIGN KEY (pengurus_id) REFERENCES pengurus(id) ON DELETE CASCADE,
+    INDEX idx_jadwal_kelas_hari (kelas_id, hari),
+    INDEX idx_jadwal_guru_hari (pengurus_id, hari),
+    INDEX idx_jadwal_mapel (mapel_id),
+    INDEX idx_jadwal_aktif (aktif),
+    INDEX idx_jadwal_ket (kelas_id, hari, ket_jam, aktif)
+);

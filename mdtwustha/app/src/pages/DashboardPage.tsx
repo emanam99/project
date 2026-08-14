@@ -137,7 +137,7 @@ export default function DashboardPage() {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="max-w-6xl space-y-5 pb-4"
+      className="max-w-6xl space-y-5"
     >
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
         <div>

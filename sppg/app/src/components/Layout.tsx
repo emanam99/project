@@ -15,7 +15,7 @@ const HEADER_HIDE_AFTER = 48
 const HEADER_SHOW_DELTA = 4
 const BOTTOM_NAV_MAX = 5
 
-type NavIcon = 'home' | 'cart' | 'bank' | 'users' | 'settings' | 'archive' | 'bni' | 'more'
+type NavIcon = 'home' | 'cart' | 'bowl' | 'bank' | 'users' | 'settings' | 'archive' | 'bni' | 'more'
 
 type NavItem = {
   to: string
@@ -49,6 +49,14 @@ function Icon({ name, className = 'h-4 w-4' }: { name: NavIcon; className?: stri
           <circle cx="9" cy="20" r="1.2" fill="currentColor" stroke="none" />
           <circle cx="17" cy="20" r="1.2" fill="currentColor" stroke="none" />
           <path d="M3 4h2l2.2 11.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.2L20 8H7" />
+        </svg>
+      )
+    case 'bowl':
+      return (
+        <svg {...common}>
+          <path d="M4 11c0 4.4 3.6 8 8 8s8-3.6 8-8" />
+          <path d="M3 11h18" />
+          <path d="M8 7.5c.8-1.2 1.9-2 4-2s3.2.8 4 2" />
         </svg>
       )
     case 'bank':
@@ -196,6 +204,7 @@ function LayoutShell() {
     () => [
       { to: '/dashboard', label: 'Beranda', shortLabel: 'Home', icon: 'home' },
       { to: '/belanja', label: 'Belanja', shortLabel: 'Belanja', icon: 'cart' },
+      { to: '/porsi', label: 'Porsi', shortLabel: 'Porsi', icon: 'bowl' },
       { to: '/rekening', label: 'Rekening', shortLabel: 'Rek', icon: 'bank' },
       ...(superAdmin
         ? ([
