@@ -68,36 +68,35 @@ jobs:
         shell: pwsh
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KEY_B64: ${{ secrets.DEPLOY_SSH_KEY_B64 }}
           DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
           DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
           DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_KEY)) {
-            throw "Secret DEPLOY_SSH_KEY belum di-set (Settings → Secrets and variables → Actions)."
-          }
-
           $user = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_USER)) { 'u264984103' } else { $env:DEPLOY_SSH_USER.Trim() }
           $hostName = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_HOST)) { '145.223.108.9' } else { $env:DEPLOY_SSH_HOST.Trim() }
           $port = if ([string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_PORT)) { '65002' } else { $env:DEPLOY_SSH_PORT.Trim() }
+          if ($port -notmatch '^\d+$') { throw "DEPLOY_SSH_PORT tidak valid: [$port]" }
 
           $sshDir = Join-Path $env:USERPROFILE '.ssh'
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
           $keyPath = Join-Path $sshDir 'id_ed25519'
-          $key = ($env:DEPLOY_SSH_KEY -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd() + "`n"
-          [System.IO.File]::WriteAllText($keyPath, $key)
+
+          if (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_KEY_B64)) {
+            [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:DEPLOY_SSH_KEY_B64.Trim()))
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:DEPLOY_SSH_KEY)) {
+            $key = ($env:DEPLOY_SSH_KEY -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd() + "`n"
+            [System.IO.File]::WriteAllText($keyPath, $key)
+          } else {
+            throw "Secret DEPLOY_SSH_KEY_B64 atau DEPLOY_SSH_KEY wajib di-set."
+          }
+
           icacls $keyPath /inheritance:r | Out-Null
           icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+          ssh-keygen -lf $keyPath
 
           $known = Join-Path $sshDir 'known_hosts'
-          $scan = & ssh-keyscan -p $port -T 15 $hostName 2>&1
-          $scanLines = @($scan | Where-Object { $_ -is [string] -and $_ -notmatch '^\s*#' -and $_.Trim() -ne '' })
-          if ($scanLines.Count -eq 0) {
-            Write-Warning "ssh-keyscan kosong; pakai StrictHostKeyChecking=accept-new"
-            '' | Set-Content -Path $known -Encoding ascii
-          } else {
-            $scanLines | Set-Content -Path $known -Encoding ascii
-            Write-Host "known_hosts entries: $($scanLines.Count)"
-          }
+          '' | Set-Content -Path $known -Encoding ascii
 
           $configLines = @(
             'Host *',
@@ -111,11 +110,12 @@ jobs:
           )
           [System.IO.File]::WriteAllText((Join-Path $sshDir 'config'), ($configLines -join "`n") + "`n")
 
-          "DEPLOY_SSH_USER=$user" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "DEPLOY_SSH_HOST=$hostName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "DEPLOY_SSH_PORT=$port" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Add-Content -Path $env:GITHUB_ENV -Value "DEPLOY_SSH_USER=$user" -Encoding utf8NoBOM
+          Add-Content -Path $env:GITHUB_ENV -Value "DEPLOY_SSH_HOST=$hostName" -Encoding utf8NoBOM
+          Add-Content -Path $env:GITHUB_ENV -Value "DEPLOY_SSH_PORT=$port" -Encoding utf8NoBOM
 
-          ssh -i $keyPath -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$known -o ConnectTimeout=25 "${user}@${hostName}" "echo SSH_OK"
+          Write-Host "SSH target ${user}@${hostName} port=${port}"
+          ssh -i $keyPath -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$known -o ConnectTimeout=40 "${user}@${hostName}" "echo SSH_OK"
           if ($LASTEXITCODE -ne 0) { throw "SSH ke Hostinger gagal (exit $LASTEXITCODE)" }
 
       - name: Run deploy.ps1
