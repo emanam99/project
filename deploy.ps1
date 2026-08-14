@@ -313,14 +313,59 @@ function Restore-DotEnvProductionFile {
     $script:PrevDotEnvProduction = $null
 }
 
+# CI/GitHub Actions: .env biasanya tidak di-commit. Buat stub lokal jika belum ada.
+function Ensure-ViteLocalEnvFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$AppDir,
+        [Parameter(Mandatory = $true)][ValidateSet('ebeddien','daftar','mybeddien','nailul')][string]$App
+    )
+    $envPath = Join-Path $AppDir '.env'
+    if (Test-Path $envPath) { return $envPath }
+
+    $lines = switch ($App) {
+        'ebeddien' {
+            @(
+                'VITE_API_BASE_URL=http://localhost/api/public/api'
+                'VITE_APP_ENV=development'
+                'VITE_APP_BASE=/'
+                'VITE_GAMBAR_BASE=/gambar'
+                'VITE_MYBEDDIEN_APP_URL=https://mybeddien.alutsmani.id'
+            )
+        }
+        'daftar' {
+            @(
+                'VITE_API_BASE_URL=http://localhost/api/public/api'
+                'VITE_APP_ENV=development'
+                'VITE_GAMBAR_BASE=/gambar'
+            )
+        }
+        'mybeddien' {
+            @(
+                'VITE_API_BASE_URL=http://localhost/api/public/api'
+                'VITE_APP_ENV=development'
+                'VITE_GAMBAR_BASE=/gambar'
+                'VITE_EBEDDien_APP_URL=http://localhost:5173'
+            )
+        }
+        'nailul' {
+            @(
+                'VITE_API_BASE=/api'
+                'VITE_API_BASE_URL=http://localhost/api/public/api'
+                'VITE_APP_ENV=development'
+                'VITE_GAMBAR_BASE=/gambar'
+            )
+        }
+    }
+    [System.IO.File]::WriteAllText($envPath, (($lines -join "`r`n") + "`r`n"), [System.Text.UTF8Encoding]::new($false))
+    Write-Host "  [$App] .env tidak ada — stub lokal dibuat untuk CI/deploy." -ForegroundColor Yellow
+    return $envPath
+}
+
 # ========== FRONTEND (ebeddien) ==========
 if ($doEbeddien) {
     Set-Location $ebeddienDir
     # --- Set .env ke staging atau production ---
-    $envPath = Join-Path $ebeddienDir ".env"
-    if (-not (Test-Path $envPath)) {
-        Write-Error "File .env tidak ditemukan di folder ebeddien."
-    }
+    $envPath = Ensure-ViteLocalEnvFile -AppDir $ebeddienDir -App ebeddien
     $envContent = Get-Content $envPath -Raw -Encoding UTF8
     $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=$apiUrl"
     $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=$envLabel"
@@ -404,10 +449,7 @@ if ($doDaftar) {
         Write-Error "Folder daftar tidak ditemukan: $daftarDir"
     }
     Set-Location $daftarDir
-    $envPath = Join-Path $daftarDir ".env"
-    if (-not (Test-Path $envPath)) {
-        Write-Error "File .env tidak ditemukan di folder daftar."
-    }
+    $envPath = Ensure-ViteLocalEnvFile -AppDir $daftarDir -App daftar
     $envContent = Get-Content $envPath -Raw -Encoding UTF8
     $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=$apiUrl"
     $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=$envLabel"
@@ -461,10 +503,7 @@ if ($doMybeddien) {
         Write-Error "Folder mybeddien tidak ditemukan: $mybeddienDir"
     }
     Set-Location $mybeddienDir
-    $envPath = Join-Path $mybeddienDir ".env"
-    if (-not (Test-Path $envPath)) {
-        Write-Error "File .env tidak ditemukan di folder mybeddien."
-    }
+    $envPath = Ensure-ViteLocalEnvFile -AppDir $mybeddienDir -App mybeddien
     $envContent = Get-Content $envPath -Raw -Encoding UTF8
     $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=$apiUrl"
     $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=$envLabel"
@@ -532,18 +571,14 @@ if ($doNailul) {
         Write-Error "Folder nailul-murod tidak ditemukan: $nailulDir"
     }
     Set-Location $nailulDir
-    $envPath = Join-Path $nailulDir ".env"
-    $hasEnvFile = Test-Path $envPath
-
-    if ($hasEnvFile) {
-        $envContent = Get-Content $envPath -Raw -Encoding UTF8
-        $envContent = $envContent -replace '(?m)^VITE_API_BASE=.*', "VITE_API_BASE=$apiUrl"
-        $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=$apiUrl"
-        $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=$envLabel"
-        $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=$gambarBase"
-        [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
-        Write-Host "[Frontend nailul-murod] .env diset ke $envLabel" -ForegroundColor Gray
-    }
+    $envPath = Ensure-ViteLocalEnvFile -AppDir $nailulDir -App nailul
+    $envContent = Get-Content $envPath -Raw -Encoding UTF8
+    $envContent = $envContent -replace '(?m)^VITE_API_BASE=.*', "VITE_API_BASE=$apiUrl"
+    $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=$apiUrl"
+    $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=$envLabel"
+    $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=$gambarBase"
+    [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
+    Write-Host "[Frontend nailul-murod] .env diset ke $envLabel" -ForegroundColor Gray
 
     Set-ViteBuildProcessEnv -ApiUrl $apiUrl -EnvLabel $envLabel -GambarBase $gambarBase -Extra @{
         VITE_API_BASE = $apiUrl
