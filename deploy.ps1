@@ -1,6 +1,6 @@
-# Deploy ebeddien/daftar/mybeddien/nailul-murod ke Hostinger - pilih staging/production, pilih Frontend (ebeddien/daftar/mybeddien/nailul-murod)/API, lalu upload
+﻿# Deploy ebeddien/daftar/mybeddien/nailul-murod ke Hostinger - pilih staging/production, pilih Frontend (ebeddien/daftar/mybeddien/nailul-murod)/API, lalu upload
 # Cara pakai: jalankan dari folder htdocs di PowerShell: .\deploy.ps1
-# - Frontend: pilih ebeddien, daftar, mybeddien, dan/atau nailul-murod → build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddien2/mybeddien, nailul-murod2/nailul-murod
+# - Frontend: pilih ebeddien, daftar, mybeddien, dan/atau nailul-murod â†’ build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddien2/mybeddien, nailul-murod2/nailul-murod
 # - API: upload isi folder api (production only)
 #
 # Non-interaktif (CI / agent): .\deploy.ps1 -Target production -Scope both -Frontend all
@@ -236,7 +236,7 @@ function Invoke-RemoteTarExtractAndVerify {
         [Parameter(Mandatory = $true)][string]$MainBundle
     )
     $assetPath = "assets/$MainBundle"
-    $extractCmd = "cd $RemotePath && tar --warning=no-timestamp -xf $TarFile && rm -f $TarFile && test -f $assetPath && echo VERIFY_OK || echo VERIFY_FAIL"
+    $extractCmd = "cd $RemotePath && tar --warning=none -xf $TarFile && rm -f $TarFile && test -f $assetPath && echo VERIFY_OK || echo VERIFY_FAIL"
     $result = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
     $text = ($result | Out-String).Trim()
     if ($text -notmatch 'VERIFY_OK') {
@@ -246,7 +246,7 @@ function Invoke-RemoteTarExtractAndVerify {
 }
 
 # Vite mode=production memuat .env.production (lebih tinggi dari .env).
-# Process env mengalahkan semua file .env — wajib di-set agar staging tidak ke-bake ke api.alutsmani.id.
+# Process env mengalahkan semua file .env â€” wajib di-set agar staging tidak ke-bake ke api.alutsmani.id.
 function Set-ViteBuildProcessEnv {
     param(
         [Parameter(Mandatory = $true)][string]$ApiUrl,
@@ -505,8 +505,9 @@ if ($doDaftar) {
 
     Write-Host "[Frontend daftar] Upload + ekstrak di server..." -ForegroundColor Cyan
     scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_DAFTAR_PATH}/"
-    $extractCmd = 'cd ' + $REMOTE_DAFTAR_PATH + ' && tar --warning=no-timestamp -xf ' + $DAFTAR_TAR + ' && rm -f ' + $DAFTAR_TAR
-    ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd
+    $extractCmd = 'cd ' + $REMOTE_DAFTAR_PATH + ' && tar --warning=none -xf ' + $DAFTAR_TAR + ' && rm -f ' + $DAFTAR_TAR + ' && echo EXTRACT_OK'
+    $extractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
+    if ((($extractOut | Out-String).Trim()) -notmatch 'EXTRACT_OK') { throw "Ekstraksi di server gagal. Output: $(($extractOut | Out-String).Trim())" }
 
     Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
 
@@ -568,8 +569,9 @@ if ($doMybeddien) {
 
     Write-Host "[Frontend mybeddien] Upload + ekstrak di server..." -ForegroundColor Cyan
     scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_MYBEDDIEN_PATH}/"
-    $extractCmd = 'cd ' + $REMOTE_MYBEDDIEN_PATH + ' && tar --warning=no-timestamp -xf ' + $MYBEDDIEN_TAR + ' && rm -f ' + $MYBEDDIEN_TAR
-    ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd
+    $extractCmd = 'cd ' + $REMOTE_MYBEDDIEN_PATH + ' && tar --warning=none -xf ' + $MYBEDDIEN_TAR + ' && rm -f ' + $MYBEDDIEN_TAR + ' && echo EXTRACT_OK'
+    $extractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
+    if ((($extractOut | Out-String).Trim()) -notmatch 'EXTRACT_OK') { throw "Ekstraksi di server gagal. Output: $(($extractOut | Out-String).Trim())" }
 
     Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
 
@@ -631,8 +633,9 @@ if ($doNailul) {
 
     Write-Host "[Frontend nailul-murod] Upload + ekstrak di server..." -ForegroundColor Cyan
     scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_NAILUL_PATH}/"
-    $extractCmd = 'cd ' + $REMOTE_NAILUL_PATH + ' && tar --warning=no-timestamp -xf ' + $NAILUL_TAR + ' && rm -f ' + $NAILUL_TAR
-    ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd
+    $extractCmd = 'cd ' + $REMOTE_NAILUL_PATH + ' && tar --warning=none -xf ' + $NAILUL_TAR + ' && rm -f ' + $NAILUL_TAR + ' && echo EXTRACT_OK'
+    $extractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
+    if ((($extractOut | Out-String).Trim()) -notmatch 'EXTRACT_OK') { throw "Ekstraksi di server gagal. Output: $(($extractOut | Out-String).Trim())" }
 
     Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
 
@@ -731,8 +734,13 @@ if ($doApi) {
 
     Write-Host ('[API] Upload + ekstrak di server (' + $REMOTE_API_PATH + ')...') -ForegroundColor Cyan
     scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $apiTarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_API_PATH}/"
-    $apiExtractCmd = 'cd ' + $REMOTE_API_PATH + ' && tar --warning=no-timestamp -xf ' + $API_TAR + ' && rm -f ' + $API_TAR
-    ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $apiExtractCmd
+    # Warning tar di stderr tidak boleh menghentikan ssh (ErrorActionPreference=Stop), jadi output digabung lalu diperiksa penanda.
+    $apiExtractCmd = 'cd ' + $REMOTE_API_PATH + ' && tar --warning=none -xf ' + $API_TAR + ' && rm -f ' + $API_TAR + ' && echo API_EXTRACT_OK'
+    $apiExtractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $apiExtractCmd 2>&1
+    if ((($apiExtractOut | Out-String).Trim()) -notmatch 'API_EXTRACT_OK') {
+        throw "[API] Ekstraksi di server gagal. Output: $(($apiExtractOut | Out-String).Trim())"
+    }
+    Write-Host '  Ekstraksi API di server OK' -ForegroundColor Green
 
     Remove-Item $apiTemp -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item $apiTarPath -Force -ErrorAction SilentlyContinue
