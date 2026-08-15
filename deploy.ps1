@@ -357,7 +357,7 @@ function Ensure-ViteLocalEnvFile {
         }
     }
     [System.IO.File]::WriteAllText($envPath, (($lines -join "`r`n") + "`r`n"), [System.Text.UTF8Encoding]::new($false))
-    Write-Host "  [$App] .env tidak ada — stub lokal dibuat untuk CI/deploy." -ForegroundColor Yellow
+    Write-Host "  [$App] .env tidak ada - stub lokal dibuat untuk CI/deploy." -ForegroundColor Yellow
     return $envPath
 }
 
@@ -369,7 +369,7 @@ function Invoke-FrontendNpmBuild {
         $viteBin = Join-Path $nm '.bin/vite'
         $viteCmd = Join-Path $nm '.bin/vite.cmd'
         if (-not (Test-Path $nm) -or (-not (Test-Path $viteBin) -and -not (Test-Path $viteCmd))) {
-            Write-Host "  npm dependencies belum ada — menjalankan npm ci/install..." -ForegroundColor Yellow
+            Write-Host "  npm dependencies belum ada - menjalankan npm ci/install..." -ForegroundColor Yellow
             if (Test-Path (Join-Path $AppDir 'package-lock.json')) {
                 npm ci
             } else {
