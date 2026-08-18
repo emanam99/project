@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+error.log
+uploads/belanja/
+/vendor/
