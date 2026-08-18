@@ -343,6 +343,11 @@
   hyphens: auto;
 }
 
+.surat-ijin__tanggal--perpanjang {
+  font-weight: 600;
+  color: #92400e;
+}
+
 /* Baris TTD: penanda salinan kiri (rata tengah vertikal dengan TTD), TTD kanan */
 .surat-ijin__footer {
   display: flex;

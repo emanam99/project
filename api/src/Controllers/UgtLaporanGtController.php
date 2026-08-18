@@ -7,6 +7,7 @@ use App\Helpers\RoleHelper;
 use App\Helpers\SantriStatusHelper;
 use App\Helpers\TahunAjaranActiveHelper;
 use App\Helpers\TextSanitizer;
+use App\Helpers\UgtLaporanBulanHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -599,6 +600,13 @@ class UgtLaporanGtController
                 ], 400);
             }
 
+            if (!UgtLaporanBulanHelper::isAllowed($bulan, UgtLaporanBulanHelper::PJGT_GT)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => UgtLaporanBulanHelper::messageFor(UgtLaporanBulanHelper::PJGT_GT),
+                ], 400);
+            }
+
             if ($santriScope !== null && $idSantri !== $santriScope) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Akses ditolak'], 403);
             }
@@ -728,6 +736,13 @@ class UgtLaporanGtController
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Madrasah, santri, tahun ajaran, dan bulan (1–12) wajib valid',
+                ], 400);
+            }
+
+            if (!UgtLaporanBulanHelper::isAllowed($bulan, UgtLaporanBulanHelper::PJGT_GT)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => UgtLaporanBulanHelper::messageFor(UgtLaporanBulanHelper::PJGT_GT),
                 ], 400);
             }
 

@@ -14,6 +14,7 @@ const FIXED_COL = {
   bisyaroh: { key: '__bisyaroh', defaultWidth: 140 },
   total: { key: '__total', defaultWidth: 116 },
   potong: { key: '__potong', defaultWidth: 200 },
+  transfer: { key: '__transfer', defaultWidth: 110 },
   catatan: { key: '__catatan', defaultWidth: 128 }
 }
 
@@ -158,12 +159,14 @@ export default function BisyarohReviewTab({
   getRekapCell,
   onExportExcel,
   exportingExcel = false,
-  onExportJatimCsv,
-  exportingJatimCsv = false,
+  exportPanel = null,
   disabledRowKeys = new Set(),
   onToggleDisabledRow,
   printMeta = {},
-  onNotify
+  onNotify,
+  canRilisPerPengurus = false,
+  onRilisManual,
+  rilisBusyKey = ''
 }) {
   const initial = useMemo(() => loadLayout(), [])
   const [scale, setScale] = useState(() => {
@@ -203,9 +206,11 @@ export default function BisyarohReviewTab({
                   ? FIXED_COL.total.defaultWidth
                   : colId === FIXED_COL.potong.key
                     ? FIXED_COL.potong.defaultWidth
-                    : colId === FIXED_COL.catatan.key
-                      ? FIXED_COL.catatan.defaultWidth
-                      : DEFAULT_KOLOM_WIDTH
+                    : colId === FIXED_COL.transfer.key
+                      ? FIXED_COL.transfer.defaultWidth
+                      : colId === FIXED_COL.catatan.key
+                        ? FIXED_COL.catatan.defaultWidth
+                        : DEFAULT_KOLOM_WIDTH
       return { ...prev, [colId]: clampWidth((prev[colId] ?? fb) + delta) }
     })
   }, [])
@@ -301,20 +306,6 @@ export default function BisyarohReviewTab({
             </button>
           </>
         ) : null}
-        {onExportJatimCsv ? (
-          <>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
-            <button
-              type="button"
-              onClick={onExportJatimCsv}
-              disabled={exportingJatimCsv || !sections.length}
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md border border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/25 text-amber-900 dark:text-amber-100 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50"
-              title="CSV upload Bank Jatim (rekening, nominal, jumlah baris)"
-            >
-              {exportingJatimCsv ? 'Menyiapkan…' : 'CSV Jatim'}
-            </button>
-          </>
-        ) : null}
         <span className="text-gray-300 dark:text-gray-600">|</span>
         <button
           type="button"
@@ -334,9 +325,12 @@ export default function BisyarohReviewTab({
           Cetak
         </button>
         <p className="w-full text-[10px] text-gray-500 dark:text-gray-400 leading-snug">
-          Seret garis di tepi kanan header kolom atau pakai tombol − / + di header. Klik nama pengurus untuk nonaktifkan dari total dan CSV Jatim.
+          Seret garis di tepi kanan header kolom atau pakai tombol − / + di header. Klik nama pengurus untuk
+          nonaktifkan dari total &amp; ekspor CSV Jatim. Transfer berhasil: tombol Rilis per baris atau upload mutasi.
         </p>
       </div>
+
+      {exportPanel ? <div className="mb-1">{exportPanel}</div> : null}
 
       {showGrandTotal ? (
         <p className="text-sm font-semibold text-teal-800 dark:text-teal-200">
@@ -445,6 +439,14 @@ export default function BisyarohReviewTab({
                         className="font-semibold"
                       >
                         Potong UWABA
+                      </ResizableHeader>
+                      <ResizableHeader
+                        colId={FIXED_COL.transfer.key}
+                        width={getWidth(FIXED_COL.transfer.key, FIXED_COL.transfer.defaultWidth)}
+                        onResize={setColWidth}
+                        onNudge={nudgeColWidth}
+                      >
+                        Transfer
                       </ResizableHeader>
                       <ResizableHeader
                         colId={FIXED_COL.catatan.key}
@@ -606,6 +608,43 @@ export default function BisyarohReviewTab({
                           ) : (
                             <span className="text-gray-400">—</span>
                           )}
+                        </td>
+                        <td
+                          className="py-1.5 px-2 align-top"
+                          style={{
+                            width: getWidth(FIXED_COL.transfer.key, FIXED_COL.transfer.defaultWidth),
+                            minWidth: getWidth(FIXED_COL.transfer.key, FIXED_COL.transfer.defaultWidth),
+                            maxWidth: getWidth(FIXED_COL.transfer.key, FIXED_COL.transfer.defaultWidth)
+                          }}
+                        >
+                          <div className="flex flex-col gap-1 items-start">
+                            {row.transfer_status === 'berhasil' ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                                Berhasil
+                              </span>
+                            ) : row.transfer_status === 'gagal' ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200">
+                                Gagal
+                              </span>
+                            ) : row.transfer_status === 'pending' ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
+                                Pending
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-gray-400">—</span>
+                            )}
+                            {canRilisPerPengurus && row.transfer_status !== 'berhasil' && row.id ? (
+                              <button
+                                type="button"
+                                disabled={rilisBusyKey === `${row.id}` || rowDisabled}
+                                onClick={() => onRilisManual?.(row)}
+                                className="px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-medium disabled:opacity-50"
+                                title="Konfirmasi manual transfer berhasil"
+                              >
+                                {rilisBusyKey === `${row.id}` ? '…' : 'Rilis'}
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                         <td
                           className="py-1.5 px-2 truncate text-gray-600 dark:text-gray-300"

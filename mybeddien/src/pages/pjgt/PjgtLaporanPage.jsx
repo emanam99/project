@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { laporanPjgtMybeddianAPI } from '../../services/api'
@@ -12,6 +12,10 @@ import {
 import { refreshPjgtLaporanAfterMutation } from '../../services/pjgtDataService'
 import { getBulanName } from '../../utils/bulanHijriLatin'
 import { isUgtLaporanBulanAktif } from '../../utils/ugtLaporanBulanAktif'
+import {
+  getUgtLaporanBulanPhase,
+  UGT_LAPORAN_BULAN_PJGT_GT,
+} from '../../utils/ugtLaporanBulanAllowed'
 import { madrasahNamaFromUser } from '../../utils/pjgtMadrasahNama'
 import LaporanPjgtOffcanvas from './LaporanPjgtOffcanvas'
 import { useMybeddienToast } from '../../hooks/useMybeddienToast'
@@ -28,6 +32,14 @@ export default function PjgtLaporanPage() {
     konteks,
   } = usePjgtKonteks()
   const { list, loading: listLoading } = usePjgtLaporanList(tahunAjaranAktif)
+  const laporanByBulan = useMemo(() => {
+    const grouped = new Map(UGT_LAPORAN_BULAN_PJGT_GT.map((bulan) => [bulan, []]))
+    for (const row of Array.isArray(list) ? list : []) {
+      const bulan = Number(row?.bulan)
+      if (grouped.has(bulan)) grouped.get(bulan).push(row)
+    }
+    return grouped
+  }, [list])
 
   const namaProfil =
     profilMadrasah?.nama != null ? String(profilMadrasah.nama).trim() : ''
@@ -268,94 +280,110 @@ export default function PjgtLaporanPage() {
               </>
             ) : null}
           </p>
-          <button
-            type="button"
-            onClick={openBaru}
-            className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium shadow-sm shrink-0"
-          >
-            Tambah laporan
-          </button>
         </motion.div>
 
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden"
-        >
-          {loading ? (
-            <div className="p-8 text-center text-gray-500 dark:text-gray-400 text-sm">Memuat...</div>
-          ) : list.length === 0 ? (
-            <div className="p-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-              Belum ada laporan PJGT. Klik &quot;Tambah laporan&quot; untuk mengisi.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700 text-left text-gray-600 dark:text-gray-400">
-                    <th className="px-4 py-3 font-medium w-[28%] sm:w-[22%]">Bulan</th>
-                    <th className="px-4 py-3 font-medium">Guru Tugas</th>
-                    <th className="px-4 py-3 font-medium hidden xl:table-cell">Dibuat oleh</th>
-                    <th className="px-4 py-3 font-medium hidden md:table-cell">Ubudiyah</th>
-                    <th className="px-4 py-3 font-medium hidden lg:table-cell max-w-[120px]">Usulan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.map((row) => {
-                    const canEdit = isUgtLaporanBulanAktif(row, konteks)
-                    return (
-                    <tr
-                      key={row.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openEdit(row)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          openEdit(row)
-                        }
-                      }}
-                      aria-label={
-                        canEdit
-                          ? `Ubah laporan PJGT: ${row.santri_nama || ''}`
-                          : `Lihat laporan PJGT: ${row.santri_nama || ''}`
-                      }
-                      className="border-b border-gray-100 dark:border-gray-700/80 hover:bg-gray-50/80 dark:hover:bg-gray-900/30 cursor-pointer"
-                    >
-                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap align-top">
-                        <span className="inline-flex items-center gap-1.5">
-                          {getBulanName(row.bulan)}
-                          {!canEdit ? (
-                            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/80 px-1.5 py-0.5 rounded">
-                              Lihat
-                            </span>
-                          ) : null}
+        {loading ? (
+          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+            Memuat...
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {UGT_LAPORAN_BULAN_PJGT_GT.map((bulan, index) => {
+              const phase = getUgtLaporanBulanPhase(bulan, konteks?.bulan_hijriyah)
+              const rows = laporanByBulan.get(bulan) || []
+              const active = phase === 'active'
+              const future = phase === 'future'
+              return (
+                <motion.section
+                  key={bulan}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.03 * index }}
+                  className={`overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-gray-800 ${
+                    active
+                      ? 'border-primary-300 ring-1 ring-primary-200 dark:border-primary-700 dark:ring-primary-900'
+                      : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-semibold text-gray-900 dark:text-gray-100">{getBulanName(bulan)}</h2>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                          active
+                            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                            : future
+                              ? 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                        }`}>
+                          {active ? 'Bulan aktif' : future ? 'Belum dibuka' : 'Sudah lewat'}
                         </span>
-                      </td>
-                      <td className="px-4 py-2 text-gray-800 dark:text-gray-200 align-top">
-                        {row.santri_nama || '—'}
-                      </td>
-                      <td className="px-4 py-2 text-gray-700 dark:text-gray-300 hidden xl:table-cell align-top">
-                        {(row.pembuat_nama || '').trim() || '—'}
-                      </td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-400 hidden md:table-cell">{row.ubudiyah || '—'}</td>
-                      <td className="px-4 py-2 text-gray-600 dark:text-gray-400 max-w-[120px] truncate hidden lg:table-cell" title={row.usulan || ''}>
-                        {row.usulan || '—'}
-                      </td>
-                    </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </motion.section>
+                      </div>
+                      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {rows.length > 0
+                          ? `${rows.length} laporan tersimpan`
+                          : future
+                            ? 'Laporan belum dapat dibuat'
+                            : active
+                              ? 'Belum ada laporan'
+                              : 'Tidak ada laporan'}
+                      </p>
+                    </div>
+                    {active ? (
+                      <button
+                        type="button"
+                        onClick={openBaru}
+                        disabled={!tahunAjaranAktif}
+                        className="shrink-0 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                      >
+                        Buat laporan
+                      </button>
+                    ) : future ? (
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500" title="Belum dibuka">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {rows.length > 0 ? (
+                    <div className="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700 dark:border-gray-700">
+                      {rows.map((row) => (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => openEdit(row)}
+                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-900/30"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">
+                              {row.santri_nama || 'Guru Tugas'}
+                            </p>
+                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                              {row.ubudiyah || 'Nilai belum diisi'}
+                              {row.usulan ? ` · ${row.usulan}` : ''}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs font-semibold text-primary-600 dark:text-primary-400">
+                            {active ? 'Ubah' : 'Lihat'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </motion.section>
+              )
+            })}
+          </div>
+        )}
 
         <p className="mt-6 text-sm text-gray-600 dark:text-gray-400">
-          Laporan bulanan PJGT untuk{' '}
-          <span className="font-medium text-gray-900 dark:text-gray-100">{madrasahNama}</span>. Hanya laporan{' '}
-          <span className="font-medium">bulan aktif</span> yang bisa diubah; bulan sebelumnya hanya bisa dilihat.
+          Laporan PJGT untuk{' '}
+          <span className="font-medium text-gray-900 dark:text-gray-100">{madrasahNama}</span> hanya di bulan{' '}
+          <span className="font-medium">Dzulhijjah, Safar, Rabi&apos;ul Akhir, Jumadil Akhir, dan Sya&apos;ban</span>.
+          Hanya laporan <span className="font-medium">bulan aktif</span> yang bisa diubah; bulan sebelumnya hanya bisa
+          dilihat.
         </p>
 
       </motion.div>

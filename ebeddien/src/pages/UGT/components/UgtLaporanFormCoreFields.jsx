@@ -13,7 +13,9 @@ export default function UgtLaporanFormCoreFields({
   madrasahList,
   konteks,
   selectCls,
-  taOptions = []
+  taOptions = [],
+  /** Jika diisi, pilihan bulan edit hanya id ini (urutan dipertahankan). */
+  allowedBulanIds = null,
 }) {
   const {
     konteksLoading,
@@ -29,6 +31,10 @@ export default function UgtLaporanFormCoreFields({
     onSantriSearchChange,
     formatSantriGtLabel
   } = konteks
+
+  const bulanSelectIds = Array.isArray(allowedBulanIds) && allowedBulanIds.length > 0
+    ? allowedBulanIds
+    : Array.from({ length: 12 }, (_, i) => i + 1)
 
   const taKey = (form.id_tahun_ajaran && String(form.id_tahun_ajaran).trim()) || ''
   const taOpt = taOptions.find((o) => o.value === taKey)
@@ -230,14 +236,11 @@ export default function UgtLaporanFormCoreFields({
               required
               className={selectCls}
             >
-              {Array.from({ length: 12 }, (_, i) => {
-                const n = i + 1
-                return (
-                  <option key={n} value={n}>
-                    {n} — {getBulanName(n, 'hijriyah')}
-                  </option>
-                )
-              })}
+              {bulanSelectIds.map((n) => (
+                <option key={n} value={n}>
+                  {n} — {getBulanName(n, 'hijriyah')}
+                </option>
+              ))}
             </select>
           ) : (
             <div className={readOnlyCls} title="Diisi otomatis dari kalender penanggalan">
@@ -249,6 +252,9 @@ export default function UgtLaporanFormCoreFields({
           {!isEdit ? (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Bulan Hijriyah saat ini menurut data kalender di server.
+              {Array.isArray(allowedBulanIds) && allowedBulanIds.length > 0
+                ? ' Hanya bulan jadwal laporan jenis ini yang diterima.'
+                : ''}
             </p>
           ) : null}
         </div>

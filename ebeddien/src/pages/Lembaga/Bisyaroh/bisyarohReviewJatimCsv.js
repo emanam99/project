@@ -100,11 +100,27 @@ export function formatJatimPeriodeLabel(periodeBulan, periodeKalender) {
   return String(name).replace(/['\s]+/g, '')
 }
 
+/** Keterangan ke-2 CSV upload Jatim: lembaga-nip (tampil di REG & mutasi inquiry). */
+export function formatJatimKeterangan2(lembagaNamaOrId, nip) {
+  const lembaga = String(lembagaNamaOrId || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .trim()
+  const nipPart = String(nip ?? '')
+    .replace(/\D/g, '')
+    .trim()
+  if (!lembaga && !nipPart) return ''
+  if (!lembaga) return nipPart
+  if (!nipPart) return lembaga
+  return `${lembaga}-${nipPart}`
+}
+
 function rowTransferNominal(row) {
   return floorNominalToInteger(row.total_nominal)
 }
 
-function sanitizeRekening(raw) {
+export function sanitizeRekening(raw) {
   return String(raw || '')
     .replace(/\D/g, '')
     .trim()
@@ -141,31 +157,24 @@ function sanitizeFilenamePart(s) {
 }
 
 /**
- * Export CSV upload Bank Jatim (format file upload.csv).
- *
- * Baris 1: rekening sumber, total nominal, jumlah baris.
- * Baris data: rekening tujuan, nama, nominal, Bisyaroh, periode, organisasi, email.
+ * Susun baris data CSV Jatim (tanpa header ringkas).
+ * @returns {{ dataRows: string[][], metaRows: object[] }}
  */
-export function exportBisyarohReviewJatimCsv({
+export function buildBisyarohJatimDataRows({
   sections = [],
   lembagaNama = '',
   lembagaId = '',
-  periodeBulan = '',
-  periodeKalender = 'masehi',
   jatimOptions = {},
   disabledRowKeys = null
 }) {
-  if (!sections.length) {
-    throw new Error('Tidak ada data rekap untuk diekspor')
-  }
-
   const opts = { ...JATIM_CSV_DEFAULTS, ...jatimOptions }
-  const periodeLabel = formatJatimPeriodeLabel(periodeBulan, periodeKalender)
-
   const disabled = disabledRowKeys instanceof Set ? disabledRowKeys : null
-
   const dataRows = []
+  const metaRows = []
+
   for (const sec of sections) {
+    const secLembagaNama = sec.lembaga_nama || lembagaNama || ''
+    const secLembagaId = sec.lembaga_id || lembagaId || ''
     for (const row of sec.rows || []) {
       if (disabled?.has(`${sec.bisyaroh_id}:${row.id_pengurus}`)) continue
 
@@ -178,20 +187,68 @@ export function exportBisyarohReviewJatimCsv({
       const nama = sanitizeJatimNama(row.pengurus_nama)
       if (!nama) continue
 
+      const ket2 = formatJatimKeterangan2(secLembagaNama || secLembagaId, row.nip)
+      if (!ket2) continue
+
       dataRows.push([
         rekening,
         nama,
         String(nominal),
         opts.paymentLabel,
-        periodeLabel,
+        ket2,
         opts.orgName,
         opts.email
       ])
+      metaRows.push({
+        rekening,
+        nama,
+        nominal,
+        nip: row.nip != null ? String(row.nip) : '',
+        lembaga_id: secLembagaId,
+        lembaga_nama: secLembagaNama,
+        keterangan_2: ket2,
+        id_pengurus: row.id_pengurus,
+        rekap_baris_id: row.id ?? null,
+        bisyaroh_id: sec.bisyaroh_id ?? null
+      })
     }
   }
 
+  return { dataRows, metaRows }
+}
+
+/**
+ * Export CSV upload Bank Jatim (format file upload.csv).
+ *
+ * Baris 1: rekening sumber, total nominal, jumlah baris.
+ * Baris data: rekening tujuan, nama, nominal, Bisyaroh, lembaga-nip, organisasi, email.
+ */
+export function exportBisyarohReviewJatimCsv({
+  sections = [],
+  lembagaNama = '',
+  lembagaId = '',
+  periodeBulan = '',
+  periodeKalender = 'masehi',
+  jatimOptions = {},
+  disabledRowKeys = null,
+  /** Jika true, hanya kembalikan teks CSV tanpa trigger download */
+  asText = false
+}) {
+  if (!sections.length) {
+    throw new Error('Tidak ada data rekap untuk diekspor')
+  }
+
+  const opts = { ...JATIM_CSV_DEFAULTS, ...jatimOptions }
+  const { dataRows, metaRows } = buildBisyarohJatimDataRows({
+    sections,
+    lembagaNama,
+    lembagaId,
+    jatimOptions: opts,
+    disabledRowKeys
+  })
+
   if (dataRows.length === 0) {
-    throw new Error('Tidak ada baris dengan rekening Jatim dan nominal valid untuk CSV upload')
+    throw new Error('Tidak ada baris dengan rekening Jatim, NIP, dan nominal valid untuk CSV upload')
   }
 
   const totalNominal = dataRows.reduce((acc, r) => acc + Number(r[2] || 0), 0)
@@ -199,8 +256,13 @@ export function exportBisyarohReviewJatimCsv({
     buildCsvLine([opts.sourceAccount, String(totalNominal), String(dataRows.length)]),
     ...dataRows.map((r) => buildCsvLine(r))
   ]
+  const csvText = lines.join('\r\n') + '\r\n'
 
-  const blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' })
+  if (asText) {
+    return { rowCount: dataRows.length, totalNominal, csvText, metaRows, sourceAccount: opts.sourceAccount }
+  }
+
+  const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   const lembagaPart = sanitizeFilenamePart(lembagaNama || lembagaId || 'Lembaga')
@@ -213,5 +275,18 @@ export function exportBisyarohReviewJatimCsv({
   a.remove()
   URL.revokeObjectURL(url)
 
-  return { rowCount: dataRows.length, totalNominal }
+  return { rowCount: dataRows.length, totalNominal, metaRows, sourceAccount: opts.sourceAccount }
+}
+
+/** Unduh teks CSV mentah (hasil API) sebagai file. */
+export function downloadCsvText(csvText, filename) {
+  const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'Bisyaroh_Jatim.csv'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }

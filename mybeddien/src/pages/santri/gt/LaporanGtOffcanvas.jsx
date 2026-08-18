@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { laporanGtMybeddianAPI } from '../../../services/api'
 import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
 import { getBulanName } from '../../../utils/bulanHijriLatin'
+import { UGT_LAPORAN_BULAN_PJGT_GT } from '../../../utils/ugtLaporanBulanAllowed'
 import UgtLaporanMasalahFields from '../../../components/ugt/UgtLaporanMasalahFields'
 import LaporanReadonlyOffcanvas from '../../../components/ugt/LaporanReadonlyOffcanvas'
 import {
@@ -214,6 +215,13 @@ export default function LaporanGtOffcanvas({
       onNotify?.('Lengkapi madrasah, tahun ajaran, dan bulan (1–12).', 'error')
       return
     }
+    if (!UGT_LAPORAN_BULAN_PJGT_GT.includes(bulan)) {
+      onNotify?.(
+        "Bulan laporan GT hanya: Dzulhijjah, Safar, Rabi'ul Akhir, Jumadil Akhir, dan Sya'ban.",
+        'error'
+      )
+      return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -368,14 +376,11 @@ export default function LaporanGtOffcanvas({
                             onChange={(e) => setForm((p) => ({ ...p, bulan: Number(e.target.value) }))}
                             className={selectCls}
                           >
-                            {Array.from({ length: 12 }, (_, i) => {
-                              const n = i + 1
-                              return (
-                                <option key={n} value={n}>
-                                  {n} — {getBulanName(n)}
-                                </option>
-                              )
-                            })}
+                            {UGT_LAPORAN_BULAN_PJGT_GT.map((n) => (
+                              <option key={n} value={n}>
+                                {n} — {getBulanName(n)}
+                              </option>
+                            ))}
                           </select>
                         ) : (
                           <div className={readOnlyCls}>{bulanLabel}</div>

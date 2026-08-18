@@ -5,7 +5,7 @@ function labelStatus(st) {
 }
 
 /**
- * Status & tombol rilis per set di tab Review (Preview).
+ * Status per set di tab Review — tanpa rilis set-level (rilis per pengurus / mutasi).
  */
 export default function BisyarohReviewRilisPanel({
   setsForRekap = [],
@@ -15,7 +15,6 @@ export default function BisyarohReviewRilisPanel({
   rekapStatusReady = false,
   loadingRekapStatus = false,
   savingRekapStatusKey = '',
-  canRilis = false,
   onSubmitStatus
 }) {
   if (!rekapStatusReady || !rekapLembagaId || rekapSetIds.length === 0) {
@@ -27,13 +26,12 @@ export default function BisyarohReviewRilisPanel({
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/60 p-3 mb-4">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Status & rilis</span>
+        <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Status lembaga</span>
         {loadingRekapStatus ? <span className="text-[10px] text-gray-500">Memuat status…</span> : null}
       </div>
       <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2 leading-snug">
-        Setelah dicek, tandai <strong>ditinjau</strong> lalu <strong>rilis</strong> agar muncul di tab Histori. Rekap yang
-        sudah dirilis tetap bisa dilihat di Preview.
-        {canRilis ? '' : ' Anda tidak memiliki aksi merilis rekap.'}
+        Setelah dicek, tandai <strong>ditinjau</strong> lalu ekspor CSV / upload mutasi. Konfirmasi transfer
+        berhasil dilakukan per pengurus (tombol Rilis di baris) atau lewat rekonsiliasi mutasi Bank Jatim.
       </p>
       <div className="space-y-2">
         {rekapSetIds.map((bid) => {
@@ -64,20 +62,7 @@ export default function BisyarohReviewRilisPanel({
                     {busy(bid, 'ditinjau') ? '…' : 'Tandai ditinjau'}
                   </button>
                 ) : null}
-                {st === 'ditinjau' && canRilis ? (
-                  <button
-                    type="button"
-                    disabled={!!savingRekapStatusKey || loadingRekapStatus}
-                    onClick={() => {
-                      if (!window.confirm('Rilis rekap untuk lembaga ini? Data tidak bisa diubah setelah rilis.')) return
-                      onSubmitStatus(bid, rekapLembagaId, 'rilis')
-                    }}
-                    className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
-                  >
-                    {busy(bid, 'rilis') ? '…' : 'Rilis'}
-                  </button>
-                ) : null}
-                {st === 'ditinjau' && !canRilis ? (
+                {st === 'ditinjau' ? (
                   <button
                     type="button"
                     disabled={!!savingRekapStatusKey || loadingRekapStatus}
@@ -88,7 +73,9 @@ export default function BisyarohReviewRilisPanel({
                   </button>
                 ) : null}
                 {st === 'rilis' ? (
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-medium">Sudah dirilis</span>
+                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-medium">
+                    Lembaga terkunci (legacy rilis)
+                  </span>
                 ) : null}
               </div>
             </div>

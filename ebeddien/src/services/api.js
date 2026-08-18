@@ -5043,6 +5043,39 @@ export const bisyarohAPI = {
   upsertRekapBulk: async (bisyarohId, body) => {
     const response = await api.post(`/bisyaroh/${bisyarohId}/rekap/bulk`, body)
     return response.data
+  },
+
+  /** Transfer Bank Jatim — preview / buat batch export CSV */
+  transferExportBatch: async (body) => {
+    const response = await api.post('/bisyaroh/transfer/export-batch', body)
+    return response.data
+  },
+  transferExportRetryFailed: async (body) => {
+    const response = await api.post('/bisyaroh/transfer/export-retry-failed', body)
+    return response.data
+  },
+  transferUploadMutasi: async ({ file, exportBatchId }) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('export_batch_id', String(exportBatchId))
+    const response = await api.post('/bisyaroh/transfer/upload-mutasi', formData)
+    return response.data
+  },
+  transferListBatches: async (params = {}) => {
+    const response = await api.get('/bisyaroh/transfer/batches', { params })
+    return response.data
+  },
+  transferShowBatch: async (id) => {
+    const response = await api.get(`/bisyaroh/transfer/batches/${id}`)
+    return response.data
+  },
+  transferListBatchRows: async (id, params = {}) => {
+    const response = await api.get(`/bisyaroh/transfer/batches/${id}/rows`, { params })
+    return response.data
+  },
+  transferRilisManual: async (body) => {
+    const response = await api.post('/bisyaroh/transfer/rilis-manual', body)
+    return response.data
   }
 }
 

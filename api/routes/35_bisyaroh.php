@@ -6,6 +6,7 @@ use App\Config\EbeddienFiturAccess;
 use App\Config\LegacyRouteRoleKeys;
 use App\Config\LegacyRouteRoles;
 use App\Controllers\BisyarohController;
+use App\Controllers\BisyarohTransferController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\EbeddienFiturMiddleware;
 
@@ -21,6 +22,14 @@ return function (\Slim\App $app): void {
         $group->put('/rekap/pengurus-rekening-jatim', [BisyarohController::class, 'putRekapPengurusRekeningJatim']);
         $group->get('/histori/rincian/{rekapBarisId}', [BisyarohController::class, 'historiRincian']);
         $group->get('/histori', [BisyarohController::class, 'listHistori']);
+        // Transfer Bank Jatim (harus sebelum /{id})
+        $group->post('/transfer/export-batch', [BisyarohTransferController::class, 'exportBatch']);
+        $group->post('/transfer/upload-mutasi', [BisyarohTransferController::class, 'uploadMutasi']);
+        $group->post('/transfer/export-retry-failed', [BisyarohTransferController::class, 'exportRetryFailed']);
+        $group->post('/transfer/rilis-manual', [BisyarohTransferController::class, 'rilisManual']);
+        $group->get('/transfer/batches', [BisyarohTransferController::class, 'listBatches']);
+        $group->get('/transfer/batches/{id}', [BisyarohTransferController::class, 'showBatch']);
+        $group->get('/transfer/batches/{id}/rows', [BisyarohTransferController::class, 'listBatchRows']);
         $group->get('/{id}', [BisyarohController::class, 'show']);
         $group->post('', [BisyarohController::class, 'create']);
         $group->put('/{id}', [BisyarohController::class, 'update']);

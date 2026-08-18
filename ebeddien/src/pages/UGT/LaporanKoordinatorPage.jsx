@@ -10,6 +10,7 @@ import LaporanKoordinatorOffcanvas from './components/LaporanKoordinatorOffcanva
 import LaporanKoordinatorList from './components/LaporanKoordinatorList'
 import LaporanUgtSearchFilterToolbar from './components/LaporanUgtSearchFilterToolbar'
 import { useUgtLaporanListClientFilters } from './hooks/useUgtLaporanListClientFilters'
+import { UGT_LAPORAN_BULAN_KOORDINATOR } from './ugtLaporanBulanAllowed'
 
 const selCls =
   'border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[220px]'
@@ -74,7 +75,8 @@ export default function LaporanKoordinatorPage() {
     koordinatorFilterLocked,
     hasFilterKoordinatorSemua,
     onFetchError,
-    onListMessage
+    onListMessage,
+    allowedBulanIds: UGT_LAPORAN_BULAN_KOORDINATOR
   })
 
   const [editingRow, setEditingRow] = useState(null)

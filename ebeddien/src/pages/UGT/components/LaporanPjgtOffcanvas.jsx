@@ -14,6 +14,7 @@ import {
   mapApiMasalahToItems,
   buildMasalahListPayload
 } from '../../../utils/ugtLaporanMasalah'
+import { UGT_LAPORAN_BULAN_PJGT_GT } from '../ugtLaporanBulanAllowed'
 
 const RATING_OPTS = [
   { value: '', label: '—' },
@@ -158,6 +159,13 @@ export default function LaporanPjgtOffcanvas({
       showNotification('Lengkapi madrasah, santri, tahun ajaran, dan bulan (1–12).', 'error')
       return
     }
+    if (!UGT_LAPORAN_BULAN_PJGT_GT.includes(bulan)) {
+      showNotification(
+        "Bulan laporan PJGT hanya: Dzulhijjah, Safar, Rabi'ul Akhir, Jumadil Akhir, dan Sya'ban.",
+        'error'
+      )
+      return
+    }
     setSaving(true)
     try {
       const masalah_list = buildMasalahListPayload(masalahItems)
@@ -295,6 +303,7 @@ export default function LaporanPjgtOffcanvas({
                   konteks={konteks}
                   selectCls={selectCls}
                   taOptions={taOptions}
+                  allowedBulanIds={UGT_LAPORAN_BULAN_PJGT_GT}
                 />
 
                 <p className="text-xs text-gray-500 dark:text-gray-400">Nilai hubungan: Baik / Cukup / Kurang</p>

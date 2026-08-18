@@ -58,9 +58,11 @@ export function useUgtLaporanListClientFilters({
   hasFilterKoordinatorSemua,
   appendSearchParts,
   onFetchError,
-  onListMessage
+  onListMessage,
+  /** Jika diisi, hanya baris dengan bulan ini yang masuk list/filter. */
+  allowedBulanIds = null
 }) {
-  const [scopeRows, setScopeRows] = useState([])
+  const [scopeRowsRaw, setScopeRowsRaw] = useState([])
   const [loadingScope, setLoadingScope] = useState(true)
   const [filterMadrasah, setFilterMadrasah] = useState('')
   const [filterKoordinator, setFilterKoordinator] = useState('')
@@ -70,18 +72,23 @@ export function useUgtLaporanListClientFilters({
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
 
+  const allowedBulanSet = useMemo(() => {
+    if (!Array.isArray(allowedBulanIds) || allowedBulanIds.length === 0) return null
+    return new Set(allowedBulanIds.map((n) => Number(n)).filter((n) => Number.isFinite(n)))
+  }, [allowedBulanIds])
+
   const loadScope = useCallback(async () => {
     setLoadingScope(true)
     try {
       const res = await fetchAll()
       if (res?.success && Array.isArray(res.data)) {
-        setScopeRows(res.data)
+        setScopeRowsRaw(res.data)
       } else {
-        setScopeRows([])
+        setScopeRowsRaw([])
         if (res?.message && typeof onListMessage === 'function') onListMessage(res.message)
       }
     } catch (e) {
-      setScopeRows([])
+      setScopeRowsRaw([])
       if (typeof onFetchError === 'function') onFetchError(e)
     } finally {
       setLoadingScope(false)
@@ -91,6 +98,11 @@ export function useUgtLaporanListClientFilters({
   useEffect(() => {
     loadScope()
   }, [loadScope])
+
+  const scopeRows = useMemo(() => {
+    if (!allowedBulanSet) return scopeRowsRaw
+    return scopeRowsRaw.filter((r) => allowedBulanSet.has(Number(r.bulan)))
+  }, [scopeRowsRaw, allowedBulanSet])
 
   const madrasahById = useMemo(() => {
     const m = new Map()
@@ -216,23 +228,36 @@ export function useUgtLaporanListClientFilters({
     for (const r of rows) {
       const b = Number(r.bulan)
       if (!Number.isFinite(b) || b < 1 || b > 12) continue
+      if (allowedBulanSet && !allowedBulanSet.has(b)) continue
       const id = String(b)
       counts.set(id, (counts.get(id) || 0) + 1)
     }
+    const order = Array.isArray(allowedBulanIds) && allowedBulanIds.length > 0
+      ? allowedBulanIds.map(Number)
+      : null
     return [...counts.entries()]
       .map(([id, count]) => ({
         value: id,
         label: `${id} — ${getBulanName(Number(id), 'hijriyah')}`,
         count
       }))
-      .sort((a, b) => Number(a.value) - Number(b.value))
+      .sort((a, b) => {
+        if (order) {
+          const ia = order.indexOf(Number(a.value))
+          const ib = order.indexOf(Number(b.value))
+          if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+        }
+        return Number(a.value) - Number(b.value)
+      })
   }, [
     scopeRows,
     filterKoordinator,
     filterMadrasah,
     filterTa,
     hasFilterKoordinatorSemua,
-    koordinatorFilterLocked
+    koordinatorFilterLocked,
+    allowedBulanSet,
+    allowedBulanIds
   ])
 
   const filteredForDisplay = useMemo(() => {

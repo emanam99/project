@@ -14,6 +14,7 @@ import {
   mapApiMasalahToItems,
   buildMasalahListPayload
 } from '../../../utils/ugtLaporanMasalah'
+import { UGT_LAPORAN_BULAN_PJGT_GT } from '../ugtLaporanBulanAllowed'
 
 const BANIN_BANAT = [
   { value: '', label: '—' },
@@ -173,6 +174,13 @@ export default function LaporanGtOffcanvas({
       showNotification('Lengkapi madrasah, santri, tahun ajaran, dan bulan (1–12).', 'error')
       return
     }
+    if (!UGT_LAPORAN_BULAN_PJGT_GT.includes(bulan)) {
+      showNotification(
+        "Bulan laporan GT hanya: Dzulhijjah, Safar, Rabi'ul Akhir, Jumadil Akhir, dan Sya'ban.",
+        'error'
+      )
+      return
+    }
     setSaving(true)
     try {
       const masalah_list = buildMasalahListPayload(masalahItems)
@@ -316,6 +324,7 @@ export default function LaporanGtOffcanvas({
                   konteks={konteks}
                   selectCls={selectCls}
                   taOptions={taOptions}
+                  allowedBulanIds={UGT_LAPORAN_BULAN_PJGT_GT}
                 />
 
 

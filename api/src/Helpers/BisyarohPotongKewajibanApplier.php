@@ -205,6 +205,56 @@ final class BisyarohPotongKewajibanApplier
     }
 
     /**
+     * Terapkan potong UWABA untuk satu baris rekap yang baru berhasil ditransfer.
+     *
+     * @return array{applied: int, messages: list<string>}
+     */
+    public static function applyAfterRilisForBaris(
+        PDO $db,
+        int $rekapBarisId,
+        string $periodeBulan,
+        string $kalender,
+        int $actorPengurusId
+    ): array {
+        if (!self::schemaReady($db) || $rekapBarisId <= 0) {
+            return ['applied' => 0, 'messages' => []];
+        }
+        if ($kalender !== 'masehi') {
+            return ['applied' => 0, 'messages' => ['Potong kewajiban: hanya periode kalender Masehi yang didukung.']];
+        }
+        if (!preg_match('/^\d{4}-\d{2}$/', $periodeBulan)) {
+            return ['applied' => 0, 'messages' => ['Potong kewajiban: periode tidak valid.']];
+        }
+        $slot = self::resolveSyahriahSlotForMasehiPeriode($db, $periodeBulan);
+        if ($slot === null) {
+            return ['applied' => 0, 'messages' => ['Potong kewajiban: tahun ajaran / kalender tidak siap untuk periode ini.']];
+        }
+        $stmt = $db->prepare(
+            'SELECT r.`id`, r.`bisyaroh_id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`
+             FROM `bisyaroh___rekap_baris` r WHERE r.`id` = ? LIMIT 1'
+        );
+        $stmt->execute([$rekapBarisId]);
+        $rek = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($rek)) {
+            return ['applied' => 0, 'messages' => []];
+        }
+        $waktu = (new \DateTime('now', new \DateTimeZone('Asia/Jakarta')))->format('Y-m-d H:i:s');
+        $masehiTanggal = date('Y-m-d', strtotime($waktu));
+        $hijriFull = PsaKalenderMasehiToHijriHelper::masehiYmdToHijriyahYmd($db, $masehiTanggal, '12:00:00') ?? $slot['hijri_full'];
+
+        return self::applyPotongForSingleRekapBaris(
+            $db,
+            (int) ($rek['bisyaroh_id'] ?? 0),
+            $rek,
+            $slot['tahun_ajaran'],
+            $hijriFull,
+            $waktu,
+            $masehiTanggal,
+            $actorPengurusId
+        );
+    }
+
+    /**
      * @param array<string, mixed> $rekRow id, id_pengurus, nilai_json
      *
      * @return array{applied: int, messages: list<string>}

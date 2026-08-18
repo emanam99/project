@@ -6,6 +6,7 @@ import { hydratePjgtStore, syncPjgtGtRiwayat, syncPjgtKonteks } from '../../serv
 import { usePjgtDataStore } from '../../store/pjgtDataStore'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import { getBulanName } from '../../utils/bulanHijriLatin'
+import { UGT_LAPORAN_BULAN_PJGT_GT } from '../../utils/ugtLaporanBulanAllowed'
 import { formatSantriGtLabel, uniqueSantriGtAktifUntukTa } from '../../utils/pjgtGuruTugasPenugasan'
 import LaporanReadonlyOffcanvas from '../../components/ugt/LaporanReadonlyOffcanvas'
 
@@ -304,6 +305,13 @@ export default function LaporanPjgtOffcanvas({
     const bulan = Number(form.bulan)
     if (!idM || !idS || !ta || bulan < 1 || bulan > 12) {
       onNotify?.('Lengkapi madrasah, santri, tahun ajaran, dan bulan (1–12).', 'error')
+      return
+    }
+    if (!UGT_LAPORAN_BULAN_PJGT_GT.includes(bulan)) {
+      onNotify?.(
+        "Bulan laporan PJGT hanya: Dzulhijjah, Safar, Rabi'ul Akhir, Jumadil Akhir, dan Sya'ban.",
+        'error'
+      )
       return
     }
     setSaving(true)

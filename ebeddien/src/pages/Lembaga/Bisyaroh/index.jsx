@@ -17,8 +17,10 @@ import BisyarohPengurusUrutanList from './BisyarohPengurusUrutanList'
 import BisyarohReviewTab from './BisyarohReviewTab'
 import BisyarohReviewFilters from './BisyarohReviewFilters'
 import BisyarohReviewRilisPanel from './BisyarohReviewRilisPanel'
+import BisyarohExportAccordion from './BisyarohExportAccordion'
+import BisyarohUploadMutasiPanel from './BisyarohUploadMutasiPanel'
+import BisyarohRilisTab from './BisyarohRilisTab'
 import { exportBisyarohReviewToExcel } from './bisyarohReviewExportExcel'
-import { exportBisyarohReviewJatimCsv } from './bisyarohReviewJatimCsv'
 import {
   applyReviewDisabledToSections,
   loadReviewDisabledRowKeys,
@@ -37,7 +39,7 @@ import {
   fetchDefaultPeriodeBulanHijriyah
 } from './bisyarohDefaultPeriode'
 
-const TAB_ORDER = ['rekap', 'review', 'histori', 'aturan']
+const TAB_ORDER = ['rekap', 'review', 'rilis', 'histori', 'aturan']
 
 function formatRp(n) {
   if (n == null || Number.isNaN(Number(n))) return '—'
@@ -305,7 +307,8 @@ export default function BisyarohPage() {
   const [savingRekapBulk, setSavingRekapBulk] = useState(false)
   const [modalExcelRekap, setModalExcelRekap] = useState(false)
   const [exportingReviewExcel, setExportingReviewExcel] = useState(false)
-  const [exportingJatimCsv, setExportingJatimCsv] = useState(false)
+  const [exportAccordionOpen, setExportAccordionOpen] = useState(false)
+  const [rilisManualBusyKey, setRilisManualBusyKey] = useState('')
   const [reviewDisabledRowKeys, setReviewDisabledRowKeys] = useState(() => new Set())
   /** @type {Record<string, string>} key `bisyarohId:lembagaId` → pengajuan | ditinjau | rilis */
   const [rekapStatusMap, setRekapStatusMap] = useState({})
@@ -354,6 +357,7 @@ export default function BisyarohPage() {
     const allowed = {
       rekap: fitur.tabRekap,
       review: fitur.tabRekap,
+      rilis: fitur.tabRilis,
       histori: fitur.tabHistori,
       aturan: fitur.tabAturan
     }
@@ -361,23 +365,25 @@ export default function BisyarohPage() {
       const next = TAB_ORDER.find((t) => allowed[t])
       if (next) setActiveTab(next)
     }
-  }, [activeTab, fitur.tabRekap, fitur.tabHistori, fitur.tabAturan])
+  }, [activeTab, fitur.tabRekap, fitur.tabRilis, fitur.tabHistori, fitur.tabAturan])
 
   useEffect(() => {
     const allowed = {
       rekap: fitur.tabRekap,
       review: fitur.tabRekap,
+      rilis: fitur.tabRilis,
       histori: fitur.tabHistori,
       aturan: fitur.tabAturan
     }
     if (tabFromUrl && allowed[tabFromUrl]) setActiveTab(tabFromUrl)
-  }, [tabFromUrl, fitur.tabRekap, fitur.tabHistori, fitur.tabAturan])
+  }, [tabFromUrl, fitur.tabRekap, fitur.tabRilis, fitur.tabHistori, fitur.tabAturan])
 
   const goToTab = useCallback(
     (tab) => {
       const allowed = {
         rekap: fitur.tabRekap,
         review: fitur.tabRekap,
+        rilis: fitur.tabRilis,
         histori: fitur.tabHistori,
         aturan: fitur.tabAturan
       }
@@ -387,7 +393,7 @@ export default function BisyarohPage() {
       next.set('tab', tab)
       setSearchParams(next, { replace: true })
     },
-    [searchParams, setSearchParams, fitur.tabRekap, fitur.tabHistori, fitur.tabAturan]
+    [searchParams, setSearchParams, fitur.tabRekap, fitur.tabRilis, fitur.tabHistori, fitur.tabAturan]
   )
 
   const patchRekapQuery = useCallback(
@@ -937,28 +943,72 @@ export default function BisyarohPage() {
     ]
   )
 
-  const rekapSetsCanRilis = useMemo(() => {
+  const rekapSetsCanDitinjau = useMemo(() => {
     if (!rekapLembagaId) return []
     return rekapSetIds.filter((bid) => {
       const st = rekapStatusMap[`${bid}:${rekapLembagaId}`] || 'pengajuan'
-      return st === 'ditinjau' || st === 'pengajuan'
+      return st === 'pengajuan'
     })
   }, [rekapSetIds, rekapLembagaId, rekapStatusMap])
 
-  const rilisSemuaSetRekap = useCallback(async () => {
-    if (rekapSetsCanRilis.length === 0) return
+  const tandaiSemuaDitinjau = useCallback(async () => {
+    if (rekapSetsCanDitinjau.length === 0) return
     if (
       !window.confirm(
-        `Rilis ${rekapSetsCanRilis.length} set rekap untuk lembaga ini? Data tidak bisa diubah setelah rilis. Potong UWABA (Masehi) dijalankan otomatis bila ada.`
+        `Tandai ditinjau ${rekapSetsCanDitinjau.length} set rekap untuk lembaga ini?`
       )
     ) {
       return
     }
-    for (const bid of rekapSetsCanRilis) {
-      await submitRekapStatus(bid, rekapLembagaId, 'rilis')
+    for (const bid of rekapSetsCanDitinjau) {
+      await submitRekapStatus(bid, rekapLembagaId, 'ditinjau')
     }
     await loadRekapStatuses()
-  }, [rekapSetsCanRilis, rekapLembagaId, submitRekapStatus, loadRekapStatuses])
+  }, [rekapSetsCanDitinjau, rekapLembagaId, submitRekapStatus, loadRekapStatuses])
+
+  const handleRilisManualRow = useCallback(
+    async (row) => {
+      if (!row?.id) {
+        showNotification('Baris rekap belum tersimpan', 'error')
+        return
+      }
+      if (
+        !window.confirm(
+          `Konfirmasi transfer berhasil untuk ${row.pengurus_nama || 'pengurus ini'}?`
+        )
+      ) {
+        return
+      }
+      setRilisManualBusyKey(String(row.id))
+      try {
+        const res = await bisyarohAPI.transferRilisManual({
+          rekap_baris_id: row.id,
+          lembaga_id: rekapLembagaId,
+          periode_bulan: periodeBulan,
+          kalender: periodeKalender
+        })
+        if (res?.success) {
+          const rid = Number(res.data?.rekap_baris_id || row.id)
+          setRekapSections((prev) =>
+            prev.map((sec) => ({
+              ...sec,
+              rows: (sec.rows || []).map((r) =>
+                Number(r.id) === rid ? { ...r, transfer_status: 'berhasil', frozen: true } : r
+              )
+            }))
+          )
+          showNotification(res.message || 'Transfer ditandai berhasil', 'success')
+        } else {
+          showNotification(res?.message || 'Gagal', 'error')
+        }
+      } catch (e) {
+        showNotification(e?.response?.data?.message || 'Gagal rilis manual', 'error')
+      } finally {
+        setRilisManualBusyKey('')
+      }
+    },
+    [rekapLembagaId, periodeBulan, periodeKalender, showNotification]
+  )
 
   const openOffcanvasSetBaru = () => {
     setSetFormMode('create')
@@ -1450,39 +1500,10 @@ export default function BisyarohPage() {
     showNotification
   ])
 
-  const handleExportJatimCsv = useCallback(() => {
-    if (reviewSectionsForView.length === 0) {
-      showNotification('Tidak ada data rekap untuk diekspor', 'error')
-      return
-    }
-    setExportingJatimCsv(true)
-    try {
-      const result = exportBisyarohReviewJatimCsv({
-        sections: reviewSectionsForView,
-        lembagaNama: reviewLembagaNama,
-        lembagaId: rekapLembagaId,
-        periodeBulan,
-        periodeKalender,
-        disabledRowKeys: reviewDisabledRowKeys
-      })
-      showNotification(
-        `CSV Jatim diunduh (${result.rowCount} baris, total ${result.totalNominal.toLocaleString('id-ID')})`,
-        'success'
-      )
-    } catch (e) {
-      showNotification(e?.message || 'Gagal export CSV Jatim', 'error')
-    } finally {
-      setExportingJatimCsv(false)
-    }
-  }, [
-    reviewSectionsForView,
-    reviewLembagaNama,
-    rekapLembagaId,
-    periodeBulan,
-    periodeKalender,
-    reviewDisabledRowKeys,
-    showNotification
-  ])
+  const reviewDisabledKeysArray = useMemo(
+    () => Array.from(reviewDisabledRowKeys || []),
+    [reviewDisabledRowKeys]
+  )
 
   const reviewPrintMeta = useMemo(
     () => ({
@@ -1611,6 +1632,19 @@ export default function BisyarohPage() {
                         }`}
                       >
                         Review
+                      </button>
+                    )}
+                    {fitur.tabRilis && (
+                      <button
+                        type="button"
+                        onClick={() => goToTab('rilis')}
+                        className={`flex-1 min-w-0 px-2 sm:px-4 py-2.5 sm:py-3 text-center text-xs sm:text-sm font-medium border-b-2 transition-colors truncate ${
+                          activeTab === 'rilis'
+                            ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                        }`}
+                      >
+                        Rilis
                       </button>
                     )}
                     {fitur.tabHistori && (
@@ -1824,9 +1858,19 @@ export default function BisyarohPage() {
                   rekapStatusReady={rekapStatusReady}
                   loadingRekapStatus={loadingRekapStatus}
                   savingRekapStatusKey={savingRekapStatusKey}
-                  canRilis={fitur.rekapRilis}
                   onSubmitStatus={submitRekapStatus}
                 />
+                {fitur.transferUpload ? (
+                  <div className="mb-4">
+                    <BisyarohUploadMutasiPanel
+                      canUpload={fitur.transferUpload}
+                      periodeBulan={periodeBulan}
+                      periodeKalender={periodeKalender}
+                      onNotify={showNotification}
+                      onDone={() => loadRekap()}
+                    />
+                  </div>
+                ) : null}
                 {setsForRekap.length > 1 && (
                   <div className="mb-4">
                     <span className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">
@@ -1859,14 +1903,38 @@ export default function BisyarohPage() {
                   getRekapCell={getRekapCell}
                   onExportExcel={fitur.rekapExportExcel ? handleExportReviewExcel : undefined}
                   exportingExcel={exportingReviewExcel}
-                  onExportJatimCsv={fitur.rekapExportExcel ? handleExportJatimCsv : undefined}
-                  exportingJatimCsv={exportingJatimCsv}
+                  exportPanel={
+                    fitur.rekapExportExcel ? (
+                      <BisyarohExportAccordion
+                        open={exportAccordionOpen}
+                        onToggle={() => setExportAccordionOpen((v) => !v)}
+                        periodeBulan={periodeBulan}
+                        periodeKalender={periodeKalender}
+                        lembagaList={lembagaListReview}
+                        disabledKeys={reviewDisabledKeysArray}
+                        canExport={fitur.rekapExportExcel}
+                        onNotify={showNotification}
+                        onExported={() => loadRekap()}
+                      />
+                    ) : null
+                  }
                   disabledRowKeys={reviewDisabledRowKeys}
                   onToggleDisabledRow={toggleReviewDisabledRow}
                   printMeta={reviewPrintMeta}
                   onNotify={showNotification}
+                  canRilisPerPengurus={fitur.rekapRilis || fitur.transferReconcile}
+                  onRilisManual={handleRilisManualRow}
+                  rilisBusyKey={rilisManualBusyKey}
                 />
               </div>
+            )}
+
+            {fitur.tabRilis && activeTab === 'rilis' && (
+              <BisyarohRilisTab
+                canUpload={fitur.transferUpload}
+                canReconcile={fitur.rekapRilis || fitur.transferReconcile}
+                onNotify={showNotification}
+              />
             )}
 
             {activeTab === 'rekap' && fitur.tabRekap && rekapSetIds.length > 0 && (
@@ -1983,15 +2051,17 @@ export default function BisyarohPage() {
                     >
                       {savingRekapBulk ? 'Menyimpan…' : 'Simpan semua'}
                     </button>
-                    {fitur.rekapRilis && rekapSetsCanRilis.length > 0 ? (
+                    {fitur.rekapRilis && rekapSetsCanDitinjau.length > 0 ? (
                       <button
                         type="button"
-                        onClick={rilisSemuaSetRekap}
+                        onClick={tandaiSemuaDitinjau}
                         disabled={!!savingRekapStatusKey || loadingRekapStatus}
-                        className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50"
-                        title="Merilis semua set yang masih pengajuan atau ditinjau untuk lembaga & periode ini"
+                        className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium disabled:opacity-50"
+                        title="Tandai ditinjau semua set yang masih pengajuan untuk lembaga & periode ini"
                       >
-                        {savingRekapStatusKey?.endsWith(':rilis') ? 'Merilis…' : `Rilis (${rekapSetsCanRilis.length})`}
+                        {savingRekapStatusKey?.endsWith(':ditinjau')
+                          ? 'Memproses…'
+                          : `Tandai ditinjau (${rekapSetsCanDitinjau.length})`}
                       </button>
                     ) : null}
                   </div>
@@ -2043,7 +2113,7 @@ export default function BisyarohPage() {
                       ) : null}
                     </div>
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-2 leading-snug">
-                      Alur: <strong>Pengajuan</strong> → <strong>Ditinjau</strong> → <strong>Rilis</strong> (bisa rilis langsung dari pengajuan).
+                      Alur: <strong>Pengajuan</strong> → <strong>Ditinjau</strong> → transfer per pengurus (Rilis manual / mutasi Jatim).
                       Tab Histori menampilkan baris yang sudah rilis di <strong>lembaga yang sama</strong> dengan penugasan jabatan pengurus.
                       Merilis membutuhkan fitur aksi «Bisyaroh · Merilis rekap».
                     </p>
@@ -2088,21 +2158,8 @@ export default function BisyarohPage() {
                                   {busy('pengajuan') ? '…' : 'Kembalikan ke pengajuan'}
                                 </button>
                               ) : null}
-                              {(st === 'ditinjau' || st === 'pengajuan') && fitur.rekapRilis ? (
-                                <button
-                                  type="button"
-                                  disabled={!!savingRekapStatusKey || loadingRekapStatus}
-                                  onClick={() => {
-                                    if (!window.confirm('Rilis rekap untuk lembaga ini? Data tidak bisa diubah setelah rilis.')) return
-                                    submitRekapStatus(bid, lid, 'rilis')
-                                  }}
-                                  className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
-                                >
-                                  {busy('rilis') ? '…' : 'Rilis'}
-                                </button>
-                              ) : null}
                               {st === 'rilis' ? (
-                                <span className="text-[10px] text-gray-500 dark:text-gray-400">Rekap terkunci (tidak dapat diubah)</span>
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400">Rekap terkunci (legacy rilis)</span>
                               ) : null}
                             </div>
                           </div>

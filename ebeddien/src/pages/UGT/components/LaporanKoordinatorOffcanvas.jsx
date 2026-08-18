@@ -15,6 +15,7 @@ import {
   mapApiMasalahToItems,
   buildMasalahListPayload
 } from '../../../utils/ugtLaporanMasalah'
+import { UGT_LAPORAN_BULAN_KOORDINATOR } from '../ugtLaporanBulanAllowed'
 
 function emptyForm() {
   return {
@@ -129,6 +130,13 @@ export default function LaporanKoordinatorOffcanvas({
     const bulan = Number(form.bulan)
     if (!idM || !idS || !ta || bulan < 1 || bulan > 12) {
       showNotification('Lengkapi madrasah, santri, tahun ajaran, dan bulan (1–12).', 'error')
+      return
+    }
+    if (!UGT_LAPORAN_BULAN_KOORDINATOR.includes(bulan)) {
+      showNotification(
+        "Bulan laporan koordinator hanya: Dzulqa'dah, Muharram, Rabi'ul Awal, Jumadil Awal, dan Rajab.",
+        'error'
+      )
       return
     }
     setSaving(true)
@@ -262,6 +270,7 @@ export default function LaporanKoordinatorOffcanvas({
                   konteks={konteks}
                   selectCls={selectCls}
                   taOptions={taOptions}
+                  allowedBulanIds={UGT_LAPORAN_BULAN_KOORDINATOR}
                 />
 
 

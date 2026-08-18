@@ -289,6 +289,64 @@ final class BisyarohRekapSnapshotHelper
     }
 
     /**
+     * Bekukan satu baris rekap (rilis per pengurus / transfer berhasil).
+     *
+     * @return bool true jika di-freeze atau sudah punya snapshot
+     */
+    public static function freezeRekapBarisById(PDO $db, int $rekapBarisId, ?string $lembagaId = null): bool
+    {
+        if ($rekapBarisId <= 0) {
+            return false;
+        }
+        $hasKal = self::rekapHasKalenderColumn($db);
+        $sql = 'SELECT r.`id`, r.`bisyaroh_id`, r.`id_pengurus`, r.`nilai_json`, r.`periode_bulan`'
+            . ($hasKal ? ', r.`kalender`' : '')
+            . ' FROM `bisyaroh___rekap_baris` r WHERE r.`id` = ? LIMIT 1';
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$rekapBarisId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return false;
+        }
+        $decoded = self::decodeNilaiJson($row['nilai_json'] ?? null);
+        if (self::hasSnapshot($decoded)) {
+            return true;
+        }
+        $bid = (int) ($row['bisyaroh_id'] ?? 0);
+        $pid = (int) ($row['id_pengurus'] ?? 0);
+        if ($bid <= 0 || $pid <= 0) {
+            return false;
+        }
+        $kolomDef = self::loadKolomRowsSorted($db, $bid, true);
+        if ($kolomDef === []) {
+            return false;
+        }
+        $lembagaScope = $lembagaId !== null && trim($lembagaId) !== '' ? [trim($lembagaId)] : null;
+        $inputs = self::extractInputs($decoded);
+        $fCtx = BisyarohPengurusFormulaHelper::loadFormulaContext($db, $pid, null, $lembagaScope);
+        try {
+            $calc = BisyarohKolomComputation::computeRow($kolomDef, $inputs, $fCtx);
+        } catch (\Throwable $e) {
+            error_log('BisyarohRekapSnapshotHelper freezeRekapBarisById #' . $rekapBarisId . ': ' . $e->getMessage());
+
+            return false;
+        }
+        $snapshot = self::buildSnapshotPayload($calc, $fCtx);
+        $merged = self::mergeSnapshotIntoDecoded(
+            self::buildSavePayload($inputs, $calc, $decoded),
+            $snapshot
+        );
+        $json = json_encode($merged, JSON_UNESCAPED_UNICODE);
+        if (!is_string($json)) {
+            return false;
+        }
+        $upd = $db->prepare('UPDATE `bisyaroh___rekap_baris` SET `nilai_json` = ? WHERE `id` = ? LIMIT 1');
+        $upd->execute([$json, $rekapBarisId]);
+
+        return true;
+    }
+
+    /**
      * Backfill snapshot untuk semua periode yang sudah berstatus rilis.
      *
      * @return int jumlah baris yang di-freeze
@@ -366,7 +424,7 @@ final class BisyarohRekapSnapshotHelper
     /**
      * @return list<array<string, mixed>>
      */
-    private static function loadKolomRowsSorted(PDO $db, int $bisyarohId, bool $onlyAktif): array
+    public static function loadKolomRowsSorted(PDO $db, int $bisyarohId, bool $onlyAktif): array
     {
         $sql = 'SELECT `id`, `bisyaroh_id`, `col_key`, `kind`, `label`, `keterangan`, `rumus`, `input_tipe`, `default_nilai`, `masuk_total`, `sort_order`, `aktif`
             FROM `bisyaroh___kolom` WHERE `bisyaroh_id` = ?';

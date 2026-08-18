@@ -1,2 +1,2 @@
-export const APP_VERSION = '1.2.98'
-export const BACKEND_VERSION = '2.13.73'
+export const APP_VERSION = '1.2.100'
+export const BACKEND_VERSION = '2.13.77'

@@ -4,7 +4,7 @@ import { userHasSuperAdminAccess } from '../utils/roleAccess'
 import { BISYAROH_ACTION_CODES as C } from '../config/bisyarohFiturCodes'
 
 /**
- * Hak tab Bisyaroh (Rekap / Aturan) — dari /me/fitur-menu.
+ * Hak tab Bisyaroh (Rekap / Rilis / Aturan) — dari /me/fitur-menu.
  */
 export function useBisyarohFiturAccess() {
   const user = useAuthStore((s) => s.user)
@@ -26,6 +26,11 @@ export function useBisyarohFiturAccess() {
     }
 
     const tabRekap = canTab(C.tabRekap, () => hasMenu || hasHalaman)
+    const tabRilis =
+      isSuper ||
+      (apiHasTabGranular
+        ? codes.includes(C.tabRilis) || codes.includes(C.tabRekap) || hasHalaman
+        : hasMenu || hasHalaman)
     const tabHistori = canTab(C.tabHistori, () => hasMenu || hasHalaman)
     const tabAturan = canTab(C.tabAturan, () => hasMenu || hasHalaman)
 
@@ -39,8 +44,18 @@ export function useBisyarohFiturAccess() {
     const rekapExportExcel =
       isSuper ||
       (!apiHasBisyarohAction ? hasMenu || hasHalaman : codes.includes(C.rekapExportExcel))
+    const transferUpload =
+      isSuper ||
+      (!apiHasBisyarohAction
+        ? hasMenu || hasHalaman
+        : codes.includes(C.transferUpload) || codes.includes(C.rekapRilis))
+    const transferReconcile =
+      isSuper ||
+      (!apiHasBisyarohAction
+        ? hasMenu || hasHalaman
+        : codes.includes(C.transferReconcile) || codes.includes(C.rekapRilis))
 
-    const noTabAccess = apiHasTabGranular && !tabRekap && !tabHistori && !tabAturan
+    const noTabAccess = apiHasTabGranular && !tabRekap && !tabRilis && !tabHistori && !tabAturan
 
     const aturanKolom =
       isSuper ||
@@ -60,11 +75,14 @@ export function useBisyarohFiturAccess() {
       apiHasAturanActionGranular,
       noTabAccess,
       tabRekap,
+      tabRilis,
       tabHistori,
       tabAturan,
       historiPengurusScope,
       rekapRilis,
       rekapExportExcel,
+      transferUpload,
+      transferReconcile,
       aturanKolom
     }
   }, [user, fiturMenuCodes])

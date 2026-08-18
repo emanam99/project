@@ -6,6 +6,7 @@ use App\Database;
 use App\Helpers\RoleHelper;
 use App\Helpers\TahunAjaranActiveHelper;
 use App\Helpers\TextSanitizer;
+use App\Helpers\UgtLaporanBulanHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -511,6 +512,13 @@ class UgtLaporanPjgtController
                 ], 400);
             }
 
+            if (!UgtLaporanBulanHelper::isAllowed($bulan, UgtLaporanBulanHelper::PJGT_GT)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => UgtLaporanBulanHelper::messageFor(UgtLaporanBulanHelper::PJGT_GT),
+                ], 400);
+            }
+
             if (!$this->userMayAccessMadrasah($request, $idMadrasah)) {
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'Akses ditolak untuk madrasah ini'], 403);
             }
@@ -616,6 +624,13 @@ class UgtLaporanPjgtController
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Madrasah, santri, tahun ajaran, dan bulan (1–12) wajib valid',
+                ], 400);
+            }
+
+            if (!UgtLaporanBulanHelper::isAllowed($bulan, UgtLaporanBulanHelper::PJGT_GT)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => UgtLaporanBulanHelper::messageFor(UgtLaporanBulanHelper::PJGT_GT),
                 ], 400);
             }
 

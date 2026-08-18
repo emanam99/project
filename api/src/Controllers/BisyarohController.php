@@ -10,6 +10,7 @@ use App\Helpers\BisyarohKolomComputation;
 use App\Helpers\BisyarohPengurusFormulaHelper;
 use App\Helpers\BisyarohPotongKewajibanApplier;
 use App\Helpers\BisyarohRekapSnapshotHelper;
+use App\Helpers\BisyarohTransferHelper;
 use App\Helpers\RoleHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -329,7 +330,7 @@ final class BisyarohController
             ? ' AND s_hr.`kalender` = ' . $r . '.`kalender`'
             : " AND s_hr.`kalender` = 'masehi'";
 
-        return ' AND EXISTS (
+        $legacyRilis = 'EXISTS (
             SELECT 1 FROM `bisyaroh___rekap_status_lembaga` s_hr
             INNER JOIN `pengurus___jabatan` pj_hr ON pj_hr.`pengurus_id` = ' . $r . '.`id_pengurus`
             INNER JOIN `jabatan` j_hr ON j_hr.`id` = pj_hr.`jabatan_id`
@@ -341,6 +342,12 @@ final class BisyarohController
               AND {$jAktif}
               AND {$effectiveLembaga} = s_hr.`lembaga_id`
         )";
+
+        if (BisyarohTransferHelper::rekapHasTransferStatus($this->db)) {
+            return ' AND (' . $legacyRilis . " OR {$r}.`transfer_status` = 'berhasil')";
+        }
+
+        return ' AND ' . $legacyRilis;
     }
 
     /** @deprecated Gunakan sqlHistoriRilisExistsCondition — tetap untuk kompatibilitas internal lama. */
@@ -2920,14 +2927,14 @@ SQL;
                     ], 503);
                 }
                 $stmt = $this->db->prepare(
-                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`
+                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`, r.`transfer_status`
                      FROM `bisyaroh___rekap_baris` r
                      WHERE r.`bisyaroh_id` = ? AND r.`periode_bulan` = ?'
                 );
                 $stmt->execute([$bid, $periode]);
             } else {
                 $stmt = $this->db->prepare(
-                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`
+                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`, r.`transfer_status`
                      FROM `bisyaroh___rekap_baris` r
                      WHERE r.`bisyaroh_id` = ? AND r.`periode_bulan` = ? AND r.`kalender` = ?'
                 );
@@ -2948,7 +2955,7 @@ SQL;
                     ], 503);
                 }
                 $stmt = $this->db->prepare(
-                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`
+                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`, r.`transfer_status`
                      FROM `bisyaroh___rekap_baris` r
                      WHERE r.`bisyaroh_id` = ? AND r.`periode_bulan` = ?'
                 );
@@ -3002,6 +3009,7 @@ SQL;
                 'nip' => $p['nip'] ?? null,
                 'rekening_jatim' => isset($p['rekening_jatim']) ? (string) $p['rekening_jatim'] : '',
                 'catatan' => isset($byPid[$pid]['catatan']) ? (string) $byPid[$pid]['catatan'] : '',
+                'transfer_status' => isset($byPid[$pid]['transfer_status']) ? $byPid[$pid]['transfer_status'] : null,
                 'inputs' => $inputs,
                 'computed' => $calc['computed'],
                 'cells' => $calc['cells'],
@@ -3133,14 +3141,14 @@ SQL;
                     );
                 }
                 $stmt = $this->db->prepare(
-                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`
+                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`, r.`transfer_status`
                      FROM `bisyaroh___rekap_baris` r
                      WHERE r.`bisyaroh_id` = ? AND r.`periode_bulan` = ?'
                 );
                 $stmt->execute([$bid, $periode]);
             } else {
                 $stmt = $this->db->prepare(
-                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`
+                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`, r.`transfer_status`
                      FROM `bisyaroh___rekap_baris` r
                      WHERE r.`bisyaroh_id` = ? AND r.`periode_bulan` = ? AND r.`kalender` = ?'
                 );
@@ -3160,7 +3168,7 @@ SQL;
                     );
                 }
                 $stmt = $this->db->prepare(
-                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`
+                    'SELECT r.`id`, r.`id_pengurus`, r.`nilai_json`, r.`catatan`, r.`transfer_status`
                      FROM `bisyaroh___rekap_baris` r
                      WHERE r.`bisyaroh_id` = ? AND r.`periode_bulan` = ?'
                 );
@@ -3211,6 +3219,7 @@ SQL;
                 'nip' => $p['nip'] ?? null,
                 'rekening_jatim' => isset($p['rekening_jatim']) ? (string) $p['rekening_jatim'] : '',
                 'catatan' => isset($byPid[$pid]['catatan']) ? (string) $byPid[$pid]['catatan'] : '',
+                'transfer_status' => isset($byPid[$pid]['transfer_status']) ? $byPid[$pid]['transfer_status'] : null,
                 'inputs' => $inputs,
                 'computed' => $calc['computed'],
                 'cells' => $calc['cells'],

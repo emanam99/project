@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { AnimatePresence, motion } from 'framer-motion'
 import { settingsAPI, manageUsersAPI } from '../../services/api'
 import RoleAccessOffcanvas from '../../components/RoleAccessOffcanvas'
 import RolePengurusChecklistOffcanvas from '../../components/RolePengurusChecklistOffcanvas'
@@ -356,10 +357,24 @@ export default function RoleAkses() {
           document.body
         )}
 
-      {deleteRoleTarget &&
-        createPortal(
-          <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40">
-            <div className="bg-white dark:bg-gray-800 w-full sm:max-w-md sm:rounded-xl shadow-xl border border-gray-200 dark:border-gray-600 max-h-[92vh] flex flex-col">
+      {createPortal(
+        <AnimatePresence>
+          {deleteRoleTarget && (
+            <motion.div
+              key="delete-role-confirmation"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40"
+            >
+              <motion.div
+                initial={{ y: '100%', opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '100%', opacity: 0 }}
+                transition={{ type: 'tween', duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                className="bg-white dark:bg-gray-800 w-full sm:max-w-md sm:rounded-xl shadow-xl border border-gray-200 dark:border-gray-600 max-h-[92vh] flex flex-col"
+              >
               <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-600">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Hapus role?</h3>
               </div>
@@ -394,10 +409,12 @@ export default function RoleAkses() {
                   {deleteRoleLoading ? 'Menghapus…' : 'Hapus role'}
                 </button>
               </div>
-            </div>
-          </div>,
-          document.body
-        )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   )
 }

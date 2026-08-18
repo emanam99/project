@@ -10,6 +10,7 @@ import { useTahunAjaranStore } from '../../store/tahunAjaranStore'
 import LaporanPjgtOffcanvas from './components/LaporanPjgtOffcanvas'
 import LaporanUgtSearchFilterToolbar from './components/LaporanUgtSearchFilterToolbar'
 import { useUgtLaporanListClientFilters } from './hooks/useUgtLaporanListClientFilters'
+import { UGT_LAPORAN_BULAN_PJGT_GT } from './ugtLaporanBulanAllowed'
 
 const selCls =
   'border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400 max-w-[220px]'
@@ -77,7 +78,8 @@ export default function LaporanPJGTPage() {
     hasFilterKoordinatorSemua,
     appendSearchParts: appendPjgtSearchParts,
     onFetchError,
-    onListMessage
+    onListMessage,
+    allowedBulanIds: UGT_LAPORAN_BULAN_PJGT_GT
   })
 
   const [editingRow, setEditingRow] = useState(null)

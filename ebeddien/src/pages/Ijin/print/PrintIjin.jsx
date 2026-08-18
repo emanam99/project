@@ -145,6 +145,14 @@ function isIjinSehari(ijin) {
   return Number(ijin?.ijin_sehari) === 1 || ijin?.ijin_sehari === true
 }
 
+/** Ada tanggal perpanjang yang valid (bukan kosong / 0000-00-00). */
+function hasPerpanjangTanggal(ijin) {
+  const raw = ijin?.perpanjang
+  if (raw == null) return false
+  const s = String(raw).trim()
+  return s !== '' && s !== '0000-00-00'
+}
+
 /** TIME / HH:MM:SS → HH:MM */
 function formatJamSurat(raw) {
   if (raw == null || raw === '') return '—'
@@ -308,6 +316,14 @@ function SuratIjinContent({
                         </td>
                       </tr>
                     )}
+                    {hasPerpanjangTanggal(ijin) && (
+                      <tr>
+                        <th scope="row">Perpanjang</th>
+                        <td className="surat-ijin__tanggal surat-ijin__tanggal--perpanjang">
+                          {tanggalFormatted[ijin.id]?.perpanjang || ijin.perpanjang}
+                        </td>
+                      </tr>
+                    )}
                     {ijin.lama && (
                       <tr>
                         <th scope="row">Lama</th>
@@ -387,15 +403,6 @@ function SuratIjinContent({
           </div>
         </div>
       </section>
-
-      {ijin.perpanjang && (
-        <div className="surat-ijin__perpanjang">
-          <span className="surat-ijin__perpanjang-label">Perpanjang</span>
-          <span className="surat-ijin__perpanjang-val">
-            {tanggalFormatted[ijin.id]?.perpanjang || ijin.perpanjang}
-          </span>
-        </div>
-      )}
     </article>
   )
 }
