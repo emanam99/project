@@ -8,6 +8,7 @@ client_secret*.json
 !.env.example
 node_modules/
 vendor/
+app/dist/
 app/public/version.json
 api/uploads/belanja/
 api/error.log
