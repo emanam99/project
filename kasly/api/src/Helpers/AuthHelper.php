@@ -51,7 +51,7 @@ class AuthHelper
     {
         $list = array_values(array_filter(array_map('trim', explode(',', (string) ($_ENV['CORS_ORIGINS'] ?? '')))));
         if (!$list) {
-            $list = ['http://localhost:5178', 'http://localhost'];
+            $list = ['http://localhost:5178', 'http://127.0.0.1:5178', 'http://localhost'];
         }
         $frontend = self::getFrontendUrl();
         if ($frontend !== '' && !in_array($frontend, $list, true)) {
