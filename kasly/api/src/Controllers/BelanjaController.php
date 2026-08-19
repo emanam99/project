@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Config\Database;
 use App\Helpers\AuthHelper;
+use App\Helpers\RekeningHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -42,6 +43,7 @@ class BelanjaController
         $total = (float) ($stmt->fetchColumn() ?: 0);
         $upd = $this->db->prepare('UPDATE belanja SET total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
         $upd->execute([$total, $belanjaId]);
+        RekeningHelper::syncAlokasiToTotal($this->db, $belanjaId);
     }
 
     /** GET /belanja?from=&to=&q=&jenis=&kategori= */
@@ -85,10 +87,19 @@ class BelanjaController
         $sql .= ' ORDER BY b.tanggal DESC, b.id DESC LIMIT 200';
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
+        $raw = $stmt->fetchAll();
+        $grouped = RekeningHelper::listAlokasiMany($this->db, array_column($raw, 'id'));
+        $rows = [];
+        foreach ($raw as $row) {
+            $alokasi = $grouped[(int) $row['id']] ?? [];
+            $row['alokasi'] = $alokasi;
+            $row['alokasi_label'] = RekeningHelper::alokasiLabel($alokasi);
+            $rows[] = $row;
+        }
 
         return $this->json($response, [
             'success' => true,
-            'data' => $stmt->fetchAll(),
+            'data' => $rows,
         ]);
     }
 
@@ -187,11 +198,16 @@ class BelanjaController
         $items = $this->db->prepare('SELECT * FROM belanja_item WHERE belanja_id = ? ORDER BY id ASC');
         $items->execute([$id]);
 
+        $alokasi = RekeningHelper::listAlokasi($this->db, $id);
+        $row['alokasi'] = $alokasi;
+        $row['alokasi_label'] = RekeningHelper::alokasiLabel($alokasi);
+
         return $this->json($response, [
             'success' => true,
             'data' => [
                 'belanja' => $row,
                 'items' => $items->fetchAll(),
+                'alokasi' => $alokasi,
             ],
         ]);
     }
@@ -241,7 +257,17 @@ class BelanjaController
             }
 
             $this->recalcTotal($belanjaId);
+            $totalStmt = $this->db->prepare('SELECT total FROM belanja WHERE id = ?');
+            $totalStmt->execute([$belanjaId]);
+            $total = (float) $totalStmt->fetchColumn();
+            $alokasiInput = is_array($body['alokasi'] ?? null) ? $body['alokasi'] : [];
+            RekeningHelper::saveAlokasi($this->db, $belanjaId, $alokasiInput, $total);
             $this->db->commit();
+        } catch (\InvalidArgumentException $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -303,6 +329,15 @@ class BelanjaController
             $params[] = $id;
             $sql = 'UPDATE belanja SET ' . implode(', ', $fields) . ' WHERE id = ?';
             $this->db->prepare($sql)->execute($params);
+        }
+
+        if (array_key_exists('alokasi', $body) && is_array($body['alokasi'])) {
+            $total = (float) ($this->findBelanja($id)['total'] ?? 0);
+            try {
+                RekeningHelper::saveAlokasi($this->db, $id, $body['alokasi'], $total);
+            } catch (\InvalidArgumentException $e) {
+                return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 422);
+            }
         }
 
         return $this->show($request, $response, ['id' => $id]);

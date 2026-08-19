@@ -126,6 +126,8 @@ export type BelanjaRow = {
   created_by_name?: string | null
   created_by_email?: string | null
   item_count?: number
+  alokasi?: BelanjaAlokasi[]
+  alokasi_label?: string
 }
 
 export type BelanjaItem = {
@@ -142,6 +144,7 @@ export type BelanjaItem = {
 export type BelanjaDetail = {
   belanja: BelanjaRow
   items: BelanjaItem[]
+  alokasi?: BelanjaAlokasi[]
 }
 
 export type DashboardSummary = {
@@ -167,6 +170,10 @@ export type DashboardSummary = {
     total_qty: number | string
     total_nilai: number | string
   }>
+  rekening?: RekeningRow[]
+  saldo_bank?: number
+  saldo_ewallet?: number
+  saldo_cash?: number
 }
 
 export async function getDashboardSummary() {
@@ -206,6 +213,7 @@ export async function createBelanja(payload: {
     harga_satuan: number
     catatan?: string
   }>
+  alokasi?: Array<{ rekening_id: number; jumlah: number }>
 }) {
   return request<BelanjaDetail>('/belanja', {
     method: 'POST',
@@ -220,6 +228,7 @@ export async function updateBelanja(
     jenis?: TransaksiJenis
     keterangan?: string
     kategori?: string | null
+    alokasi?: Array<{ rekening_id: number; jumlah: number }>
   },
 ) {
   return request<BelanjaDetail>(`/belanja/${id}`, {
@@ -394,4 +403,100 @@ export type BelanjaItemOptions = {
 export async function listBelanjaItemOptions(jenis?: TransaksiJenis) {
   const qs = jenis ? `?jenis=${encodeURIComponent(jenis)}` : ''
   return request<BelanjaItemOptions>(`/belanja/item-options${qs}`)
+}
+
+export type RekeningTipe = 'bank' | 'ewallet' | 'cash'
+
+export type RekeningRow = {
+  id: number
+  nama: string
+  tipe: RekeningTipe
+  nomor: string | null
+  is_system: number | boolean
+  aktif: number | boolean
+  sort_order?: number
+  saldo?: number | string
+}
+
+export type BelanjaAlokasi = {
+  id?: number
+  belanja_id?: number
+  rekening_id: number
+  jumlah: number | string
+  rekening_nama?: string
+  rekening_tipe?: RekeningTipe
+}
+
+export type RekeningRingkas = {
+  bank: number
+  ewallet: number
+  cash: number
+}
+
+export type RekeningListData = {
+  rekening: RekeningRow[]
+  ringkas: RekeningRingkas
+}
+
+export type RekeningTransferRow = {
+  id: number
+  tanggal: string
+  dari_rekening_id: number
+  ke_rekening_id: number
+  jumlah: number | string
+  biaya_admin?: number | string
+  keterangan: string | null
+  belanja_id?: number | null
+  dari_nama?: string
+  dari_tipe?: RekeningTipe
+  ke_nama?: string
+  ke_tipe?: RekeningTipe
+  created_by_name?: string | null
+}
+
+export async function listRekening(params: { q?: string; aktif?: 'all' | '1' } = {}) {
+  const qs = new URLSearchParams()
+  if (params.q) qs.set('q', params.q)
+  if (params.aktif) qs.set('aktif', params.aktif)
+  const query = qs.toString()
+  return request<RekeningListData>(`/rekening${query ? `?${query}` : ''}`)
+}
+
+export async function createRekening(payload: { nama: string; tipe: RekeningTipe; nomor?: string }) {
+  return request<RekeningRow>('/rekening', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateRekening(
+  id: number,
+  payload: { nama?: string; nomor?: string | null; aktif?: number },
+) {
+  return request<RekeningRow>(`/rekening/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteRekening(id: number) {
+  return request(`/rekening/${id}`, { method: 'DELETE' })
+}
+
+export async function listRekeningTransfer() {
+  return request<RekeningTransferRow[]>('/rekening/transfer')
+}
+
+export async function createRekeningTransfer(payload: {
+  tanggal: string
+  dari_rekening_id: number
+  ke_rekening_id: number
+  jumlah: number
+  biaya_admin?: number
+  keterangan?: string
+}) {
+  return request('/rekening/transfer', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }

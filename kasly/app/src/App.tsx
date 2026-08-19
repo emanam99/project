@@ -12,6 +12,7 @@ import LoginPage from './pages/LoginPage'
 import MenungguAksesPage from './pages/MenungguAksesPage'
 import UsersPage from './pages/UsersPage'
 import SettingsPage from './pages/SettingsPage'
+import RekeningPage from './pages/RekeningPage'
 import { getStoredUser, hasAppAccess, canManageData, isLoggedIn, isPendingRole, isSuperAdminRole } from './utils/auth'
 
 function SuperAdminOnly({ children }: { children: React.ReactNode }) {
@@ -90,6 +91,7 @@ export default function App() {
                 }
               />
               <Route path="/masuk/:id" element={<BelanjaDetailPage />} />
+              <Route path="/rekening" element={<RekeningPage />} />
               <Route path="/pengaturan" element={<SettingsPage />} />
               <Route
                 path="/pengguna"

@@ -3,43 +3,43 @@
 @tailwind utilities;
 
 :root {
-  --canvas: #f2f5f3;
+  --canvas: #fdf4f7;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-soft: #e9efeb;
-  --ink: #142019;
-  --muted: #5a6b61;
-  --faint: #7d8c84;
-  --line: #d5ddd8;
-  --accent: #3a6b46;
-  --accent-hover: #2e5538;
+  --surface-soft: #f8e4ec;
+  --ink: #3d1a28;
+  --muted: #8c5d70;
+  --faint: #b08093;
+  --line: #f0d4de;
+  --accent: #db2777;
+  --accent-hover: #be185d;
   --danger: #c03545;
   --danger-bg: #fdecee;
   --danger-line: #f5c2c8;
-  --ok-bg: #e7f3ea;
-  --ok-line: #b7d9c0;
-  --ok-ink: #1f5a32;
-  --glow: rgba(58, 107, 70, 0.12);
+  --ok-bg: #fce7f3;
+  --ok-line: #f9a8d4;
+  --ok-ink: #9d174d;
+  --glow: rgba(219, 39, 119, 0.14);
 }
 
 .dark {
-  --canvas: #070908;
-  --surface: #101412;
-  --surface-raised: #161b18;
-  --surface-soft: #1a211d;
-  --ink: #eef2ef;
-  --muted: #9aa59e;
-  --faint: #7a867f;
-  --line: #262c28;
-  --accent: #4f9a62;
-  --accent-hover: #63ad74;
+  --canvas: #14080e;
+  --surface: #1c1016;
+  --surface-raised: #24141c;
+  --surface-soft: #2a1820;
+  --ink: #fce8f0;
+  --muted: #c9a0b0;
+  --faint: #9a7384;
+  --line: #3a2430;
+  --accent: #f472b6;
+  --accent-hover: #f9a8d4;
   --danger: #f0717d;
   --danger-bg: #2a1417;
   --danger-line: #5a2830;
-  --ok-bg: #122018;
-  --ok-line: #244032;
-  --ok-ink: #9fd4b0;
-  --glow: rgba(79, 154, 98, 0.08);
+  --ok-bg: #2a1220;
+  --ok-line: #5b2744;
+  --ok-ink: #f9a8d4;
+  --glow: rgba(244, 114, 182, 0.12);
 }
 
 @layer base {
@@ -59,8 +59,8 @@
   }
   .dark body {
     background-image:
-      radial-gradient(ellipse 55% 35% at 12% -5%, rgba(79, 154, 98, 0.07), transparent 50%),
-      linear-gradient(180deg, #070908 0%, #050706 100%);
+      radial-gradient(ellipse 55% 35% at 12% -5%, rgba(244, 114, 182, 0.1), transparent 50%),
+      linear-gradient(180deg, #14080e 0%, #10060b 100%);
   }
   #app {
     @apply min-h-screen;

@@ -2,7 +2,7 @@
 
 Aplikasi mandiri untuk mencatat **belanja rumah** (uang masuk & keluar).
 
-Struktur mirip `sppg` (`api/` + `app/` + `gambar/`), login Google sama (OAuth authorization code). Ikon sementara memakai aset SPPG.
+Struktur mirip `sppg` (`api/` + `app/` + `gambar/`), login Google sama (OAuth authorization code). Ikon memakai seri Kasly.
 
 ## Folder
 

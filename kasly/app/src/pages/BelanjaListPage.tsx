@@ -162,6 +162,7 @@ export default function BelanjaListPage() {
                     {formatDateId(row.tanggal)}
                     {row.kategori ? ` · ${row.kategori}` : ''}
                     {row.item_count ? ` · ${row.item_count} item` : ''}
+                    {row.alokasi_label ? ` · ${row.alokasi_label}` : ''}
                   </div>
                 </div>
                 <div

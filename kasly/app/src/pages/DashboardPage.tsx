@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { getDashboardSummary, type DashboardSummary } from '../api/apiClient'
 import { usePageTitle } from '../contexts/PageTitleContext'
@@ -84,6 +84,36 @@ function DailyChartLabels({ dates }: { dates: string[] }) {
   )
 }
 
+function HomeAction({
+  to,
+  label,
+  tone,
+  children,
+}: {
+  to: string
+  label: string
+  tone: 'in' | 'out' | 'neutral'
+  children: ReactNode
+}) {
+  const ring =
+    tone === 'in'
+      ? 'bg-[color-mix(in_srgb,var(--ok-ink)_14%,var(--surface-soft))] text-[var(--ok-ink)]'
+      : tone === 'out'
+        ? 'bg-[color-mix(in_srgb,var(--accent)_16%,var(--surface-soft))] text-[var(--accent)]'
+        : 'bg-surface-soft text-ink'
+
+  return (
+    <Link to={to} className="flex flex-col items-center gap-1.5 min-w-[4.5rem] group">
+      <span
+        className={`grid h-12 w-12 place-items-center rounded-full shadow-sm border border-line ${ring} group-active:scale-95 transition`}
+      >
+        {children}
+      </span>
+      <span className="text-[11px] font-semibold text-ink text-center leading-tight">{label}</span>
+    </Link>
+  )
+}
+
 function HorizonBars({
   rows,
 }: {
@@ -142,66 +172,115 @@ export default function DashboardPage() {
 
   const kpis = [
     {
-      label: 'Saldo',
-      value: formatRp(data.saldo),
-      hint: `${data.jumlah_catatan} catatan`,
-      accent: true,
-    },
-    {
       label: 'Masuk bulan ini',
       value: formatRp(data.masuk_bulan_ini),
       hint: `Hari ini ${formatRp(data.masuk_hari_ini)}`,
-      accent: false,
     },
     {
       label: 'Keluar bulan ini',
       value: formatRp(data.keluar_bulan_ini),
       hint: `Rata ${formatRp(data.rata_keluar_harian)}/hari`,
-      accent: false,
     },
     {
       label: 'Keluar hari ini',
       value: formatRp(data.keluar_hari_ini),
       hint: `${data.catatan_hari_ini} catatan hari ini`,
-      accent: false,
     },
   ]
 
   return (
     <div className="space-y-3.5 min-w-0 max-w-full overflow-x-hidden">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link to="/keluar?hari=1" className="ui-btn-ghost">
-          Belanja hari ini
-        </Link>
+      <section
+        className="relative overflow-hidden rounded-2xl px-4 py-4 sm:px-5 sm:py-5 text-white shadow-md"
+        style={{
+          background:
+            'linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 55%, #7a1048) 100%)',
+        }}
+      >
+        <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10" />
+        <div className="pointer-events-none absolute -bottom-16 -left-8 h-40 w-40 rounded-full bg-black/10" />
+        <div className="relative">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/80">Saldo</div>
+          <div className="mt-1.5 font-display text-[1.85rem] sm:text-[2.15rem] font-bold leading-none tabular-nums tracking-tight">
+            {formatRp(data.saldo)}
+          </div>
+          <div className="mt-2 text-[12px] text-white/80">{data.jumlah_catatan} catatan</div>
+        </div>
+      </section>
+
+      <div className="flex items-start justify-around sm:justify-center sm:gap-10 px-2">
         {canManage && (
           <>
-            <Link to="/masuk/baru" className="ui-btn-ghost">
-              + Uang masuk
-            </Link>
-            <Link to="/keluar/baru" className="ui-btn-primary">
-              + Catat belanja
-            </Link>
+            <HomeAction to="/masuk/baru" label="Uang masuk" tone="in">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+                <path d="M12 4v12" strokeLinecap="round" />
+                <path d="M7 11l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M5 20h14" strokeLinecap="round" />
+              </svg>
+            </HomeAction>
+            <HomeAction to="/keluar/baru" label="Catat belanja" tone="out">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+                <circle cx="9" cy="20" r="1.2" fill="currentColor" stroke="none" />
+                <circle cx="17" cy="20" r="1.2" fill="currentColor" stroke="none" />
+                <path d="M3 4h2l2.2 11.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.2L20 8H7" />
+              </svg>
+            </HomeAction>
           </>
         )}
+        <HomeAction to="/keluar?hari=1" label="Hari ini" tone="neutral">
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+            <rect x="4" y="5" width="16" height="15" rx="2" />
+            <path d="M8 3v4M16 3v4M4 10h16" strokeLinecap="round" />
+          </svg>
+        </HomeAction>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 min-w-0">
+      <div className="grid grid-cols-3 gap-2 min-w-0">
         {kpis.map((c) => (
-          <div
-            key={c.label}
-            className={[
-              'ui-card p-2.5 sm:p-3 min-w-0 overflow-hidden',
-              c.accent ? 'border-[color-mix(in_srgb,var(--accent)_45%,var(--line))] shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent)_12%,transparent)]' : '',
-            ].join(' ')}
-          >
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted truncate">{c.label}</div>
-            <div className="mt-1.5 font-display text-base sm:text-lg font-bold text-ink leading-tight tabular-nums break-all">
+          <div key={c.label} className="ui-card p-2.5 sm:p-3 min-w-0 overflow-hidden">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted line-clamp-2 leading-tight">
+              {c.label}
+            </div>
+            <div className="mt-1.5 font-display text-[13px] sm:text-base font-bold text-ink leading-tight tabular-nums break-all">
               {c.value}
             </div>
             <div className="mt-1 text-[11px] text-muted line-clamp-2">{c.hint}</div>
           </div>
         ))}
       </div>
+
+      {(data.rekening?.length || 0) > 0 && (
+        <section className="ui-card p-3">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <h2 className="ui-section-title">Uang di mana</h2>
+            <Link to="/rekening" className="text-[12px] font-semibold text-[var(--accent)] hover:underline">
+              Rek →
+            </Link>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mb-2.5">
+            {[
+              { label: 'Bank', value: data.saldo_bank || 0 },
+              { label: 'E-wallet', value: data.saldo_ewallet || 0 },
+              { label: 'Cash', value: data.saldo_cash || 0 },
+            ].map((c) => (
+              <div key={c.label} className="rounded-lg bg-surface-soft px-2 py-2 min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{c.label}</div>
+                <div className="mt-0.5 text-[13px] font-bold text-ink tabular-nums break-all">{formatRp(c.value)}</div>
+              </div>
+            ))}
+          </div>
+          <ul className="space-y-1">
+            {(data.rekening || [])
+              .filter((r) => Number(r.aktif) === 1)
+              .map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 py-1 border-b border-line last:border-0">
+                  <span className="text-[12px] font-semibold text-ink truncate">{r.nama}</span>
+                  <span className="text-[12px] font-semibold tabular-nums text-ink whitespace-nowrap">{formatRp(r.saldo || 0)}</span>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid lg:grid-cols-5 gap-2.5 min-w-0">
         <section className="ui-card p-3 lg:col-span-3 min-w-0 overflow-hidden">

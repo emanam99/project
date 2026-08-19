@@ -15,7 +15,7 @@ const HEADER_HIDE_AFTER = 48
 const HEADER_SHOW_DELTA = 4
 const BOTTOM_NAV_MAX = 5
 
-type NavIcon = 'home' | 'cart' | 'in' | 'users' | 'settings' | 'more'
+type NavIcon = 'home' | 'cart' | 'in' | 'bank' | 'users' | 'settings' | 'more'
 
 type NavItem = {
   to: string
@@ -57,6 +57,15 @@ function Icon({ name, className = 'h-4 w-4' }: { name: NavIcon; className?: stri
           <path d="M12 4v12" />
           <path d="M7 11l5 5 5-5" />
           <path d="M5 20h14" />
+        </svg>
+      )
+    case 'bank':
+      return (
+        <svg {...common}>
+          <path d="M4 10 12 4l8 6" />
+          <path d="M5 10v8h14v-8" />
+          <path d="M3 20h18" />
+          <path d="M9 14v4M12 14v4M15 14v4" />
         </svg>
       )
     case 'users':
@@ -178,6 +187,7 @@ function LayoutShell() {
       { to: '/dashboard', label: 'Beranda', shortLabel: 'Home', icon: 'home' },
       { to: '/keluar', label: 'Belanja', shortLabel: 'Keluar', icon: 'cart' },
       { to: '/masuk', label: 'Uang masuk', shortLabel: 'Masuk', icon: 'in' },
+      { to: '/rekening', label: 'Rekening', shortLabel: 'Rek', icon: 'bank' },
       ...(superAdmin
         ? ([{ to: '/pengguna', label: 'Pengguna', shortLabel: 'User', icon: 'users' }] as NavItem[])
         : []),
@@ -217,7 +227,7 @@ function LayoutShell() {
       >
         <div className={`flex items-center gap-2.5 border-b border-line ${collapsed ? 'justify-center p-2' : 'p-2.5'}`}>
           <img
-            src={gambarUrl('icon/sppg.v2.png')}
+            src={gambarUrl('icon/kasly.png')}
             alt="Kasly"
             width={36}
             height={36}
@@ -278,9 +288,14 @@ function LayoutShell() {
         >
           <div className="px-3.5 py-2.5 flex items-center justify-between gap-2.5">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="md:hidden h-8 w-8 rounded-lg bg-[var(--accent)] text-white grid place-items-center font-display text-xs font-bold shrink-0">
-                K
-              </div>
+              <img
+                src={gambarUrl('icon/kasly64.png')}
+                alt="Kasly"
+                width={32}
+                height={32}
+                className="md:hidden h-8 w-8 rounded-lg object-contain shrink-0 select-none"
+                draggable={false}
+              />
               <div className="min-w-0 [perspective:640px]">
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.h1

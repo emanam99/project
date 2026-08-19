@@ -4,8 +4,11 @@ import {
   createBelanja,
   listBelanjaItemOptions,
   listKategori,
+  listRekening,
   type BelanjaNamaOption,
+  type RekeningRow,
 } from '../api/apiClient'
+import AlokasiEditor, { alokasiPayload, emptyAlokasi, type AlokasiDraft } from '../components/AlokasiEditor'
 import BelanjaLampiran, {
   uploadPendingBelanjaFiles,
   type PendingBelanjaFile,
@@ -67,6 +70,8 @@ export default function BelanjaFormPage() {
   const [satuanOptions, setSatuanOptions] = useState<string[]>(['pcs'])
   const [items, setItems] = useState<DraftItem[]>([emptyItem()])
   const [pendingFiles, setPendingFiles] = useState<PendingBelanjaFile[]>([])
+  const [rekening, setRekening] = useState<RekeningRow[]>([])
+  const [alokasi, setAlokasi] = useState<AlokasiDraft[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
@@ -75,11 +80,21 @@ export default function BelanjaFormPage() {
 
   useEffect(() => {
     void (async () => {
-      const [kat, opts] = await Promise.all([listKategori(jenis), listBelanjaItemOptions(jenis)])
+      const [kat, opts, rek] = await Promise.all([
+        listKategori(jenis),
+        listBelanjaItemOptions(jenis),
+        listRekening(),
+      ])
       if (kat.success && kat.data) setCategories(kat.data.map((k) => k.nama))
       if (opts.success && opts.data) {
         setNamaOptions(opts.data.nama_barang || [])
         if (opts.data.satuan?.length) setSatuanOptions(opts.data.satuan)
+      }
+      if (rek.success && rek.data?.rekening) {
+        const aktif = rek.data.rekening.filter((r) => Number(r.aktif) === 1)
+        setRekening(aktif)
+        const cash = aktif.find((r) => r.tipe === 'cash') || aktif[0]
+        if (cash) setAlokasi([emptyAlokasi(String(cash.id))])
       }
     })()
   }, [jenis])
@@ -129,12 +144,25 @@ export default function BelanjaFormPage() {
         catatan: it.catatan.trim() || undefined,
       }))
 
+    const totalBelanjaNow = payloadItems.reduce(
+      (sum, it) => sum + Math.round((it.qty || 0) * (it.harga_satuan || 0)),
+      0,
+    )
+    const alokasiNow = alokasiPayload(alokasi)
+    const alokasiSum = alokasiNow.reduce((s, a) => s + a.jumlah, 0)
+    if (totalBelanjaNow > 0 && Math.abs(alokasiSum - totalBelanjaNow) > 0.009) {
+      setLoading(false)
+      setError('Pecahan rekening harus sama dengan total catatan.')
+      return
+    }
+
     const res = await createBelanja({
       tanggal,
       jenis,
       keterangan: keterangan.trim() || undefined,
       kategori: kategori.trim() || undefined,
       items: payloadItems,
+      alokasi: alokasiNow,
     })
 
     if (res.success && res.data?.belanja?.id) {
@@ -268,6 +296,14 @@ export default function BelanjaFormPage() {
             + Tambah item
           </button>
         </div>
+
+        <AlokasiEditor
+          rekening={rekening}
+          rows={alokasi}
+          total={totalBelanja}
+          jenis={jenis}
+          onChange={setAlokasi}
+        />
 
         <div>
           <label className="ui-label">Keterangan</label>

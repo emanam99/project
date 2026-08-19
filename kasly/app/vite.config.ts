@@ -63,9 +63,8 @@ export default defineConfig(({ command, mode }) => {
   const startUrl = normalizedBase === '/' ? '/' : normalizedBase
   const gambarRoot = join(process.cwd(), '..', 'gambar')
 
-  const ss1 = sizeLabel(join(gambarRoot, 'ss', 'ss1.png'), '390x844')
-  const ss2 = sizeLabel(join(gambarRoot, 'ss', 'ss2.png'), '390x844')
-  const ss3 = sizeLabel(join(gambarRoot, 'ss', 'ss3.png'), '390x844')
+  const ssHp = sizeLabel(join(gambarRoot, 'ss', 'ss-hp-1.png'), '1080x1920')
+  const ssPc = sizeLabel(join(gambarRoot, 'ss', 'ss-pc-1.png'), '1280x800')
 
   return {
     base: command === 'serve' ? '/' : normalizedBase,
@@ -102,8 +101,8 @@ export default defineConfig(({ command, mode }) => {
           name: 'Kasly',
           short_name: 'Kasly',
           description: 'Kasly — catatan belanja rumah',
-          theme_color: '#0e4d44',
-          background_color: '#070908',
+          theme_color: '#db2777',
+          background_color: '#14080e',
           display: 'standalone',
           scope: startUrl,
           start_url: startUrl,
@@ -113,43 +112,43 @@ export default defineConfig(({ command, mode }) => {
           categories: ['finance', 'productivity'],
           icons: [
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v2192.png`,
+              src: `${GAMBAR_BASE}/icon/kasly192.png`,
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v2512.png`,
+              src: `${GAMBAR_BASE}/icon/kasly512.png`,
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v2.png`,
+              src: `${GAMBAR_BASE}/icon/kasly.png`,
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v232.png`,
+              src: `${GAMBAR_BASE}/icon/kasly32.png`,
               sizes: '32x32',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v264.png`,
+              src: `${GAMBAR_BASE}/icon/kasly64.png`,
               sizes: '64x64',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v296.png`,
+              src: `${GAMBAR_BASE}/icon/kasly96.png`,
               sizes: '96x96',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v2128.png`,
+              src: `${GAMBAR_BASE}/icon/kasly128.png`,
               sizes: '128x128',
               type: 'image/png',
               purpose: 'any',
@@ -157,25 +156,53 @@ export default defineConfig(({ command, mode }) => {
           ],
           screenshots: [
             {
-              src: `${GAMBAR_BASE}/ss/ss1.png`,
-              sizes: ss1,
+              src: `${GAMBAR_BASE}/ss/ss-hp-1.png`,
+              sizes: ssHp,
+              type: 'image/png',
+              form_factor: 'narrow',
+              label: 'Kasly di HP',
+            },
+            {
+              src: `${GAMBAR_BASE}/ss/ss-hp-2.png`,
+              sizes: ssHp,
               type: 'image/png',
               form_factor: 'narrow',
               label: 'Catatan belanja',
             },
             {
-              src: `${GAMBAR_BASE}/ss/ss2.png`,
-              sizes: ss2,
+              src: `${GAMBAR_BASE}/ss/ss-hp-3.png`,
+              sizes: ssHp,
+              type: 'image/png',
+              form_factor: 'narrow',
+              label: 'Rekening',
+            },
+            {
+              src: `${GAMBAR_BASE}/ss/ss-hp-4.png`,
+              sizes: ssHp,
               type: 'image/png',
               form_factor: 'narrow',
               label: 'Pengaturan',
             },
             {
-              src: `${GAMBAR_BASE}/ss/ss3.png`,
-              sizes: ss3,
+              src: `${GAMBAR_BASE}/ss/ss-pc-1.png`,
+              sizes: ssPc,
               type: 'image/png',
-              form_factor: 'narrow',
-              label: 'Kasly',
+              form_factor: 'wide',
+              label: 'Kasly di PC',
+            },
+            {
+              src: `${GAMBAR_BASE}/ss/ss-pc-2.png`,
+              sizes: ssPc,
+              type: 'image/png',
+              form_factor: 'wide',
+              label: 'Catatan belanja PC',
+            },
+            {
+              src: `${GAMBAR_BASE}/ss/ss-pc-3.png`,
+              sizes: ssPc,
+              type: 'image/png',
+              form_factor: 'wide',
+              label: 'Rekening PC',
             },
           ],
         },

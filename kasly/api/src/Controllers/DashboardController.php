@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Config\Database;
+use App\Helpers\RekeningHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -139,6 +140,9 @@ class DashboardController
              LIMIT 8"
         )->fetchAll();
 
+        $rekeningRows = RekeningHelper::listWithSaldo($this->db, false);
+        $ringkasRek = RekeningHelper::ringkasByTipe($rekeningRows);
+
         $mapKat = static function ($r) {
             return [
                 'nama' => $r['nama'],
@@ -168,6 +172,10 @@ class DashboardController
                 'by_kategori_masuk' => array_map($mapKat, $byKategoriMasuk),
                 'recent' => $recent,
                 'top_items' => $topItems,
+                'rekening' => $rekeningRows,
+                'saldo_bank' => $ringkasRek['bank'],
+                'saldo_ewallet' => $ringkasRek['ewallet'],
+                'saldo_cash' => $ringkasRek['cash'],
             ],
         ]);
     }

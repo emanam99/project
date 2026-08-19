@@ -8,6 +8,7 @@ use App\Controllers\BelanjaController;
 use App\Controllers\BelanjaFileController;
 use App\Controllers\DashboardController;
 use App\Controllers\KategoriController;
+use App\Controllers\RekeningController;
 use App\Controllers\UserController;
 use App\Helpers\AuthHelper;
 use App\Middleware\AuthMiddleware;
@@ -53,6 +54,7 @@ $belanjaFile = new BelanjaFileController();
 $dashboard = new DashboardController();
 $users = new UserController();
 $kategori = new KategoriController();
+$rekening = new RekeningController();
 
 $app->get('/health', function ($request, $response) {
     $response->getBody()->write(json_encode([
@@ -66,12 +68,19 @@ $app->get('/health', function ($request, $response) {
 $app->get('/auth/google', [$auth, 'googleStart']);
 $app->get('/auth/google/callback', [$auth, 'googleCallback']);
 
-$app->group('', function (RouteCollectorProxy $group) use ($auth, $belanja, $belanjaFile, $dashboard, $users, $kategori) {
+$app->group('', function (RouteCollectorProxy $group) use ($auth, $belanja, $belanjaFile, $dashboard, $users, $kategori, $rekening) {
     $group->get('/auth/me', [$auth, 'me']);
     $group->post('/auth/logout', [$auth, 'logout']);
 
     $group->get('/dashboard/summary', [$dashboard, 'summary']);
     $group->get('/kategori', [$kategori, 'index']);
+
+    $group->get('/rekening', [$rekening, 'index']);
+    $group->post('/rekening', [$rekening, 'create']);
+    $group->get('/rekening/transfer', [$rekening, 'listTransfer']);
+    $group->post('/rekening/transfer', [$rekening, 'createTransfer']);
+    $group->put('/rekening/{id}', [$rekening, 'update']);
+    $group->delete('/rekening/{id}', [$rekening, 'delete']);
 
     $group->get('/belanja', [$belanja, 'index']);
     $group->get('/belanja/item-options', [$belanja, 'itemOptions']);

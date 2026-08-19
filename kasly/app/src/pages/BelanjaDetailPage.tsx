@@ -7,10 +7,13 @@ import {
   getBelanja,
   listBelanjaItemOptions,
   listKategori,
+  listRekening,
   updateBelanja,
   type BelanjaDetail,
   type BelanjaNamaOption,
+  type RekeningRow,
 } from '../api/apiClient'
+import AlokasiEditor, { alokasiPayload, emptyAlokasi, type AlokasiDraft } from '../components/AlokasiEditor'
 import KategoriField from '../components/KategoriField'
 import BelanjaLampiran from '../components/BelanjaLampiran'
 import SuggestInput from '../components/SuggestInput'
@@ -37,6 +40,8 @@ export default function BelanjaDetailPage() {
   const [categories, setCategories] = useState<string[]>([])
   const [namaOptions, setNamaOptions] = useState<BelanjaNamaOption[]>([])
   const [satuanOptions, setSatuanOptions] = useState<string[]>(['pcs'])
+  const [rekening, setRekening] = useState<RekeningRow[]>([])
+  const [alokasi, setAlokasi] = useState<AlokasiDraft[]>([])
 
   const [nama, setNama] = useState('')
   const [qty, setQty] = useState('1')
@@ -64,6 +69,16 @@ export default function BelanjaDetailPage() {
       setTanggal(res.data.belanja.tanggal)
       setKeterangan(res.data.belanja.keterangan || '')
       setKategori(res.data.belanja.kategori || '')
+      const al = res.data.alokasi || res.data.belanja.alokasi || []
+      setAlokasi(
+        al.length
+          ? al.map((a) => ({
+              key: `${a.rekening_id}-${a.id || Math.random()}`,
+              rekening_id: String(a.rekening_id),
+              jumlah: String(Number(a.jumlah) || 0),
+            }))
+          : [emptyAlokasi()],
+      )
       setError('')
     } else {
       setError(res.message || 'Tidak ditemukan')
@@ -74,11 +89,18 @@ export default function BelanjaDetailPage() {
   useEffect(() => {
     void load()
     void (async () => {
-      const [kat, opts] = await Promise.all([listKategori(pathJenis), listBelanjaItemOptions(pathJenis)])
+      const [kat, opts, rek] = await Promise.all([
+        listKategori(pathJenis),
+        listBelanjaItemOptions(pathJenis),
+        listRekening(),
+      ])
       if (kat.success && kat.data) setCategories(kat.data.map((k) => k.nama))
       if (opts.success && opts.data) {
         setNamaOptions(opts.data.nama_barang || [])
         if (opts.data.satuan?.length) setSatuanOptions(opts.data.satuan)
+      }
+      if (rek.success && rek.data?.rekening) {
+        setRekening(rek.data.rekening.filter((r) => Number(r.aktif) === 1))
       }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,6 +120,7 @@ export default function BelanjaDetailPage() {
       tanggal,
       keterangan,
       kategori: kategori.trim() || null,
+      alokasi: alokasiPayload(alokasi),
     })
     setSaving(false)
     if (res.success && res.data) {
@@ -239,6 +262,13 @@ export default function BelanjaDetailPage() {
                 rows={3}
               />
             </div>
+            <AlokasiEditor
+              rekening={rekening}
+              rows={alokasi}
+              total={Number(belanja.total) || 0}
+              jenis={jenis}
+              onChange={setAlokasi}
+            />
             <button type="button" className="ui-btn-primary" disabled={saving} onClick={() => void saveMeta()}>
               Simpan perubahan
             </button>
@@ -250,6 +280,15 @@ export default function BelanjaDetailPage() {
             </p>
             <p>
               <span className="font-semibold text-ink">Keterangan:</span> {belanja.keterangan || '—'}
+            </p>
+            <p>
+              <span className="font-semibold text-ink">{jenis === 'masuk' ? 'Masuk ke:' : 'Keluar dari:'}</span>{' '}
+              {belanja.alokasi_label ||
+                (detail.alokasi || [])
+                  .map((a) => `${a.rekening_nama || ''} ${a.jumlah}`)
+                  .filter(Boolean)
+                  .join(' · ') ||
+                '—'}
             </p>
           </div>
         )}

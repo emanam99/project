@@ -9,6 +9,7 @@ import {
   hasAppAccess,
   type AuthUser,
 } from '../utils/auth'
+import { gambarUrl } from '../utils/gambar'
 
 const POLL_MS = 3000
 
@@ -73,9 +74,14 @@ export default function MenungguAksesPage() {
       <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur-xl">
         <div className="px-3.5 py-2.5 flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-8 w-8 rounded-lg bg-[var(--accent)] text-white grid place-items-center font-display text-xs font-bold">
-              K
-            </div>
+            <img
+              src={gambarUrl('icon/kasly64.png')}
+              alt="Kasly"
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-lg object-contain shrink-0"
+              draggable={false}
+            />
             <div className="font-display text-[15px] font-bold text-ink leading-tight">Kasly</div>
           </div>
           <ProfileMenu user={user} />

@@ -372,12 +372,12 @@ if ($doGambar) {
         Write-Error "Folder gambar tidak ditemukan: $gambarPath"
     }
 
-    Write-Host "[Gambar] Upload folder gambar..." -ForegroundColor Cyan
-    Invoke-Ssh "mkdir -p $REMOTE_GAMBAR_PATH"
+    Write-Host "[Gambar] Upload folder gambar (bersihkan ikon/SS lama di server)..." -ForegroundColor Cyan
+    Invoke-Ssh "mkdir -p $REMOTE_GAMBAR_PATH/icon $REMOTE_GAMBAR_PATH/ss && rm -f $REMOTE_GAMBAR_PATH/icon/* $REMOTE_GAMBAR_PATH/ss/*"
 
     $gambarTarPath = Join-Path $scriptDir $GAMBAR_TAR
     if (Test-Path $gambarTarPath) { Remove-Item $gambarTarPath -Force }
-    tar --format=ustar -cf $gambarTarPath -C $gambarPath .
+    tar --format=ustar -cf $gambarTarPath -C $gambarPath --exclude=.gitkeep .
 
     Invoke-ScpWithRetry -LocalPath $gambarTarPath -RemoteSpec "${SSH_USER}@${SSH_HOST}:${REMOTE_GAMBAR_PATH}/"
     $gambarExtractCmd = "cd $REMOTE_GAMBAR_PATH && tar --warning=no-timestamp --warning=no-unknown-keyword -xf $GAMBAR_TAR && rm -f $GAMBAR_TAR"
