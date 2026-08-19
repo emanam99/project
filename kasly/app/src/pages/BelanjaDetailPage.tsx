@@ -13,7 +13,7 @@ import {
   type BelanjaNamaOption,
   type RekeningRow,
 } from '../api/apiClient'
-import AlokasiEditor, { alokasiPayload, emptyAlokasi, type AlokasiDraft } from '../components/AlokasiEditor'
+import AlokasiEditor, { alokasiPayload, applyAutoAlokasi, emptyAlokasi, type AlokasiDraft } from '../components/AlokasiEditor'
 import KategoriField from '../components/KategoriField'
 import BelanjaLampiran from '../components/BelanjaLampiran'
 import SuggestInput from '../components/SuggestInput'
@@ -120,7 +120,7 @@ export default function BelanjaDetailPage() {
       tanggal,
       keterangan,
       kategori: kategori.trim() || null,
-      alokasi: alokasiPayload(alokasi),
+      alokasi: alokasiPayload(applyAutoAlokasi(alokasi, Number(detail?.belanja.total || 0))),
     })
     setSaving(false)
     if (res.success && res.data) {

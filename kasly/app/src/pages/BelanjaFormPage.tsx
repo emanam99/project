@@ -8,7 +8,7 @@ import {
   type BelanjaNamaOption,
   type RekeningRow,
 } from '../api/apiClient'
-import AlokasiEditor, { alokasiPayload, emptyAlokasi, type AlokasiDraft } from '../components/AlokasiEditor'
+import AlokasiEditor, { alokasiPayload, applyAutoAlokasi, emptyAlokasi, type AlokasiDraft } from '../components/AlokasiEditor'
 import BelanjaLampiran, {
   uploadPendingBelanjaFiles,
   type PendingBelanjaFile,
@@ -148,7 +148,7 @@ export default function BelanjaFormPage() {
       (sum, it) => sum + Math.round((it.qty || 0) * (it.harga_satuan || 0)),
       0,
     )
-    const alokasiNow = alokasiPayload(alokasi)
+    const alokasiNow = alokasiPayload(applyAutoAlokasi(alokasi, totalBelanjaNow))
     const alokasiSum = alokasiNow.reduce((s, a) => s + a.jumlah, 0)
     if (totalBelanjaNow > 0 && Math.abs(alokasiSum - totalBelanjaNow) > 0.009) {
       setLoading(false)
