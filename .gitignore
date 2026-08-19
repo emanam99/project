@@ -45,6 +45,7 @@ Thumbs.db
 !**/components.json
 !**/manifest.json
 !.cursor/environment.json
+!tshirt-mockup/src/**/*.json
 client_secret*.json
 gen-lang-client-*.json
 *.pem

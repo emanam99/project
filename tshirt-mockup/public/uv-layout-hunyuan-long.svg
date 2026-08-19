@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="100%" height="100%" fill="#f3f3f5"/>
+  <rect x="40" y="48" width="440" height="650" rx="28" fill="#ffffff" stroke="#b7b7c0" stroke-width="1.1"/>
+  <rect x="544" y="48" width="440" height="650" rx="28" fill="#ffffff" stroke="#b7b7c0" stroke-width="1.1"/>
+  <path d="M681.1 780.0 C681.1 762.0 814.9 762.0 814.9 780.0 L790.6 998.0 L705.4 998.0 Z" fill="#ffffff" stroke="#b7b7c0" stroke-width="1.1"/>
+  <path d="M209.1 780.0 C209.1 762.0 342.9 762.0 342.9 780.0 L318.6 998.0 L233.4 998.0 Z" fill="#ffffff" stroke="#b7b7c0" stroke-width="1.1"/>
+  <path d="M265 714 H759 Q776 714 776 731 T759 748 H265 Q248 748 248 731 T265 714 Z" fill="#ffffff" stroke="#b7b7c0" stroke-width="1.1"/>
+  <path d="" fill="none" stroke="#c8c8ce" stroke-width="0.7" opacity="0.7"/>
+  <text x="764" y="321" text-anchor="middle" fill="#9a9aa3" font-family="Inter,system-ui,sans-serif" font-size="22">Depan</text>
+  <text x="260" y="321" text-anchor="middle" fill="#9a9aa3" font-family="Inter,system-ui,sans-serif" font-size="22">Belakang</text>
+  <text x="748" y="891.8" text-anchor="middle" fill="#9a9aa3" font-family="Inter,system-ui,sans-serif" font-size="18">Lengan</text>
+  <text x="276" y="891.8" text-anchor="middle" fill="#9a9aa3" font-family="Inter,system-ui,sans-serif" font-size="18">Lengan</text>
+  <text x="512" y="738" text-anchor="middle" fill="#9a9aa3" font-family="Inter,system-ui,sans-serif" font-size="16">Kerah</text>
+</svg>
