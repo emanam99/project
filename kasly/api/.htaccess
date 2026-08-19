@@ -1,0 +1,15 @@
+# Jangan sajikan file sensitif di luar public/
+<Files ".env">
+  Require all denied
+</Files>
+<Files "migrate.php">
+  Require all denied
+</Files>
+<FilesMatch "^(composer\.(json|lock)|app\.yaml|error\.log)$">
+  Require all denied
+</FilesMatch>
+
+RewriteEngine On
+RewriteRule ^src/ - [F,L]
+RewriteRule ^vendor/ - [F,L]
+RewriteRule ^migrations/ - [F,L]

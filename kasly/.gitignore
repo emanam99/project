@@ -1,4 +1,4 @@
-﻿# Local / secrets — jangan commit
+# Local / secrets — jangan commit
 .git.bak-local/
 .cursor/
 client_secret*.json

@@ -27,9 +27,12 @@ cp .env.example .env
 php migrate.php
 ```
 
+Login Google (project baru, step-by-step + tautan): lihat [`GOOGLE_OAUTH.md`](GOOGLE_OAUTH.md).
+
 Redirect URI Google Cloud Console:
 
-`http://localhost/kasly/api/public/auth/google/callback`
+`http://localhost/kasly/api/public/auth/google/callback`  
+Produksi: `https://kasly.syamira.my.id/api/public/auth/google/callback`
 
 ### 2. Frontend
 
