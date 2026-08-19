@@ -2,14 +2,19 @@
 # Cara pakai (dari folder kasly):
 #   .\deploy.ps1
 #   .\deploy.ps1 -Scope 5
+#   .\deploy.ps1 -Scope all
 #   .\deploy.ps1 -Scope 2 -ForceEnv   # hanya jika ingin menimpa .env production
+#   .\deploy.ps1 -Scope frontend -Migrate
+#
+# GitHub Actions: .github/workflows/deploy-kasly-hostinger.yml
+# (SSH key via secret DEPLOY_SSH_KEY / DEPLOY_SSH_KEY_B64; host sama dengan deploy.ps1 ini)
 #
 # Env lokal (app/.env, api/.env) TIDAK diubah.
 # .env production di server hanya ditulis jika BELUM ada.
 # Update berikutnya tidak menimpa env production. Pakai -ForceEnv hanya jika memang ingin mengganti secret.
 
 param(
-    [ValidateSet('', '1', '2', '3', '4', '5')]
+    [ValidateSet('', '1', '2', '3', '4', '5', 'frontend', 'api', 'both', 'gambar', 'all')]
     [string]$Scope = '',
     [switch]$Migrate,
     [switch]$ForceEnv
@@ -18,10 +23,10 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 
-# --- SSH (akun Hostinger yang sama) ---
-$SSH_USER  = "u264984103"
-$SSH_HOST  = "145.223.108.9"
-$SSH_PORT  = 65002
+# --- SSH (akun Hostinger yang sama; bisa dioverride via env untuk GitHub Actions) ---
+$SSH_USER  = if ($env:DEPLOY_SSH_USER) { $env:DEPLOY_SSH_USER.Trim() } else { "u264984103" }
+$SSH_HOST  = if ($env:DEPLOY_SSH_HOST) { $env:DEPLOY_SSH_HOST.Trim() } else { "145.223.108.9" }
+$SSH_PORT  = if ($env:DEPLOY_SSH_PORT) { [int]$env:DEPLOY_SSH_PORT } else { 65002 }
 $FRONT_TAR = "kasly-front.tar"
 $API_TAR   = "kasly-api.tar"
 $GAMBAR_TAR = "kasly-gambar.tar"
@@ -107,7 +112,13 @@ Write-Host ""
 Write-Host "  Deploy Kasly ke $publicUrl" -ForegroundColor Green
 Write-Host ""
 
+$ci = ($env:GITHUB_ACTIONS -eq 'true') -or ($env:CI -eq 'true')
+$forceRemoteEnv = $ForceEnv.IsPresent -or ($env:DEPLOY_FORCE_ENV -eq 'true')
+
 if (-not $Scope) {
+    if ($ci) {
+        Write-Error 'Mode CI: wajib -Scope (1-5 atau frontend|api|both|gambar|all).'
+    }
     Write-Host "  Deploy apa?" -ForegroundColor White
     Write-Host '    1) Frontend saja   - build + upload app/dist' -ForegroundColor Cyan
     Write-Host '    2) API saja        - upload api (env production tidak ditimpa)' -ForegroundColor Magenta
@@ -118,8 +129,17 @@ if (-not $Scope) {
     $Scope = Read-Host '  Masukkan pilihan (1, 2, 3, 4, atau 5)'
 }
 
+$Scope = switch ($Scope.Trim().ToLower()) {
+    'frontend' { '1' }
+    'api'      { '2' }
+    'both'     { '3' }
+    'gambar'   { '4' }
+    'all'      { '5' }
+    default    { $Scope.Trim() }
+}
+
 if ($Scope -notmatch '^[12345]$') {
-    Write-Error 'Pilihan tidak valid. Gunakan 1, 2, 3, 4, atau 5.'
+    Write-Error 'Pilihan tidak valid. Gunakan 1, 2, 3, 4, 5 atau frontend, api, both, gambar, all.'
 }
 
 $doFrontend = $Scope -eq "1" -or $Scope -eq "3" -or $Scope -eq "5"
@@ -130,7 +150,7 @@ $runMigrations = 'n'
 if ($doApi) {
     if ($Migrate) {
         $runMigrations = 'y'
-    } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+    } elseif (-not $ci -and [Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
         Write-Host ""
         Write-Host "  Setelah upload API nanti:" -ForegroundColor White
         try {
@@ -317,10 +337,10 @@ if ($doApi) {
     $envCheck = & ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" "if [ -f $REMOTE_API_PATH/.env ]; then echo yes; else echo no; fi"
     $remoteEnvExists = ("$envCheck".Trim() -eq 'yes')
 
-    if ($remoteEnvExists -and -not $ForceEnv) {
+    if ($remoteEnvExists -and -not $forceRemoteEnv) {
         Write-Host "[API] Melewati .env production (sudah ada). Pakai -ForceEnv hanya jika ingin menimpa." -ForegroundColor Yellow
     } else {
-        if ($remoteEnvExists -and $ForceEnv) {
+        if ($remoteEnvExists -and $forceRemoteEnv) {
             Write-Host "[API] -ForceEnv: menimpa .env di server..." -ForegroundColor Yellow
         } else {
             Write-Host "[API] Menulis .env production pertama kali (selanjutnya tidak ditimpa)..." -ForegroundColor Cyan
