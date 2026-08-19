@@ -4,8 +4,10 @@ import { getExportArsip, type BelanjaRow, type ExportArsipRow } from '../api/api
 import { usePageTitle } from '../contexts/PageTitleContext'
 import { formatDateId, formatRp } from '../utils/format'
 
-function typeLabel(type?: string): string {
+function typeLabel(type?: string, filename?: string): string {
   if (type === 'maker_xlsx') return 'Excel Maker'
+  if (filename && /_IH_/i.test(filename)) return 'BNI Inhouse'
+  if (filename && /_Online_/i.test(filename)) return 'BNI Online'
   return 'CSV BNI'
 }
 
@@ -65,7 +67,7 @@ export default function ArsipEksporDetailPage() {
           <div>
             <h1 className="font-display text-lg font-bold text-ink">{batch.nama_file}</h1>
             <p className="text-[13px] text-muted mt-0.5">
-              {typeLabel(batch.export_type)}
+              {typeLabel(batch.export_type, batch.csv_filename)}
               {' · '}
               {formatDateId(batch.created_at.slice(0, 10))}
               {' · '}

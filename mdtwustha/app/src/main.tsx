@@ -28,9 +28,16 @@ registerSW({
   immediate: true,
   onRegisteredSW(_swUrl, registration) {
     if (!registration) return
-    setInterval(() => {
-      registration.update()
-    }, 60_000)
+    const tryUpdate = () => {
+      void registration.update().catch(() => {
+        /* sw.js bisa gagal di-fetch (offline / CDN) — jangan biarkan uncaught */
+      })
+    }
+    tryUpdate()
+    setInterval(tryUpdate, 60_000)
+  },
+  onRegisterError() {
+    /* Gagal daftar/update SW tidak boleh memutus halaman */
   },
   onNeedRefresh() {
     // autoUpdate + skipWaiting di SW menangani refresh

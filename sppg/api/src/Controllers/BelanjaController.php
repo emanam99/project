@@ -6,6 +6,7 @@ use App\Config\Database;
 use App\Helpers\AuthHelper;
 use App\Helpers\CairStatusHelper;
 use App\Helpers\SimpleXlsxWriter;
+use App\Helpers\ZipStore;
 use App\Services\BniBatchService;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -572,14 +573,18 @@ class BelanjaController
         ];
         $message = 'Status diperbarui';
 
-        // Saat Maker: arsipkan CSV + fingerprint (jumlah rekening, nominal, rek debet) untuk auto-approve dari email BNI
+        // Saat Maker: arsipkan CSV Inhouse/Online terpisah (Waiting) untuk auto-approve email BNI
         if ($status === 'maker') {
             try {
                 $nama = trim((string) ($body['nama'] ?? 'belanja'));
                 $svc = new BniBatchService($this->db);
                 $batch = $svc->archiveFromBelanjaIds($ids, $nama, isset($user['id']) ? (int) $user['id'] : null);
                 $payload['batch'] = $batch;
-                $message = 'Status Maker + CSV diarsipkan. Menunggu notifikasi email BNI untuk auto-approve.';
+                $payload['batches'] = $batch['batches'] ?? [$batch];
+                $n = count($payload['batches']);
+                $message = $n > 1
+                    ? "Status Maker + {$n} CSV (Inhouse/Online) diarsipkan ke Waiting. Unggah masing-masing ke sheet BNI Direct yang sesuai."
+                    : 'Status Maker + CSV diarsipkan. Menunggu notifikasi email BNI untuk auto-approve.';
             } catch (\Throwable $e) {
                 error_log('bni archive on maker: ' . $e->getMessage());
                 $payload['batch_error'] = $e->getMessage();
@@ -660,7 +665,7 @@ class BelanjaController
 
     /**
      * GET /belanja/export/bni-online?from=&to=&q=&nama=&ids=
-     * CSV format BNI Direct sheet Online (sama pola template VBA).
+     * CSV BNI Direct: Inhouse (bank BNI) dan/atau Online (bank lain).
      * Rekening debet utama: env BNI_DEBIT_ACCOUNT (default 5268080020354800).
      */
     public function exportBniOnline(Request $request, Response $response): Response
@@ -751,92 +756,49 @@ class BelanjaController
             ], 422);
         }
 
-        $itemMap = $this->itemNamesByBelanjaIds(array_map(static fn ($r) => (int) $r['id'], $rows));
-
-        $dataLines = [];
-        $totalAmount = 0;
-        foreach ($rows as $row) {
-            $amount = (int) round((float) $row['total']);
-            if ($amount <= 0) {
-                continue;
-            }
-            $totalAmount += $amount;
-
-            $remark1 = trim((string) ($row['keterangan'] ?? ''));
-            if ($remark1 === '') {
-                $remark1 = $itemMap[(int) $row['id']] ?? '';
-            }
-            $remark1 = $this->bniClip($remark1, 33);
-            $remark2 = $this->bniClip($this->formatBniRemark2((string) $row['tanggal']), 50);
-
-            $dataLines[] = [
-                $this->bniClip((string) (preg_replace('/\D+/', '', (string) ($row['nomor_rekening'] ?? '')) ?? ''), 16),
-                $this->bniClip((string) ($row['nama_penerima'] ?? ''), 80),
-                (string) $amount,
-                $remark1,
-                $remark2,
-                '',
-                $this->bniClip((string) ($row['online_bank_code'] ?? ''), 3),
-                $this->bniClip((string) ($row['bank_tujuan'] ?? ''), 35),
-                '', '', '', '', '', '', '', '',
-                'N',
-                '',
-                '',
-                'N',
-            ];
-        }
-
-        if (!$dataLines) {
-            return $this->json($response, [
-                'success' => false,
-                'message' => 'Tidak ada baris dengan nominal > 0 untuk diekspor.',
-            ], 422);
-        }
-
-        $recordCount = count($dataLines);
-        $now = new \DateTimeImmutable('now');
-        $created = $now->format('Y/m/d_H.i.s');
-        $stamp = $now->format('Ymd_His');
-        $trxDate = !empty($q['to'])
-            ? (string) (preg_replace('/\D+/', '', (string) $q['to']) ?? '')
-            : $now->format('Ymd');
-        if (strlen($trxDate) !== 8) {
-            $trxDate = $now->format('Ymd');
-        }
-
         $namaFile = trim((string) ($q['nama'] ?? ''));
         if ($namaFile === '') {
             $namaFile = 'belanja';
         }
         $namaFile = (string) (preg_replace('/[^\p{L}\p{N}\s\-_]/u', '', $namaFile) ?: 'belanja');
         $namaFile = trim((string) (preg_replace('/\s+/', ' ', $namaFile) ?? $namaFile));
+        $stamp = (new \DateTimeImmutable('now'))->format('Ymd_His');
 
-        // Pola VBA: baris1 col2 = jumlah baris data + 2 (header batch)
-        $line1Count = $recordCount + 2;
-
-        $csvRows = [];
-        $csvRows[] = $this->bniPadRow([$created, (string) $line1Count, $namaFile], 20);
-        $csvRows[] = $this->bniPadRow([
-            'P',
-            $trxDate,
-            $debit, // rekening debet utama BNI
-            (string) $recordCount,
-            (string) $totalAmount,
-        ], 20);
-        foreach ($dataLines as $line) {
-            $csvRows[] = $this->bniPadRow($line, 20);
+        $svc = new BniBatchService($this->db);
+        $builtList = $svc->buildCsvFiles($rows, $namaFile, $debit);
+        if (!$builtList) {
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'Tidak ada baris dengan nominal > 0 untuk diekspor.',
+            ], 422);
         }
 
-        $body = '';
-        foreach ($csvRows as $cols) {
-            $body .= $this->bniCsvLine($cols) . "\r\n";
+        try {
+            $user = $request->getAttribute('user');
+            $svc->archiveBuiltCsvList($builtList, isset($user['id']) ? (int) $user['id'] : null);
+        } catch (\Throwable $e) {
+            error_log('bni csv archive on export: ' . $e->getMessage());
         }
 
-        $downloadName = sprintf('%s_Online_%s.csv', $namaFile, $stamp);
-        $response->getBody()->write($body);
+        if (count($builtList) === 1) {
+            $one = $builtList[0];
+            $response->getBody()->write($one['body']);
+            return $response
+                ->withHeader('Content-Type', 'text/csv; charset=UTF-8')
+                ->withHeader('Content-Disposition', 'attachment; filename="' . $one['csv_filename'] . '"')
+                ->withHeader('Cache-Control', 'no-store')
+                ->withStatus(200);
+        }
+
+        $zipFiles = [];
+        foreach ($builtList as $one) {
+            $zipFiles[$one['csv_filename']] = $one['body'];
+        }
+        $zipName = sprintf('%s_BNI_%s.zip', preg_replace('/\s+/', '_', $namaFile) ?: 'belanja', $stamp);
+        $response->getBody()->write(ZipStore::make($zipFiles));
         return $response
-            ->withHeader('Content-Type', 'text/csv; charset=UTF-8')
-            ->withHeader('Content-Disposition', 'attachment; filename="' . $downloadName . '"')
+            ->withHeader('Content-Type', 'application/zip')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $zipName . '"')
             ->withHeader('Cache-Control', 'no-store')
             ->withStatus(200);
         } catch (\Throwable $e) {
@@ -1096,7 +1058,7 @@ class BelanjaController
         // ASCII-safe filename for Content-Disposition
         $safeName = preg_replace('/[^\w.\-]+/', '_', $downloadName) ?: ('maker_' . $stamp . '.xlsx');
 
-        // Arsipkan Excel untuk super_admin (halaman Arsip Ekspor)
+        // Arsipkan Excel ke Waiting setiap kali diekspor (bukan hanya Maker pertama)
         try {
             $exportIds = array_values(array_unique(array_map(static fn ($r) => (int) $r['id'], $rows)));
             $totalAmount = 0;

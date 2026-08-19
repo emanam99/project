@@ -150,16 +150,6 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-
-        <div className="rounded-lg border border-line bg-surface-soft px-3 py-2.5">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">Pratinjau</div>
-          <p className="text-ink leading-relaxed">
-            Contoh teks belanja dapur santri. Total hari ini Rp 33.000 · ACHMAD SHOLEHUDDIN.
-          </p>
-          <p className="text-muted mt-1" style={{ fontSize: '0.85em' }}>
-            Keterangan sekunder menyesuaikan skala yang dipilih.
-          </p>
-        </div>
       </section>
 
       <p className="text-[11px] text-muted px-0.5">

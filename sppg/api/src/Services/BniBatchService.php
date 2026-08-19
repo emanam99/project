@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\BniCsvHelper;
 use App\Helpers\BniEmailParser;
 use App\Helpers\CairStatusHelper;
 use PDO;
@@ -25,10 +26,18 @@ class BniBatchService
     }
 
     /**
-     * Arsipkan CSV + metadata saat status Maker.
+     * Arsipkan CSV + metadata (satu batch per template: Inhouse BNI dan/atau Online).
      *
      * @param list<int> $belanjaIds
-     * @return array{batch_id:int, csv_filename:string, record_count:int, total_amount:int, debit_account:string}
+     * @return array{
+     *   batch_id:int,
+     *   csv_filename:string,
+     *   record_count:int,
+     *   total_amount:int,
+     *   debit_account:string,
+     *   kind?:string,
+     *   batches:list<array{batch_id:int,csv_filename:string,record_count:int,total_amount:int,kind:string}>
+     * }
      */
     public function archiveFromBelanjaIds(array $belanjaIds, string $namaFile, ?int $createdBy = null): array
     {
@@ -47,42 +56,36 @@ class BniBatchService
             throw new \RuntimeException('Belanja ber-rekening tidak ditemukan untuk arsip CSV');
         }
 
-        $built = $this->buildCsv($rows, $namaFile, $debit);
-        $dir = $this->archiveDir();
-        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
-            throw new \RuntimeException('Gagal membuat folder arsip BNI');
+        $builtList = $this->buildCsvFiles($rows, $namaFile, $debit);
+        if (!$builtList) {
+            throw new \RuntimeException('Tidak ada baris nominal > 0 untuk arsip CSV');
         }
 
-        $path = $dir . DIRECTORY_SEPARATOR . $built['csv_filename'];
-        if (file_put_contents($path, $built['body']) === false) {
-            throw new \RuntimeException('Gagal menyimpan file arsip CSV');
+        $batches = [];
+        foreach ($builtList as $built) {
+            $batches[] = $this->persistCsvBatch($built, $debit, $createdBy);
         }
 
-        $relPath = 'uploads/bni-batches/' . $built['csv_filename'];
-        $stmt = $this->db->prepare(
-            'INSERT INTO bni_batch
-             (export_type, nama_file, csv_filename, csv_path, debit_account, record_count, total_amount, trx_date, belanja_ids, status, created_by)
-             VALUES (\'bni_csv\', ?, ?, ?, ?, ?, ?, ?, ?, \'waiting\', ?)'
-        );
-        $stmt->execute([
-            $built['nama_file'],
-            $built['csv_filename'],
-            $relPath,
-            $debit,
-            $built['record_count'],
-            $built['total_amount'],
-            $built['trx_date'],
-            json_encode($built['belanja_ids'], JSON_UNESCAPED_UNICODE),
-            $createdBy,
-        ]);
+        $first = $batches[0];
+        $first['debit_account'] = $debit;
+        $first['batches'] = $batches;
+        return $first;
+    }
 
-        return [
-            'batch_id' => (int) $this->db->lastInsertId(),
-            'csv_filename' => $built['csv_filename'],
-            'record_count' => $built['record_count'],
-            'total_amount' => $built['total_amount'],
-            'debit_account' => $debit,
-        ];
+    /**
+     * Arsipkan CSV yang sudah dibangun (ekspor ulang juga masuk Waiting).
+     *
+     * @param list<array{body:string,csv_filename:string,nama_file:string,record_count:int,total_amount:int,trx_date:string,belanja_ids:list<int>,kind:string}> $builtList
+     * @return list<array{batch_id:int,csv_filename:string,record_count:int,total_amount:int,kind:string}>
+     */
+    public function archiveBuiltCsvList(array $builtList, ?int $createdBy = null): array
+    {
+        $debit = self::debitAccount();
+        $out = [];
+        foreach ($builtList as $built) {
+            $out[] = $this->persistCsvBatch($built, $debit, $createdBy);
+        }
+        return $out;
     }
 
     /**
@@ -121,6 +124,11 @@ class BniBatchService
 
         $safe = preg_replace('/[^\w.\-]+/', '_', $filename) ?: ('export_' . date('Ymd_His'));
         $path = $dir . DIRECTORY_SEPARATOR . $safe;
+        if (is_file($path)) {
+            $pi = pathinfo($safe);
+            $safe = ($pi['filename'] ?? 'export') . '_' . bin2hex(random_bytes(2)) . '.' . ($pi['extension'] ?? 'xlsx');
+            $path = $dir . DIRECTORY_SEPARATOR . $safe;
+        }
         if (file_put_contents($path, $binary) === false) {
             throw new \RuntimeException('Gagal menyimpan file arsip');
         }
@@ -367,88 +375,89 @@ class BniBatchService
     }
 
     /**
-     * @param list<array<string,mixed>> $rows
-     * @return array{body:string,csv_filename:string,nama_file:string,record_count:int,total_amount:int,trx_date:string,belanja_ids:list<int>}
+     * @param array{
+     *   body:string,
+     *   csv_filename:string,
+     *   nama_file:string,
+     *   record_count:int,
+     *   total_amount:int,
+     *   trx_date:string,
+     *   belanja_ids:list<int>,
+     *   kind:string
+     * } $built
+     * @return array{batch_id:int,csv_filename:string,record_count:int,total_amount:int,kind:string}
      */
-    private function buildCsv(array $rows, string $namaFile, string $debit): array
+    private function persistCsvBatch(array $built, string $debit, ?int $createdBy): array
     {
-        $itemMap = $this->itemNamesByBelanjaIds(array_map(static fn ($r) => (int) $r['id'], $rows));
-        $dataLines = [];
-        $totalAmount = 0;
-        $belanjaIds = [];
-
-        foreach ($rows as $row) {
-            $amount = (int) round((float) $row['total']);
-            if ($amount <= 0) {
-                continue;
-            }
-            $totalAmount += $amount;
-            $belanjaIds[] = (int) $row['id'];
-
-            $remark1 = trim((string) ($row['keterangan'] ?? ''));
-            if ($remark1 === '') {
-                $remark1 = $itemMap[(int) $row['id']] ?? '';
-            }
-            $remark1 = $this->clip($remark1, 33);
-            $remark2 = $this->clip($this->formatRemark2((string) $row['tanggal']), 50);
-
-            $dataLines[] = [
-                $this->clip((string) (preg_replace('/\D+/', '', (string) ($row['nomor_rekening'] ?? '')) ?? ''), 16),
-                $this->clip((string) ($row['nama_penerima'] ?? ''), 80),
-                (string) $amount,
-                $remark1,
-                $remark2,
-                '',
-                $this->clip((string) ($row['online_bank_code'] ?? ''), 3),
-                $this->clip((string) ($row['bank_tujuan'] ?? ''), 35),
-                '', '', '', '', '', '', '', '',
-                'N',
-                '',
-                '',
-                'N',
-            ];
+        $dir = $this->archiveDir();
+        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+            throw new \RuntimeException('Gagal membuat folder arsip BNI');
         }
 
-        if (!$dataLines) {
-            throw new \RuntimeException('Tidak ada baris nominal > 0 untuk arsip CSV');
+        $filename = $built['csv_filename'];
+        $path = $dir . DIRECTORY_SEPARATOR . $filename;
+        if (is_file($path)) {
+            $pi = pathinfo($filename);
+            $filename = ($pi['filename'] ?? 'belanja') . '_' . bin2hex(random_bytes(2)) . '.' . ($pi['extension'] ?? 'csv');
+            $path = $dir . DIRECTORY_SEPARATOR . $filename;
+        }
+        if (file_put_contents($path, $built['body']) === false) {
+            throw new \RuntimeException('Gagal menyimpan file arsip CSV');
         }
 
-        $namaFile = trim($namaFile);
-        if ($namaFile === '') {
-            $namaFile = 'belanja';
-        }
-        $namaFile = (string) (preg_replace('/[^\p{L}\p{N}\s\-_]/u', '', $namaFile) ?: 'belanja');
-        $namaFile = trim((string) (preg_replace('/\s+/', ' ', $namaFile) ?? $namaFile));
-
-        $now = new \DateTimeImmutable('now');
-        $created = $now->format('Y/m/d_H.i.s');
-        $stamp = $now->format('Ymd_His');
-        $trxDate = $now->format('Ymd');
-        $recordCount = count($dataLines);
-
-        $csvRows = [];
-        $csvRows[] = $this->padRow([$created, (string) ($recordCount + 2), $namaFile], 20);
-        $csvRows[] = $this->padRow(['P', $trxDate, $debit, (string) $recordCount, (string) $totalAmount], 20);
-        foreach ($dataLines as $line) {
-            $csvRows[] = $this->padRow($line, 20);
+        $relPath = 'uploads/bni-batches/' . $filename;
+        $label = BniCsvHelper::kindLabel($built['kind'] ?? BniCsvHelper::KIND_ONLINE);
+        $namaFile = trim((string) $built['nama_file']);
+        if ($namaFile !== '' && stripos($namaFile, $label) === false) {
+            $namaFile = $namaFile . ' · ' . $label;
         }
 
-        $body = '';
-        foreach ($csvRows as $cols) {
-            $body .= implode(',', $cols) . "\r\n";
-        }
-
-        $csvFilename = sprintf('%s_Online_%s.csv', preg_replace('/\s+/', '_', $namaFile) ?: 'belanja', $stamp);
+        $stmt = $this->db->prepare(
+            'INSERT INTO bni_batch
+             (export_type, nama_file, csv_filename, csv_path, debit_account, record_count, total_amount, trx_date, belanja_ids, status, created_by)
+             VALUES (\'bni_csv\', ?, ?, ?, ?, ?, ?, ?, ?, \'waiting\', ?)'
+        );
+        $stmt->execute([
+            $namaFile,
+            $filename,
+            $relPath,
+            $debit,
+            $built['record_count'],
+            $built['total_amount'],
+            $built['trx_date'],
+            json_encode($built['belanja_ids'], JSON_UNESCAPED_UNICODE),
+            $createdBy,
+        ]);
 
         return [
-            'body' => $body,
-            'csv_filename' => $csvFilename,
-            'nama_file' => $namaFile,
-            'record_count' => $recordCount,
-            'total_amount' => $totalAmount,
-            'trx_date' => $trxDate,
-            'belanja_ids' => $belanjaIds,
+            'batch_id' => (int) $this->db->lastInsertId(),
+            'csv_filename' => $filename,
+            'record_count' => (int) $built['record_count'],
+            'total_amount' => (int) $built['total_amount'],
+            'kind' => (string) ($built['kind'] ?? BniCsvHelper::KIND_ONLINE),
         ];
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @return list<array{body:string,csv_filename:string,nama_file:string,record_count:int,total_amount:int,trx_date:string,belanja_ids:list<int>,kind:string}>
+     */
+    public function buildCsvFiles(array $rows, string $namaFile, string $debit): array
+    {
+        $itemMap = $this->itemNamesByBelanjaIds(array_map(static fn ($r) => (int) $r['id'], $rows));
+        $split = BniCsvHelper::split($rows);
+        $now = new \DateTimeImmutable('now');
+        $out = [];
+        foreach ([BniCsvHelper::KIND_IH => $split['ih'], BniCsvHelper::KIND_ONLINE => $split['online']] as $kind => $part) {
+            if (!$part) {
+                continue;
+            }
+            $built = BniCsvHelper::build($part, $namaFile, $debit, $kind, $itemMap, $now);
+            if ($built) {
+                $out[] = $built;
+            }
+        }
+        return $out;
     }
 
     private function findMatchingWaitingBatch(int $count, int $amount, string $last3, ?string $emailDatetime): ?array

@@ -76,6 +76,10 @@ function applyThemeClass(theme: ThemeMode): void {
   } else {
     root.classList.remove('dark')
   }
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (meta) {
+    meta.setAttribute('content', theme === 'dark' ? '#0b1520' : '#2a96e0')
+  }
 }
 
 function applyFontSize(id: FontSizeId): void {

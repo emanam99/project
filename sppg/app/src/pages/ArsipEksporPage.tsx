@@ -4,8 +4,10 @@ import { listExportArsip, type ExportArsipRow } from '../api/apiClient'
 import { usePageTitle } from '../contexts/PageTitleContext'
 import { formatDateId, formatRp } from '../utils/format'
 
-function typeLabel(type: string): string {
+function typeLabel(type: string, filename?: string): string {
   if (type === 'maker_xlsx') return 'Excel Maker'
+  if (filename && /_IH_/i.test(filename)) return 'BNI Inhouse'
+  if (filename && /_Online_/i.test(filename)) return 'BNI Online'
   return 'CSV BNI'
 }
 
@@ -96,7 +98,7 @@ export default function ArsipEksporPage() {
                       typeClass(row.export_type),
                     ].join(' ')}
                   >
-                    {typeLabel(row.export_type)}
+                    {typeLabel(row.export_type, row.csv_filename)}
                   </span>
                   <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold border bg-surface-soft text-muted border-line">
                     {statusLabel(row.status)}

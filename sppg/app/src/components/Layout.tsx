@@ -15,7 +15,7 @@ const HEADER_HIDE_AFTER = 48
 const HEADER_SHOW_DELTA = 4
 const BOTTOM_NAV_MAX = 5
 
-type NavIcon = 'home' | 'cart' | 'bowl' | 'bank' | 'users' | 'settings' | 'archive' | 'bni' | 'more'
+type NavIcon = 'home' | 'cart' | 'bowl' | 'bank' | 'users' | 'settings' | 'archive' | 'more'
 
 type NavItem = {
   to: string
@@ -85,14 +85,6 @@ function Icon({ name, className = 'h-4 w-4' }: { name: NavIcon; className?: stri
           <path d="M4 7h16v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7z" />
           <path d="M3 5h18v2H3z" />
           <path d="M10 12h4" />
-        </svg>
-      )
-    case 'bni':
-      return (
-        <svg {...common}>
-          <rect x="3" y="5" width="18" height="14" rx="2" />
-          <path d="M3 10h18" />
-          <path d="M8 14h3" />
         </svg>
       )
     case 'more':
@@ -209,7 +201,6 @@ function LayoutShell() {
       ...(superAdmin
         ? ([
             { to: '/arsip-ekspor', label: 'Arsip Ekspor', shortLabel: 'Arsip', icon: 'archive' },
-            { to: '/bni-direct', label: 'BNI Direct', shortLabel: 'BNI', icon: 'bni' },
             { to: '/pengguna', label: 'Pengguna', shortLabel: 'User', icon: 'users' },
           ] as NavItem[])
         : []),
@@ -249,7 +240,7 @@ function LayoutShell() {
       >
         <div className={`flex items-center gap-2.5 border-b border-line ${collapsed ? 'justify-center p-2' : 'p-2.5'}`}>
           <img
-            src={gambarUrl('icon/sppg.v2.png')}
+            src={gambarUrl('icon/sppg.v3.u.png')}
             alt="SPPG"
             width={36}
             height={36}

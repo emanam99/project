@@ -7,16 +7,22 @@ function isPrivateHostname(hostname: string): boolean {
 }
 
 function resolveApiBaseUrl(): string {
+  // Dev Vite: same-origin lewat proxy (jangan hardcode IP LAN — sering timeout).
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    return `${window.location.origin}/sppg/api/public`
+  }
+
   const fromEnv = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '')
   if (fromEnv) return fromEnv
 
   if (typeof window !== 'undefined') {
     const { protocol, hostname, origin } = window.location
-    // Dev Vite → XAMPP lokal
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return `${protocol}//${hostname}/sppg/api/public`
     }
-    // Production / same-origin (mis. https://sppg.alutsmani.id)
+    if (isPrivateHostname(hostname)) {
+      return `${protocol}//${hostname}/sppg/api/public`
+    }
     return `${origin}/api/public`
   }
 
@@ -220,7 +226,7 @@ export async function downloadBelanjaBniCsv(params: {
   bni_status?: BelanjaBniStatus
   ids?: number[]
 }): Promise<{ success: true; filename: string } | { success: false; message: string }> {
-  return downloadBelanjaExportFile('/belanja/export/bni-online', params, 'belanja_Online.csv', 'CSV')
+  return downloadBelanjaExportFile('/belanja/export/bni-online', params, 'belanja_BNI.csv', 'CSV')
 }
 
 /** Unduh Excel Maker Operasional (layout template MAKER OPERASIONAL). */
@@ -313,6 +319,13 @@ export async function updateBelanjaBniStatus(
       record_count: number
       total_amount: number
       debit_account: string
+      batches?: Array<{
+        batch_id: number
+        csv_filename: string
+        record_count: number
+        total_amount: number
+        kind: string
+      }>
     }
     batch_error?: string
     cair_updated?: number

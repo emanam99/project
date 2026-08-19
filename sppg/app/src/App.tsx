@@ -9,7 +9,6 @@ import AuthCallbackPage from './pages/AuthCallbackPage'
 import BelanjaDetailPage from './pages/BelanjaDetailPage'
 import BelanjaFormPage from './pages/BelanjaFormPage'
 import BelanjaListPage from './pages/BelanjaListPage'
-import BniDirectPage from './pages/BniDirectPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import MenungguAksesPage from './pages/MenungguAksesPage'
@@ -117,14 +116,6 @@ export default function App() {
                 element={
                   <SuperAdminOnly>
                     <ArsipEksporDetailPage />
-                  </SuperAdminOnly>
-                }
-              />
-              <Route
-                path="/bni-direct"
-                element={
-                  <SuperAdminOnly>
-                    <BniDirectPage />
                   </SuperAdminOnly>
                 }
               />

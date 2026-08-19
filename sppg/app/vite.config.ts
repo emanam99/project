@@ -63,9 +63,18 @@ export default defineConfig(({ command, mode }) => {
   const startUrl = normalizedBase === '/' ? '/' : normalizedBase
   const gambarRoot = join(process.cwd(), '..', 'gambar')
 
-  const ss1 = sizeLabel(join(gambarRoot, 'ss', 'ss1.png'), '390x844')
-  const ss2 = sizeLabel(join(gambarRoot, 'ss', 'ss2.png'), '390x844')
-  const ss3 = sizeLabel(join(gambarRoot, 'ss', 'ss3.png'), '390x844')
+  const icon = (name: string, fallback: string) =>
+    sizeLabel(join(gambarRoot, 'icon', name), fallback)
+  const ss1 = sizeLabel(join(gambarRoot, 'ss', 'ss1.png'), '1080x1920')
+  const ss2 = sizeLabel(join(gambarRoot, 'ss', 'ss2.png'), '1080x1920')
+  const ss3 = sizeLabel(join(gambarRoot, 'ss', 'ss3.png'), '1080x1920')
+  const ssWide = sizeLabel(join(gambarRoot, 'ss', 'ss-wide.png'), '1920x1080')
+  const icon32 = icon('sppg.v3.u32.png', '32x32')
+  const icon64 = icon('sppg.v3.u64.png', '64x64')
+  const icon96 = icon('sppg.v3.u96.png', '96x96')
+  const icon128 = icon('sppg.v3.u128.png', '128x128')
+  const icon192 = icon('sppg.v3.u192.png', '192x192')
+  const icon512 = icon('sppg.v3.u512.png', '512x512')
 
   return {
     base: command === 'serve' ? '/' : normalizedBase,
@@ -102,57 +111,57 @@ export default defineConfig(({ command, mode }) => {
           name: 'SPPG',
           short_name: 'SPPG',
           description: 'SPPG — catatan belanja dapur santri',
-          theme_color: '#0e4d44',
-          background_color: '#070908',
-          display: 'standalone',
+          theme_color: '#2a96e0',
+          background_color: '#2a96e0',
+          display: 'minimal-ui',
           scope: startUrl,
           start_url: startUrl,
-          orientation: 'any',
+          orientation: 'portrait',
           lang: 'id',
           dir: 'ltr',
           categories: ['finance', 'productivity'],
           icons: [
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v2192.png`,
-              sizes: '192x192',
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u32.png`,
+              sizes: icon32,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v2512.png`,
-              sizes: '512x512',
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u64.png`,
+              sizes: icon64,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v2.png`,
-              sizes: '512x512',
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u96.png`,
+              sizes: icon96,
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u128.png`,
+              sizes: icon128,
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u192.png`,
+              sizes: icon192,
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u512.png`,
+              sizes: icon512,
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u512.png`,
+              sizes: icon512,
               type: 'image/png',
               purpose: 'maskable',
-            },
-            {
-              src: `${GAMBAR_BASE}/icon/sppg.v232.png`,
-              sizes: '32x32',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: `${GAMBAR_BASE}/icon/sppg.v264.png`,
-              sizes: '64x64',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: `${GAMBAR_BASE}/icon/sppg.v296.png`,
-              sizes: '96x96',
-              type: 'image/png',
-              purpose: 'any',
-            },
-            {
-              src: `${GAMBAR_BASE}/icon/sppg.v2128.png`,
-              sizes: '128x128',
-              type: 'image/png',
-              purpose: 'any',
             },
           ],
           screenshots: [
@@ -177,6 +186,13 @@ export default defineConfig(({ command, mode }) => {
               form_factor: 'narrow',
               label: 'SPPG',
             },
+            {
+              src: `${GAMBAR_BASE}/ss/ss-wide.png`,
+              sizes: ssWide,
+              type: 'image/png',
+              form_factor: 'wide',
+              label: 'Catatan belanja (desktop)',
+            },
           ],
         },
         devOptions: {
@@ -195,6 +211,10 @@ export default defineConfig(({ command, mode }) => {
           target: 'http://127.0.0.1',
           changeOrigin: true,
           rewrite: (path) => `/sppg${path}`,
+        },
+        '/sppg/api': {
+          target: 'http://127.0.0.1',
+          changeOrigin: true,
         },
       },
     },

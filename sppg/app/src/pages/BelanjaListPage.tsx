@@ -288,7 +288,12 @@ export default function BelanjaListPage() {
     setUpdatingStatus(false)
     if (res.success) {
       const batch = res.data?.batch
-      if (status === 'maker' && batch) {
+      const batches = batch?.batches
+      if (status === 'maker' && batches && batches.length > 1) {
+        setOk(
+          `Maker + ${batches.length} CSV diarsipkan ke Waiting: ${batches.map((b) => b.csv_filename).join(', ')}. Unggah Inhouse ke sheet BNI Inhouse, Online ke sheet Online.`,
+        )
+      } else if (status === 'maker' && batch) {
         setOk(
           `Maker + CSV diarsipkan: ${batch.csv_filename} (${batch.record_count} rek, ${formatRp(batch.total_amount)}). Menunggu email BNI untuk auto-approve.`,
         )
@@ -373,14 +378,19 @@ export default function BelanjaListPage() {
     })
     setExporting(false)
     if (res.success) {
-      setOk(`CSV diunduh: ${res.filename} (${ids.length} baris terpilih)`)
+      const isZip = res.filename.toLowerCase().endsWith('.zip')
+      setOk(
+        isZip
+          ? `ZIP diunduh: ${res.filename} (Inhouse + Online). Kedua CSV masuk arsip Waiting — unggah masing-masing ke sheet BNI Direct yang sesuai.`
+          : `CSV diunduh: ${res.filename} (${ids.length} baris terpilih). File masuk arsip Waiting.`,
+      )
       const canPromptMaker = visibleRows.some(
         (r) => ids.includes(r.id) && canSetBniStatus(role, r.bni_status || 'belum', 'maker'),
       )
       if (
         canPromptMaker &&
         window.confirm(
-          'Tandai status terpilih menjadi Maker? (CSV ikut diarsipkan untuk auto-approve email BNI)',
+          'Tandai status terpilih menjadi Maker?',
         )
       ) {
         await applyStatus('maker', nama.trim() || 'belanja', { keepSelection: true })
@@ -414,7 +424,7 @@ export default function BelanjaListPage() {
     })
     setExportingXlsx(false)
     if (res.success) {
-      setOk(`Excel diunduh: ${res.filename} (${ids.length} baris terpilih)`)
+      setOk(`Excel diunduh: ${res.filename} (${ids.length} baris terpilih). File masuk arsip Waiting.`)
     } else {
       setError(res.message)
     }

@@ -71,7 +71,7 @@ export default function LoginPage() {
         transition={{ duration: 0.42, ease: pageEase }}
       >
         <motion.img
-          src={gambarUrl('icon/sppg.v2.png')}
+          src={gambarUrl('icon/sppg.v3.u.png')}
           alt={APP_NAME}
           width={128}
           height={128}

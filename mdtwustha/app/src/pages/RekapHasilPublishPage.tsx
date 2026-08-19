@@ -37,6 +37,28 @@ function formatPublishAt(raw: string) {
   }
 }
 
+function parseKelasIds(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map(String).filter((id) => id && id !== '0')
+  if (raw == null || raw === '') return []
+  return String(raw)
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter((id) => id && id !== '0')
+}
+
+function formatKelasCell(
+  row: { kelas_id?: string | null; nama_kelas?: string | null; kel?: string | null },
+  labelById: Map<string, string>
+) {
+  const kid = String(row.kelas_id || '')
+  const fromMap = kid ? labelById.get(kid) : ''
+  if (fromMap) return fromMap
+  const nama = (row.nama_kelas || '').trim()
+  const kel = (row.kel || '').trim()
+  if (nama && kel) return `${nama} · ${kel}`
+  return nama || kel || kid || '—'
+}
+
 function formatPeriode(
   awal: string,
   akhir: string,
@@ -203,19 +225,28 @@ export default function RekapHasilPublishPage() {
 
   const kelasOptions = useMemo(() => {
     const map = new Map<string, string>()
-    const ids = (detail?.kelas_ids || []).map(String)
-    const labels = detail?.kelas_labels || []
+    const ids = parseKelasIds(detail?.kelas_ids)
+    const labels = Array.isArray(detail?.kelas_labels) ? detail.kelas_labels : []
     ids.forEach((kid, i) => {
-      if (kid) map.set(kid, labels[i] || kid)
+      const label = String(labels[i] || '').trim()
+      if (kid) map.set(kid, label || kid)
     })
     for (const b of [...barisNilai, ...barisAbsen]) {
       const kid = String(b.kelas_id || '')
-      if (!kid || map.has(kid)) continue
-      const label = [b.nama_kelas, b.kel].filter(Boolean).join(' · ') || kid
-      map.set(kid, label)
+      if (!kid || kid === '0') continue
+      const fromRow = [b.nama_kelas, b.kel].filter(Boolean).join(' · ')
+      const prev = map.get(kid)
+      if (!prev || prev === kid) {
+        map.set(kid, fromRow || prev || kid)
+      }
     }
     return Array.from(map.entries()).map(([kid, label]) => ({ id: kid, label }))
   }, [detail, barisNilai, barisAbsen])
+
+  const kelasLabelById = useMemo(
+    () => new Map(kelasOptions.map((k) => [k.id, k.label])),
+    [kelasOptions]
+  )
 
   const barisNilaiTampil = useMemo(() => {
     if (!filterKelasId) return barisNilai
@@ -229,8 +260,7 @@ export default function RekapHasilPublishPage() {
     return barisAbsen.filter((b) => String(b.kelas_id || '') === fid)
   }, [barisAbsen, filterKelasId])
 
-  const showKelasColNilai = !filterKelasId && kelasOptions.length > 1
-  const showKelasColAbsen = !filterKelasId && kelasOptions.length > 1
+  const showKelasCol = !filterKelasId && kelasOptions.length > 1
   const showContent = Boolean(
     detail && (detail.can_view_content || isAdmin) && (barisNilai.length > 0 || barisAbsen.length > 0)
   )
@@ -263,7 +293,12 @@ export default function RekapHasilPublishPage() {
               {detail?.judul || 'Detail Hasil Rekap'}
             </h1>
             {detail && (
-              <p className="text-xs ui-text-muted mt-0.5">{detail.kelas_label || '—'}</p>
+              <p className="text-xs ui-text-muted mt-0.5">
+                {kelasOptions.length > 1
+                  ? `${kelasOptions.length} kelas`
+                  : kelasOptions[0]?.label || detail.kelas_label || '—'}
+                {kelasOptions.length > 1 ? ` · ${kelasOptions.map((k) => k.label).join(', ')}` : ''}
+              </p>
             )}
           </div>
           {isAdmin && detail && (
@@ -417,7 +452,7 @@ export default function RekapHasilPublishPage() {
                           <thead className="ui-table-head">
                             <tr>
                               <th className="px-2 py-1.5 text-left">Nama</th>
-                              {showKelasColNilai && <th className="px-2 py-1.5 text-left">Kelas</th>}
+                              {showKelasCol && <th className="px-2 py-1.5 text-left">Kelas</th>}
                               {fanColumns.map((col) => (
                                 <th
                                   key={col.key}
@@ -433,10 +468,9 @@ export default function RekapHasilPublishPage() {
                             {barisNilaiTampil.map((b) => (
                               <tr key={`${b.santri_id}-${b.kelas_id}`} className="ui-table-row">
                                 <td className="px-2 py-1.5 font-medium">{b.nama}</td>
-                                {showKelasColNilai && (
+                                {showKelasCol && (
                                   <td className="px-2 py-1.5 ui-text-muted">
-                                    {b.nama_kelas}
-                                    {b.kel ? ` · ${b.kel}` : ''}
+                                    {formatKelasCell(b, kelasLabelById)}
                                   </td>
                                 )}
                                 {fanColumns.map((col) => {
@@ -489,7 +523,7 @@ export default function RekapHasilPublishPage() {
                           <thead className="ui-table-head">
                             <tr>
                               <th className="px-2 py-1.5 text-left">Nama</th>
-                              {showKelasColAbsen && <th className="px-2 py-1.5 text-left">Kelas</th>}
+                              {showKelasCol && <th className="px-2 py-1.5 text-left">Kelas</th>}
                               <th className="px-2 py-1.5 text-center text-emerald-700 dark:text-emerald-300">H</th>
                               <th className="px-2 py-1.5 text-center text-amber-700 dark:text-amber-300">S</th>
                               <th className="px-2 py-1.5 text-center text-blue-700 dark:text-blue-300">I</th>
@@ -500,10 +534,9 @@ export default function RekapHasilPublishPage() {
                             {barisAbsenTampil.map((b) => (
                               <tr key={`abs-${b.santri_id}-${b.kelas_id}`} className="ui-table-row">
                                 <td className="px-2 py-1.5 font-medium">{b.nama}</td>
-                                {showKelasColAbsen && (
+                                {showKelasCol && (
                                   <td className="px-2 py-1.5 ui-text-muted">
-                                    {b.nama_kelas}
-                                    {b.kel ? ` · ${b.kel}` : ''}
+                                    {formatKelasCell(b, kelasLabelById)}
                                   </td>
                                 )}
                                 <td className="px-2 py-1.5 text-center tabular-nums">{b.h}</td>
