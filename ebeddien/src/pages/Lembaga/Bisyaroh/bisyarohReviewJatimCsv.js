@@ -100,7 +100,7 @@ export function formatJatimPeriodeLabel(periodeBulan, periodeKalender) {
   return String(name).replace(/['\s]+/g, '')
 }
 
-/** Keterangan ke-2 CSV upload Jatim: lembaga-nip (tampil di REG & mutasi inquiry). */
+/** Keterangan ket-1 & ket-2 CSV upload Jatim: lembaga-nip (mutasi bank menampilkan ket-1). */
 export function formatJatimKeterangan2(lembagaNamaOrId, nip) {
   const lembaga = String(lembagaNamaOrId || '')
     .normalize('NFKD')
@@ -187,15 +187,15 @@ export function buildBisyarohJatimDataRows({
       const nama = sanitizeJatimNama(row.pengurus_nama)
       if (!nama) continue
 
-      const ket2 = formatJatimKeterangan2(secLembagaNama || secLembagaId, row.nip)
-      if (!ket2) continue
+      const ket = formatJatimKeterangan2(secLembagaNama || secLembagaId, row.nip)
+      if (!ket) continue
 
       dataRows.push([
         rekening,
         nama,
         String(nominal),
-        opts.paymentLabel,
-        ket2,
+        ket,
+        ket,
         opts.orgName,
         opts.email
       ])
@@ -206,7 +206,7 @@ export function buildBisyarohJatimDataRows({
         nip: row.nip != null ? String(row.nip) : '',
         lembaga_id: secLembagaId,
         lembaga_nama: secLembagaNama,
-        keterangan_2: ket2,
+        keterangan_2: ket,
         id_pengurus: row.id_pengurus,
         rekap_baris_id: row.id ?? null,
         bisyaroh_id: sec.bisyaroh_id ?? null
@@ -221,7 +221,7 @@ export function buildBisyarohJatimDataRows({
  * Export CSV upload Bank Jatim (format file upload.csv).
  *
  * Baris 1: rekening sumber, total nominal, jumlah baris.
- * Baris data: rekening tujuan, nama, nominal, Bisyaroh, lembaga-nip, organisasi, email.
+ * Baris data: rekening tujuan, nama, nominal, lembaga-nip, lembaga-nip, organisasi, email.
  */
 export function exportBisyarohReviewJatimCsv({
   sections = [],

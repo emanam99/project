@@ -25,6 +25,7 @@ return function (\Slim\App $app): void {
         // Transfer Bank Jatim (harus sebelum /{id})
         $group->post('/transfer/export-batch', [BisyarohTransferController::class, 'exportBatch']);
         $group->post('/transfer/upload-mutasi', [BisyarohTransferController::class, 'uploadMutasi']);
+        $group->post('/transfer/apply-mutasi', [BisyarohTransferController::class, 'applyMutasi']);
         $group->post('/transfer/export-retry-failed', [BisyarohTransferController::class, 'exportRetryFailed']);
         $group->post('/transfer/rilis-manual', [BisyarohTransferController::class, 'rilisManual']);
         $group->get('/transfer/batches', [BisyarohTransferController::class, 'listBatches']);

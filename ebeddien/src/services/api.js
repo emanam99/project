@@ -5076,6 +5076,12 @@ export const bisyarohAPI = {
   transferRilisManual: async (body) => {
     const response = await api.post('/bisyaroh/transfer/rilis-manual', body)
     return response.data
+  },
+  transferApplyMutasi: async ({ mutasiBatchId, exportBatchId }) => {
+    const body = { mutasi_batch_id: mutasiBatchId }
+    if (exportBatchId) body.export_batch_id = exportBatchId
+    const response = await api.post('/bisyaroh/transfer/apply-mutasi', body)
+    return response.data
   }
 }
 

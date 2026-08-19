@@ -90,7 +90,7 @@ final class BisyarohTransferHelper
         return trim($s);
     }
 
-    /** Keterangan ke-2: lembaga-nip */
+    /** Keterangan CSV Jatim (ket-1 & ket-2 sama): lembaga-nip */
     public static function formatKeterangan2(string $lembagaNamaOrId, mixed $nip): string
     {
         $lembaga = (string) $lembagaNamaOrId;
@@ -138,12 +138,16 @@ final class BisyarohTransferHelper
         foreach ($metaRows as $r) {
             $nominal = (int) ($r['nominal'] ?? 0);
             $total += $nominal;
+            $ket = trim((string) ($r['keterangan_2'] ?? ''));
+            if ($ket === '') {
+                $ket = self::PAYMENT_LABEL;
+            }
             $lines[] = implode(',', [
                 self::csvEscape($r['rekening'] ?? ''),
                 self::csvEscape($r['nama'] ?? ''),
                 self::csvEscape((string) $nominal),
-                self::csvEscape(self::PAYMENT_LABEL),
-                self::csvEscape($r['keterangan_2'] ?? ''),
+                self::csvEscape($ket),
+                self::csvEscape($ket),
                 self::csvEscape(self::ORG_NAME),
                 self::csvEscape(self::EMAIL),
             ]);
@@ -158,6 +162,20 @@ final class BisyarohTransferHelper
         return ['csv' => $csv, 'row_count' => count($lines), 'total_nominal' => $total];
     }
 
+    /** Mutasi Jatim: Description = ket-1 (Bisyaroh lama, atau lembaga-nip). */
+    public static function isMutasiBisyarohDescription(string $desc): bool
+    {
+        $d = trim($desc);
+        if ($d === '' || strcasecmp($d, 'null') === 0) {
+            return false;
+        }
+        if (strcasecmp($d, self::PAYMENT_LABEL) === 0) {
+            return true;
+        }
+
+        return (bool) preg_match('/^[\p{L}\p{N}]+-\d+$/u', $d);
+    }
+
     /**
      * Parse mutasi Bank Jatim (preamble + header Inggris).
      *
@@ -165,6 +183,13 @@ final class BisyarohTransferHelper
      */
     public static function parseMutasiCsv(string $content): array
     {
+        if (str_starts_with($content, "\xFF\xFE") || str_starts_with($content, "\xFE\xFF")) {
+            $enc = str_starts_with($content, "\xFE\xFF") ? 'UTF-16BE' : 'UTF-16LE';
+            $converted = @mb_convert_encoding($content, 'UTF-8', $enc);
+            if (is_string($converted) && $converted !== '') {
+                $content = $converted;
+            }
+        }
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
         $lines = preg_split('/\r\n|\n|\r/', $content) ?: [];
         $headerIdx = -1;
@@ -201,7 +226,7 @@ final class BisyarohTransferHelper
                 continue;
             }
             $desc = trim((string) ($cols[$map['description']] ?? ''));
-            if ($desc !== self::PAYMENT_LABEL) {
+            if (!self::isMutasiBisyarohDescription($desc)) {
                 continue;
             }
             $account = trim((string) ($cols[$map['account']] ?? ''));
@@ -316,7 +341,7 @@ final class BisyarohTransferHelper
      *
      * @param list<array<string, mixed>> $exportRows dari DB
      * @param list<array{line_no:int, rekening:string, nama:string, nominal:int, bank_ref:string, raw:array}> $mutasiRows
-     * @return array{matched: int, gagal: int, details: list<array<string, mixed>>}
+     * @return array{matched: int, gagal: int, details: list<array<string, mixed>>, unmatched_mutasi_line_nos: list<int>}
      */
     public static function reconcileExportAgainstMutasi(array $exportRows, array $mutasiRows): array
     {
@@ -330,6 +355,7 @@ final class BisyarohTransferHelper
         $matched = 0;
         $gagal = 0;
         $details = [];
+        $matchedMutasiLine = [];
         foreach ($exportRows as $ex) {
             $rek = self::sanitizeRekening($ex['rekening'] ?? '');
             $nom = (int) ($ex['nominal'] ?? 0);
@@ -341,13 +367,15 @@ final class BisyarohTransferHelper
                 'nominal' => $nom,
                 'nip' => $nip,
                 'lembaga_id' => $lembagaId,
+                'keterangan_2' => trim((string) ($ex['keterangan_2'] ?? '')),
+                'bisyaroh_id' => isset($ex['bisyaroh_id']) ? (int) $ex['bisyaroh_id'] : null,
                 'rekap_baris_id' => isset($ex['rekap_baris_id']) ? (int) $ex['rekap_baris_id'] : null,
                 'id_pengurus' => isset($ex['id_pengurus']) ? (int) $ex['id_pengurus'] : null,
             ];
-            if ($rek === '' || $nom <= 0 || $nip === '' || $lembagaId === '') {
+            if ($rek === '' || $nom <= 0) {
                 $detail['transfer_status'] = 'gagal';
                 $detail['match_status'] = 'unmatched';
-                $detail['last_error'] = 'Data export tidak lengkap (rekening/nip/lembaga/nominal)';
+                $detail['last_error'] = 'Data export tidak lengkap (rekening/nominal)';
                 ++$gagal;
                 $details[] = $detail;
                 continue;
@@ -363,14 +391,30 @@ final class BisyarohTransferHelper
             }
             $mi = array_shift($pool[$key]);
             $m = $mutasiRows[$mi];
+            $lineNo = (int) ($m['line_no'] ?? 0);
             $detail['transfer_status'] = 'berhasil';
             $detail['match_status'] = 'matched';
             $detail['bank_ref'] = $m['bank_ref'] ?? '';
-            $detail['mutasi_line_no'] = $m['line_no'] ?? null;
+            $detail['mutasi_line_no'] = $lineNo;
+            if ($lineNo > 0) {
+                $matchedMutasiLine[$lineNo] = true;
+            }
             ++$matched;
             $details[] = $detail;
         }
+        $unmatchedMutasi = [];
+        foreach ($mutasiRows as $m) {
+            $lineNo = (int) ($m['line_no'] ?? 0);
+            if ($lineNo > 0 && empty($matchedMutasiLine[$lineNo])) {
+                $unmatchedMutasi[] = $lineNo;
+            }
+        }
 
-        return ['matched' => $matched, 'gagal' => $gagal, 'details' => $details];
+        return [
+            'matched' => $matched,
+            'gagal' => $gagal,
+            'details' => $details,
+            'unmatched_mutasi_line_nos' => $unmatchedMutasi,
+        ];
     }
 }

@@ -102,7 +102,8 @@ export default function BisyarohUploadMutasiPanel({
       ) : null}
       <p className="text-[10px] text-gray-600 dark:text-gray-400 leading-snug">
         Pilih batch export CSV yang diunggah ke bank, lalu unggah file mutasi download. Pencocokan: rekening +
-        nominal (identitas lembaga/NIP dari batch).
+        nominal (identitas lembaga/NIP dari batch). Di HP: jika file Jatim tampak abu-abu, pilih «Semua file» —
+        .csv / .txt / .xls diterima asal isinya mutasi.
       </p>
       <div className="flex flex-wrap gap-2 items-end">
         <label className="text-[10px] text-gray-600 dark:text-gray-400 min-w-[160px] flex-1">
@@ -121,15 +122,19 @@ export default function BisyarohUploadMutasiPanel({
             ))}
           </select>
         </label>
-        <label className="text-[10px] text-gray-600 dark:text-gray-400 min-w-[140px]">
-          File CSV
+        <label className="text-[10px] text-gray-600 dark:text-gray-400 min-w-[140px] flex-1">
+          File mutasi
           <input
             type="file"
-            accept=".csv,text/csv"
             disabled={uploading}
             onChange={(e) => setFile(e.target.files?.[0] || null)}
             className="mt-0.5 block w-full text-[11px] text-gray-700 dark:text-gray-200"
           />
+          {file ? (
+            <span className="block mt-0.5 text-[10px] text-sky-700 dark:text-sky-300 truncate" title={file.name}>
+              {file.name}
+            </span>
+          ) : null}
         </label>
         <button
           type="button"

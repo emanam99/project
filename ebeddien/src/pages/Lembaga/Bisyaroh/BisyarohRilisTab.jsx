@@ -50,6 +50,7 @@ export default function BisyarohRilisTab({
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [rilisBusyId, setRilisBusyId] = useState(null)
+  const [applying, setApplying] = useState(false)
 
   const buildListParams = useCallback(
     (offset = 0, limit = PAGE_SIZE) => {
@@ -152,6 +153,10 @@ export default function BisyarohRilisTab({
 
   const rilisManualRow = async (row) => {
     if (!canReconcile) return
+    if (!row.rekap_baris_id) {
+      onNotify?.('Baris mutasi belum tertaut ke rekap. Klik «Terapkan rekonsiliasi» dulu.', 'error')
+      return
+    }
     if (!window.confirm(`Tandai transfer berhasil untuk ${row.nama || row.nip || 'baris ini'}?`)) return
     setRilisBusyId(row.id)
     try {
@@ -170,6 +175,31 @@ export default function BisyarohRilisTab({
       onNotify?.(e?.response?.data?.message || 'Gagal', 'error')
     } finally {
       setRilisBusyId(null)
+    }
+  }
+
+  const applyMutasi = async () => {
+    if (!selectedId || !detail?.batch) return
+    setApplying(true)
+    try {
+      const res = await bisyarohAPI.transferApplyMutasi({
+        mutasiBatchId: selectedId,
+        exportBatchId: detail.batch.matched_export_batch_id || undefined
+      })
+      if (res?.success) {
+        onNotify?.(
+          `Rekonsiliasi: berhasil ${res.data?.matched ?? 0}, gagal ${res.data?.gagal ?? 0}`,
+          'success'
+        )
+        await loadBatches({ append: false })
+        await openBatch(selectedId)
+      } else {
+        onNotify?.(res?.message || 'Gagal menerapkan rekonsiliasi', 'error')
+      }
+    } catch (e) {
+      onNotify?.(e?.response?.data?.message || e?.message || 'Gagal menerapkan rekonsiliasi', 'error')
+    } finally {
+      setApplying(false)
     }
   }
 
@@ -278,12 +308,15 @@ export default function BisyarohRilisTab({
           periodeBulan={/^\d{4}-\d{2}$/.test(filterPeriode) ? filterPeriode : ''}
           periodeKalender={filterKalender || ''}
           defaultExportBatchId={
-            detail?.batch?.jenis === 'export_upload' ? detail.batch.id : selectedId
+            detail?.batch?.jenis === 'export_upload'
+              ? detail.batch.id
+              : detail?.batch?.matched_export_batch_id || null
           }
           onNotify={onNotify}
-          onDone={() => {
+          onDone={(data) => {
             loadBatches({ append: false })
-            if (selectedId) openBatch(selectedId)
+            const id = data?.mutasi_batch_id || data?.export_batch_id || selectedId
+            if (id) openBatch(id)
           }}
         />
       ) : null}
@@ -372,6 +405,16 @@ export default function BisyarohRilisTab({
                     ))}
                   </div>
                 ) : null}
+                {detail?.batch?.jenis === 'mutasi_hasil' ? (
+                  <p className="text-[10px] text-gray-600 dark:text-gray-400 leading-snug pt-1">
+                    File mutasi adalah bukti transfer sukses di bank. Status rilis mengikuti pencocokan rekening +
+                    nominal ke batch export
+                    {detail?.batch?.matched_export_batch_id
+                      ? ` #${detail.batch.matched_export_batch_id}`
+                      : ''}
+                    . Jika masih pending, terapkan rekonsiliasi.
+                  </p>
+                ) : null}
                 {detail?.batch?.jenis === 'export_upload' && canReconcile ? (
                   <div className="pt-2">
                     <button
@@ -381,6 +424,18 @@ export default function BisyarohRilisTab({
                       className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-medium disabled:opacity-50"
                     >
                       {retrying ? 'Menyiapkan…' : 'Export ulang baris gagal'}
+                    </button>
+                  </div>
+                ) : null}
+                {detail?.batch?.jenis === 'mutasi_hasil' && (canUpload || canReconcile) ? (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      disabled={applying}
+                      onClick={applyMutasi}
+                      className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-medium disabled:opacity-50"
+                    >
+                      {applying ? 'Menerapkan…' : 'Terapkan rekonsiliasi'}
                     </button>
                   </div>
                 ) : null}
@@ -425,7 +480,9 @@ export default function BisyarohRilisTab({
                         <td className="px-2 py-1 text-right tabular-nums">{formatRp(row.nominal)}</td>
                         <td className="px-2 py-1">{labelStatus(row.transfer_status)}</td>
                         <td className="px-2 py-1">
-                          {canReconcile && row.transfer_status !== 'berhasil' ? (
+                          {canReconcile &&
+                          row.transfer_status !== 'berhasil' &&
+                          row.rekap_baris_id ? (
                             <button
                               type="button"
                               disabled={rilisBusyId === row.id}

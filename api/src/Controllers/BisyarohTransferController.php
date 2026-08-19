@@ -577,8 +577,8 @@ final class BisyarohTransferController
             return $this->json($response, ['success' => false, 'message' => 'File CSV mutasi wajib diunggah'], 400);
         }
         $clientName = (string) $upload->getClientFilename();
-        if (!preg_match('/\.csv$/i', $clientName)) {
-            return $this->json($response, ['success' => false, 'message' => 'Hanya file .csv yang diizinkan'], 400);
+        if (preg_match('/\.(php|phtml|exe|js|html|htm|svg)$/i', $clientName)) {
+            return $this->json($response, ['success' => false, 'message' => 'Tipe file tidak diizinkan'], 400);
         }
         if ($upload->getSize() > 5 * 1024 * 1024) {
             return $this->json($response, ['success' => false, 'message' => 'Ukuran file maksimal 5 MB'], 400);
@@ -599,13 +599,6 @@ final class BisyarohTransferController
         );
         $chk->execute([BisyarohTransferHelper::JENIS_MUTASI, $sha]);
         $existId = (int) $chk->fetchColumn();
-        if ($existId > 0) {
-            return $this->json($response, [
-                'success' => true,
-                'message' => 'File mutasi sudah pernah diunggah',
-                'data' => ['batch_id' => $existId, 'reused' => true],
-            ]);
-        }
 
         $stmt = $this->db->prepare(
             'SELECT * FROM `bisyaroh___transfer_baris` WHERE `batch_id` = ? ORDER BY `line_no` ASC'
@@ -618,6 +611,40 @@ final class BisyarohTransferController
         );
 
         $actor = RoleHelper::getPengurusIdFromPayload($user) ?? 0;
+        if ($existId > 0) {
+            try {
+                $this->db->beginTransaction();
+                $status = $this->persistReconcileResults(
+                    $exportBatchId,
+                    $exportBatch,
+                    $existId,
+                    $recon,
+                    $actor
+                );
+                $this->db->commit();
+            } catch (\Throwable $e) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                error_log('BisyarohTransferController::uploadMutasi reuse ' . $e->getMessage());
+
+                return $this->json($response, ['success' => false, 'message' => 'Gagal memproses mutasi'], 500);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'File mutasi sudah ada — rekonsiliasi diterapkan ulang',
+                'data' => [
+                    'mutasi_batch_id' => $existId,
+                    'export_batch_id' => $exportBatchId,
+                    'matched' => $recon['matched'],
+                    'gagal' => $recon['gagal'],
+                    'status' => $status,
+                    'reused' => true,
+                ],
+            ]);
+        }
+
         $periode = (string) ($exportBatch['periode_bulan'] ?? '');
         $kalender = (string) ($exportBatch['kalender'] ?? 'masehi');
         $totalNominal = array_sum(array_map(static fn ($m) => (int) ($m['nominal'] ?? 0), $mutasiRows));
@@ -679,50 +706,7 @@ final class BisyarohTransferController
                 ]);
             }
 
-            $updEx = $this->db->prepare(
-                'UPDATE `bisyaroh___transfer_baris`
-                 SET `match_status` = ?, `transfer_status` = ?, `bank_ref` = ?, `last_error` = ?,
-                     `processed_at` = CURRENT_TIMESTAMP, `attempt_count` = `attempt_count` + 1
-                 WHERE `id` = ? LIMIT 1'
-            );
-            foreach ($recon['details'] as $d) {
-                $exId = (int) ($d['export_baris_id'] ?? 0);
-                if ($exId <= 0) {
-                    continue;
-                }
-                $updEx->execute([
-                    $d['match_status'] ?? 'unmatched',
-                    $d['transfer_status'] ?? 'gagal',
-                    $d['bank_ref'] ?? null,
-                    $d['last_error'] ?? null,
-                    $exId,
-                ]);
-                if (($d['transfer_status'] ?? '') === 'berhasil' && !empty($d['rekap_baris_id'])) {
-                    BisyarohTransferHelper::markRekapBarisBerhasil(
-                        $this->db,
-                        (int) $d['rekap_baris_id'],
-                        $d['lembaga_id'] ?? null,
-                        $periode,
-                        $kalender,
-                        $actor
-                    );
-                } elseif (($d['transfer_status'] ?? '') === 'gagal' && !empty($d['rekap_baris_id'])
-                    && BisyarohTransferHelper::rekapHasTransferStatus($this->db)) {
-                    $g = $this->db->prepare(
-                        'UPDATE `bisyaroh___rekap_baris` SET `transfer_status` = \'gagal\'
-                         WHERE `id` = ? AND (`transfer_status` IS NULL OR `transfer_status` <> \'berhasil\') LIMIT 1'
-                    );
-                    $g->execute([(int) $d['rekap_baris_id']]);
-                }
-            }
-
-            $this->db->prepare(
-                'UPDATE `bisyaroh___transfer_batch` SET `status` = ?, `summary_json` = ? WHERE `id` = ?'
-            )->execute([
-                $status === 'done' ? 'done' : 'partial',
-                json_encode($summary, JSON_UNESCAPED_UNICODE),
-                $exportBatchId,
-            ]);
+            $this->persistReconcileResults($exportBatchId, $exportBatch, $mutasiBatchId, $recon, $actor);
 
             $this->db->commit();
         } catch (\Throwable $e) {
@@ -745,6 +729,95 @@ final class BisyarohTransferController
                 'status' => $status,
             ],
         ], 201);
+    }
+
+    /**
+     * POST /api/bisyaroh/transfer/apply-mutasi
+     * Body: mutasi_batch_id, export_batch_id? (default matched_export_batch_id)
+     */
+    public function applyMutasi(Request $request, Response $response): Response
+    {
+        $user = $this->userFromRequest($request);
+        if (!$this->canUploadTransfer($user) && !$this->canReconcileTransfer($user)) {
+            return $this->json($response, ['success' => false, 'message' => 'Akses rekonsiliasi ditolak'], 403);
+        }
+        if (!$this->tablesReady()) {
+            return $this->json($response, ['success' => false, 'message' => 'Migrasi transfer belum dijalankan'], 503);
+        }
+        $body = $request->getParsedBody();
+        $body = is_array($body) ? $body : [];
+        $mutasiBatchId = (int) ($body['mutasi_batch_id'] ?? 0);
+        if ($mutasiBatchId <= 0) {
+            return $this->json($response, ['success' => false, 'message' => 'mutasi_batch_id wajib'], 400);
+        }
+        $stmt = $this->db->prepare(
+            'SELECT * FROM `bisyaroh___transfer_batch` WHERE `id` = ? AND `jenis` = ? LIMIT 1'
+        );
+        $stmt->execute([$mutasiBatchId, BisyarohTransferHelper::JENIS_MUTASI]);
+        $mutasiBatch = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($mutasiBatch)) {
+            return $this->json($response, ['success' => false, 'message' => 'Batch mutasi tidak ditemukan'], 404);
+        }
+        $exportBatchId = (int) ($body['export_batch_id'] ?? 0);
+        if ($exportBatchId <= 0) {
+            $exportBatchId = (int) ($mutasiBatch['matched_export_batch_id'] ?? 0);
+        }
+        if ($exportBatchId <= 0) {
+            return $this->json($response, ['success' => false, 'message' => 'export_batch_id wajib'], 400);
+        }
+        $stmt = $this->db->prepare(
+            'SELECT * FROM `bisyaroh___transfer_batch` WHERE `id` = ? AND `jenis` = ? LIMIT 1'
+        );
+        $stmt->execute([$exportBatchId, BisyarohTransferHelper::JENIS_EXPORT]);
+        $exportBatch = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($exportBatch)) {
+            return $this->json($response, ['success' => false, 'message' => 'Batch export tidak ditemukan'], 404);
+        }
+
+        $mutasiRows = $this->mutasiRowsFromBatch($mutasiBatchId);
+        if ($mutasiRows === []) {
+            return $this->json($response, ['success' => false, 'message' => 'Batch mutasi kosong'], 400);
+        }
+        $stmt = $this->db->prepare(
+            'SELECT * FROM `bisyaroh___transfer_baris` WHERE `batch_id` = ? ORDER BY `line_no` ASC'
+        );
+        $stmt->execute([$exportBatchId]);
+        $exportRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $recon = BisyarohTransferHelper::reconcileExportAgainstMutasi(
+            is_array($exportRows) ? $exportRows : [],
+            $mutasiRows
+        );
+        $actor = RoleHelper::getPengurusIdFromPayload($user) ?? 0;
+        try {
+            $this->db->beginTransaction();
+            $status = $this->persistReconcileResults(
+                $exportBatchId,
+                $exportBatch,
+                $mutasiBatchId,
+                $recon,
+                $actor
+            );
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log('BisyarohTransferController::applyMutasi ' . $e->getMessage());
+
+            return $this->json($response, ['success' => false, 'message' => 'Gagal menerapkan rekonsiliasi'], 500);
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'message' => 'Rekonsiliasi diterapkan',
+            'data' => [
+                'mutasi_batch_id' => $mutasiBatchId,
+                'export_batch_id' => $exportBatchId,
+                'matched' => $recon['matched'],
+                'gagal' => $recon['gagal'],
+                'status' => $status,
+            ],
+        ]);
     }
 
     /** GET /api/bisyaroh/transfer/batches */
@@ -1000,5 +1073,155 @@ final class BisyarohTransferController
         ]);
 
         return $this->exportBatch($request, $response);
+    }
+
+    /**
+     * @return list<array{line_no:int, rekening:string, nama:string, nominal:int, bank_ref:string, raw:array}>
+     */
+    private function mutasiRowsFromBatch(int $mutasiBatchId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT `line_no`, `rekening`, `nama`, `nominal`, `bank_ref`, `raw_json`
+             FROM `bisyaroh___transfer_baris` WHERE `batch_id` = ? ORDER BY `line_no` ASC'
+        );
+        $stmt->execute([$mutasiBatchId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $out = [];
+        foreach (is_array($rows) ? $rows : [] as $r) {
+            $raw = [];
+            if (!empty($r['raw_json'])) {
+                $dec = json_decode((string) $r['raw_json'], true);
+                if (is_array($dec)) {
+                    $raw = $dec;
+                }
+            }
+            $out[] = [
+                'line_no' => (int) ($r['line_no'] ?? 0),
+                'rekening' => BisyarohTransferHelper::sanitizeRekening($r['rekening'] ?? ''),
+                'nama' => (string) ($r['nama'] ?? ''),
+                'nominal' => (int) ($r['nominal'] ?? 0),
+                'bank_ref' => (string) ($r['bank_ref'] ?? ''),
+                'raw' => $raw,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Tulis hasil rekonsiliasi ke baris export + mutasi + rekap. Harus di dalam transaksi.
+     *
+     * @param array<string, mixed> $exportBatch
+     * @param array{matched:int,gagal:int,details:list<array<string,mixed>>,unmatched_mutasi_line_nos?:list<int>} $recon
+     */
+    private function persistReconcileResults(
+        int $exportBatchId,
+        array $exportBatch,
+        int $mutasiBatchId,
+        array $recon,
+        int $actor
+    ): string {
+        $periode = (string) ($exportBatch['periode_bulan'] ?? '');
+        $kalender = (string) ($exportBatch['kalender'] ?? 'masehi');
+        $status = $recon['gagal'] === 0 ? 'done' : ($recon['matched'] > 0 ? 'partial' : 'failed');
+        $summary = [
+            'matched' => $recon['matched'],
+            'gagal' => $recon['gagal'],
+        ];
+
+        $updEx = $this->db->prepare(
+            'UPDATE `bisyaroh___transfer_baris`
+             SET `match_status` = ?, `transfer_status` = ?, `bank_ref` = ?, `last_error` = ?,
+                 `processed_at` = CURRENT_TIMESTAMP, `attempt_count` = `attempt_count` + 1
+             WHERE `id` = ? LIMIT 1'
+        );
+        $updMut = $this->db->prepare(
+            'UPDATE `bisyaroh___transfer_baris`
+             SET `match_status` = ?, `transfer_status` = ?, `bank_ref` = ?, `nip` = ?, `lembaga_id` = ?,
+                 `keterangan_2` = ?, `bisyaroh_id` = ?, `id_pengurus` = ?, `rekap_baris_id` = ?,
+                 `last_error` = NULL, `processed_at` = CURRENT_TIMESTAMP
+             WHERE `batch_id` = ? AND `line_no` = ? LIMIT 1'
+        );
+        foreach ($recon['details'] as $d) {
+            $exId = (int) ($d['export_baris_id'] ?? 0);
+            if ($exId > 0) {
+                $updEx->execute([
+                    $d['match_status'] ?? 'unmatched',
+                    $d['transfer_status'] ?? 'gagal',
+                    $d['bank_ref'] ?? null,
+                    $d['last_error'] ?? null,
+                    $exId,
+                ]);
+            }
+            if (($d['transfer_status'] ?? '') === 'berhasil' && !empty($d['rekap_baris_id'])) {
+                BisyarohTransferHelper::markRekapBarisBerhasil(
+                    $this->db,
+                    (int) $d['rekap_baris_id'],
+                    $d['lembaga_id'] ?? null,
+                    $periode,
+                    $kalender,
+                    $actor
+                );
+            } elseif (($d['transfer_status'] ?? '') === 'gagal' && !empty($d['rekap_baris_id'])
+                && BisyarohTransferHelper::rekapHasTransferStatus($this->db)) {
+                $g = $this->db->prepare(
+                    'UPDATE `bisyaroh___rekap_baris` SET `transfer_status` = \'gagal\'
+                     WHERE `id` = ? AND (`transfer_status` IS NULL OR `transfer_status` <> \'berhasil\') LIMIT 1'
+                );
+                $g->execute([(int) $d['rekap_baris_id']]);
+            }
+            if (($d['transfer_status'] ?? '') === 'berhasil') {
+                $lineNo = (int) ($d['mutasi_line_no'] ?? 0);
+                if ($lineNo > 0) {
+                    $pid = (int) ($d['id_pengurus'] ?? 0);
+                    $bid = (int) ($d['bisyaroh_id'] ?? 0);
+                    $rid = (int) ($d['rekap_baris_id'] ?? 0);
+                    $updMut->execute([
+                        'matched',
+                        'berhasil',
+                        $d['bank_ref'] ?? null,
+                        ($d['nip'] ?? '') !== '' ? $d['nip'] : null,
+                        ($d['lembaga_id'] ?? '') !== '' ? $d['lembaga_id'] : null,
+                        ($d['keterangan_2'] ?? '') !== '' ? $d['keterangan_2'] : null,
+                        $bid > 0 ? $bid : null,
+                        $pid > 0 ? $pid : null,
+                        $rid > 0 ? $rid : null,
+                        $mutasiBatchId,
+                        $lineNo,
+                    ]);
+                }
+            }
+        }
+        $unmatched = $recon['unmatched_mutasi_line_nos'] ?? [];
+        if (is_array($unmatched) && $unmatched !== []) {
+            $u = $this->db->prepare(
+                'UPDATE `bisyaroh___transfer_baris`
+                 SET `match_status` = \'unmatched\', `last_error` = ?
+                 WHERE `batch_id` = ? AND `line_no` = ? LIMIT 1'
+            );
+            foreach ($unmatched as $lineNo) {
+                $u->execute(['Tidak ada pasangan di batch export', $mutasiBatchId, (int) $lineNo]);
+            }
+        }
+
+        $this->db->prepare(
+            'UPDATE `bisyaroh___transfer_batch`
+             SET `status` = ?, `summary_json` = ?, `matched_export_batch_id` = ?
+             WHERE `id` = ?'
+        )->execute([
+            $status,
+            json_encode($summary, JSON_UNESCAPED_UNICODE),
+            $exportBatchId,
+            $mutasiBatchId,
+        ]);
+        $this->db->prepare(
+            'UPDATE `bisyaroh___transfer_batch` SET `status` = ?, `summary_json` = ? WHERE `id` = ?'
+        )->execute([
+            $status === 'done' ? 'done' : 'partial',
+            json_encode($summary, JSON_UNESCAPED_UNICODE),
+            $exportBatchId,
+        ]);
+
+        return $status;
     }
 }
