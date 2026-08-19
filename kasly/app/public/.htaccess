@@ -1,0 +1,16 @@
+DirectoryIndex index.html
+RewriteEngine On
+RewriteBase /kasly/app/
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /kasly/app/index.html [L]
+
+# HTML, SW, manifest, version: selalu cek ulang (PWA auto-update cepat)
+<IfModule mod_headers.c>
+  <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest|version\.json)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+</IfModule>
