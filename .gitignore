@@ -44,6 +44,7 @@ Thumbs.db
 !**/jsconfig.json
 !**/components.json
 !**/manifest.json
+!.cursor/environment.json
 client_secret*.json
 gen-lang-client-*.json
 *.pem

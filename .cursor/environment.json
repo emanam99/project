@@ -1,0 +1,9 @@
+{
+  "install": "bash scripts/cursor-cloud-setup.sh",
+  "terminals": [
+    {
+      "name": "ebeddien",
+      "command": "cd ebeddien && npm run dev -- --host 0.0.0.0 --port 5173"
+    }
+  ]
+}
