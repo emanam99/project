@@ -324,22 +324,15 @@ function Biodata() {
     return `${baseClass} text-gray-500 dark:text-gray-400`
   }
 
-  // Opsi kategori yang valid menurut status santri (disilangkan dengan daftar dari API).
-  const getKategoriOptions = useCallback((status) => {
-    if (status === 'Khoriji') {
-      return ['PAUD', 'SD', 'Banin', 'Banat', 'Kuliah']
+  // Kategori Banin/Banat dari daerah/gender — tidak digantung ke status.
+  const getKategoriOptions = useCallback(() => {
+    if (Array.isArray(kategoriOptionsFromApi) && kategoriOptionsFromApi.length > 0) {
+      return kategoriOptionsFromApi
     }
-    if (status) {
-      return ['Banin', 'Banat']
-    }
-    return []
-  }, [])
+    return ['Banin', 'Banat']
+  }, [kategoriOptionsFromApi])
 
-  const kategoriSelectOptions = useMemo(() => {
-    const allowed = getKategoriOptions(formData.status_santri)
-    if (!allowed.length) return []
-    return kategoriOptionsFromApi.filter((k) => allowed.includes(k))
-  }, [formData.status_santri, kategoriOptionsFromApi, getKategoriOptions])
+  const kategoriSelectOptions = useMemo(() => getKategoriOptions(), [getKategoriOptions])
 
   useEffect(() => {
     let cancelled = false
@@ -799,14 +792,14 @@ function Biodata() {
 
             // Auto-fill kategori berdasarkan gender yang di-extract dari NIK
             if (gender === 'Laki-laki') {
-              const kategoriOptions = getKategoriOptions(updated.status_santri)
+              const kategoriOptions = getKategoriOptions()
               if (kategoriOptions.includes('Banin')) {
                 updated.kategori = 'Banin'
                 updated.id_daerah = ''
                 updated.id_kamar = ''
               }
             } else if (gender === 'Perempuan') {
-              const kategoriOptions = getKategoriOptions(updated.status_santri)
+              const kategoriOptions = getKategoriOptions()
               if (kategoriOptions.includes('Banat')) {
                 updated.kategori = 'Banat'
                 updated.id_daerah = ''
@@ -909,18 +902,15 @@ function Biodata() {
 
       // Auto-fill kategori berdasarkan gender
       if (field === 'gender') {
-        // Jika gender berubah, auto-fill kategori
         if (value === 'Laki-laki') {
-          // Cek apakah kategori "Banin" valid berdasarkan status_santri
-          const kategoriOptions = getKategoriOptions(updated.status_santri)
+          const kategoriOptions = getKategoriOptions()
           if (kategoriOptions.includes('Banin')) {
             updated.kategori = 'Banin'
             updated.id_daerah = ''
             updated.id_kamar = ''
           }
         } else if (value === 'Perempuan') {
-          // Cek apakah kategori "Banat" valid berdasarkan status_santri
-          const kategoriOptions = getKategoriOptions(updated.status_santri)
+          const kategoriOptions = getKategoriOptions()
           if (kategoriOptions.includes('Banat')) {
             updated.kategori = 'Banat'
             updated.id_daerah = ''
@@ -931,12 +921,6 @@ function Biodata() {
 
       if (field === 'status_santri') {
         if (value !== 'Mukim') {
-          updated.id_daerah = ''
-          updated.id_kamar = ''
-        }
-        const opts = getKategoriOptions(value)
-        if (updated.kategori && !opts.includes(updated.kategori)) {
-          updated.kategori = ''
           updated.id_daerah = ''
           updated.id_kamar = ''
         }

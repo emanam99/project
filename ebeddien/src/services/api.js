@@ -26,7 +26,9 @@ function envApiUrlPointsToLocalMachine(url) {
 
 function deriveRemoteApiBaseUrl(hostname, protocol) {
   const parts = hostname.split('.')
-  const rootDomain = parts.length > 2 ? parts.slice(-2).join('.') : hostname
+  const rootDomain = hostname.toLowerCase().endsWith('.my.id') && parts.length >= 3
+    ? parts.slice(-3).join('.')
+    : (parts.length > 2 ? parts.slice(-2).join('.') : hostname)
   if (!rootDomain || rootDomain.includes('localhost')) {
     return 'http://localhost/api/public/api'
   }
@@ -89,7 +91,9 @@ export const getSlimApiUrl = () => {
     fallback = `${localBase}/api/public/api`
   } else {
     const parts = hostname.split('.')
-    const rootDomain = parts.length > 2 ? parts.slice(-2).join('.') : hostname
+    const rootDomain = hostname.toLowerCase().endsWith('.my.id') && parts.length >= 3
+      ? parts.slice(-3).join('.')
+      : (parts.length > 2 ? parts.slice(-2).join('.') : hostname)
     fallback = (!rootDomain || rootDomain.includes('localhost'))
       ? 'http://localhost/api/public/api'
       : `${protocol}//api.${rootDomain}/api`
@@ -704,7 +708,7 @@ export const authAPI = {
 
 /**
  * Base URL backend WA (Node) — koneksi/QR, status, connect/disconnect/logout.
- * - Staging: frontend di *2.alutsmani.id → WA Node di https://wa2.alutsmani.id (folder `wa`, port 3003 di VPS).
+ * - Staging: frontend di *.alutsmani.my.id atau *2.alutsmani.id → WA Node di https://wa2.alutsmani.id.
  *   Jangan same-origin ke ebeddien2/dll. kecuali Anda memang reverse-proxy /api/whatsapp ke Node di vhost yang sama.
  * - Production: https://wa.alutsmani.id
  * - Override: VITE_WA_BACKEND_URL (penuh) atau VITE_WA_BACKEND_PORT (default 3001) di .env.
@@ -729,9 +733,10 @@ export const getWaBackendUrl = () => {
     return 'https://wa2.alutsmani.id'
   }
 
-  // Staging alutsmani.id: subdomain …2 (ebeddien2, uwaba2, api2 untuk tes, dll.) → backend WA terpisah wa2
-  // Kecuali api* (biasanya bukan UI Koneksi WA) — tetap wa2 aman untuk konsistensi; bisa override lewat .env.
-  // ebeddien2.alutsmani.id, uwaba2.*, api2.*, … (subdomain berakhiran "2" = staging → WA Node wa2)
+  // Staging: portal di alutsmani.my.id, atau subdomain …2 di alutsmani.id
+  if (hl === 'alutsmani.my.id' || hl.endsWith('.alutsmani.my.id')) {
+    return 'https://wa2.alutsmani.id'
+  }
   const alutsmaniParts = hl.match(/^([a-z0-9-]+)\.alutsmani\.id$/i)
   if (alutsmaniParts) {
     const sub = alutsmaniParts[1]
@@ -740,8 +745,7 @@ export const getWaBackendUrl = () => {
     }
   }
 
-  // Production & domain lain *.alutsmani.id / *.alutsmani.my.id
-  if (hl.includes('alutsmani.id') || hl.includes('alutsmani.my.id')) {
+  if (hl === 'alutsmani.id' || hl.endsWith('.alutsmani.id')) {
     return 'https://wa.alutsmani.id'
   }
 

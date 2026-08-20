@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { santriAPI, pendaftaranAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
+import { SANTRI_STATUS_OPTIONS } from '../../../constants/santriStatus'
 
 function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri, onSuccess }) {
   const { showNotification } = useNotification()
@@ -126,8 +127,10 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
   const rombelOptions = selectedField === 'diniyah' ? rombelDiniyahOptions : selectedField === 'formal' ? rombelFormalOptions : []
 
   const availableValues = useMemo(() => {
-    if (!selectedField || !allDataSantri || allDataSantri.length === 0) return []
+    if (!selectedField) return []
     if (isRombelField || isKamarField) return []
+    if (selectedField === 'status_santri') return [...SANTRI_STATUS_OPTIONS]
+    if (!allDataSantri || allDataSantri.length === 0) return []
     const fieldNameForOptions = selectedField
     const values = [
       ...new Set(

@@ -169,9 +169,12 @@ export const calculateWajibFromBiodata = (biodata, prices) => {
   // Gunakan saudara atau saudara_di_pesantren (prioritas saudara)
   const saudaraValue = saudara || saudara_di_pesantren || ''
   
-  // Harga dasar berdasarkan status_santri dan kategori
+  // Harga dasar flat per status (jenjang ikut formal)
   let hargaDasar = 0
-  if (status_santri && kategori && prices.status_santri?.[status_santri]?.[kategori]) {
+  if (status_santri && prices.status_santri?.[status_santri]?.wajib != null) {
+    hargaDasar = prices.status_santri[status_santri].wajib || 0
+  } else if (status_santri && kategori && prices.status_santri?.[status_santri]?.[kategori]) {
+    // BC katalog lama nested kategori
     hargaDasar = prices.status_santri[status_santri][kategori].wajib || 0
   }
   
@@ -230,7 +233,9 @@ export function buildUwabaJsonFromBiodata(biodata, prices) {
   const saudaraValue = biodata.saudara || biodata.saudara_di_pesantren || ''
 
   let hargaDasar = 0
-  if (biodata.status_santri && biodata.kategori && prices.status_santri?.[biodata.status_santri]?.[biodata.kategori]) {
+  if (biodata.status_santri && prices.status_santri?.[biodata.status_santri]?.wajib != null) {
+    hargaDasar = Number(prices.status_santri[biodata.status_santri].wajib) || 0
+  } else if (biodata.status_santri && biodata.kategori && prices.status_santri?.[biodata.status_santri]?.[biodata.kategori]) {
     hargaDasar = Number(prices.status_santri[biodata.status_santri][biodata.kategori].wajib) || 0
   }
   const hargaDiniyah = addonWajib(prices.diniyah, dinKey)
@@ -348,7 +353,7 @@ export const formatKeteranganPembayaran = (wajibValue, nominalValue) => {
  * Bandingkan biodata
  */
 export const compareBiodata = (biodata1, biodata2) => {
-  const fields = ['status_santri', 'kategori', 'diniyah', 'formal', 'lttq', 'saudara']
+  const fields = ['status_santri', 'diniyah', 'formal', 'lttq', 'saudara']
   
   // Normalize saudara field (bisa 'saudara' atau 'saudara_di_pesantren')
   const biodata1Mapped = {

@@ -59,7 +59,7 @@ class HttpsMiddleware implements MiddlewareInterface
                 ->withStatus(301)
                 ->withHeader('Location', (string) $httpsUri);
             $origin = trim($request->getHeaderLine('Origin'));
-            if ($origin !== '' && function_exists('cors_origin_is_alutsmani_id') && cors_origin_is_alutsmani_id($origin)) {
+            if ($origin !== '' && function_exists('cors_origin_is_trusted') && cors_origin_is_trusted($origin)) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true')

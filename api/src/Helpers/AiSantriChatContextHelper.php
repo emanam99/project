@@ -444,7 +444,7 @@ final class AiSantriChatContextHelper
         $hasWaliCol = self::columnExists($db, 'santri', 'no_telpon_wali');
         $waliSql = $hasWaliCol ? ', s.no_telpon_wali' : '';
 
-        $sql = 'SELECT s.id, s.nis, s.nama, s.status_santri, s.gender, s.kategori, '
+        $sql = 'SELECT s.id, s.nis, s.nama, COALESCE(s.status_santri, \'\') AS status_santri, s.gender, COALESCE(d.kategori, \'\') AS kategori, '
             . ($flags['fullBio']
                 ? 's.nik, s.tempat_lahir, s.tanggal_lahir, s.ayah, s.ibu, s.wali, s.hubungan_wali, '
                 . 's.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten, s.provinsi, s.kode_pos, '

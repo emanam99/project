@@ -8,6 +8,7 @@ use App\Helpers\PengurusAdminIdHelper;
 use App\Helpers\PublicPaymentTokenHelper;
 use App\Helpers\RoleHelper;
 use App\Helpers\SantriHelper;
+use App\Helpers\SantriStatusHelper;
 use App\Helpers\StaffDataDeleteAuditHelper;
 use App\Helpers\TextSanitizer;
 use App\Helpers\UserAktivitasLogger;
@@ -1008,7 +1009,7 @@ class PaymentController
                     k.id_santri,
                     s.nama as nama_santri,
                     s.nim_formal as nim,
-                    COALESCE(st.status_santri, '') AS status_santri,
+                    COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
                     k.wajib as total,
                     (k.wajib - COALESCE(SUM(bk.nominal), 0)) as kurang,
                     k.keterangan_1,
@@ -1026,8 +1027,7 @@ class PaymentController
                     END as status_pembayaran
                 FROM uwaba___khusus k
                 LEFT JOIN santri s ON k.id_santri = s.id
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                 LEFT JOIN uwaba___bayar_khusus bk ON k.id = bk.id_khusus
             ";
@@ -1534,11 +1534,10 @@ class PaymentController
      */
     private function fetchSantriBiodataForUwabaPricing(int $idSantri): ?array
     {
-        $sql = 'SELECT COALESCE(st.status_santri, \'\') AS status_santri, COALESCE(st.kategori, d.kategori, \'\') AS kategori, lt.tingkatan AS lttq, s.saudara_di_pesantren,
+        $sql = 'SELECT COALESCE(st.status_santri, s.status_santri, \'\') AS status_santri, COALESCE(d.kategori, \'\') AS kategori, lt.tingkatan AS lttq, s.saudara_di_pesantren,
                 rd.lembaga_id AS diniyah, rf.lembaga_id AS formal
                 FROM santri s
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                ' . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . '
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
@@ -1594,16 +1593,24 @@ class PaymentController
             return 0;
         }
         $status = $biodata['status_santri'] ?? '';
-        $kat = $biodata['kategori'] ?? '';
         $dinKey = $this->normalizeUwabaPriceKey($biodata['diniyah'] ?? null);
         $forKey = $this->normalizeUwabaPriceKey($biodata['formal'] ?? null);
         $lttqKey = $this->normalizeUwabaPriceKey($biodata['lttq'] ?? null);
         $saudaraVal = $this->normalizeUwabaPriceKey($biodata['saudara'] ?? null);
 
         $hargaDasar = 0;
-        if ($status !== '' && $kat !== ''
-            && isset($prices['status_santri'][$status][$kat]['wajib'])) {
-            $hargaDasar = (int) $prices['status_santri'][$status][$kat]['wajib'];
+        if ($status !== '' && isset($prices['status_santri'][$status]['wajib'])) {
+            $hargaDasar = (int) $prices['status_santri'][$status]['wajib'];
+        } elseif ($status !== '') {
+            $node = $prices['status_santri'][$status] ?? null;
+            if (\is_array($node)) {
+                foreach ($node as $sub) {
+                    if (\is_array($sub) && isset($sub['wajib'])) {
+                        $hargaDasar = (int) $sub['wajib'];
+                        break;
+                    }
+                }
+            }
         }
 
         $tambahan = $this->uwabaAddonWajib($prices, 'diniyah', $dinKey)

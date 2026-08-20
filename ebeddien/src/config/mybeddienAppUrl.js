@@ -6,6 +6,9 @@ export function getMybeddienAppUrl(apiUrl = '') {
     const host = window.location.hostname
     if (host === 'ebeddien.alutsmani.id') return 'https://mybeddien.alutsmani.id'
     if (host === 'ebeddien2.alutsmani.id') return 'https://mybeddien2.alutsmani.id'
+    if (host === 'ebeddien.alutsmani.my.id' || host.endsWith('.alutsmani.my.id')) {
+      return 'https://mybeddien.alutsmani.my.id'
+    }
   }
   const fromApi = String(apiUrl || '').trim().replace(/\/$/, '')
   if (fromApi && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(fromApi)) {

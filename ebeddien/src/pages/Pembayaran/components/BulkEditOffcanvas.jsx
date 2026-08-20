@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { santriAPI, pendaftaranAPI, uwabaAPI, santriBiodataAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import { parseKelompok } from '../../Lttq/lttqKelompokUtils'
+import { SANTRI_STATUS_OPTIONS } from '../../../constants/santriStatus'
 
 const FIELD_GROUPS = [
-  { key: 'status_kategori', label: 'Status & Kategori' },
+  { key: 'status_kategori', label: 'Status Santri' },
   { key: 'diniyah', label: 'Diniyah (Lembaga · Kelas · Kel)' },
   { key: 'formal', label: 'Formal (Lembaga · Kelas · Kel)' },
   { key: 'lttq', label: 'LTTQ (Tingkatan · Kelas · Kel)' },
@@ -38,7 +39,6 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
   const [form, setForm] = useState(emptyForm)
 
   const [statusSantriOptions, setStatusSantriOptions] = useState([])
-  const [kategoriOptions, setKategoriOptions] = useState([])
   const [lembagaDiniyahOptions, setLembagaDiniyahOptions] = useState([])
   const [lembagaFormalOptions, setLembagaFormalOptions] = useState([])
   const [kelasDiniyahOptions, setKelasDiniyahOptions] = useState([])
@@ -80,18 +80,6 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
       })
     return () => { cancelled = true }
   }, [isOpen])
-
-  useEffect(() => {
-    if (!isOpen || selectedGroup !== 'status_kategori') return
-    let cancelled = false
-    pendaftaranAPI.getKategoriOptions(form.status_santri).then((kRes) => {
-      if (cancelled) return
-      setKategoriOptions(kRes?.success && Array.isArray(kRes.data) ? kRes.data : [])
-    }).catch(() => {
-      if (!cancelled) setKategoriOptions([])
-    })
-    return () => { cancelled = true }
-  }, [isOpen, selectedGroup, form.status_santri])
 
   useEffect(() => {
     if (!form.lembaga_diniyah) {
@@ -144,7 +132,7 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
   }, [form.lembaga_formal, form.kelas_formal])
 
   const statusSantriRendered = useMemo(() => {
-    const base = statusSantriOptions.length > 0 ? statusSantriOptions : ['Mukim', 'Khoriji', 'Boyong', 'Guru Tugas', 'Pengurus']
+    const base = statusSantriOptions.length > 0 ? statusSantriOptions : SANTRI_STATUS_OPTIONS
     const current = String(form.status_santri || '').trim()
     return [...new Set(current && !base.includes(current) ? [current, ...base] : base)]
   }, [statusSantriOptions, form.status_santri])
@@ -201,7 +189,7 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
       return true
     }
     if (selectedGroup === 'status_kategori') {
-      return Boolean(String(form.status_santri).trim() && String(form.kategori).trim())
+      return Boolean(String(form.status_santri).trim())
     }
     if (selectedGroup === 'diniyah') return Boolean(form.id_diniyah)
     if (selectedGroup === 'formal') return Boolean(form.id_formal)
@@ -214,7 +202,6 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
     if (selectedGroup === 'status_kategori') {
       return {
         status_santri: String(form.status_santri).trim(),
-        kategori: String(form.kategori).trim(),
       }
     }
     if (selectedGroup === 'diniyah') {
@@ -390,28 +377,12 @@ function BulkEditOffcanvas({ isOpen, onClose, selectedSantriList, allDataSantri,
                       </label>
                       <select
                         value={form.status_santri}
-                        onChange={(e) => patchForm({ status_santri: e.target.value, kategori: '' })}
+                        onChange={(e) => patchForm({ status_santri: e.target.value })}
                         className={selectClass}
                         disabled={loading || optionsLoading}
                       >
                         <option value="">Pilih status</option>
                         {statusSantriRendered.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Kategori
-                      </label>
-                      <select
-                        value={form.kategori}
-                        onChange={(e) => patchForm({ kategori: e.target.value })}
-                        className={selectClass}
-                        disabled={loading || !form.status_santri}
-                      >
-                        <option value="">Pilih kategori</option>
-                        {kategoriOptions.map((opt) => (
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>

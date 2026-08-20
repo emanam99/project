@@ -47,7 +47,7 @@ module.exports = defineConfig({
       testMatch: /staging-.*\.spec\.js/,
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: process.env.EBEDDIEN_BASE_URL || 'https://ebeddien2.alutsmani.id',
+        baseURL: process.env.EBEDDIEN_BASE_URL || 'https://ebeddien.alutsmani.my.id',
         ignoreHTTPSErrors: false,
       },
     },

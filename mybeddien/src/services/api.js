@@ -44,10 +44,12 @@ function envApiUrlPointsToLocalMachine(url) {
   }
 }
 
-/** Derive production API URL from current hostname (api.{rootDomain}/api). */
+/** Derive production/staging API URL from current hostname (api.{rootDomain}/api). */
 function deriveRemoteApiBaseUrl(hostname, protocol) {
   const parts = hostname.split('.')
-  const rootDomain = parts.length > 2 ? parts.slice(-2).join('.') : hostname
+  const rootDomain = hostname.toLowerCase().endsWith('.my.id') && parts.length >= 3
+    ? parts.slice(-3).join('.')
+    : (parts.length > 2 ? parts.slice(-2).join('.') : hostname)
   if (!rootDomain || rootDomain.includes('localhost')) {
     return 'http://localhost/api/public/api'
   }
@@ -124,10 +126,13 @@ export const getWaBackendUrl = () => {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return `http://127.0.0.1:${waPort}`
   }
-  if (hostname.includes('alutsmani.id') || hostname.includes('alutsmani.my.id')) {
-    return hostname.includes('2') && hostname.includes('alutsmani.id')
-      ? 'https://wa2.alutsmani.id'
-      : 'https://wa.alutsmani.id'
+  const hl = hostname.toLowerCase()
+  if (hl === 'alutsmani.my.id' || hl.endsWith('.alutsmani.my.id')) {
+    return 'https://wa2.alutsmani.id'
+  }
+  if (hl === 'alutsmani.id' || hl.endsWith('.alutsmani.id')) {
+    const sub = hl.replace(/\.alutsmani\.id$/, '')
+    return (sub !== hl && sub.endsWith('2')) ? 'https://wa2.alutsmani.id' : 'https://wa.alutsmani.id'
   }
   return `${protocol}//${hostname}:${waPort}`
 }

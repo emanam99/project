@@ -5,10 +5,10 @@
 Di ponsel Cursor **bukan IDE penuh**. Alur: kirim tugas → agen mengedit di VM cloud → cek diff / screenshot / remote desktop.
 
 - **Database & API:** pakai staging, jangan production.
-  - API: `https://api2.alutsmani.id/api`
-  - eBeddien staging: `https://ebeddien2.alutsmani.id`
-  - myBeddien staging: `https://mybeddien2.alutsmani.id`
-  - daftar staging: `https://daftar2.alutsmani.id`
+  - API: `https://api.alutsmani.my.id/api`
+  - eBeddien staging: `https://ebeddien.alutsmani.my.id`
+  - myBeddien staging: `https://mybeddien.alutsmani.my.id`
+  - daftar staging: `https://daftar.alutsmani.my.id`
 - Install cloud (`scripts/cursor-cloud-setup.sh`) menulis `.env` Vite ke URL staging. Jangan menimpa `.env` di PC lokal (tetap `localhost`).
 - Dev server:
   - eBeddien: `cd ebeddien && npm run dev -- --host 0.0.0.0 --port 5173` (otomatis di VM)

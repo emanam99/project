@@ -133,13 +133,14 @@ function KategoriPendidikanSection({
       {/* Status Santri */}
       <div className="mb-4">
         <label className={getLabelClassName('status_santri')}>
-          Status Santri
+          Status Santri *
         </label>
         <select
           value={formData.status_santri}
           onChange={(e) => onFieldChange('status_santri', e.target.value)}
           onFocus={() => onFocus('status_santri')}
           onBlur={onBlur}
+          required
           className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
         >
           <option value="">Pilih Status Santri</option>
@@ -148,6 +149,7 @@ function KategoriPendidikanSection({
           <option value="Boyong">Boyong</option>
           <option value="Guru Tugas">Guru Tugas</option>
           <option value="Pengurus">Pengurus</option>
+          <option value="Alumni">Alumni</option>
         </select>
       </div>
 

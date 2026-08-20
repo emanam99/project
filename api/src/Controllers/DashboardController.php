@@ -271,7 +271,7 @@ class DashboardController
 
     private function getTotalSantri(): int
     {
-        $stmt = $this->db->query("SELECT COUNT(*) as total FROM santri s LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL LEFT JOIN status st ON st.id = ss.id_status WHERE LOWER(COALESCE(st.status_santri, '')) IN ('mukim','khoriji')");
+        $stmt = $this->db->query("SELECT COUNT(*) as total FROM santri s " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . " WHERE LOWER(TRIM(COALESCE(st.status_santri, s.status_santri, ''))) IN ('mukim','khoriji')");
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return (int)($row['total'] ?? 0);
     }
@@ -404,7 +404,7 @@ class DashboardController
     {
         $stmt = $this->db->query("
             SELECT
-                COALESCE(st.status_santri, '') AS status_santri,
+                COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
                 COUNT(*) as total,
                 SUM(
                     CASE
@@ -425,9 +425,8 @@ class DashboardController
                     END
                 ) as total_p
             FROM santri s
-            LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-            LEFT JOIN status st ON st.id = ss.id_status
-            GROUP BY st.status_santri
+            " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
+            GROUP BY COALESCE(st.status_santri, s.status_santri, '')
         ");
         $statusLabels = [];
         $statusData = [];
@@ -466,7 +465,7 @@ class DashboardController
 
     private function getKomposisiKategori(): array
     {
-        $stmt = $this->db->query("SELECT COALESCE(st.kategori, d.kategori, '') AS kategori, COUNT(*) as total FROM santri s LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL LEFT JOIN status st ON st.id = ss.id_status LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar LEFT JOIN daerah d ON d.id = dk.id_daerah GROUP BY COALESCE(st.kategori, d.kategori, '')");
+        $stmt = $this->db->query("SELECT COALESCE(d.kategori, '') AS kategori, COUNT(*) as total FROM santri s " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . " LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar LEFT JOIN daerah d ON d.id = dk.id_daerah GROUP BY COALESCE(d.kategori, '')");
         $kategoriLabels = [];
         $kategoriData = [];
         while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
@@ -857,8 +856,8 @@ class DashboardController
                     s.ayah,
                     s.ibu,
                     s.gender,
-                    COALESCE(st.status_santri, '') AS status_santri,
-                    COALESCE(st.kategori, d.kategori, '') AS kategori,
+                    COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                    COALESCE(d.kategori, '') AS kategori,
                     s.id_diniyah,
                     rd.lembaga_id AS lembaga_id_diniyah,
                     ld.nama AS diniyah,
@@ -923,11 +922,10 @@ class DashboardController
                 LEFT JOIN lttq_tingkatan lt ON lt.id = s.id_lttq_tingkatan
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 LEFT JOIN uwaba sy ON s.id = sy.id_santri AND sy.tahun_ajaran = ?
                 __UWABA_S_FILTER__
-                GROUP BY s.id, s.nis, s.nama, s.ayah, s.ibu, s.gender, COALESCE(st.status_santri, ''), COALESCE(st.kategori, d.kategori, ''), s.id_diniyah, rd.lembaga_id, ld.nama, rd.kelas, rd.kel, s.id_formal, rf.lembaga_id, lf.nama, rf.kelas, rf.kel, s.id_lttq_tingkatan, lt.tingkatan, lt.kelompok, s.hijriyah, s.masehi, s.saudara_di_pesantren, s.id_kamar, d.id, d.daerah, dk.kamar, s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten
+                GROUP BY s.id, s.nis, s.nama, s.ayah, s.ibu, s.gender, COALESCE(st.status_santri, s.status_santri, ''), COALESCE(d.kategori, ''), s.id_diniyah, rd.lembaga_id, ld.nama, rd.kelas, rd.kel, s.id_formal, rf.lembaga_id, lf.nama, rf.kelas, rf.kel, s.id_lttq_tingkatan, lt.tingkatan, lt.kelompok, s.hijriyah, s.masehi, s.saudara_di_pesantren, s.id_kamar, d.id, d.daerah, dk.kamar, s.dusun, s.rt, s.rw, s.desa, s.kecamatan, s.kabupaten
             ";
             $sFilter = ($pagination['active'] && $cursorSantri > 0) ? ('WHERE s.id > ' . $cursorSantri . ' ') : '';
             $sqlUwabaGrid = str_replace('__UWABA_S_FILTER__', $sFilter, $sqlUwabaGrid);
@@ -1059,8 +1057,8 @@ class DashboardController
                         s.nis,
                         s.nama,
                         s.gender,
-                        COALESCE(st.status_santri, '') AS status_santri,
-                        COALESCE(st.kategori, '') AS kategori,
+                        COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                        COALESCE(d.kategori, '') AS kategori,
                         s.id_diniyah,
                         ld.nama AS diniyah,
                         rd.kelas AS kelas_diniyah,
@@ -1089,6 +1087,8 @@ class DashboardController
                     LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                     LEFT JOIN lembaga lf ON lf.id = rf.lembaga_id
                     LEFT JOIN lttq_tingkatan lt ON lt.id = s.id_lttq_tingkatan
+                    LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                    LEFT JOIN daerah d ON d.id = dk.id_daerah
                     " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                     WHERE NOT EXISTS (SELECT 1 FROM uwaba___khusus k WHERE k.id_santri = s.id)
                 ";
@@ -1184,6 +1184,8 @@ class DashboardController
                     LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                     LEFT JOIN lembaga lf ON lf.id = rf.lembaga_id
                     LEFT JOIN lttq_tingkatan lt ON lt.id = s.id_lttq_tingkatan
+                    LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                    LEFT JOIN daerah d ON d.id = dk.id_daerah
                     {$statusJoin}
                 ";
 
@@ -1193,8 +1195,8 @@ class DashboardController
                         s.nis,
                         s.nama,
                         s.gender,
-                        COALESCE(st.status_santri, '') AS status_santri,
-                        COALESCE(st.kategori, '') AS kategori,
+                        COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                        COALESCE(d.kategori, '') AS kategori,
                         s.id_diniyah,
                         ld.nama AS diniyah,
                         rd.kelas AS kelas_diniyah,
@@ -1355,7 +1357,7 @@ class DashboardController
 
             if ($belumAdaKewajiban) {
                 $sql = "
-                    SELECT s.id, s.nis, s.nama, s.gender, COALESCE(st.status_santri, '') AS status_santri, COALESCE(st.kategori, '') AS kategori,
+                    SELECT s.id, s.nis, s.nama, s.gender, COALESCE(st.status_santri, s.status_santri, '') AS status_santri, COALESCE(d.kategori, '') AS kategori,
                         s.id_diniyah, ld.nama AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,
                         s.id_formal, lf.nama AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal,
                         lt.tingkatan AS lttq,
@@ -1370,6 +1372,8 @@ class DashboardController
                     LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                     LEFT JOIN lembaga lf ON lf.id = rf.lembaga_id
                     LEFT JOIN lttq_tingkatan lt ON lt.id = s.id_lttq_tingkatan
+                    LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                    LEFT JOIN daerah d ON d.id = dk.id_daerah
                     " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                     WHERE NOT EXISTS (SELECT 1 FROM uwaba___tunggakan t WHERE t.id_santri = s.id)
                 ";
@@ -1449,7 +1453,7 @@ class DashboardController
                 ";
 
                 $sqlSelectT = "
-                    SELECT s.id, s.nis, s.nama, s.gender, COALESCE(st.status_santri, '') AS status_santri, COALESCE(st.kategori, '') AS kategori,
+                    SELECT s.id, s.nis, s.nama, s.gender, COALESCE(st.status_santri, s.status_santri, '') AS status_santri, COALESCE(d.kategori, '') AS kategori,
                         s.id_diniyah, ld.nama AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,
                         s.id_formal, lf.nama AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal,
                         lt.tingkatan AS lttq,

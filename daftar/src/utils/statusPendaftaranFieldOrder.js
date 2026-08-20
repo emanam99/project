@@ -15,7 +15,11 @@ const STATUS_SANTRI_FALLBACK = {
   field_label: 'Status Santri',
   values: [
     { value: 'Mukim', label: 'Mukim' },
+    { value: 'Boyong', label: 'Boyong' },
     { value: 'Khoriji', label: 'Khoriji' },
+    { value: 'Guru Tugas', label: 'Guru Tugas' },
+    { value: 'Pengurus', label: 'Pengurus' },
+    { value: 'Alumni', label: 'Alumni' },
   ],
 }
 

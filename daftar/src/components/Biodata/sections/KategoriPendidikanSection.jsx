@@ -11,17 +11,12 @@ function KategoriPendidikanSection({
   onFocus,
   onBlur,
   getLabelClassName,
-  getKategoriOptions,
   kategoriSelectOptions = [],
   daerahOptions = [],
   kamarOptions = []
 }) {
   const handleStatusSantriChange = (status) => {
     onFieldChange('status_santri', status)
-    const options = getKategoriOptions(status)
-    if (options.length > 0 && !options.includes(formData.kategori)) {
-      onFieldChange('kategori', '')
-    }
   }
 
   return (
@@ -49,6 +44,7 @@ function KategoriPendidikanSection({
           <option value="Boyong">Boyong</option>
           <option value="Guru Tugas">Guru Tugas</option>
           <option value="Pengurus">Pengurus</option>
+          <option value="Alumni">Alumni</option>
         </select>
       </div>
 

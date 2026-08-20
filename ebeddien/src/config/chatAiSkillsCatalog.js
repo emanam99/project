@@ -71,7 +71,7 @@ export const CHAT_AI_SKILL_GROUPS = [
       {
         title: 'Tarif UWABA / syahriah bulanan (publik)',
         description:
-          'Pertanyaan biaya UWABA per bulan (mis. diniyah Wustha, formal STAI, mukim banin) — server menyisipkan katalog uwaba-prices.json selaras Input UWABA & kalkulator di eBeddien: harga dasar status+kategori, tambahan diniyah/formal/LTTQ, diskon saudara. Bukan biaya pendaftaran PSB; sebutkan kombinasi biodata bila perlu. Riwayat bayar/tunggakan per santri → https://mybeddien.alutsmani.id',
+          'Pertanyaan biaya UWABA per bulan (mis. diniyah Wustha, formal STAI, status Mukim) — server menyisipkan katalog uwaba-prices.json selaras Input UWABA & kalkulator di eBeddien: harga dasar per status (flat), tambahan diniyah/formal/LTTQ, diskon saudara. Jenjang Khoriji ikut formal. Bukan biaya pendaftaran PSB; sebutkan kombinasi biodata bila perlu. Riwayat bayar/tunggakan per santri → https://mybeddien.alutsmani.id',
         requiresAccess: null,
       },
       {

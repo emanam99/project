@@ -513,23 +513,22 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
     return () => { cancelled = true }
   }, [biodata?.id])
 
-  // Kategori wajib mengikuti status_santri terpilih (sumber tabel status)
+  // Kategori dari daerah (Banin/Banat), tidak tergantung status
   useEffect(() => {
     if (!biodata) return
-    const status = String(biodata.status_santri || '').trim()
     let cancelled = false
-    pendaftaranAPI.getKategoriOptions(status).then((kRes) => {
+    pendaftaranAPI.getKategoriOptions().then((kRes) => {
       if (cancelled) return
       if (kRes?.success && Array.isArray(kRes.data)) {
         setKategoriOptions(kRes.data)
       } else {
-        setKategoriOptions([])
+        setKategoriOptions(['Banin', 'Banat'])
       }
     }).catch(() => {
-      if (!cancelled) setKategoriOptions([])
+      if (!cancelled) setKategoriOptions(['Banin', 'Banat'])
     })
     return () => { cancelled = true }
-  }, [biodata?.status_santri, biodata?.id])
+  }, [biodata?.id])
 
   useEffect(() => {
     if (!biodata) return
@@ -605,7 +604,7 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
     return () => { cancelled = true }
   }, [lembagaFormalId, kelasFormalVal])
 
-  // Handle perubahan status santri
+  // Handle perubahan status santri (kategori Banin/Banat dari daerah/gender — jangan dikosongkan)
   const handleStatusChange = (e) => {
     const status = e.target.value
     handleFieldChange('status_santri', status)
@@ -613,7 +612,6 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
       handleFieldChange('id_daerah', '')
       handleFieldChange('id_kamar', '')
     }
-    if (biodata?.kategori) handleFieldChange('kategori', '')
   }
 
   const handleKategoriChange = (value) => {
@@ -1298,16 +1296,18 @@ function BiodataBox({ onSantriChange, onOpenSearch, externalSantriId }) {
 
           {/* Status Santri */}
           <div>
-            <label className={getLabelClassName('status_santri')}>Status Santri</label>
+            <label className={getLabelClassName('status_santri')}>Status Santri *</label>
             <select
               value={biodata.status_santri || ''}
               onChange={handleStatusChange}
               onFocus={() => setFocusedField('status_santri')}
               onBlur={() => setFocusedField(null)}
+              required
               className="w-full p-2 border-b-2 border-gray-300 dark:border-gray-600 focus:border-teal-500 dark:focus:border-teal-400 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100"
             >
+              <option value="">Pilih Status Santri</option>
               {[...new Set([
-                ...(statusSantriOptions.length ? statusSantriOptions : ['Mukim']),
+                ...(statusSantriOptions.length ? statusSantriOptions : ['Mukim', 'Boyong', 'Khoriji', 'Guru Tugas', 'Pengurus', 'Alumni']),
                 ...(biodata?.status_santri ? [biodata.status_santri] : [])
               ])].map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>

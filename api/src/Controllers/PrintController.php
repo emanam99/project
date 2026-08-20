@@ -4,6 +4,8 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\SantriHelper;
+use App\Helpers\SantriStatusHelper;
+use App\Helpers\UwabaPricingHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -199,8 +201,8 @@ class PrintController
 
             // Ambil biodata santri (diniyah/formal dari rombel; mode pendaftaran menimpa dari psb___registrasi.daftar_*)
             $stmt = $this->db->prepare("SELECT s.*, 
-                COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori,
+                COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori,
                 COALESCE(rd.lembaga_id, '') AS diniyah,
                 COALESCE(rf.lembaga_id, '') AS formal,
                 COALESCE(rd.kelas, '') AS kelas_diniyah,
@@ -218,8 +220,7 @@ class PrintController
                 LEFT JOIN lttq_tingkatan lt ON lt.id = s.id_lttq_tingkatan
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 WHERE s.id = ? LIMIT 1");
             $stmt->execute([$idSantri]);
             $biodata = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -388,18 +389,8 @@ class PrintController
             if ($pageMode === 'pendaftaran') {
                 // Data sudah diformat di bagian sebelumnya, tidak perlu grouping lagi
             } elseif ($pageMode === 'uwaba') {
-                // Baca uwaba-prices.json
-                $uwabaPricesPath = __DIR__ . '/../../../js/uwaba/uwaba-prices.json';
-                $uwabaPrices = null;
-
-                if (file_exists($uwabaPricesPath)) {
-                    try {
-                        $uwabaPricesContent = file_get_contents($uwabaPricesPath);
-                        $uwabaPrices = json_decode($uwabaPricesContent, true);
-                    } catch (\Exception $e) {
-                        error_log("Error reading uwaba-prices.json: " . $e->getMessage());
-                    }
-                }
+                // Baca uwaba-prices.json (path lokal / ebeddien public)
+                $uwabaPrices = UwabaPricingHelper::loadPricesJson();
 
                 // Untuk uwaba, pembayaran tidak dikelompokkan per bulan, tapi ditampilkan semua
                 foreach ($tunggakan as &$t) {
@@ -422,9 +413,14 @@ class PrintController
                     if ($t['is_disabled'] != 1) {
                         $wajib = 0;
 
-                        // Harga dasar berdasarkan status_santri dan kategori
-                        if ($biodata['status_santri'] && $biodata['kategori'] && $uwabaPrices) {
-                            $wajib += $uwabaPrices['status_santri'][$biodata['status_santri']][$biodata['kategori']]['wajib'] ?? 0;
+                        // Harga dasar flat per status (jenjang ikut formal)
+                        if (!empty($biodata['status_santri']) && $uwabaPrices) {
+                            $stKey = $biodata['status_santri'];
+                            if (isset($uwabaPrices['status_santri'][$stKey]['wajib'])) {
+                                $wajib += (int) $uwabaPrices['status_santri'][$stKey]['wajib'];
+                            } elseif (!empty($biodata['kategori']) && isset($uwabaPrices['status_santri'][$stKey][$biodata['kategori']]['wajib'])) {
+                                $wajib += (int) $uwabaPrices['status_santri'][$stKey][$biodata['kategori']]['wajib'];
+                            }
                         }
 
                         // Tambahan diniyah / formal / LTTQ — kunci = lembaga.id (string) di uwaba-prices.json

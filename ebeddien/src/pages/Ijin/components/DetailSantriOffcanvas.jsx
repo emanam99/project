@@ -18,6 +18,7 @@ import {
 import { EBEDDIEN_IJIN_HINT, ijinHintMatches } from '../../../services/ijinLiveEvents'
 import { PickDateHijri, formatHijriDateDisplay, compareHijriYmd } from '../../../components/PickDateHijri'
 import PrintIjinOffcanvas from './PrintIjinOffcanvas'
+import { SANTRI_STATUS_OPTIONS } from '../../../constants/santriStatus'
 
 /** Form edit biodata santri di panel ijin (cascade seperti UWABA) */
 function buildSantriFormData(santri) {
@@ -874,8 +875,8 @@ function DetailSantriOffcanvas({
   const handleSantriFieldChange = (field, value) => {
     setSantriFormData((prev) => {
       const next = { ...prev, [field]: value }
+      // Kategori Banin/Banat tetap; hanya bersihkan domisili kamar bila keluar Mukim
       if (field === 'status_santri' && value !== 'Mukim') {
-        next.kategori = ''
         next.id_daerah = ''
         next.id_kamar = ''
       }
@@ -959,6 +960,10 @@ function DetailSantriOffcanvas({
   const handleSaveSantri = async () => {
     if (!santri?.id) {
       showNotification('Data santri tidak valid', 'error')
+      return
+    }
+    if (!String(santriFormData.status_santri || '').trim()) {
+      showNotification('Status santri wajib diisi', 'error')
       return
     }
 
@@ -1237,28 +1242,29 @@ function DetailSantriOffcanvas({
                               <select
                                 value={santriFormData.status_santri || ''}
                                 onChange={(e) => handleSantriFieldChange('status_santri', e.target.value)}
+                                required
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 text-sm"
                               >
                                 <option value="">Pilih Status</option>
-                                <option value="Mukim">Mukim</option>
-                                <option value="Khoriji">Khoriji</option>
-                                <option value="Alumni">Alumni</option>
+                                {SANTRI_STATUS_OPTIONS.map((opt) => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Kategori:</label>
+                              <select
+                                value={santriFormData.kategori || ''}
+                                onChange={(e) => handleSantriFieldChange('kategori', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 text-sm"
+                              >
+                                <option value="">Pilih Kategori</option>
+                                <option value="Banin">Banin</option>
+                                <option value="Banat">Banat</option>
                               </select>
                             </div>
                             {santriFormData.status_santri === 'Mukim' && (
                               <>
-                                <div>
-                                  <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Kategori:</label>
-                                  <select
-                                    value={santriFormData.kategori || ''}
-                                    onChange={(e) => handleSantriFieldChange('kategori', e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 text-sm"
-                                  >
-                                    <option value="">Pilih Kategori</option>
-                                    <option value="Banin">Banin</option>
-                                    <option value="Banat">Banat</option>
-                                  </select>
-                                </div>
                                 <div>
                                   <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Daerah:</label>
                                   <select
@@ -1273,7 +1279,7 @@ function DetailSantriOffcanvas({
                                     ))}
                                   </select>
                                 </div>
-                                <div className="col-span-2">
+                                <div>
                                   <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Kamar:</label>
                                   <select
                                     value={santriFormData.id_kamar ?? ''}
@@ -1468,6 +1474,10 @@ function DetailSantriOffcanvas({
                           <div>
                             <span className="font-medium text-gray-700 dark:text-gray-300">Status:</span>
                             <span className="ml-2 text-gray-900 dark:text-gray-100">{santri.status_santri || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700 dark:text-gray-300">Kategori:</span>
+                            <span className="ml-2 text-gray-900 dark:text-gray-100">{santri.kategori || '-'}</span>
                           </div>
                           <div className="col-span-2">
                             <span className="font-medium text-gray-700 dark:text-gray-300">Kamar:</span>

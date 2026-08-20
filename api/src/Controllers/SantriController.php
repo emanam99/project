@@ -115,8 +115,8 @@ class SantriController
                 s.pekerjaan_wali,
                 s.pendidikan_wali,
                 s.penghasilan_wali,
-                COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori,
+                COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori,
                 s.status_pendaftar,
                 s.status_murid,
                 s.status_nikah,
@@ -273,8 +273,8 @@ class SantriController
                 s.status_nikah, s.pekerjaan, s.no_wa_santri,
                 s.status_pendaftar, s.status_murid,
                 s.id_user, u.username AS login_username,
-                COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
+                COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
                 s.id_diniyah, rd.lembaga_id AS diniyah, ld.nama AS lembaga_diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
                 s.id_formal, rf.lembaga_id AS formal, lf.nama AS lembaga_formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
                 " . SantriLttqHelper::selectAliasSql() . "
@@ -448,7 +448,7 @@ class SantriController
                 return $this->jsonResponse($response, ['success' => true, 'data' => []], 200);
             }
             $sql = "SELECT sk.id, sk.id_kamar, sk.id_santri, sk.tahun_ajaran, sk.tanggal_dibuat,
-                    COALESCE(st.status_santri, '') AS status_santri, COALESCE(st.kategori, d.kategori, '') AS kategori,
+                    COALESCE(ss.status_santri, '') AS status_santri, COALESCE(d.kategori, '') AS kategori,
                     d.daerah, dk.kamar, CONCAT(d.daerah, '.', dk.kamar) AS daerah_kamar
                     FROM santri___kamar sk
                     LEFT JOIN santri___status ss ON ss.id = (
@@ -460,7 +460,6 @@ class SantriController
                         ORDER BY ss2.dari DESC, ss2.id DESC
                         LIMIT 1
                     )
-                    LEFT JOIN status st ON st.id = ss.id_status
                     JOIN daerah___kamar dk ON dk.id = sk.id_kamar
                     JOIN daerah d ON d.id = dk.id_daerah
                     WHERE sk.id_santri = ?
@@ -560,7 +559,7 @@ class SantriController
         if (!$this->tableExists('ugt___guru_tugas_tugasan')) {
             return ['ok' => false, 'message' => 'Tabel penugasan UGT belum tersedia'];
         }
-        $st = $this->db->prepare('SELECT TRIM(LOWER(COALESCE(st.status_santri, \'\'))) AS s FROM santri s LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL LEFT JOIN status st ON st.id = ss.id_status WHERE s.id = ? LIMIT 1');
+        $st = $this->db->prepare('SELECT TRIM(LOWER(COALESCE(st.status_santri, s.status_santri, \'\'))) AS s FROM santri s ' . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . ' WHERE s.id = ? LIMIT 1');
         $st->execute([$idSantri]);
         $srow = $st->fetch(\PDO::FETCH_ASSOC);
         if (!$srow || (string) $srow['s'] !== 'guru tugas') {
@@ -736,8 +735,8 @@ class SantriController
                 s.pekerjaan_wali,
                 s.pendidikan_wali,
                 s.penghasilan_wali,
-                COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori,
+                COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori,
                 s.status_pendaftar,
                 s.status_murid,
                 s.status_nikah,
@@ -794,8 +793,7 @@ class SantriController
                 FROM ugt___guru_tugas_tugasan t
                 INNER JOIN santri s ON s.id = t.id_santri
                 INNER JOIN madrasah m ON m.id = t.id_madrasah
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                 " . SantriLttqHelper::joinSql('s') . "
@@ -840,13 +838,13 @@ class SantriController
                 $statusWhere = [];
                 if ($statusValues !== []) {
                     $ph = implode(',', array_fill(0, count($statusValues), '?'));
-                    $statusWhere[] = "LOWER(TRIM(COALESCE(st.status_santri, ''))) IN ($ph)";
+                    $statusWhere[] = "LOWER(TRIM(COALESCE(st.status_santri, s.status_santri, ''))) IN ($ph)";
                     foreach ($statusValues as $sv) {
                         $bind[] = $sv;
                     }
                 }
                 if ($includeEmptyStatus) {
-                    $statusWhere[] = "TRIM(COALESCE(st.status_santri, '')) = ''";
+                    $statusWhere[] = "TRIM(COALESCE(st.status_santri, s.status_santri, '')) = ''";
                 }
                 if ($statusWhere !== []) {
                     $where[] = '(' . implode(' OR ', $statusWhere) . ')';
@@ -863,13 +861,13 @@ class SantriController
                 $kategoriWhere = [];
                 if ($kategoriValues !== []) {
                     $ph = implode(',', array_fill(0, count($kategoriValues), '?'));
-                    $kategoriWhere[] = "TRIM(COALESCE(st.kategori, d.kategori, '')) IN ($ph)";
+                        $kategoriWhere[] = "TRIM(COALESCE(d.kategori, '')) IN ($ph)";
                     foreach ($kategoriValues as $kv) {
                         $bind[] = $kv;
                     }
                 }
                 if ($includeEmptyKategori) {
-                    $kategoriWhere[] = "TRIM(COALESCE(st.kategori, d.kategori, '')) = ''";
+                        $kategoriWhere[] = "TRIM(COALESCE(d.kategori, '')) = ''";
                 }
                 if ($kategoriWhere !== []) {
                     $where[] = '(' . implode(' OR ', $kategoriWhere) . ')';
@@ -956,7 +954,7 @@ class SantriController
                 }
             }
 
-            $hasStatusKategoriPatch = array_key_exists('status_santri', $data) || array_key_exists('kategori', $data);
+            $hasStatusKategoriPatch = array_key_exists('status_santri', $data);
             if ($set === [] && !$hasStatusKategoriPatch) {
                 return $this->jsonResponse($response, [
                     'success' => false,
@@ -988,7 +986,7 @@ class SantriController
             $needKamarRiwayat = $newKamar !== null && $newKamar != $oldKamar && $newKamar > 0;
 
             $idPengurus = null;
-            if ($needRiwayat || $needKamarRiwayat || $needLttqRiwayat) {
+            if ($needRiwayat || $needKamarRiwayat || $needLttqRiwayat || $hasStatusKategoriPatch) {
                 $idPengurus = isset($data['id_pengurus']) && $data['id_pengurus'] !== '' && $data['id_pengurus'] !== null ? (int) $data['id_pengurus'] : null;
                 if (!$idPengurus) {
                     $user = $request->getAttribute('user');
@@ -1069,53 +1067,25 @@ class SantriController
                         }
                     }
                 }
-                $labels = SantriStatusHelper::currentStatusLabels($this->db, $id);
-                $kategoriFromKamar = SantriDomisiliHelper::kategoriForKamarId($this->db, $newKamar ?: $oldKamar);
-
                 if (array_key_exists('status_santri', $data)) {
-                    $effectiveKategori = $kategoriFromKamar;
-                    if (array_key_exists('kategori', $data)) {
-                        $kBody = trim((string) ($data['kategori'] ?? ''));
-                        if ($kBody !== '') {
-                            $effectiveKategori = $kBody;
-                        }
+                    $rawStatus = trim((string) ($data['status_santri'] ?? ''));
+                    if ($rawStatus === '') {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Status santri wajib diisi',
+                        ], 400);
                     }
-                    if (($effectiveKategori === null || trim((string) $effectiveKategori) === '') && ($labels['kategori'] ?? '') !== '') {
-                        $effectiveKategori = $labels['kategori'];
+                    $normalized = SantriStatusHelper::normalize($rawStatus);
+                    if ($normalized === null) {
+                        return $this->jsonResponse($response, [
+                            'success' => false,
+                            'message' => 'Status santri tidak valid. Pilih: ' . implode(', ', SantriStatusHelper::ALLOWED),
+                        ], 400);
                     }
-                    // Selaras PendaftaranController::applySantriStatusIfNeeded: tanpa kamar & tanpa kategori di status aktif,
-                    // turunkan kategori dari gender (L→Banin, P→Banat) agar resolve status tidak gagal diam-diam.
-                    if ($effectiveKategori === null || trim((string) $effectiveKategori) === '') {
-                        $gender = trim((string) ($data['gender'] ?? ''));
-                        if ($gender === '' && $oldSantri) {
-                            $gender = trim((string) ($oldSantri['gender'] ?? ''));
-                        }
-                        if ($gender !== '') {
-                            $first = strtoupper(substr($gender, 0, 1));
-                            if ($first === 'L') {
-                                $effectiveKategori = 'Banin';
-                            } elseif ($first === 'P') {
-                                $effectiveKategori = 'Banat';
-                            }
-                        }
-                    }
-                    $idStatus = SantriStatusHelper::resolveStatusId(
-                        $this->db,
-                        trim((string) ($data['status_santri'] ?? '')),
-                        trim((string) ($effectiveKategori ?? ''))
-                    );
-                    if ($idStatus !== null) {
-                        SantriStatusHelper::applyCurrentStatus($this->db, $id, $idStatus, $idPengurus);
-                    }
-                } elseif (array_key_exists('kategori', $data)) {
-                    $kNew = trim((string) ($data['kategori'] ?? ''));
-                    $curStatus = trim((string) ($labels['status_santri'] ?? ''));
-                    if ($kNew !== '' && $curStatus !== '') {
-                        $idStatus = SantriStatusHelper::resolveStatusId($this->db, $curStatus, $kNew);
-                        if ($idStatus !== null) {
-                            SantriStatusHelper::applyCurrentStatus($this->db, $id, $idStatus, $idPengurus);
-                        }
-                    }
+                    SantriStatusHelper::applyCurrentStatus($this->db, $id, $normalized, $idPengurus);
+                } else {
+                    // Jaring pengaman: status tidak boleh kosong setelah update biodata lain
+                    SantriStatusHelper::ensureCurrentStatus($this->db, $id, null, null, $idPengurus);
                 }
 
                 $stmtNew = $this->db->prepare("SELECT * FROM santri WHERE id = ?");
@@ -1275,8 +1245,8 @@ class SantriController
                 rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal,
                 " . SantriLttqHelper::selectAliasSql() . ",
                 d.daerah, dk.kamar, s.id_kamar,
-                COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori, s.saudara_di_pesantren
+                COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori, s.saudara_di_pesantren
                 FROM santri s
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
@@ -1551,14 +1521,10 @@ class SantriController
                 ], 400);
             }
 
-            $statusJoin = "
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                    AND ss.id = (SELECT MAX(ss2.id) FROM santri___status ss2 WHERE ss2.id_santri = s.id AND ss2.sampai IS NULL)
-                LEFT JOIN status st ON st.id = ss.id_status
-            ";
+            $statusJoin = SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss');
             if ($mode === 'diniyah') {
                 $sql = "SELECT
-                        s.id, s.nis, s.nama, COALESCE(st.status_santri, '') AS status_santri,
+                        s.id, s.nis, s.nama, COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
                         s.id_diniyah AS id_rombel,
                         s.id_diniyah, rd.lembaga_id AS diniyah, ld.nama AS diniyah_lembaga_nama, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,
                         s.id_formal, rf.lembaga_id AS formal, lf.nama AS formal_lembaga_nama, rf.kelas AS kelas_formal, rf.kel AS kel_formal,
@@ -1575,7 +1541,7 @@ class SantriController
                     WHERE s.id_diniyah = ? ORDER BY s.nama";
             } else {
                 $sql = "SELECT
-                        s.id, s.nis, s.nama, COALESCE(st.status_santri, '') AS status_santri,
+                        s.id, s.nis, s.nama, COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
                         s.id_formal AS id_rombel,
                         s.id_diniyah, rd.lembaga_id AS diniyah, ld.nama AS diniyah_lembaga_nama, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,
                         s.id_formal, rf.lembaga_id AS formal, lf.nama AS formal_lembaga_nama, rf.kelas AS kelas_formal, rf.kel AS kel_formal,
@@ -1723,8 +1689,8 @@ class SantriController
                 s.pekerjaan_wali,
                 s.pendidikan_wali,
                 s.penghasilan_wali,
-                COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori,
+                COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori,
                 s.status_pendaftar,
                 s.status_murid,
                 s.status_nikah,
@@ -1776,8 +1742,7 @@ class SantriController
                 s.email
                 {$ugtExcelSelect}
                 FROM santri s
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                 " . SantriLttqHelper::joinSql('s') . "
@@ -1823,11 +1788,11 @@ class SantriController
                     $statusWhere = [];
                     if ($statusValues !== []) {
                         $ph = implode(',', array_fill(0, count($statusValues), '?'));
-                        $statusWhere[] = "LOWER(TRIM(COALESCE(st.status_santri, ''))) IN ($ph)";
+                        $statusWhere[] = "LOWER(TRIM(COALESCE(st.status_santri, s.status_santri, ''))) IN ($ph)";
                         foreach ($statusValues as $sv) $bind[] = $sv;
                     }
                     if ($includeEmptyStatus) {
-                        $statusWhere[] = "TRIM(COALESCE(st.status_santri, '')) = ''";
+                        $statusWhere[] = "TRIM(COALESCE(st.status_santri, s.status_santri, '')) = ''";
                     }
                     if ($statusWhere !== []) {
                         $where[] = '(' . implode(' OR ', $statusWhere) . ')';
@@ -1847,11 +1812,11 @@ class SantriController
                     $kategoriWhere = [];
                     if ($kategoriValues !== []) {
                         $ph = implode(',', array_fill(0, count($kategoriValues), '?'));
-                        $kategoriWhere[] = "TRIM(COALESCE(st.kategori, d.kategori, '')) IN ($ph)";
+                        $kategoriWhere[] = "TRIM(COALESCE(d.kategori, '')) IN ($ph)";
                         foreach ($kategoriValues as $kv) $bind[] = $kv;
                     }
                     if ($includeEmptyKategori) {
-                        $kategoriWhere[] = "TRIM(COALESCE(st.kategori, d.kategori, '')) = ''";
+                        $kategoriWhere[] = "TRIM(COALESCE(d.kategori, '')) = ''";
                     }
                     if ($kategoriWhere !== []) {
                         $where[] = '(' . implode(' OR ', $kategoriWhere) . ')';
@@ -2118,7 +2083,7 @@ class SantriController
                 return $this->jsonResponse($response, ['success' => false, 'message' => 'id_lttq_tingkatan wajib', 'data' => []], 400);
             }
             $statusJoin = SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss');
-            $sql = "SELECT s.id, s.nis, s.nama, COALESCE(st.status_santri, '') AS status_santri,
+            $sql = "SELECT s.id, s.nis, s.nama, COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
                 s.id_lttq_tingkatan, lt.tingkatan, lt.kelompok
                 FROM santri s
                 {$statusJoin}

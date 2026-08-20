@@ -63,8 +63,8 @@ function GenerateTaUwabaOffcanvas({
         const santri = targets[i]
         setProgress({ current: i + 1, total: targets.length, name: santri.nama || santri.id })
         const payload = buildLengkapiPayloadFromRow(santri, uwabaPrices)
-        if (!payload.kategori) {
-          fails.push(`${santri.nama} (${santri.nis ?? santri.id}): kategori kosong`)
+        if (!payload.status_santri) {
+          fails.push(`${santri.nama} (${santri.nis ?? santri.id}): status santri kosong`)
           continue
         }
         try {

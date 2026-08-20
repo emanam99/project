@@ -72,9 +72,30 @@ if (!function_exists('cors_origin_is_mdtw_my_id')) {
     }
 }
 
+// CORS: staging alutsmani.my.id (ebeddien.alutsmani.my.id, api.alutsmani.my.id, dll.)
+if (!function_exists('cors_origin_is_alutsmani_my_id')) {
+    function cors_origin_is_alutsmani_my_id($origin) {
+        if (!is_string($origin) || $origin === '') {
+            return false;
+        }
+        $origin = trim($origin);
+        if ($origin === '') {
+            return false;
+        }
+        $host = parse_url($origin, PHP_URL_HOST);
+        if ($host === false || $host === null || $host === '') {
+            return false;
+        }
+        $host = strtolower($host);
+        return ($host === 'alutsmani.my.id' || (strlen($host) > 16 && substr($host, -16) === '.alutsmani.my.id'));
+    }
+}
+
 if (!function_exists('cors_origin_is_trusted')) {
     function cors_origin_is_trusted($origin) {
-        return cors_origin_is_alutsmani_id($origin) || cors_origin_is_mdtw_my_id($origin);
+        return cors_origin_is_alutsmani_id($origin)
+            || cors_origin_is_alutsmani_my_id($origin)
+            || cors_origin_is_mdtw_my_id($origin);
     }
 }
 
@@ -144,10 +165,15 @@ if (!function_exists('resolve_mybeddian_app_url_default')) {
         $uploadsFolder = trim((string) env('UPLOADS_FOLDER', 'uploads'), '/\\');
         $apiPublic = (string) env('API_PUBLIC_URL', '');
         $appUrl = (string) env('APP_URL', '');
-        $isStaging = $uploadsFolder === 'uploads2'
+        $isStagingMyId = stripos($apiPublic, 'alutsmani.my.id') !== false
+            || stripos($appUrl, 'alutsmani.my.id') !== false;
+        $isStagingLegacy = $uploadsFolder === 'uploads2'
             || stripos($apiPublic, 'api2.') !== false
             || preg_match('#https?://[a-z0-9-]*2\.alutsmani\.(id|my\.id)#i', $appUrl) === 1;
-        if ($isStaging) {
+        if ($isStagingMyId) {
+            return 'https://mybeddien.alutsmani.my.id';
+        }
+        if ($isStagingLegacy) {
             return 'https://mybeddien2.alutsmani.id';
         }
         $appEnv = strtolower((string) env('APP_ENV', ''));
@@ -161,7 +187,7 @@ if (!function_exists('resolve_mybeddian_app_url_default')) {
 
 return [
     // Versi backend (API) saat ini — dipakai endpoint GET /api/version dan tampilan frontend (uwaba BACKEND_VERSION)
-    'api_version' => '2.13.79',
+    'api_version' => '2.13.85',
     /** Chat user-to-user (centang baca, edit window, pin, undangan) */
     'chat' => [
         'edit_window_minutes' => max(1, (int) env('CHAT_EDIT_WINDOW_MINUTES', 15)),
@@ -263,7 +289,7 @@ return [
         // Sebelumnya nilai ini ada di VITE_LIVE_ADMIN_SECRET yang ikut ke bundle frontend → siapa pun bisa baca.
         'admin_secret' => (string) env('LIVE_ADMIN_SECRET', ''),
     ],
-    // Base URL API ini (untuk webhook WatZap). Staging: https://api2.alutsmani.id, production: https://api.alutsmani.id.
+    // Base URL API ini (untuk webhook WatZap). Staging: https://api.alutsmani.my.id, production: https://api.alutsmani.id.
     // Di .env set API_PUBLIC_URL; atau WATZAP_WEBHOOK_URL (full URL) untuk override.
     'api_public_url' => rtrim((string) env('API_PUBLIC_URL', ''), '/'),
     // Base URL aplikasi FRONTEND eBeddien (dulu UWABA), bukan backend. Link WA (setup akun / ubah password).

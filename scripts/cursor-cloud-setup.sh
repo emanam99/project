@@ -4,10 +4,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-API_URL="${CURSOR_STAGING_API_URL:-https://api2.alutsmani.id/api}"
+API_URL="${CURSOR_STAGING_API_URL:-https://api.alutsmani.my.id/api}"
 GAMBAR_BASE="${CURSOR_STAGING_GAMBAR_URL:-https://gambar.alutsmani.id}"
-EBEDDIEN_URL="${CURSOR_STAGING_EBEDDIEN_URL:-https://ebeddien2.alutsmani.id}"
-MYBEDDIEN_URL="${CURSOR_STAGING_MYBEDDIEN_URL:-https://mybeddien2.alutsmani.id}"
+EBEDDIEN_URL="${CURSOR_STAGING_EBEDDIEN_URL:-https://ebeddien.alutsmani.my.id}"
+MYBEDDIEN_URL="${CURSOR_STAGING_MYBEDDIEN_URL:-https://mybeddien.alutsmani.my.id}"
 
 write_env() {
   local dest="$1"

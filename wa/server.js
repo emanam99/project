@@ -62,7 +62,7 @@ import {
 const app = express();
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5175';
-/** Izinkan origin: localhost, LAN privat (Vite dari IP 192.168.x), atau *.alutsmani.id */
+/** Izinkan origin: localhost, LAN privat (Vite dari IP 192.168.x), *.alutsmani.id, atau *.alutsmani.my.id */
 function isAllowedOrigin(origin) {
   if (!origin || typeof origin !== 'string') return false;
   try {
@@ -70,6 +70,7 @@ function isAllowedOrigin(origin) {
     const host = u.hostname.toLowerCase();
     if (host === 'localhost' || host === '127.0.0.1') return true;
     if (host === 'alutsmani.id' || host.endsWith('.alutsmani.id')) return true;
+    if (host === 'alutsmani.my.id' || host.endsWith('.alutsmani.my.id')) return true;
     // Tanpa ini: buka ebeddien lewat http://192.168.x.x:5173 → fetch ke WA diblokir CORS ("Failed to fetch")
     if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
@@ -176,7 +177,7 @@ function warnMisconfiguredWebhookBase(apiBase) {
   ) {
     console.warn(
       '[WA] PERINGATAN: UWABA_API_BASE_URL mengarah ke domain frontend, bukan API PHP. '
-      + 'Production: https://api.alutsmani.id/api — Staging: https://api2.alutsmani.id/api'
+      + 'Production: https://api.alutsmani.id/api — Staging: https://api.alutsmani.my.id/api'
     );
   }
 }
@@ -214,7 +215,7 @@ const server = app.listen(PORT, () => {
   console.log(`[WA] UWABA_API_BASE_URL: ${uwabaBase || '(tidak di-set — pesan masuk tidak akan diforward ke API)'}`);
   console.log(`[WA] Webhook pesan masuk: POST ${incomingUrl}`);
   warnMisconfiguredWebhookBase(uwabaBase);
-  console.log('[WA] CORS: *.alutsmani.id + localhost');
+  console.log('[WA] CORS: *.alutsmani.id + *.alutsmani.my.id + localhost');
   initWaOnStart();
   startWaWatchdog();
   if (incomingUrl && incomingUrl !== '(belum di-set)') {

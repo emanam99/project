@@ -708,7 +708,7 @@ class RateLimitMiddleware implements MiddlewareInterface
 
     private function isTrustedCorsOrigin(string $origin): bool
     {
-        if (cors_origin_is_alutsmani_id($origin)) {
+        if (function_exists('cors_origin_is_trusted') ? cors_origin_is_trusted($origin) : cors_origin_is_alutsmani_id($origin)) {
             return true;
         }
         $host = strtolower((string) parse_url($origin, PHP_URL_HOST));

@@ -142,13 +142,15 @@ class BoyongController
             }
 
             $kategori = null;
-            $stmtKategori = $this->db->prepare('SELECT d.kategori FROM santri s LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar LEFT JOIN daerah d ON d.id = dk.id_daerah WHERE s.id = ? LIMIT 1');
+            $stmtKategori = $this->db->prepare('SELECT d.kategori, s.gender FROM santri s LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar LEFT JOIN daerah d ON d.id = dk.id_daerah WHERE s.id = ? LIMIT 1');
             $stmtKategori->execute([$idSantri]);
-            $kategori = $stmtKategori->fetchColumn() ?: null;
-            $idStatus = SantriStatusHelper::resolveStatusId($this->db, 'Boyong', $kategori ? (string) $kategori : '');
-            if ($idStatus) {
-                SantriStatusHelper::applyCurrentStatus($this->db, $idSantri, $idStatus, $idPengurus);
+            $rowKat = $stmtKategori->fetch(\PDO::FETCH_ASSOC) ?: [];
+            $kategori = trim((string) ($rowKat['kategori'] ?? ''));
+            if ($kategori === '') {
+                $kategori = SantriStatusHelper::kategoriFromGender($rowKat['gender'] ?? null) ?? 'Banin';
             }
+            // Wajib set status Boyong (fallback gender jika kamar/daerah kosong).
+            SantriStatusHelper::ensureCurrentStatus($this->db, $idSantri, 'Boyong', $kategori, $idPengurus);
 
             LiveSantriIndexNotifier::ping();
 
@@ -242,13 +244,14 @@ class BoyongController
             }
 
             $kategori = null;
-            $stmtKategori = $this->db->prepare('SELECT d.kategori FROM santri s LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar LEFT JOIN daerah d ON d.id = dk.id_daerah WHERE s.id = ? LIMIT 1');
+            $stmtKategori = $this->db->prepare('SELECT d.kategori, s.gender FROM santri s LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar LEFT JOIN daerah d ON d.id = dk.id_daerah WHERE s.id = ? LIMIT 1');
             $stmtKategori->execute([$idSantri]);
-            $kategori = $stmtKategori->fetchColumn() ?: null;
-            $idStatus = SantriStatusHelper::resolveStatusId($this->db, 'Boyong', $kategori ? (string) $kategori : '');
-            if ($idStatus) {
-                SantriStatusHelper::applyCurrentStatus($this->db, $idSantri, $idStatus, $idPengurus);
+            $rowKat = $stmtKategori->fetch(\PDO::FETCH_ASSOC) ?: [];
+            $kategori = trim((string) ($rowKat['kategori'] ?? ''));
+            if ($kategori === '') {
+                $kategori = SantriStatusHelper::kategoriFromGender($rowKat['gender'] ?? null) ?? 'Banin';
             }
+            SantriStatusHelper::ensureCurrentStatus($this->db, $idSantri, 'Boyong', $kategori, $idPengurus);
 
             LiveSantriIndexNotifier::ping();
 

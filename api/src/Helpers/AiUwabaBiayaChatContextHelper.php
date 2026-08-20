@@ -81,7 +81,7 @@ final class AiUwabaBiayaChatContextHelper
         $lines[] = '=== TARIF UWABA / SYAHRIAH BULANAN (sisipan server; publik; baca saja) ===';
         $lines[] = 'Sumber: uwaba-prices.json — sama dengan kalkulator di eBeddien (Input UWABA, Manage Data, rincian print).';
         $lines[] = 'Ini iuran bulanan per santri (10 bulan tahun ajaran hijriyah), BUKAN biaya pendaftaran PSB sekali daftar.';
-        $lines[] = 'Rumus per bulan: (harga dasar status+kategori) + tambahan diniyah + tambahan formal + tambahan LTTQ − diskon saudara di pesantren.';
+        $lines[] = 'Rumus per bulan: harga dasar per status + tambahan diniyah + tambahan formal + tambahan LTTQ − diskon saudara di pesantren.';
 
         $extracted = self::extractBiodataFromMessage($userMessage, $prices);
         if ($extracted !== []) {
@@ -95,7 +95,7 @@ final class AiUwabaBiayaChatContextHelper
                     $lines[] = '  · ' . self::fieldLabel($fk) . ': ' . $fv;
                 }
             }
-            $lines[] = '  · Harga dasar (status + kategori): ' . UwabaPricingHelper::formatRp($calc['harga_dasar']);
+            $lines[] = '  · Harga dasar (status): ' . UwabaPricingHelper::formatRp($calc['harga_dasar']);
             if ($calc['tambahan_diniyah'] > 0) {
                 $lines[] = '  · Tambahan diniyah: ' . UwabaPricingHelper::formatRp($calc['tambahan_diniyah']);
             }
@@ -110,8 +110,8 @@ final class AiUwabaBiayaChatContextHelper
                     . ' (dari ' . UwabaPricingHelper::formatRp($calc['sebelum_diskon']) . ')';
             }
             $lines[] = '  · Total wajib per bulan: ' . UwabaPricingHelper::formatRp($calc['total']);
-            if ($calc['harga_dasar'] === 0 && ($bd['status_santri'] === '' || $bd['kategori'] === '')) {
-                $lines[] = '  (Catatan: harga dasar butuh status santri + kategori — mis. Mukim Banin; tambahkan ke simulasi bila pengguna belum menyebut.)';
+            if ($calc['harga_dasar'] === 0 && $bd['status_santri'] === '') {
+                $lines[] = '  (Catatan: harga dasar butuh status santri — mis. Mukim; tambahkan ke simulasi bila pengguna belum menyebut. Jenjang ikut formal.)';
             }
             $lines[] = '  (Kunci diniyah/formal/LTTQ = label tingkat di UI, selaras lembaga rombel / pilihan biodata.)';
         }
@@ -120,18 +120,25 @@ final class AiUwabaBiayaChatContextHelper
         $lines[] = '--- Katalog tarif (semua opsi di UI) ---';
 
         $lines[] = '';
-        $lines[] = 'A) Harga dasar — Status santri × Kategori:';
+        $lines[] = 'A) Harga dasar — per status santri (flat):';
         if (isset($prices['status_santri']) && \is_array($prices['status_santri'])) {
-            foreach ($prices['status_santri'] as $status => $byKat) {
-                if (!\is_array($byKat)) {
+            foreach ($prices['status_santri'] as $status => $row) {
+                if (!\is_array($row)) {
                     continue;
                 }
-                foreach ($byKat as $kat => $row) {
-                    if (!\is_array($row)) {
+                if (isset($row['wajib'])) {
+                    $w = (int) $row['wajib'];
+                    $ket = trim((string) ($row['keterangan'] ?? ''));
+                    $lines[] = '  - ' . $status . ': ' . UwabaPricingHelper::formatRp($w)
+                        . ($ket !== '' ? ' — ' . $ket : '');
+                    continue;
+                }
+                foreach ($row as $kat => $sub) {
+                    if (!\is_array($sub)) {
                         continue;
                     }
-                    $w = (int) ($row['wajib'] ?? 0);
-                    $ket = trim((string) ($row['keterangan'] ?? ''));
+                    $w = (int) ($sub['wajib'] ?? 0);
+                    $ket = trim((string) ($sub['keterangan'] ?? ''));
                     $lines[] = '  - ' . $status . ' · ' . $kat . ': ' . UwabaPricingHelper::formatRp($w)
                         . ($ket !== '' ? ' — ' . $ket : '');
                 }
@@ -159,14 +166,14 @@ final class AiUwabaBiayaChatContextHelper
 
         $lines[] = '';
         $lines[] = 'Field yang memengaruhi hitungan (isi di biodata / filter UWABA eBeddien):';
-        $lines[] = '  status_santri, kategori (Banin/Banat/PAUD/…), diniyah, formal, lttq, saudara (jumlah saudara di pesantren).';
+        $lines[] = '  status_santri, diniyah, formal (jenjang), lttq, saudara (jumlah saudara di pesantren). Kategori Banin/Banat dari domisili/gender, bukan tarif status.';
         $lines[] = 'Bulan UWABA: 10 bulan hijriyah (Dzul Qo\'dah s.d. Sya\'ban) — nominal di atas per bulan.';
 
         $lines[] = '';
         $lines[] = 'Petunjuk untuk asisten:';
         $lines[] = '(1) Jawab nominal hanya dari katalog/simulasi di atas; jangan mengarang harga.';
         $lines[] = '(2) Jelaskan rincian (dasar + tambahan − diskon) bila pengguna tanya «berapa» untuk kombinasi tertentu.';
-        $lines[] = '(3) Bila status/kategori/diniyah/formal belum jelas, tanyakan sesuai opsi UI eBeddien.';
+        $lines[] = '(3) Bila status/diniyah/formal belum jelas, tanyakan sesuai opsi UI eBeddien.';
         $lines[] = '(4) Bedakan dengan biaya pendaftaran PSB (sekali daftar) — gunakan blok PSB terpisah bila pertanyaan tentang pendaftaran.';
         $lines[] = '(5) Bila pengguna minta detail per santri (riwayat bayar, tunggakan, bukti, status bulan tertentu), arahkan login ke Aplikasi wali MyBeddien: https://mybeddien.alutsmani.id';
         $lines[] = '(6) Informasi ini publik; akhiri [Pembayaran] atau [Umum] sesuai konteks.';
@@ -210,24 +217,11 @@ final class AiUwabaBiayaChatContextHelper
             }
         }
 
-        $kategoriCandidates = ['Banin', 'Banat', 'PAUD', 'SD', 'Kuliah'];
-        foreach ($kategoriCandidates as $kat) {
-            if (mb_strpos($lower, mb_strtolower($kat, 'UTF-8')) === false) {
-                continue;
-            }
-            $st = $out['status_santri'] ?? null;
-            if ($st !== null && isset($prices['status_santri'][$st][$kat])) {
+        // Kategori = Banin/Banat (domisili), bukan kunci harga nested status×jenjang.
+        foreach (['Banin', 'Banat'] as $kat) {
+            if (mb_strpos($lower, mb_strtolower($kat, 'UTF-8')) !== false) {
                 $out['kategori'] = $kat;
                 break;
-            }
-            if ($st === null) {
-                foreach (array_keys($prices['status_santri'] ?? []) as $tryStatus) {
-                    if (isset($prices['status_santri'][$tryStatus][$kat])) {
-                        $out['status_santri'] = $tryStatus;
-                        $out['kategori'] = $kat;
-                        break 2;
-                    }
-                }
             }
         }
 
@@ -283,16 +277,8 @@ final class AiUwabaBiayaChatContextHelper
             'saudara' => self::normalizeKey($extracted['saudara'] ?? '') ?: 'Tidak Ada',
         ];
 
-        if ($bd['status_santri'] !== '' && $bd['kategori'] === '') {
-            $firstKat = null;
-            if (isset($prices['status_santri'][$bd['status_santri']])
-                && \is_array($prices['status_santri'][$bd['status_santri']])) {
-                $keys = array_keys($prices['status_santri'][$bd['status_santri']]);
-                $firstKat = $keys[0] ?? null;
-            }
-            if ($firstKat !== null) {
-                $bd['kategori'] = (string) $firstKat;
-            }
+        if ($bd['status_santri'] !== '') {
+            // Flat harga: kategori tidak dipakai untuk tarif status
         }
 
         return $bd;

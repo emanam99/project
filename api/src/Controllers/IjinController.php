@@ -80,13 +80,16 @@ class IjinController
                         s.nama AS nama_santri,
                         s.nis AS nis,
                         s.gender AS gender,
-                        (
-                            SELECT st.status_santri
-                            FROM santri___status ss
-                            INNER JOIN status st ON st.id = ss.id_status
-                            WHERE ss.id_santri = s.id AND ss.sampai IS NULL
-                            ORDER BY ss.id DESC
-                            LIMIT 1
+                        COALESCE(
+                            (
+                                SELECT ss.status_santri
+                                FROM santri___status ss
+                                WHERE ss.id_santri = s.id AND ss.sampai IS NULL
+                                ORDER BY ss.id DESC
+                                LIMIT 1
+                            ),
+                            s.status_santri,
+                            \'\'
                         ) AS status_santri,
                         d.daerah AS daerah,
                         dk.kamar AS kamar,
@@ -211,26 +214,18 @@ class IjinController
 
             $stmt = $this->db->prepare(
                 'SELECT s.id, s.nis, s.nama, s.gender,
-                        (
-                            SELECT st.status_santri
-                            FROM santri___status ss
-                            INNER JOIN status st ON st.id = ss.id_status
-                            WHERE ss.id_santri = s.id AND ss.sampai IS NULL
-                            ORDER BY ss.id DESC
-                            LIMIT 1
-                        ) AS status_santri,
                         COALESCE(
                             (
-                                SELECT st.kategori
+                                SELECT ss.status_santri
                                 FROM santri___status ss
-                                INNER JOIN status st ON st.id = ss.id_status
                                 WHERE ss.id_santri = s.id AND ss.sampai IS NULL
                                 ORDER BY ss.id DESC
                                 LIMIT 1
                             ),
-                            d.kategori,
+                            s.status_santri,
                             \'\'
-                        ) AS kategori,
+                        ) AS status_santri,
+                        COALESCE(d.kategori, \'\') AS kategori,
                         d.daerah AS daerah,
                         dk.kamar AS kamar,
                         ld.nama AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah,

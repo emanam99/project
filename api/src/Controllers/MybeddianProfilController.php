@@ -271,8 +271,8 @@ class MybeddianProfilController
                 s.no_telpon, s.email, s.riwayat_sakit, s.ukuran_baju, s.kip, s.pkh, s.kks,
                 s.status_nikah, s.pekerjaan, s.no_wa_santri" .
                 ($hasNoTelponWali ? ", s.no_telpon_wali" : "") . ",
-                s.status_pendaftar, s.status_murid, COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
+                s.status_pendaftar, s.status_murid, COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
                 s.id_diniyah, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
                 s.id_formal, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
                 s.id_lttq_tingkatan,
@@ -1129,8 +1129,8 @@ class MybeddianProfilController
             $kamarAktif = null;
             $sqlAktif = 'SELECT s.id_kamar, d.daerah, dk.kamar,
                     CONCAT(d.daerah, \'.\', dk.kamar) AS daerah_kamar,
-                    COALESCE(st.status_santri, \'\') AS status_santri,
-                    COALESCE(st.kategori, d.kategori, \'\') AS kategori
+                    COALESCE(st.status_santri, s.status_santri, \'\') AS status_santri,
+                    COALESCE(d.kategori, \'\') AS kategori
                 FROM santri s
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
@@ -1146,8 +1146,8 @@ class MybeddianProfilController
             $riwayatKamar = [];
             if ($this->tableExistsMybeddian('santri___kamar')) {
                 $sqlKamar = "SELECT sk.id, sk.id_kamar, sk.id_santri, sk.tahun_ajaran, sk.tanggal_dibuat,
-                        COALESCE(st.status_santri, '') AS status_santri,
-                        COALESCE(st.kategori, d.kategori, '') AS kategori,
+                        COALESCE(ss.status_santri, '') AS status_santri,
+                        COALESCE(d.kategori, '') AS kategori,
                         d.daerah, dk.kamar, CONCAT(d.daerah, '.', dk.kamar) AS daerah_kamar
                     FROM santri___kamar sk
                     LEFT JOIN santri___status ss ON ss.id = (
@@ -1159,7 +1159,6 @@ class MybeddianProfilController
                         ORDER BY ss2.dari DESC, ss2.id DESC
                         LIMIT 1
                     )
-                    LEFT JOIN status st ON st.id = ss.id_status
                     JOIN daerah___kamar dk ON dk.id = sk.id_kamar
                     JOIN daerah d ON d.id = dk.id_daerah
                     WHERE sk.id_santri = ?
@@ -1172,10 +1171,13 @@ class MybeddianProfilController
             $riwayatStatus = [];
             if ($this->tableExistsMybeddian('santri___status')) {
                 $sqlStatus = 'SELECT ss.id, ss.id_santri, ss.dari, ss.sampai, ss.tanggal_dibuat,
-                        st.status_santri, st.kategori,
+                        ss.status_santri,
+                        COALESCE(d.kategori, \'\') AS kategori,
                         CASE WHEN ss.sampai IS NULL THEN 1 ELSE 0 END AS is_aktif
                     FROM santri___status ss
-                    INNER JOIN status st ON st.id = ss.id_status
+                    INNER JOIN santri s ON s.id = ss.id_santri
+                    LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                    LEFT JOIN daerah d ON d.id = dk.id_daerah
                     WHERE ss.id_santri = ?
                     ORDER BY ss.dari DESC, ss.id DESC';
                 $stmtStatus = $this->db->prepare($sqlStatus);

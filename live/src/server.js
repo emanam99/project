@@ -12,7 +12,7 @@ import { authenticateSocket } from './auth.js';
 const app = express();
 const httpServer = createServer(app);
 
-/** Izinkan origin dev (localhost, LAN) + *.alutsmani.id — selaras wa/server.js */
+/** Izinkan origin dev (localhost, LAN) + *.alutsmani.id + *.alutsmani.my.id — selaras wa/server.js */
 function isAllowedDevOrigin(origin) {
   if (!origin || typeof origin !== 'string') return false;
   try {
@@ -20,6 +20,7 @@ function isAllowedDevOrigin(origin) {
     const host = u.hostname.toLowerCase();
     if (host === 'localhost' || host === '127.0.0.1') return true;
     if (host === 'alutsmani.id' || host.endsWith('.alutsmani.id')) return true;
+    if (host === 'alutsmani.my.id' || host.endsWith('.alutsmani.my.id')) return true;
     if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;

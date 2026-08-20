@@ -101,21 +101,16 @@ class PendaftaranController
     }
 
     /**
-     * GET /api/pendaftaran/kategori-options - Daftar kategori dari tabel status (distinct).
-     * Opsional filter ?status_santri=... untuk menyesuaikan dropdown berdasarkan status yang dipilih.
+     * GET /api/pendaftaran/kategori-options - Daftar kategori Banin/Banat dari daerah (distinct).
+     * Query ?status_santri=... opsional (no-op; master pasangan status×kategori sudah tidak dipakai).
      */
     public function getKategoriOptions(Request $request, Response $response): Response
     {
         try {
             $params = $request->getQueryParams();
-            $statusSantri = isset($params['status_santri']) ? trim((string) $params['status_santri']) : '';
 
-            $sql = "SELECT DISTINCT kategori FROM status WHERE kategori IS NOT NULL AND TRIM(kategori) <> ''";
+            $sql = "SELECT DISTINCT kategori FROM daerah WHERE kategori IS NOT NULL AND TRIM(kategori) <> ''";
             $bind = [];
-            if ($statusSantri !== '') {
-                $sql .= " AND status_santri = ?";
-                $bind[] = $statusSantri;
-            }
             $sql .= " ORDER BY kategori";
 
             $stmt = $this->db->prepare($sql);
@@ -1101,6 +1096,14 @@ class PendaftaranController
                     throw new \Exception('Gagal mendapatkan ID santri dari database.');
                 }
 
+                // Status santri wajib selalu terisi (default Mukim + Banin/Banat dari gender).
+                SantriStatusHelper::ensureCurrentStatus(
+                    $this->db,
+                    $newId,
+                    'Mukim',
+                    SantriStatusHelper::kategoriFromGender($genderNormalized)
+                );
+
                 $this->db->commit();
 
                 LiveSantriIndexNotifier::ping();
@@ -1716,6 +1719,13 @@ class PendaftaranController
                     $this->appendSantriRombelRiwayatIfNeeded($id, $input, $request);
                     $this->appendSantriKamarRiwayatIfNeeded($id, $input, $request, null);
                     $this->applySantriStatusIfNeeded($id, $input, $request);
+                    // Jaring pengaman: santri baru wajib punya status aktif.
+                    SantriStatusHelper::ensureCurrentStatus(
+                        $this->db,
+                        $id,
+                        isset($input['status_santri']) ? trim((string) $input['status_santri']) : 'Mukim',
+                        isset($input['kategori']) ? trim((string) $input['kategori']) : SantriStatusHelper::kategoriFromGender($genderNormalized ?? null)
+                    );
                     
                     $this->db->commit();
 
@@ -1960,70 +1970,28 @@ class PendaftaranController
 
     private function applySantriStatusIfNeeded(int $idSantri, array $input, Request $request): void
     {
-        if (!array_key_exists('status_santri', $input)) {
-            return;
-        }
-        $statusSantri = trim((string) ($input['status_santri'] ?? ''));
-        if ($statusSantri === '') {
-            return;
-        }
-
-        // Resolve kategori dengan fallback berlapis agar status_santri tetap bisa di-update
-        // walau pendaftar baru belum di-assign kamar (struktur baru: santri___status butuh
-        // pasangan status_santri + kategori untuk resolve id_status).
-        $idKamar = isset($input['id_kamar']) && $input['id_kamar'] !== '' && $input['id_kamar'] !== null ? (int) $input['id_kamar'] : null;
-        $kategori = $idKamar ? SantriDomisiliHelper::kategoriForKamarId($this->db, $idKamar) : null;
-
-        if ($kategori === null || trim((string) $kategori) === '') {
-            $kategoriInput = trim((string) ($input['kategori'] ?? ''));
-            if ($kategoriInput !== '') {
-                $kategori = $kategoriInput;
-            }
-        }
-
-        if ($kategori === null || trim((string) $kategori) === '') {
-            $labels = SantriStatusHelper::currentStatusLabels($this->db, $idSantri);
-            $existing = trim((string) ($labels['kategori'] ?? ''));
-            if ($existing !== '') {
-                $kategori = $existing;
-            }
-        }
-
-        if ($kategori === null || trim((string) $kategori) === '') {
-            $gender = trim((string) ($input['gender'] ?? ''));
-            if ($gender === '') {
-                try {
-                    $stmt = $this->db->prepare('SELECT gender FROM santri WHERE id = ? LIMIT 1');
-                    $stmt->execute([$idSantri]);
-                    $gender = trim((string) ($stmt->fetchColumn() ?: ''));
-                } catch (\Throwable $e) {
-                    $gender = '';
-                }
-            }
-            if ($gender !== '') {
-                $first = strtoupper(substr($gender, 0, 1));
-                if ($first === 'L') {
-                    $kategori = 'Banin';
-                } elseif ($first === 'P') {
-                    $kategori = 'Banat';
-                }
-            }
-        }
-
-        if ($kategori === null || trim((string) $kategori) === '') {
-            return;
-        }
-
-        $idStatus = SantriStatusHelper::resolveStatusId($this->db, $statusSantri, (string) $kategori);
-        if (!$idStatus) {
-            return;
-        }
         $user = $request->getAttribute('user');
         $idPengurus = isset($input['id_pengurus']) && $input['id_pengurus'] !== '' ? (int) $input['id_pengurus'] : null;
         if (!$idPengurus && is_array($user)) {
             $idPengurus = isset($user['id_pengurus']) ? (int) $user['id_pengurus'] : null;
         }
-        SantriStatusHelper::applyCurrentStatus($this->db, $idSantri, $idStatus, $idPengurus ?: null);
+
+        if (array_key_exists('status_santri', $input)) {
+            $statusSantri = trim((string) ($input['status_santri'] ?? ''));
+            if ($statusSantri === '') {
+                throw new \InvalidArgumentException('Status santri wajib diisi');
+            }
+            $normalized = SantriStatusHelper::normalize($statusSantri);
+            if ($normalized === null) {
+                throw new \InvalidArgumentException(
+                    'Status santri tidak valid. Pilih: ' . implode(', ', SantriStatusHelper::ALLOWED)
+                );
+            }
+            SantriStatusHelper::applyCurrentStatus($this->db, $idSantri, $normalized, $idPengurus ?: null);
+            return;
+        }
+
+        SantriStatusHelper::ensureCurrentStatus($this->db, $idSantri, null, null, $idPengurus ?: null);
     }
 
     /**
@@ -3553,8 +3521,8 @@ class PendaftaranController
                 s.sekolah, s.nama_sekolah, s.alamat_sekolah, s.lulus_sekolah, s.npsn, s.nsm,
                 s.no_telpon, s.email, s.riwayat_sakit, s.ukuran_baju, s.kip, s.pkh, s.kks,
                 s.status_nikah, s.pekerjaan, s.no_wa_santri,
-                s.status_pendaftar, s.status_murid, COALESCE(st.status_santri, '') AS status_santri,
-                COALESCE(st.kategori, d.kategori, '') AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
+                s.status_pendaftar, s.status_murid, COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                COALESCE(d.kategori, '') AS kategori, d.daerah, dk.kamar, dk.id_daerah, s.id_kamar,
                 s.id_diniyah, rd.lembaga_id AS diniyah, rd.kelas AS kelas_diniyah, rd.kel AS kel_diniyah, s.nim_diniyah,
                 s.id_formal, rf.lembaga_id AS formal, rf.kelas AS kelas_formal, rf.kel AS kel_formal, s.nim_formal,
                 " . \App\Helpers\SantriLttqHelper::selectAliasSql() . "
@@ -3564,8 +3532,7 @@ class PendaftaranController
                 " . \App\Helpers\SantriLttqHelper::joinSql('s') . "
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                 LEFT JOIN daerah d ON d.id = dk.id_daerah
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 WHERE s.id = ? LIMIT 1";
             $stmt = $this->db->prepare($sql);
             $stmt->execute([$resolvedId]);
@@ -8225,7 +8192,7 @@ class PendaftaranController
                         s.status_nikah,
                         s.pekerjaan,
                         s.no_wa_santri,
-                        COALESCE(st.kategori, d.kategori, '') AS kategori,
+                        COALESCE(d.kategori, '') AS kategori,
                         s.id_kamar,
                         dk.id_daerah,
                         d.daerah,
@@ -8251,8 +8218,7 @@ class PendaftaranController
                     " . \App\Helpers\SantriLttqHelper::joinSql('s') . "
                     LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
                     LEFT JOIN daerah d ON d.id = dk.id_daerah
-                    LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                    LEFT JOIN status st ON st.id = ss.id_status
+                    " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                     LEFT JOIN pengurus pv ON r.id_pengurus_verifikasi = pv.id
                     LEFT JOIN pengurus pa ON r.id_pengurus_aktif = pa.id
                     " . $this->sqlJoinPsbTesForRegistrasi('r') . "

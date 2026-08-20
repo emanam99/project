@@ -325,7 +325,7 @@ register_shutdown_function(function() {
         $allowAll = $corsConfig['cors']['allow_all'];
         
         header('Content-Type: application/json; charset=utf-8');
-        if ($allowAll || cors_origin_is_alutsmani_id($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false) {
+        if ($allowAll || cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false) {
             if ($origin && $origin !== '*') {
                 header('Access-Control-Allow-Origin: ' . $origin);
                 header('Access-Control-Allow-Credentials: true');
@@ -436,7 +436,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
-            } elseif ($origin && (cors_origin_is_alutsmani_id($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false)) {
+            } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false)) {
             $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -534,7 +534,7 @@ $errorMiddleware->setErrorHandler(
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source, X-Public-Payment-Token, X-Client-App')
                     ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
             }
-        } elseif ($origin && (in_array($origin, $allowedOrigins, true) || cors_origin_is_alutsmani_id($origin))) {
+        } elseif ($origin && (in_array($origin, $allowedOrigins, true) || cors_origin_is_trusted($origin))) {
             // Jika origin diizinkan (list atau *.alutsmani.id), gunakan origin tersebut dengan credentials
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
@@ -543,7 +543,7 @@ $errorMiddleware->setErrorHandler(
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
         } else {
             // Fallback: untuk development (localhost) dan production (*.alutsmani.id)
-            if (cors_origin_is_alutsmani_id($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false) {
+            if (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin ?: '*')
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source, X-Public-Payment-Token, X-Client-App')
@@ -594,7 +594,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
-            } elseif ($origin && (cors_origin_is_alutsmani_id($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+            } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -636,7 +636,7 @@ $errorMiddleware->setErrorHandler(
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
-        } elseif ($origin && (cors_origin_is_alutsmani_id($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+        } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -673,7 +673,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
-            } elseif ($origin && (cors_origin_is_alutsmani_id($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+            } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -723,7 +723,7 @@ $errorMiddleware->setErrorHandler(
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
-        } elseif ($origin && (cors_origin_is_alutsmani_id($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+        } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
             $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');

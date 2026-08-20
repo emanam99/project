@@ -6,6 +6,7 @@ import {
   buildUniqueWajibJsonList,
   mapUwabaDbRowsToWajibListInput
 } from '../../../utils/uwabaCalculator'
+import { SANTRI_STATUS_OPTIONS } from '../../../constants/santriStatus'
 import { useNotification } from '../../../contexts/NotificationContext'
 
 const offcanvasTransition = { type: 'tween', duration: 0.35, ease: [0.25, 0.1, 0.25, 1] }
@@ -72,7 +73,7 @@ function UwabaEditOffcanvas({ isOpen, onClose, bulanIndex, bulanData, prices, on
   }, [wajibListRawRows])
 
   const statusSantriRenderedOptions = useMemo(() => {
-    const base = statusSantriOptions.length > 0 ? statusSantriOptions : ['Mukim']
+    const base = statusSantriOptions.length > 0 ? statusSantriOptions : SANTRI_STATUS_OPTIONS
     const current = String(formData.status_santri || '').trim()
     const merged = current && !base.includes(current) ? [current, ...base] : base
     return [...new Set(merged)]
@@ -238,7 +239,9 @@ function UwabaEditOffcanvas({ isOpen, onClose, bulanIndex, bulanData, prices, on
     const wajib = calculateWajibFromBiodata(biodata, prices)
     setCalculatedWajib(wajib)
     let hargaDasar = 0
-    if (formData.status_santri && formData.kategori && prices.status_santri?.[formData.status_santri]?.[formData.kategori]) {
+    if (formData.status_santri && prices.status_santri?.[formData.status_santri]?.wajib != null) {
+      hargaDasar = prices.status_santri[formData.status_santri].wajib || 0
+    } else if (formData.status_santri && formData.kategori && prices.status_santri?.[formData.status_santri]?.[formData.kategori]) {
       hargaDasar = prices.status_santri[formData.status_santri][formData.kategori].wajib || 0
     }
     const hargaDiniyah = prices.diniyah?.[diniyahPriceKey]?.wajib || 0
@@ -260,7 +263,7 @@ function UwabaEditOffcanvas({ isOpen, onClose, bulanIndex, bulanData, prices, on
       diskon_saudara: diskonSaudara,
       diskon_saudara_type: diskonSaudaraType
     })
-    if (formData.status_santri && formData.kategori) setFormData(prev => ({ ...prev, wajib }))
+    if (formData.status_santri) setFormData(prev => ({ ...prev, wajib }))
   }, [formData.status_santri, formData.kategori, diniyahPriceKey, formalPriceKey, formData.lttq, formData.saudara, prices, wajibLockedFromList])
 
   const persistUwaba = useCallback(
@@ -274,8 +277,8 @@ function UwabaEditOffcanvas({ isOpen, onClose, bulanIndex, bulanData, prices, on
       hargaDetail: hd,
       wajibSave
     }) => {
-      if (!status_santri || !kategori) {
-        showNotification('Status Santri dan Kategori harus diisi', 'error')
+      if (!status_santri) {
+        showNotification('Status Santri harus diisi', 'error')
         return false
       }
       const jsonData = {
@@ -543,7 +546,7 @@ function UwabaEditOffcanvas({ isOpen, onClose, bulanIndex, bulanData, prices, on
                   value={formData.status_santri}
                   onChange={(e) => {
                     clearListWajibLock()
-                    setFormData(prev => ({ ...prev, status_santri: e.target.value, kategori: '' }))
+                    setFormData(prev => ({ ...prev, status_santri: e.target.value }))
                   }}
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 >
@@ -554,7 +557,7 @@ function UwabaEditOffcanvas({ isOpen, onClose, bulanIndex, bulanData, prices, on
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategori</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategori (domisili)</label>
                 <select
                   value={formData.kategori}
                   onChange={(e) => {
@@ -563,15 +566,10 @@ function UwabaEditOffcanvas({ isOpen, onClose, bulanIndex, bulanData, prices, on
                   }}
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 >
-                  <option value="">Pilih Kategori</option>
-                  {kategoriOptions.map(opt => {
-                    const harga = prices?.status_santri?.[formData.status_santri]?.[opt]?.wajib || 0
-                    return (
-                      <option key={opt} value={opt}>
-                        {opt}{harga > 0 ? ` - Rp ${harga.toLocaleString('id-ID')}` : ''}
-                      </option>
-                    )
-                  })}
+                  <option value="">Opsional</option>
+                  {kategoriOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
                 </select>
               </div>
 

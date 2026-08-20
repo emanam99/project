@@ -1496,6 +1496,11 @@ function BiodataPendaftaran({
       }
     }
 
+    if (!String(formData.status_santri || '').trim()) {
+      showNotification('Status santri wajib diisi', 'error')
+      return
+    }
+
     setIsSaving(true)
     try {
       // Get user info from localStorage

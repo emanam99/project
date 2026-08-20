@@ -1,12 +1,12 @@
 /**
  * Audit staging eBeddien — butuh env (jangan commit kredensial):
- *   STAGING_USER, STAGING_PASS, EBEDDIEN_BASE_URL=https://ebeddien2.alutsmani.id
+ *   STAGING_USER, STAGING_PASS, EBEDDIEN_BASE_URL=https://ebeddien.alutsmani.my.id
  */
 const { test, expect } = require('@playwright/test')
 const fs = require('fs')
 const path = require('path')
 
-const STAGING_BASE = process.env.EBEDDIEN_BASE_URL || 'https://ebeddien2.alutsmani.id'
+const STAGING_BASE = process.env.EBEDDIEN_BASE_URL || 'https://ebeddien.alutsmani.my.id'
 const STAGING_USER = process.env.STAGING_USER || ''
 const STAGING_PASS = process.env.STAGING_PASS || ''
 
@@ -126,7 +126,7 @@ test.describe('Staging eBeddien — audit', () => {
     // Public santri PII (staging API)
     const publicApi =
       process.env.API_BASE_URL ||
-      (apiBase ? apiBase.replace(/\/api\/?$/, '/api/public') : 'https://api2.alutsmani.id/api/public')
+      (apiBase ? apiBase.replace(/\/api\/?$/, '/api/public') : 'https://api.alutsmani.my.id/api/public')
     const pubRes = await request.get(`${publicApi}/santri?id=1`)
     if (pubRes.status() < 500) {
       const body = await pubRes.json().catch(() => ({}))
@@ -208,7 +208,7 @@ test.describe('Staging eBeddien — audit', () => {
     expect(token).toBeTruthy()
 
     if (!apiBase) {
-      apiBase = process.env.API_BASE_URL?.replace(/\/public\/?$/, '') || 'https://api2.alutsmani.id/api'
+      apiBase = process.env.API_BASE_URL?.replace(/\/public\/?$/, '') || 'https://api.alutsmani.my.id/api'
     }
 
     const menuRes = await request.get(`${apiBase}/v2/me/fitur-menu?app_key=ebeddien&types=menu`, {

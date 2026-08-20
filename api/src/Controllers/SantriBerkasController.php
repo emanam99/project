@@ -646,7 +646,7 @@ class SantriBerkasController
                 ->withHeader('ETag', $etag)
                 ->withHeader('Last-Modified', gmdate('D, d M Y H:i:s', $fileMtime) . ' GMT');
 
-            if ($origin && cors_origin_is_alutsmani_id($origin)) {
+            if ($origin && (function_exists('cors_origin_is_trusted') ? cors_origin_is_trusted($origin) : cors_origin_is_alutsmani_id($origin))) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')

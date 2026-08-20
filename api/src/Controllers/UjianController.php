@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\KalenderHelper;
+use App\Helpers\SantriStatusHelper;
 use App\Helpers\TextSanitizer;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -302,11 +303,9 @@ final class UjianController
             $ph = implode(',', array_fill(0, count($ids), '?'));
             $stmt = $this->db->prepare(
                 "SELECT s.id, s.nis, s.nama,
-                    COALESCE(st.status_santri, '') AS status_santri
+                    COALESCE(st.status_santri, s.status_santri, '') AS status_santri
                 FROM santri s
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                    AND ss.id = (SELECT MAX(ss2.id) FROM santri___status ss2 WHERE ss2.id_santri = s.id AND ss2.sampai IS NULL)
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 WHERE s.id IN ($ph) ORDER BY s.nama"
             );
             $stmt->execute($ids);

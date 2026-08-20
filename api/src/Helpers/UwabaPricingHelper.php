@@ -103,16 +103,26 @@ final class UwabaPricingHelper
         }
 
         $status = self::normalizeKey($biodata['status_santri'] ?? null);
-        $kat = self::normalizeKey($biodata['kategori'] ?? null);
         $dinKey = self::normalizeKey($biodata['diniyah'] ?? null);
         $forKey = self::normalizeKey($biodata['formal'] ?? null);
         $lttqKey = self::normalizeKey($biodata['lttq'] ?? null);
         $saudaraVal = self::normalizeKey($biodata['saudara'] ?? null);
 
+        // Harga dasar flat per status (tanpa kategori Banin/Banat); jenjang ikut formal.
         $hargaDasar = 0;
-        if ($status !== '' && $kat !== ''
-            && isset($prices['status_santri'][$status][$kat]['wajib'])) {
-            $hargaDasar = (int) $prices['status_santri'][$status][$kat]['wajib'];
+        if ($status !== '' && isset($prices['status_santri'][$status]['wajib'])) {
+            $hargaDasar = (int) $prices['status_santri'][$status]['wajib'];
+        } elseif ($status !== '') {
+            // BC JSON lama status[kategori].wajib — ambil nilai pertama jika ada
+            $node = $prices['status_santri'][$status] ?? null;
+            if (\is_array($node)) {
+                foreach ($node as $sub) {
+                    if (\is_array($sub) && isset($sub['wajib'])) {
+                        $hargaDasar = (int) $sub['wajib'];
+                        break;
+                    }
+                }
+            }
         }
 
         $tDin = self::addonWajib($prices, 'diniyah', $dinKey);

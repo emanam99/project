@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\RoleHelper;
+use App\Helpers\SantriStatusHelper;
 use App\Helpers\TextSanitizer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -93,7 +94,7 @@ class UgtGuruTugasTugasanController
     /** Pastikan santri berstatus Guru Tugas sebelum create tugasan. */
     private function assertSantriIsGuruTugas(int $idSantri): bool
     {
-        $st = $this->db->prepare('SELECT TRIM(LOWER(COALESCE(st.status_santri, \'\'))) AS s FROM santri s LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL LEFT JOIN status st ON st.id = ss.id_status WHERE s.id = ? LIMIT 1');
+        $st = $this->db->prepare('SELECT TRIM(LOWER(COALESCE(st.status_santri, s.status_santri, \'\'))) AS s FROM santri s ' . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . ' WHERE s.id = ? LIMIT 1');
         $st->execute([$idSantri]);
         $row = $st->fetch(\PDO::FETCH_ASSOC);
 
@@ -204,8 +205,8 @@ class UgtGuruTugasTugasanController
                     s.kabupaten,
                     s.provinsi,
                     s.kode_pos,
-                    COALESCE(st.status_santri, \'\') AS status_santri,
-                    COALESCE(st.kategori, d.kategori, \'\') AS kategori,
+                    COALESCE(st.status_santri, s.status_santri, \'\') AS status_santri,
+                    COALESCE(d.kategori, \'\') AS kategori,
                     d.daerah,
                     dk.kamar,
                     s.id_kamar,
@@ -238,8 +239,7 @@ class UgtGuruTugasTugasanController
                     GROUP BY t1.id_santri
                 ) pick
                 INNER JOIN santri s ON s.id = pick.id_santri
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                ' . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . '
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar

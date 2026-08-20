@@ -99,7 +99,10 @@ final class MeMybeddianController
         if ($host === 'ebeddien2.alutsmani.id' || $host === 'ebeddien2.alutsmani.my.id') {
             return 'https://mybeddien2.alutsmani.id';
         }
-        if ($host === 'ebeddien.alutsmani.id' || $host === 'ebeddien.alutsmani.my.id') {
+        if ($host === 'ebeddien.alutsmani.my.id') {
+            return 'https://mybeddien.alutsmani.my.id';
+        }
+        if ($host === 'ebeddien.alutsmani.id') {
             return 'https://mybeddien.alutsmani.id';
         }
 

@@ -1,6 +1,6 @@
 ﻿# Deploy ebeddien/daftar/mybeddien/nailul-murod ke Hostinger - pilih staging/production, pilih Frontend (ebeddien/daftar/mybeddien/nailul-murod)/API, lalu upload
 # Cara pakai: jalankan dari folder htdocs di PowerShell: .\deploy.ps1
-# - Frontend: pilih ebeddien, daftar, mybeddien, dan/atau nailul-murod â†’ build + upload dist ke ebeddien2/ebeddien, daftar2/daftar, mybeddien2/mybeddien, nailul-murod2/nailul-murod
+# - Frontend: pilih ebeddien, daftar, mybeddien, dan/atau nailul-murod → build + upload dist ke alutsmani.my.id (staging) atau alutsmani.id (production)
 # - API: upload isi folder api (production only)
 #
 # Non-interaktif (CI / agent): .\deploy.ps1 -Target production -Scope both -Frontend all
@@ -73,11 +73,11 @@ $MYBEDDIEN_TAR    = "mybeddien-dist.tar"
 $NAILUL_TAR       = "nailul-murod-dist.tar"
 $API_TAR          = "api-dist.tar"
 
-# --- Pilih target: Staging (ebeddien2/api2) atau Production (ebeddien/api) ---
+# --- Pilih target: Staging (alutsmani.my.id) atau Production (alutsmani.id) ---
 Write-Host ""
 Write-Host "  Pilih target deploy:" -ForegroundColor White
-Write-Host '    1) Staging   (ebeddien2 + api2.alutsmani.id)' -ForegroundColor Yellow
-Write-Host '    2) Production (ebeddien + api.alutsmani.id)' -ForegroundColor Green
+Write-Host '    1) Staging   (ebeddien.alutsmani.my.id + api.alutsmani.my.id)' -ForegroundColor Yellow
+Write-Host '    2) Production (ebeddien.alutsmani.id + api.alutsmani.id)' -ForegroundColor Green
 Write-Host ""
 $choice = Resolve-DeployChoice -Prompt '  Masukkan pilihan (1 atau 2)' -Valid @('1', '2') -Provided $Target
 
@@ -89,15 +89,15 @@ if (-not $isStaging -and $choice -ne "2") {
 # Staging & production
 $gambarBase = "https://gambar.alutsmani.id"
 if ($isStaging) {
-    $REMOTE_PATH           = "domains/alutsmani.id/public_html/ebeddien2"
-    $REMOTE_DAFTAR_PATH    = "domains/alutsmani.id/public_html/daftar2"
-    $REMOTE_MYBEDDIEN_PATH = "domains/alutsmani.id/public_html/mybeddien2"
-    $REMOTE_NAILUL_PATH    = "domains/alutsmani.id/public_html/nailul-murod2"
-    $REMOTE_API_PATH       = "domains/alutsmani.id/public_html/api2"
+    $REMOTE_PATH           = "domains/alutsmani.my.id/public_html/ebeddien"
+    $REMOTE_DAFTAR_PATH    = "domains/alutsmani.my.id/public_html/daftar"
+    $REMOTE_MYBEDDIEN_PATH = "domains/alutsmani.my.id/public_html/mybeddien"
+    $REMOTE_NAILUL_PATH    = "domains/alutsmani.my.id/public_html/nailul-murod"
+    $REMOTE_API_PATH       = "domains/alutsmani.my.id/public_html/api"
     $envLabel              = "staging"
-    $apiUrl                = "https://api2.alutsmani.id/api"
-    $ebeddienPublicUrl     = "https://ebeddien2.alutsmani.id"
-    $mybeddienPublicUrl    = "https://mybeddien2.alutsmani.id"
+    $apiUrl                = "https://api.alutsmani.my.id/api"
+    $ebeddienPublicUrl     = "https://ebeddien.alutsmani.my.id"
+    $mybeddienPublicUrl    = "https://mybeddien.alutsmani.my.id"
 } else {
     $REMOTE_PATH           = "domains/alutsmani.id/public_html/ebeddien"
     $REMOTE_DAFTAR_PATH    = "domains/alutsmani.id/public_html/daftar"
@@ -133,10 +133,10 @@ $doNailul    = $false
 if ($doFrontend) {
     Write-Host ""
     Write-Host "  Frontend mana?" -ForegroundColor White
-    Write-Host '    1) ebeddien saja  - build + upload ke ebeddien2/ebeddien' -ForegroundColor Cyan
-    Write-Host '    2) daftar saja    - build + upload ke daftar2/daftar' -ForegroundColor Yellow
-    Write-Host '    3) mybeddien saja - build + upload ke mybeddien2/mybeddien' -ForegroundColor Magenta
-    Write-Host '    4) nailul-murod saja - build + upload ke nailul-murod2/nailul-murod' -ForegroundColor Blue
+    Write-Host '    1) ebeddien saja  - build + upload ke ebeddien (staging: .my.id / production: .id)' -ForegroundColor Cyan
+    Write-Host '    2) daftar saja    - build + upload ke daftar (staging: .my.id / production: .id)' -ForegroundColor Yellow
+    Write-Host '    3) mybeddien saja - build + upload ke mybeddien (staging: .my.id / production: .id)' -ForegroundColor Magenta
+    Write-Host '    4) nailul-murod saja - build + upload ke nailul-murod (staging: .my.id / production: .id)' -ForegroundColor Blue
     Write-Host '    5) semuanya       - ebeddien, daftar, mybeddien, nailul-murod' -ForegroundColor Green
     Write-Host ""
     $front = Resolve-DeployChoice -Prompt '  Masukkan pilihan (1, 2, 3, 4, atau 5)' -Valid @('1', '2', '3', '4', '5') -Provided $Frontend
@@ -779,23 +779,23 @@ if ($doApi) {
 # --- Ringkasan ---
 Write-Host ""
 if ($doEbeddien) {
-    $url = if ($isStaging) { "https://ebeddien2.alutsmani.id" } else { "https://ebeddien.alutsmani.id" }
+    $url = if ($isStaging) { "https://ebeddien.alutsmani.my.id" } else { "https://ebeddien.alutsmani.id" }
     Write-Host "Frontend ebeddien:  $url" -ForegroundColor Green
 }
 if ($doDaftar) {
-    $url = if ($isStaging) { "https://daftar2.alutsmani.id" } else { "https://daftar.alutsmani.id" }
+    $url = if ($isStaging) { "https://daftar.alutsmani.my.id" } else { "https://daftar.alutsmani.id" }
     Write-Host "Frontend daftar:    $url" -ForegroundColor Green
 }
 if ($doMybeddien) {
-    $url = if ($isStaging) { "https://mybeddien2.alutsmani.id" } else { "https://mybeddien.alutsmani.id" }
+    $url = if ($isStaging) { "https://mybeddien.alutsmani.my.id" } else { "https://mybeddien.alutsmani.id" }
     Write-Host "Frontend mybeddien: $url" -ForegroundColor Green
 }
 if ($doNailul) {
-    $url = if ($isStaging) { "https://nailul-murod2.alutsmani.id" } else { "https://nailul-murod.alutsmani.id" }
+    $url = if ($isStaging) { "https://nailul-murod.alutsmani.my.id" } else { "https://nailul-murod.alutsmani.id" }
     Write-Host "Frontend nailul-murod: $url" -ForegroundColor Green
 }
 if ($doApi) {
-    $apiUrlBase = if ($isStaging) { "https://api2.alutsmani.id" } else { "https://api.alutsmani.id" }
+    $apiUrlBase = if ($isStaging) { "https://api.alutsmani.my.id" } else { "https://api.alutsmani.id" }
     Write-Host "API:                $apiUrlBase" -ForegroundColor Green
 }
 Write-Host "Deploy $envLabel selesai." -ForegroundColor Green

@@ -274,7 +274,7 @@ class UwabaController
             $tahun_ajaran = $queryParams['tahun_ajaran'] ?? date('Y');
             
             // Count total santri
-            $stmt1 = $this->db->prepare("SELECT COUNT(*) as total_santri FROM santri s LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL LEFT JOIN status st ON st.id = ss.id_status WHERE st.status_santri IS NOT NULL AND st.status_santri != ''");
+            $stmt1 = $this->db->prepare('SELECT COUNT(*) as total_santri FROM santri s ' . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . " WHERE TRIM(COALESCE(st.status_santri, s.status_santri, '')) <> ''");
             $stmt1->execute();
             $totalSantri = $stmt1->fetch(\PDO::FETCH_ASSOC)['total_santri'];
             
@@ -284,7 +284,7 @@ class UwabaController
             $santriWithUwaba = $stmt2->fetch(\PDO::FETCH_ASSOC)['santri_with_uwaba'];
             
             // Count santri without uwaba data
-            $stmt3 = $this->db->prepare("SELECT COUNT(*) as santri_without_uwaba FROM santri s LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL LEFT JOIN status st ON st.id = ss.id_status LEFT JOIN uwaba sy ON s.id = sy.id_santri AND sy.tahun_ajaran = ? AND sy.is_disabled = 0 WHERE sy.id IS NULL AND st.status_santri IS NOT NULL AND st.status_santri != ''");
+            $stmt3 = $this->db->prepare('SELECT COUNT(*) as santri_without_uwaba FROM santri s ' . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . ' LEFT JOIN uwaba sy ON s.id = sy.id_santri AND sy.tahun_ajaran = ? AND sy.is_disabled = 0 WHERE sy.id IS NULL AND TRIM(COALESCE(st.status_santri, s.status_santri, \'\')) <> \'\'');
             $stmt3->execute([$tahun_ajaran]);
             $santriWithoutUwaba = $stmt3->fetch(\PDO::FETCH_ASSOC)['santri_without_uwaba'];
             
@@ -315,28 +315,18 @@ class UwabaController
     public function getStatusSantriOptions(Request $request, Response $response): Response
     {
         try {
-            $stmt = $this->db->prepare("
-                SELECT DISTINCT status_santri
-                FROM status
-                WHERE status_santri IS NOT NULL
-                AND status_santri != ''
-                ORDER BY status_santri
-            ");
-            $stmt->execute();
-            $statusOptions = $stmt->fetchAll(\PDO::FETCH_COLUMN);
-            
             return $this->jsonResponse($response, [
                 'success' => true,
-                'data' => $statusOptions,
-                'message' => 'Status santri options berhasil diambil'
+                'data' => SantriStatusHelper::allowedList(),
+                'message' => 'Status santri options berhasil diambil',
             ], 200);
-            
         } catch (\Exception $e) {
-            error_log("Get status santri options error: " . $e->getMessage());
+            error_log('Get status santri options error: ' . $e->getMessage());
+
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => 'Gagal mengambil status santri options',
-                'data' => []
+                'data' => [],
             ], 500);
         }
     }
@@ -356,8 +346,8 @@ class UwabaController
                     s.nis,
                     s.nama as nama_santri,
                     s.nim_diniyah as nim,
-                    COALESCE(st.status_santri, '') AS status_santri,
-                    COALESCE(st.kategori, d.kategori, '') AS kategori,
+                    COALESCE(st.status_santri, s.status_santri, '') AS status_santri,
+                    COALESCE(d.kategori, '') AS kategori,
                     rd.lembaga_id AS diniyah,
                     rf.lembaga_id AS formal,
                     s.lttq,
@@ -383,8 +373,7 @@ class UwabaController
                         ELSE (sy.wajib - COALESCE(sy.nominal, 0))
                     END as kurang
                 FROM santri s
-                LEFT JOIN santri___status ss ON ss.id_santri = s.id AND ss.sampai IS NULL
-                LEFT JOIN status st ON st.id = ss.id_status
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
                 LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
                 LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                 LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
@@ -399,8 +388,7 @@ class UwabaController
                     WHERE tahun_ajaran = ?
                     GROUP BY id_santri
                 ) sh ON s.id = sh.id_santri
-                WHERE st.status_santri IS NOT NULL
-                AND st.status_santri != ''
+                WHERE TRIM(COALESCE(st.status_santri, s.status_santri, '')) <> ''
                 ORDER BY s.nama
             ");
             

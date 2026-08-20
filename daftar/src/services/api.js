@@ -45,7 +45,9 @@ export const getSlimApiUrl = () => {
     fallback = `${localBase}/api/public/api`
   } else {
     const parts = hostname.split('.')
-    const rootDomain = parts.length > 2 ? parts.slice(-2).join('.') : hostname
+    const rootDomain = hostname.toLowerCase().endsWith('.my.id') && parts.length >= 3
+      ? parts.slice(-3).join('.')
+      : (parts.length > 2 ? parts.slice(-2).join('.') : hostname)
     fallback = (!rootDomain || rootDomain.includes('localhost'))
       ? 'http://localhost/api/public/api'
       : `${protocol}//api.${rootDomain}/api`

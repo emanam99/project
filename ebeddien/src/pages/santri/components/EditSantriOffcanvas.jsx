@@ -185,6 +185,10 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved, 
   const handleChange = (field, value) => {
     setFormData((prev) => {
       const next = { ...prev, [field]: value }
+      if (field === 'status_santri' && value !== 'Mukim') {
+        next.id_daerah = ''
+        next.id_kamar = ''
+      }
       if (field === 'kategori') {
         next.id_daerah = ''
         next.id_kamar = ''
@@ -197,6 +201,10 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved, 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!idSantri) return
+    if (!String(formData.status_santri || '').trim()) {
+      showNotification('Status santri wajib diisi', 'error')
+      return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -655,14 +663,15 @@ export default function EditSantriOffcanvas({ isOpen, onClose, santri, onSaved, 
                   <div className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className={labelClass}>Status Santri</label>
-                      <select value={formData.status_santri} onChange={(e) => handleChange('status_santri', e.target.value)} className={inputClass}>
+                      <label className={labelClass}>Status Santri *</label>
+                      <select value={formData.status_santri} onChange={(e) => handleChange('status_santri', e.target.value)} className={inputClass} required>
                         <option value="">Pilih</option>
                         <option value="Mukim">Mukim</option>
                         <option value="Khoriji">Khoriji</option>
                         <option value="Boyong">Boyong</option>
                         <option value="Guru Tugas">Guru Tugas</option>
                         <option value="Pengurus">Pengurus</option>
+                        <option value="Alumni">Alumni</option>
                       </select>
                     </div>
                     <div>
