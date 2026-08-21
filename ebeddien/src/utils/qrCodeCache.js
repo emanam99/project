@@ -1,3 +1,10 @@
+import {
+  getMybeddienBiodataUrl,
+  getMybeddienShohifahUrl,
+  getMybeddienIjinUrl,
+  getMybeddienKwitansiQrUrl,
+} from '../config/mybeddienAppUrl'
+
 // Cache untuk QR code berdasarkan URL atau ID
 const qrCodeCache = new Map()
 
@@ -10,50 +17,59 @@ const qrCodeCache = new Map()
  */
 export const getQrCodeUrl = (data, size = 100, type = 'url') => {
   if (!data) return ''
-  
-  // Generate cache key berdasarkan type
-  const cacheKey = type === 'id' 
-    ? `id_${data}_${size}` 
-    : `url_${data}_${size}`
-  
-  // Cek cache dulu
+
+  const cacheKey = type === 'id' ? `id_${data}_${size}` : `url_${data}_${size}`
+
   if (qrCodeCache.has(cacheKey)) {
     return qrCodeCache.get(cacheKey)
   }
-  
-  // Generate QR code URL
+
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}`
-  
-  // Simpan ke cache
   qrCodeCache.set(cacheKey, qrCodeUrl)
-  
   return qrCodeUrl
 }
 
 /**
- * Generate QR code untuk santri berdasarkan ID
- * @param {string|number} santriId - ID santri
- * @param {string} path - Path setelah /public/ (default: 'santri')
- * @param {number} size - Ukuran QR code (default: 100)
- * @returns {string} QR code image URL
+ * URL tujuan QR santri (myBeddien), bukan /public/* eBeddien.
+ * @param {string|number} santriId
+ * @param {string} path - santri|shohifah|ijin|uwaba|khusus|tunggakan|pendaftaran
  */
-export const getSantriQrCode = (santriId, path = 'santri', size = 100) => {
+export function resolveSantriQrTargetUrl(santriId, path = 'santri') {
   if (!santriId) return ''
-  
-  const qrUrl = `${window.location.origin}/public/${path}?id=${santriId}`
-  return getQrCodeUrl(qrUrl, size, 'url')
+  const identity = { id: santriId }
+  switch (path) {
+    case 'shohifah':
+      return getMybeddienShohifahUrl(identity)
+    case 'ijin':
+      return getMybeddienIjinUrl(identity)
+    case 'uwaba':
+    case 'khusus':
+    case 'tunggakan':
+    case 'pendaftaran':
+      return getMybeddienKwitansiQrUrl(path, identity)
+    case 'santri':
+    case 'biodata':
+    default:
+      return getMybeddienBiodataUrl(identity)
+  }
 }
 
 /**
- * Clear cache (optional, untuk memory management)
+ * Generate QR code untuk santri berdasarkan ID → myBeddien.
+ * @param {string|number} santriId - ID santri
+ * @param {string} path - Tujuan: santri/biodata, shohifah, ijin, dll.
+ * @param {number} size - Ukuran QR code (default: 100)
  */
+export const getSantriQrCode = (santriId, path = 'santri', size = 100) => {
+  if (!santriId) return ''
+  const qrUrl = resolveSantriQrTargetUrl(santriId, path)
+  return getQrCodeUrl(qrUrl, size, 'url')
+}
+
 export const clearQrCodeCache = () => {
   qrCodeCache.clear()
 }
 
-/**
- * Get cache size (untuk debugging)
- */
 export const getCacheSize = () => {
   return qrCodeCache.size
 }

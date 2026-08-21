@@ -7,6 +7,7 @@ use App\Helpers\MadrasahTingkatanHelper;
 use App\Helpers\MybeddianProfilFotoHelper;
 use App\Helpers\RoleHelper;
 use App\Helpers\SantriStatusHelper;
+use App\Helpers\ShohifahWindowHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -1244,6 +1245,188 @@ class MybeddianProfilController
             return $this->json($response, [
                 'success' => false,
                 'message' => 'Gagal memuat riwayat ijin',
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/mybeddian/v2/shohifah — data shohifah santri login + status jendela.
+     */
+    public function getShohifah(Request $request, Response $response): Response
+    {
+        try {
+            $santriId = $this->getSantriIdFromRequest($request);
+            if ($santriId === null) {
+                return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk santri'], 403);
+            }
+
+            $window = ShohifahWindowHelper::statusNow($this->db);
+            $q = $request->getQueryParams();
+            $tahunAjaran = isset($q['tahun_ajaran']) ? trim((string) $q['tahun_ajaran']) : '';
+            if ($tahunAjaran === '') {
+                $tahunAjaran = (string) ($window['tahun_ajaran'] ?? '');
+            }
+            if ($tahunAjaran === '') {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'Tahun ajaran tidak tersedia',
+                ], 400);
+            }
+
+            $sql = 'SELECT sh.*, s.nis, s.nama
+                FROM santri___shohifah sh
+                INNER JOIN santri s ON sh.id_santri = s.id
+                WHERE sh.id_santri = ? AND sh.tahun_ajaran = ?
+                LIMIT 1';
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$santriId, $tahunAjaran]);
+            $data = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$data) {
+                $sStmt = $this->db->prepare('SELECT id, nis, nama FROM santri WHERE id = ? LIMIT 1');
+                $sStmt->execute([$santriId]);
+                $santri = $sStmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+            } else {
+                $santri = [
+                    'id' => $santriId,
+                    'nis' => $data['nis'] ?? null,
+                    'nama' => $data['nama'] ?? null,
+                ];
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $data ?: null,
+                'santri' => $santri,
+                'tahun_ajaran' => $tahunAjaran,
+                'window' => $window,
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Mybeddian getShohifah: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'Gagal memuat shohifah',
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/mybeddian/v2/shohifah — simpan shohifah (hanya jendela Sya'ban–Syawal).
+     */
+    public function saveShohifah(Request $request, Response $response): Response
+    {
+        try {
+            $santriId = $this->getSantriIdFromRequest($request);
+            if ($santriId === null) {
+                return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk santri'], 403);
+            }
+
+            $window = ShohifahWindowHelper::statusNow($this->db);
+            if (!$window['active']) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => $window['message'],
+                    'window' => $window,
+                ], 403);
+            }
+
+            $data = $request->getParsedBody();
+            if (!is_array($data)) {
+                $data = [];
+            }
+            $tahunAjaran = isset($data['tahun_ajaran']) ? trim((string) $data['tahun_ajaran']) : '';
+            if ($tahunAjaran === '') {
+                $tahunAjaran = (string) ($window['tahun_ajaran'] ?? '');
+            }
+            if ($tahunAjaran === '') {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'tahun_ajaran wajib diisi',
+                ], 400);
+            }
+
+            $fields = [
+                'sholat_jamaah_5_waktu', 'sholat_tarawih', 'sholat_witir', 'sholat_tahajjud', 'sholat_dhuha',
+                'puasa_ramadhan_status', 'puasa_ramadhan_alasan',
+                'khatam_alquran_status', 'khatam_alquran_jumlah', 'khatam_alquran_tanggal',
+                'kitab_a_nama', 'kitab_a_status', 'kitab_b_nama', 'kitab_b_status', 'kitab_c_nama', 'kitab_c_status',
+                'berbakti_orang_tua', 'akhlaq_pergaulan',
+                'syawal_kembali_hari', 'syawal_kembali_tanggal',
+            ];
+            $vals = [];
+            foreach ($fields as $f) {
+                $vals[$f] = $data[$f] ?? null;
+                if ($vals[$f] === '') {
+                    $vals[$f] = null;
+                }
+            }
+
+            $checkSql = 'SELECT id_santri FROM santri___shohifah WHERE id_santri = ? AND tahun_ajaran = ? LIMIT 1';
+            $checkStmt = $this->db->prepare($checkSql);
+            $checkStmt->execute([$santriId, $tahunAjaran]);
+            $existing = $checkStmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                $sql = 'UPDATE santri___shohifah SET
+                    sholat_jamaah_5_waktu = ?, sholat_tarawih = ?, sholat_witir = ?, sholat_tahajjud = ?, sholat_dhuha = ?,
+                    puasa_ramadhan_status = ?, puasa_ramadhan_alasan = ?,
+                    khatam_alquran_status = ?, khatam_alquran_jumlah = ?, khatam_alquran_tanggal = ?,
+                    kitab_a_nama = ?, kitab_a_status = ?, kitab_b_nama = ?, kitab_b_status = ?, kitab_c_nama = ?, kitab_c_status = ?,
+                    berbakti_orang_tua = ?, akhlaq_pergaulan = ?,
+                    syawal_kembali_hari = ?, syawal_kembali_tanggal = ?,
+                    tanggal_update = CURRENT_TIMESTAMP
+                    WHERE id_santri = ? AND tahun_ajaran = ?';
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute([
+                    $vals['sholat_jamaah_5_waktu'], $vals['sholat_tarawih'], $vals['sholat_witir'], $vals['sholat_tahajjud'], $vals['sholat_dhuha'],
+                    $vals['puasa_ramadhan_status'], $vals['puasa_ramadhan_alasan'],
+                    $vals['khatam_alquran_status'], $vals['khatam_alquran_jumlah'], $vals['khatam_alquran_tanggal'],
+                    $vals['kitab_a_nama'], $vals['kitab_a_status'], $vals['kitab_b_nama'], $vals['kitab_b_status'], $vals['kitab_c_nama'], $vals['kitab_c_status'],
+                    $vals['berbakti_orang_tua'], $vals['akhlaq_pergaulan'],
+                    $vals['syawal_kembali_hari'], $vals['syawal_kembali_tanggal'],
+                    $santriId, $tahunAjaran,
+                ]);
+            } else {
+                $sql = 'INSERT INTO santri___shohifah (
+                    id_santri, tahun_ajaran,
+                    sholat_jamaah_5_waktu, sholat_tarawih, sholat_witir, sholat_tahajjud, sholat_dhuha,
+                    puasa_ramadhan_status, puasa_ramadhan_alasan,
+                    khatam_alquran_status, khatam_alquran_jumlah, khatam_alquran_tanggal,
+                    kitab_a_nama, kitab_a_status, kitab_b_nama, kitab_b_status, kitab_c_nama, kitab_c_status,
+                    berbakti_orang_tua, akhlaq_pergaulan,
+                    syawal_kembali_hari, syawal_kembali_tanggal
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute([
+                    $santriId, $tahunAjaran,
+                    $vals['sholat_jamaah_5_waktu'], $vals['sholat_tarawih'], $vals['sholat_witir'], $vals['sholat_tahajjud'], $vals['sholat_dhuha'],
+                    $vals['puasa_ramadhan_status'], $vals['puasa_ramadhan_alasan'],
+                    $vals['khatam_alquran_status'], $vals['khatam_alquran_jumlah'], $vals['khatam_alquran_tanggal'],
+                    $vals['kitab_a_nama'], $vals['kitab_a_status'], $vals['kitab_b_nama'], $vals['kitab_b_status'], $vals['kitab_c_nama'], $vals['kitab_c_status'],
+                    $vals['berbakti_orang_tua'], $vals['akhlaq_pergaulan'],
+                    $vals['syawal_kembali_hari'], $vals['syawal_kembali_tanggal'],
+                ]);
+            }
+
+            $get = $this->db->prepare(
+                'SELECT sh.*, s.nis, s.nama FROM santri___shohifah sh
+                 INNER JOIN santri s ON sh.id_santri = s.id
+                 WHERE sh.id_santri = ? AND sh.tahun_ajaran = ? LIMIT 1'
+            );
+            $get->execute([$santriId, $tahunAjaran]);
+            $saved = $get->fetch(\PDO::FETCH_ASSOC);
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Data shohifah berhasil disimpan',
+                'data' => $saved,
+                'window' => $window,
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Mybeddian saveShohifah: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan shohifah',
             ], 500);
         }
     }

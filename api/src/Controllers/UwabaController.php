@@ -332,13 +332,26 @@ class UwabaController
     }
 
     /**
-     * GET /api/uwaba/all-data - Ambil semua data untuk monitoring
+     * GET /api/uwaba/all-data - Ambil data monitoring (paginated)
      */
     public function getAllData(Request $request, Response $response): Response
     {
         try {
             $queryParams = $request->getQueryParams();
             $tahun_ajaran = $queryParams['tahun_ajaran'] ?? date('Y');
+            $page = isset($queryParams['page']) ? max(1, (int) $queryParams['page']) : 1;
+            $limit = isset($queryParams['limit']) ? (int) $queryParams['limit'] : 500;
+            $limit = min(max(1, $limit), 1000);
+            $offset = ($page - 1) * $limit;
+
+            $countStmt = $this->db->prepare("
+                SELECT COUNT(DISTINCT s.id) AS total
+                FROM santri s
+                " . SantriStatusHelper::currentStatusJoinSql('s', 'st', 'ss') . "
+                WHERE TRIM(COALESCE(st.status_santri, s.status_santri, '')) <> ''
+            ");
+            $countStmt->execute();
+            $total = (int) ($countStmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
             
             $stmt = $this->db->prepare("
                 SELECT 
@@ -390,16 +403,21 @@ class UwabaController
                 ) sh ON s.id = sh.id_santri
                 WHERE TRIM(COALESCE(st.status_santri, s.status_santri, '')) <> ''
                 ORDER BY s.nama
+                LIMIT ? OFFSET ?
             ");
             
-            $stmt->execute([$tahun_ajaran, $tahun_ajaran, $tahun_ajaran]);
+            $stmt->execute([$tahun_ajaran, $tahun_ajaran, $tahun_ajaran, $limit, $offset]);
             $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
             return $this->jsonResponse($response, [
                 'success' => true,
                 'data' => $data,
                 'message' => 'Data berhasil diambil',
-                'count' => count($data)
+                'count' => count($data),
+                'total' => $total,
+                'page' => $page,
+                'limit' => $limit,
+                'total_pages' => $limit > 0 ? (int) ceil($total / $limit) : 0,
             ], 200);
             
         } catch (\Exception $e) {

@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { santriAPI } from '../../../services/api'
 import { useIjinTahunAjaran } from '../../../hooks/useIjinTahunAjaran'
-import { getSantriQrCode } from '../../../utils/qrCodeCache'
+import { getQrCodeUrl } from '../../../utils/qrCodeCache'
 import { getGambarUrl } from '../../../config/images'
+import { getMybeddienBiodataUrl } from '../../../config/mybeddienAppUrl'
 import './PrintIjinPulangan.css'
 
 function PrintIjinPulangan({ santriId, inOffcanvas = false }) {
@@ -299,8 +300,8 @@ function PrintIjinPulangan({ santriId, inOffcanvas = false }) {
           <div className="ttd-section">
             <div className="ttd-left">
               {santriData?.id && (() => {
-                const qrUrl = `${window.location.origin}/public/santri?id=${santriData.id}`
-                const qrCodeUrl = getSantriQrCode(santriData.id, 'santri', 100)
+                const qrUrl = getMybeddienBiodataUrl({ id: santriData.id, nis: santriData.nis })
+                const qrCodeUrl = getQrCodeUrl(qrUrl, 100)
                 return (
                   <div className="qr-code-container">
                     <a 
@@ -308,7 +309,7 @@ function PrintIjinPulangan({ santriId, inOffcanvas = false }) {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="qr-code-link"
-                      title="Klik untuk membuka biodata santri"
+                      title="Klik untuk membuka biodata di myBeddien"
                     >
                       <img 
                         src={qrCodeUrl} 

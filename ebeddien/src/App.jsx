@@ -159,7 +159,8 @@ const DataAlumni = lazy(() => import('./pages/Alumni/DataAlumni'))
 const Daerah = lazy(() => import('./pages/Domisili/Daerah'))
 const Kamar = lazy(() => import('./pages/Domisili/Kamar'))
 const StatusSantriDomisili = lazy(() => import('./pages/Domisili/StatusSantri'))
-const PelanggaranDomisili = lazy(() => import('./pages/Domisili/Pelanggaran'))
+const PelanggaranDomisili = lazy(() => import('./pages/Domisili/DataPelanggaran'))
+const PelanggaranMasterDomisili = lazy(() => import('./pages/Domisili/PelanggaranMaster'))
 const KoneksiWa = lazy(() => import('./pages/WhatsApp/KoneksiWa'))
 const WaChatList = lazy(() => import('./pages/WhatsApp/WaChatList'))
 const DashboardSuperAdmin = lazy(() => import('./pages/SuperAdmin/Dashboard'))
@@ -1594,6 +1595,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <PelanggaranDomisili />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/domisili/pelanggaran/master"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <PelanggaranMasterDomisili />
                 </Suspense>
               }
             />

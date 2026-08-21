@@ -16,6 +16,9 @@ export function getRouteHeaderMeta(pathname) {
   if (p.startsWith('/santri/riwayat-ijin')) {
     return { group: 'Santri', title: 'Riwayat Ijin', icon: 'ijin' }
   }
+  if (p.startsWith('/santri/shohifah')) {
+    return { group: 'Santri', title: 'Shohifah', icon: 'ijin' }
+  }
   if (p.startsWith('/santri/riwayat-pelanggaran')) {
     return { group: 'Santri', title: 'Riwayat Pelanggaran', icon: 'pelanggaran' }
   }

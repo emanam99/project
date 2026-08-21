@@ -243,7 +243,7 @@ function ManageJabatan() {
       setLoading(true)
       setError('')
       const response = await jabatanAPI.getAll({
-        limit: 10000,
+        limit: 1000,
         lembaga_ids: lembagaAccess.allowedLembagaIds?.length ? lembagaAccess.allowedLembagaIds.join(',') : undefined,
       })
       if (response.success) {

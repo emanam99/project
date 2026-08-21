@@ -5748,6 +5748,17 @@ export const tarbiyahDomisiliSantriAPI = {
     const response = await api.get(`/tarbiyah/santri/pelanggaran?${q.toString()}`)
     return response.data
   },
+  /**
+   * Daftar catatan pelanggaran by rentang tanggal_dibuat (Masehi Y-m-d).
+   * @param {{ tanggal_dari: string, tanggal_sampai: string }} range
+   */
+  getPelanggaranByTanggal: async (range) => {
+    const q = new URLSearchParams()
+    if (range?.tanggal_dari) q.set('tanggal_dari', String(range.tanggal_dari).slice(0, 10))
+    if (range?.tanggal_sampai) q.set('tanggal_sampai', String(range.tanggal_sampai).slice(0, 10))
+    const response = await api.get(`/tarbiyah/santri/pelanggaran-by-tanggal?${q.toString()}`)
+    return response.data
+  },
   /** Body: id_santri, id_pelanggaran, catatan (opsional) — konteks rombel/kamar diisi server */
   postPelanggaran: async (data) => {
     const response = await api.post('/tarbiyah/santri/pelanggaran', data)

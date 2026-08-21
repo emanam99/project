@@ -210,7 +210,7 @@ export function DaftarFormCard() {
         }
       }
       if (setupToken) {
-        navigate(`/setup-akun?token=${encodeURIComponent(setupToken)}`)
+        navigate(`/setup-akun#token=${encodeURIComponent(setupToken)}`)
         return
       }
       setError('Token setup akun tidak ditemukan. Coba lagi.')

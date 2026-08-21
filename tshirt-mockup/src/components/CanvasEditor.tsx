@@ -79,12 +79,28 @@ export default function CanvasEditor() {
     }
     window.addEventListener('keydown', onKey)
 
-    skipHistory.current = true
-    pushHistory(JSON.stringify(canvas.toJSON()))
-    skipHistory.current = false
-    sync()
+    let cancelled = false
+    const boot = async () => {
+      const saved = useMockupStore.getState().persistedDesign
+      skipHistory.current = true
+      if (saved) {
+        try {
+          await canvas.loadFromJSON(saved)
+        } catch {
+          /* desain rusak — mulai kosong */
+        }
+      }
+      if (cancelled) return
+      canvas.requestRenderAll()
+      pushHistory(JSON.stringify(canvas.toJSON()))
+      skipHistory.current = false
+      useMockupStore.getState().markDesignBootstrapped()
+      sync()
+    }
+    void boot()
 
     return () => {
+      cancelled = true
       window.removeEventListener('keydown', onKey)
       canvas.dispose()
       fabricRef.current = null

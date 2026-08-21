@@ -9,7 +9,23 @@ import { ExpirationPlugin } from 'workbox-expiration'
 skipWaiting()
 clientsClaim()
 
+/** Naikkan bersama APP_VERSION agar cache gambar/ikon lama dibuang. */
+const CACHE_REV = '0.2.1'
+const IMAGES_CACHE = `images-cache-${CACHE_REV}`
+
 precacheAndRoute(self.__WB_MANIFEST || [])
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith('images-cache') && key !== IMAGES_CACHE)
+          .map((key) => caches.delete(key)),
+      ),
+    ),
+  )
+})
 
 registerRoute(
   /\/index\.html$/i,
@@ -74,7 +90,7 @@ registerRoute(
 registerRoute(
   /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
   new CacheFirst({
-    cacheName: 'images-cache',
+    cacheName: IMAGES_CACHE,
     plugins: [
       new ExpirationPlugin({
         maxEntries: 100,
@@ -87,7 +103,7 @@ registerRoute(
 registerRoute(
   /\/gambar\/.*/i,
   new CacheFirst({
-    cacheName: 'images-cache',
+    cacheName: IMAGES_CACHE,
     plugins: [
       new ExpirationPlugin({
         maxEntries: 100,
@@ -100,7 +116,7 @@ registerRoute(
 registerRoute(
   /^https:\/\/sppg\.alutsmani\.id\/gambar\/.*/i,
   new CacheFirst({
-    cacheName: 'images-cache',
+    cacheName: IMAGES_CACHE,
     plugins: [
       new ExpirationPlugin({
         maxEntries: 100,

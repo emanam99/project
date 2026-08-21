@@ -309,7 +309,7 @@ function Koordinator() {
         setError('Anda belum login. Silakan login terlebih dahulu.')
         return
       }
-      const filterParams = { limit: 10000 }
+      const filterParams = { limit: 1000 }
       if (coordinatorRoleId) filterParams.role_id = coordinatorRoleId
       if (statusFilter) filterParams.status = statusFilter
       const response = await manageUsersAPI.getAll(filterParams)

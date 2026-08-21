@@ -47,6 +47,7 @@ export function getSidebarGroups(user, activeAccess, opts = {}) {
       { path: '/santri/riwayat-lttq', label: 'Riwayat LTTQ' },
       { path: '/santri/riwayat-kamar', label: 'Riwayat Kamar' },
       { path: '/santri/riwayat-ijin', label: 'Riwayat Ijin' },
+      { path: '/santri/shohifah', label: 'Shohifah' },
       { path: '/santri/riwayat-pelanggaran', label: 'Riwayat Pelanggaran' }
     )
     out.push({

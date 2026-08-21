@@ -291,7 +291,7 @@ function ManageUsers() {
         setError('Anda belum login. Silakan login terlebih dahulu.')
         return
       }
-      const filterParams = { limit: 10000, type: typeFilter }
+      const filterParams = { limit: 1000, type: typeFilter }
       if (roleFilter) filterParams.role_id = roleFilter
       if (lembagaFilter) filterParams.lembaga_id = lembagaFilter
       if (jabatanLembagaFilter) filterParams.jabatan_lembaga_id = jabatanLembagaFilter

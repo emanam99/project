@@ -125,6 +125,27 @@ class AppFiturMenuSeed extends AbstractSeed
                  WHERE `id_app` = ' . self::ID_APP_EBEDDIEN . ' AND `code` = \'menu.settings.watzap\' AND `type` = \'menu\''
             );
         }
+
+        // Ijin → Domisili (path/code tetap; hanya group + urutan)
+        $domisiliOrder = [
+            'menu.dashboard_ijin' => 10,
+            'menu.ijin.data_ijin' => 20,
+            'menu.ijin.data_boyong' => 30,
+            'menu.domisili.daerah' => 40,
+            'menu.domisili.kamar' => 50,
+            'menu.domisili.status' => 60,
+            'menu.domisili.pelanggaran' => 70,
+        ];
+        foreach ($domisiliOrder as $code => $order) {
+            $this->execute(sprintf(
+                'UPDATE `app___fitur`
+                 SET `group_label` = \'Domisili\', `sort_order` = %d
+                 WHERE `id_app` = %d AND `code` = %s AND `type` = \'menu\'',
+                $order,
+                self::ID_APP_EBEDDIEN,
+                $conn->quote($code)
+            ));
+        }
     }
 
     private function pathToCode(string $path): string
@@ -189,9 +210,9 @@ class AppFiturMenuSeed extends AbstractSeed
             ['path' => '/umroh/jamaah', 'label' => 'Jamaah Umroh', 'iconKey' => 'usersGroup', 'group' => 'Umroh'],
             ['path' => '/umroh/tabungan', 'label' => 'Tabungan Umroh', 'iconKey' => 'currency', 'group' => 'Umroh'],
             ['path' => '/laporan-umroh', 'label' => 'Laporan Umroh', 'iconKey' => 'chartBar', 'group' => 'Umroh'],
-            ['path' => '/dashboard-ijin', 'label' => 'Dashboard', 'iconKey' => 'dashboard', 'group' => 'Ijin'],
-            ['path' => '/ijin/data-ijin', 'label' => 'Data Ijin', 'iconKey' => 'documentText', 'group' => 'Ijin'],
-            ['path' => '/ijin/data-boyong', 'label' => 'Data Boyong', 'iconKey' => 'arrowRight', 'group' => 'Ijin'],
+            ['path' => '/dashboard-ijin', 'label' => 'Dashboard', 'iconKey' => 'dashboard', 'group' => 'Domisili'],
+            ['path' => '/ijin/data-ijin', 'label' => 'Data Ijin', 'iconKey' => 'documentText', 'group' => 'Domisili'],
+            ['path' => '/ijin/data-boyong', 'label' => 'Data Boyong', 'iconKey' => 'arrowRight', 'group' => 'Domisili'],
             ['path' => '/wirid/nailul-murod', 'label' => 'Nailul Murod', 'iconKey' => 'documentText', 'group' => 'Wirid'],
             ['path' => '/kalender', 'label' => 'Kalender', 'iconKey' => 'calendar', 'group' => 'Kalender'],
             ['path' => '/kalender/hari-penting', 'label' => 'Hari Penting', 'iconKey' => 'star', 'group' => 'Kalender'],

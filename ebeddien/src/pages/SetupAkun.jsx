@@ -2,11 +2,17 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authAPI } from '../services/api'
+import { readSecurityTokenFromUrl, migrateLegacyTokenQueryToHash } from '../utils/securityTokenUrl'
 
 function SetupAkun() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const token = searchParams.get('token') || ''
+
+  useEffect(() => {
+    migrateLegacyTokenQueryToHash()
+  }, [])
+
+  const token = readSecurityTokenFromUrl(searchParams)
 
   const [valid, setValid] = useState(null) // null = loading, true/false
   const [nama, setNama] = useState('')

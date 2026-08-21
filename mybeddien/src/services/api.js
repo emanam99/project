@@ -803,6 +803,17 @@ export const profilAPI = {
     const response = await api.get(mybeddianPath('/v2/ijin'))
     return response.data
   },
+  /** GET shohifah santri yang login (+ status jendela) */
+  getShohifah: async (tahunAjaran) => {
+    const params = tahunAjaran ? { tahun_ajaran: tahunAjaran } : {}
+    const response = await api.get(mybeddianPath('/v2/shohifah'), { params })
+    return response.data
+  },
+  /** POST simpan shohifah (hanya masa Sya'ban–Syawal) */
+  saveShohifah: async (body) => {
+    const response = await api.post(mybeddianPath('/v2/shohifah'), body)
+    return response.data
+  },
   /** GET riwayat pelanggaran santri yang login */
   getRiwayatPelanggaran: async () => {
     const response = await api.get(mybeddianPath('/v2/pelanggaran'))

@@ -45,3 +45,42 @@ export function getMybeddienKwitansiQrUrl(kind, identity = {}) {
   const qs = params.toString()
   return qs ? `${base}${path}?${qs}` : `${base}${path}`
 }
+
+/** URL QR / deep-link shohifah → myBeddien (login santri). */
+export function getMybeddienShohifahUrl(identity = {}) {
+  const base = getMybeddienAppUrl().replace(/\/$/, '')
+  const path = '/santri/shohifah'
+  const params = new URLSearchParams()
+  const nis = identity.nis != null && String(identity.nis).trim() !== '' ? String(identity.nis).trim() : ''
+  const id = identity.id != null && String(identity.id).trim() !== '' ? String(identity.id).trim() : ''
+  if (nis) params.set('nis', nis)
+  if (id) params.set('id', id)
+  const qs = params.toString()
+  return qs ? `${base}${path}?${qs}` : `${base}${path}`
+}
+
+/** URL deep-link riwayat ijin → myBeddien. */
+export function getMybeddienIjinUrl(identity = {}) {
+  const base = getMybeddienAppUrl().replace(/\/$/, '')
+  const path = '/santri/riwayat-ijin'
+  const params = new URLSearchParams()
+  const nis = identity.nis != null && String(identity.nis).trim() !== '' ? String(identity.nis).trim() : ''
+  const id = identity.id != null && String(identity.id).trim() !== '' ? String(identity.id).trim() : ''
+  if (nis) params.set('nis', nis)
+  if (id) params.set('id', id)
+  const qs = params.toString()
+  return qs ? `${base}${path}?${qs}` : `${base}${path}`
+}
+
+/** URL deep-link biodata → myBeddien. */
+export function getMybeddienBiodataUrl(identity = {}) {
+  const base = getMybeddienAppUrl().replace(/\/$/, '')
+  const path = '/santri/biodata'
+  const params = new URLSearchParams()
+  const nis = identity.nis != null && String(identity.nis).trim() !== '' ? String(identity.nis).trim() : ''
+  const id = identity.id != null && String(identity.id).trim() !== '' ? String(identity.id).trim() : ''
+  if (nis) params.set('nis', nis)
+  if (id) params.set('id', id)
+  const qs = params.toString()
+  return qs ? `${base}${path}?${qs}` : `${base}${path}`
+}

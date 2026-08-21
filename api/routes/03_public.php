@@ -46,13 +46,17 @@ return function (\Slim\App $app): void {
     $app->get('/api/pendaftaran/get-tahun-ajaran-list', [PendaftaranController::class, 'getTahunAjaranList']);
 
     // Public endpoint untuk biodata santri dan ijin
-    $app->get('/api/public/santri', [SantriController::class, 'getPublicSantri']);
+    $app->get('/api/public/santri', [SantriController::class, 'getPublicSantri'])
+        ->add(new OptionalAuthMiddleware());
     /** Riwayat PSB per santri — wajib view_token (scope registrasi|all) atau JWT staff/santri terikat */
     $app->get('/api/public/registrasi-riwayat', [PendaftaranController::class, 'getPublicRegistrasiRiwayat'])
         ->add(new OptionalAuthMiddleware());
-    $app->get('/api/public/ijin', [IjinController::class, 'getPublicIjin']);
-    $app->get('/api/public/shohifah', [SantriController::class, 'getPublicShohifah']);
-    $app->post('/api/public/shohifah', [SantriController::class, 'savePublicShohifah']);
+    $app->get('/api/public/ijin', [IjinController::class, 'getPublicIjin'])
+        ->add(new OptionalAuthMiddleware());
+    $app->get('/api/public/shohifah', [SantriController::class, 'getPublicShohifah'])
+        ->add(new OptionalAuthMiddleware());
+    $app->post('/api/public/shohifah', [SantriController::class, 'savePublicShohifah'])
+        ->add(new OptionalAuthMiddleware());
     $app->get('/api/public/juara', [SantriJuaraController::class, 'getPublicJuara']);
     $app->get('/api/public/juara-foto', [SantriBerkasController::class, 'getPublicFotoJuara']);
     $app->get('/api/public/juara-foto-image', [SantriBerkasController::class, 'serveFotoJuaraImage']);

@@ -13,7 +13,6 @@ export const GROUP_ORDER = [
   'Wali Santri',
   'Keuangan',
   'Umroh',
-  'Ijin',
   'Wirid',
   'Kalender',
   'Domisili',

@@ -238,6 +238,7 @@ const ICONS = {
   '/santri/riwayat-pembayaran': RiwayatPembayaranIcon,
   '/santri/cashless': CashlessIcon,
   '/santri/riwayat-ijin': RiwayatIjinIcon,
+  '/santri/shohifah': RiwayatIjinIcon,
   '/santri/riwayat-pelanggaran': RiwayatPelanggaranIcon,
   '/wali-santri': WaliIcon,
   '/toko': TokoIcon,

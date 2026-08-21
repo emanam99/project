@@ -93,6 +93,12 @@ return function (\Slim\App $app): void {
         $group->get('/v2/ijin', [MybeddianProfilController::class, 'getRiwayatIjin'])
             ->add(new RoleMiddleware(['santri']))->add(new AuthMiddleware());
 
+        // Shohifah (login santri; tulis hanya Sya'ban–Ramadhan–Syawal)
+        $group->get('/v2/shohifah', [MybeddianProfilController::class, 'getShohifah'])
+            ->add(new RoleMiddleware(['santri']))->add(new AuthMiddleware());
+        $group->post('/v2/shohifah', [MybeddianProfilController::class, 'saveShohifah'])
+            ->add(new RoleMiddleware(['santri']))->add(new AuthMiddleware());
+
         // Riwayat pelanggaran santri (baca saja)
         $group->get('/v2/pelanggaran', [MybeddianProfilController::class, 'getRiwayatPelanggaran'])
             ->add(new RoleMiddleware(['santri']))->add(new AuthMiddleware());

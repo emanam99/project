@@ -8,20 +8,14 @@ if (function_exists('header_remove')) {
 
 // Preflight OPTIONS: tangani paling awal (sebelum require apa pun) agar CORS selalu ada
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+    $corsConfigEarly = require __DIR__ . '/../config.php';
+    $allowedOriginsEarly = array_map('trim', explode(',', $corsConfigEarly['cors']['allowed_origins']));
+    $allowAllEarly = $corsConfigEarly['cors']['allow_all'];
     $origin = isset($_SERVER['HTTP_ORIGIN']) ? trim($_SERVER['HTTP_ORIGIN']) : '';
     $allow = '*';
-    if ($origin !== '') {
-        $h = parse_url($origin, PHP_URL_HOST);
-        $h = $h ? strtolower($h) : '';
-        $port = (int) (parse_url($origin, PHP_URL_PORT) ?: 0);
-        $ok = ($h === 'alutsmani.id' || (strlen($h) >= 13 && substr($h, -13) === '.alutsmani.id')
-            || $h === 'alutsmani.my.id' || (strlen($h) >= 16 && substr($h, -16) === '.alutsmani.my.id')
-            || $h === 'localhost' || $h === '127.0.0.1'
-            || in_array($port, [5173, 5174, 5175], true));
-        if ($ok) {
-            $allow = $origin;
-        }
-    } else {
+    if ($origin !== '' && cors_origin_is_allowed($origin, $allowAllEarly, $allowedOriginsEarly)) {
+        $allow = $origin;
+    } elseif ($origin === '' && app_env_is_local()) {
         // Origin kosong (proxy/strip): izinkan dev origin agar localhost:5173 bisa login
         $allow = 'http://localhost:5173';
     }
@@ -320,12 +314,13 @@ register_shutdown_function(function() {
                 'path' => parse_url((string) ($_SERVER['REQUEST_URI'] ?? '-'), PHP_URL_PATH) ?: '-',
             ]
         );
-        $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
         $corsConfig = require __DIR__ . '/../config.php';
         $allowAll = $corsConfig['cors']['allow_all'];
+        $allowedOriginsList = array_map('trim', explode(',', $corsConfig['cors']['allowed_origins']));
         
         header('Content-Type: application/json; charset=utf-8');
-        if ($allowAll || cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false) {
+        if (cors_origin_is_allowed($origin, $allowAll, $allowedOriginsList)) {
             if ($origin && $origin !== '*') {
                 header('Access-Control-Allow-Origin: ' . $origin);
                 header('Access-Control-Allow-Credentials: true');
@@ -424,7 +419,7 @@ $errorMiddleware->setErrorHandler(
             $response = new \Nyholm\Psr7\Response();
             $response = $response->withStatus(200);
             
-            if ($allowAll) {
+            if ($allowAll && app_env_is_local()) {
                 if ($origin && $origin !== '*') {
                     $response = $response
                         ->withHeader('Access-Control-Allow-Origin', $origin)
@@ -436,7 +431,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
-            } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false)) {
+            } elseif ($origin && cors_origin_is_allowed($origin, false, $allowedOrigins)) {
             $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -534,7 +529,7 @@ $errorMiddleware->setErrorHandler(
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source, X-Public-Payment-Token, X-Client-App')
                     ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
             }
-        } elseif ($origin && (in_array($origin, $allowedOrigins, true) || cors_origin_is_trusted($origin))) {
+        } elseif ($origin && cors_origin_is_allowed($origin, $allowAll, $allowedOrigins)) {
             // Jika origin diizinkan (list atau *.alutsmani.id), gunakan origin tersebut dengan credentials
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
@@ -543,7 +538,7 @@ $errorMiddleware->setErrorHandler(
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
         } else {
             // Fallback: untuk development (localhost) dan production (*.alutsmani.id)
-            if (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false) {
+            if (cors_origin_is_allowed($origin, false, $allowedOrigins)) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin ?: '*')
                     ->withHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Env, X-App-Source, X-Public-Payment-Token, X-Client-App')
@@ -582,7 +577,7 @@ $errorMiddleware->setErrorHandler(
                 ->withHeader('Access-Control-Max-Age', '3600');
             
             // Set origin dan credentials
-            if ($allowAll) {
+            if ($allowAll && app_env_is_local()) {
                 if ($origin && $origin !== '*') {
                     $response = $response
                         ->withHeader('Access-Control-Allow-Origin', $origin)
@@ -594,7 +589,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
-            } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+            } elseif ($origin && cors_origin_is_allowed($origin, false, $allowedOrigins)) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -636,7 +631,7 @@ $errorMiddleware->setErrorHandler(
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
-        } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+        } elseif ($origin && cors_origin_is_allowed($origin, $allowAll, $allowedOrigins)) {
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -661,7 +656,7 @@ $errorMiddleware->setErrorHandler(
             
             $response = $response->withStatus(200);
             
-            if ($allowAll) {
+            if ($allowAll && app_env_is_local()) {
                 if ($origin && $origin !== '*') {
                     $response = $response
                         ->withHeader('Access-Control-Allow-Origin', $origin)
@@ -673,7 +668,7 @@ $errorMiddleware->setErrorHandler(
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
-            } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+            } elseif ($origin && cors_origin_is_allowed($origin, false, $allowedOrigins)) {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');
@@ -711,7 +706,7 @@ $errorMiddleware->setErrorHandler(
             ->withHeader('Content-Type', 'application/json');
         
         // Tambahkan CORS header
-        if ($allowAll) {
+        if ($allowAll && app_env_is_local()) {
             if ($origin && $origin !== '*') {
                 $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
@@ -723,7 +718,7 @@ $errorMiddleware->setErrorHandler(
             $response = $response
                 ->withHeader('Access-Control-Allow-Origin', $origin)
                 ->withHeader('Access-Control-Allow-Credentials', 'true');
-        } elseif ($origin && (cors_origin_is_trusted($origin) || strpos($origin, 'localhost') !== false || strpos($origin, '127.0.0.1') !== false || strpos($origin, ':5173') !== false || strpos($origin, ':5174') !== false || strpos($origin, ':5175') !== false)) {
+        } elseif ($origin && cors_origin_is_allowed($origin, false, $allowedOrigins)) {
             $response = $response
                     ->withHeader('Access-Control-Allow-Origin', $origin)
                     ->withHeader('Access-Control-Allow-Credentials', 'true');

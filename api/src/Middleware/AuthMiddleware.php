@@ -77,16 +77,11 @@ class AuthMiddleware implements MiddlewareInterface
 
         // Session V2 (jika token punya jti): cek session masih ada & update last_activity. Jika tidak ada = revoked/pruned (limit 3 device) → 401.
         // Pengecualian: konteks app daftar (santri saja, tanpa staff di token) — tidak cek session; multi_role dengan staff tetap cek session.
-        // Santri murni di token (ada santri_id, tidak ada pengurus/toko): jangan wajibkan baris user___sessions — token lama tanpa allowed_apps,
-        // atau union role yang membuat tokenIsSantriDaftarContext false, tetap bisa pakai API pembayaran/MyBeddian tanpa reload ke login.
+        // Portal myBeddien / santri murni: WAJIB cek session (fail-closed) agar logout/revoke perangkat berlaku.
         $payloadArr = is_array($payload) ? $payload : [];
         $isSantriDaftarOnly = RoleHelper::tokenIsSantriDaftarContext($payloadArr);
         $jti = $payload['jti'] ?? null;
-        $sid = isset($payloadArr['santri_id']) ? (int) $payloadArr['santri_id'] : 0;
-        $pid = isset($payloadArr['id_pengurus']) ? (int) $payloadArr['id_pengurus'] : 0;
-        $tokoId = isset($payloadArr['toko_id']) ? (int) $payloadArr['toko_id'] : 0;
-        $santriOnlySessionSkip = ($sid > 0 && $pid <= 0 && $tokoId <= 0);
-        if ($jti !== null && !$isSantriDaftarOnly && !$santriOnlySessionSkip) {
+        if ($jti !== null && !$isSantriDaftarOnly) {
             $sessionHash = hash('sha256', $jti);
             $userIdFromToken = (int)($payload['user_id'] ?? 0);
             $usersId = isset($payload['users_id']) && (int)$payload['users_id'] > 0
@@ -97,6 +92,10 @@ class AuthMiddleware implements MiddlewareInterface
                 $stmt->execute([$userIdFromToken]);
                 $row = $stmt->fetch(\PDO::FETCH_ASSOC);
                 $usersId = $row && !empty($row['id_user']) ? (int)$row['id_user'] : $userIdFromToken;
+            }
+            // Resolve users.id untuk santri portal (user_id di JWT sering = users.id)
+            if ($usersId === null || $usersId <= 0) {
+                $usersId = $userIdFromToken > 0 ? $userIdFromToken : 0;
             }
             try {
                 $stmt = $this->db->prepare("SELECT id FROM user___sessions WHERE session_token_hash = ? AND user_id = ? LIMIT 1");
@@ -112,7 +111,13 @@ class AuthMiddleware implements MiddlewareInterface
                 }
                 $this->db->prepare("UPDATE user___sessions SET last_activity_at = NOW() WHERE id = ?")->execute([$sessionRow['id']]);
             } catch (\Throwable $e) {
-                // Tabel session belum ada / error: izinkan request agar login tidak tertolak
+                error_log('AuthMiddleware session check failed: ' . $e->getMessage());
+                $response = new Response();
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Gagal memverifikasi session. Silakan login kembali.'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withStatus(401)->withHeader('Content-Type', 'application/json; charset=utf-8');
             }
         }
 

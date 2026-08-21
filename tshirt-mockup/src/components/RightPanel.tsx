@@ -20,11 +20,11 @@ export default function RightPanel() {
 
   return (
     <aside className="flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto bg-[#f4f4f6] p-4">
-      <div className="relative overflow-hidden rounded-2xl bg-white shadow-[0_1px_0_rgba(0,0,0,0.04)]">
-        <div className="aspect-square">
+      <div className="relative shrink-0 overflow-hidden rounded-2xl bg-white shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+        <div className="h-[min(56vh,520px)] w-full">
           <Viewer3D />
         </div>
-        <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md bg-white/90 text-[10px] font-semibold text-[#6b6b75] shadow-sm">
+        <span className="absolute right-3 top-3 z-10 grid h-8 w-8 place-items-center rounded-md bg-white/90 text-[10px] font-semibold text-[#6b6b75] shadow-sm">
           3D
         </span>
       </div>

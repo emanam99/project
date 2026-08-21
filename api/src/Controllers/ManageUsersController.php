@@ -137,6 +137,7 @@ class ManageUsersController
             // Pagination
             $page = isset($queryParams['page']) ? (int)$queryParams['page'] : 1;
             $limit = isset($queryParams['limit']) ? (int)$queryParams['limit'] : 10;
+            $limit = min(max(1, $limit), 1000);
             $offset = ($page - 1) * $limit;
             
             // Filters: status, kategori lembaga, lembaga (jabatan_lembaga_id), jabatan (jabatan_id), role_id (hanya pengurus yang punya role ini)
@@ -2083,8 +2084,8 @@ class ManageUsersController
             $roleId = isset($queryParams['role_id']) ? (int)$queryParams['role_id'] : 0;
             $lembagaId = isset($queryParams['lembaga_id']) ? trim($queryParams['lembaga_id']) : '';
             $jabatanLembagaId = isset($queryParams['jabatan_lembaga_id']) ? trim($queryParams['jabatan_lembaga_id']) : '';
-            $limit = isset($queryParams['limit']) ? (int)$queryParams['limit'] : 10000;
-            $limit = min(max(1, $limit), 10000);
+            $limit = isset($queryParams['limit']) ? (int)$queryParams['limit'] : 500;
+            $limit = min(max(1, $limit), 1000);
             $page = isset($queryParams['page']) ? (int)$queryParams['page'] : 1;
             $page = max(1, $page);
             $offset = ($page - 1) * $limit;

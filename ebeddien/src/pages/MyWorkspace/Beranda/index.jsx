@@ -480,7 +480,6 @@ export default function Beranda() {
     'Wali Santri',
     'Keuangan',
     'Umroh',
-    'Ijin',
     'Kalender',
     'Domisili',
     'Lembaga',

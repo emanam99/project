@@ -1,3 +1,5 @@
+import { APP_VERSION } from '../config/version'
+
 /** Base URL folder `gambar/` (dev proxy, build, atau VITE_GAMBAR_BASE). */
 export function getGambarBase(): string {
   const raw = (import.meta.env.VITE_GAMBAR_BASE as string | undefined)?.trim()
@@ -9,5 +11,10 @@ export function getGambarBase(): string {
 
 export function gambarUrl(path: string): string {
   const clean = path.replace(/^\//, '')
-  return `${getGambarBase()}/${clean}`
+  const url = `${getGambarBase()}/${clean}`
+  // Cache-bust ikon agar UI + PWA tidak menahan logo lama
+  if (clean.startsWith('icon/')) {
+    return `${url}?v=${encodeURIComponent(APP_VERSION)}`
+  }
+  return url
 }

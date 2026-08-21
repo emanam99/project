@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authAPI } from '../services/api'
+import { readSecurityTokenFromUrl, migrateLegacyTokenQueryToHash } from '../utils/securityTokenUrl'
 
 /** Samakan backend: hapus whitespace dari salinan URL WhatsApp */
 function normalizeTokenFromUrl(raw) {
@@ -12,7 +13,12 @@ function normalizeTokenFromUrl(raw) {
 function UbahPassword() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const token = useMemo(() => normalizeTokenFromUrl(searchParams.get('token')), [searchParams])
+
+  useEffect(() => {
+    migrateLegacyTokenQueryToHash()
+  }, [])
+
+  const token = useMemo(() => normalizeTokenFromUrl(readSecurityTokenFromUrl(searchParams)), [searchParams])
 
   const [valid, setValid] = useState(null) // null = loading, true/false
   const [nama, setNama] = useState('')

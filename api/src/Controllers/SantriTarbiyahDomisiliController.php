@@ -174,7 +174,7 @@ class SantriTarbiyahDomisiliController
             if ($kat !== '' && !in_array($kat, self::PELANGGARAN_KATEGORI, true)) {
                 return $this->json($response, ['success' => false, 'message' => 'kategori tidak valid'], 400);
             }
-            $sql = 'SELECT id, kategori, nama, urutan, aktif, tanggal_dibuat, tanggal_update FROM pelanggaran WHERE aktif = 1';
+            $sql = 'SELECT id, kategori, nama, keterangan, urutan, aktif, tanggal_dibuat, tanggal_update FROM pelanggaran WHERE aktif = 1';
             $bind = [];
             if ($kat !== '') {
                 $sql .= ' AND kategori = ?';
@@ -197,7 +197,7 @@ class SantriTarbiyahDomisiliController
             if (!$idSantri || (int) $idSantri <= 0) {
                 return $this->json($response, ['success' => false, 'message' => 'id_santri wajib'], 400);
             }
-            $sql = 'SELECT sp.*, pg.nama AS pelanggaran_nama, pg.kategori AS pelanggaran_kategori, p.nama AS pengurus_nama
+            $sql = 'SELECT sp.*, pg.nama AS pelanggaran_nama, pg.kategori AS pelanggaran_kategori, pg.keterangan AS pelanggaran_keterangan, p.nama AS pengurus_nama
                     FROM santri___pelanggaran sp
                     INNER JOIN pelanggaran pg ON pg.id = sp.id_pelanggaran
                     LEFT JOIN pengurus p ON sp.id_pengurus = p.id
@@ -209,6 +209,81 @@ class SantriTarbiyahDomisiliController
         } catch (\Exception $e) {
             error_log('listPelanggaranSantri: ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'message' => 'Gagal mengambil pelanggaran santri'], 500);
+        }
+    }
+
+    /**
+     * GET /api/tarbiyah/santri/pelanggaran-by-tanggal?tanggal_dari=&tanggal_sampai=
+     * Daftar catatan pelanggaran global filter DATE(tanggal_dibuat).
+     */
+    public function listPelanggaranByTanggal(Request $request, Response $response): Response
+    {
+        try {
+            $q = $request->getQueryParams();
+            $tanggalDari = isset($q['tanggal_dari']) ? trim((string) $q['tanggal_dari']) : '';
+            $tanggalSampai = isset($q['tanggal_sampai']) ? trim((string) $q['tanggal_sampai']) : '';
+            $ymdOk = static function (string $v): bool {
+                return $v !== '' && (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $v);
+            };
+            if (!$ymdOk($tanggalDari) || !$ymdOk($tanggalSampai)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'message' => 'tanggal_dari dan tanggal_sampai wajib (YYYY-MM-DD)',
+                ], 400);
+            }
+            $dari = $tanggalDari <= $tanggalSampai ? $tanggalDari : $tanggalSampai;
+            $sampai = $tanggalDari <= $tanggalSampai ? $tanggalSampai : $tanggalDari;
+
+            $sql = 'SELECT sp.*,
+                    pg.nama AS pelanggaran_nama,
+                    pg.kategori AS pelanggaran_kategori,
+                    pg.keterangan AS pelanggaran_keterangan,
+                    p.nama AS pengurus_nama,
+                    s.nama AS nama_santri,
+                    s.nis AS nis,
+                    s.gender AS gender,
+                    COALESCE(
+                        (
+                            SELECT ss.status_santri
+                            FROM santri___status ss
+                            WHERE ss.id_santri = s.id AND ss.sampai IS NULL
+                            ORDER BY ss.id DESC
+                            LIMIT 1
+                        ),
+                        s.status_santri,
+                        \'\'
+                    ) AS status_santri,
+                    d.daerah AS daerah,
+                    dk.kamar AS kamar,
+                    ld.nama AS diniyah,
+                    rd.kelas AS kelas_diniyah,
+                    rd.kel AS kel_diniyah,
+                    lf.nama AS formal,
+                    rf.kelas AS kelas_formal,
+                    rf.kel AS kel_formal
+                    FROM santri___pelanggaran sp
+                    INNER JOIN pelanggaran pg ON pg.id = sp.id_pelanggaran
+                    INNER JOIN santri s ON s.id = sp.id_santri
+                    LEFT JOIN pengurus p ON sp.id_pengurus = p.id
+                    LEFT JOIN daerah___kamar dk ON dk.id = s.id_kamar
+                    LEFT JOIN daerah d ON d.id = dk.id_daerah
+                    LEFT JOIN lembaga___rombel rd ON rd.id = s.id_diniyah
+                    LEFT JOIN lembaga ld ON ld.id = rd.lembaga_id
+                    LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
+                    LEFT JOIN lembaga lf ON lf.id = rf.lembaga_id
+                    WHERE DATE(sp.tanggal_dibuat) BETWEEN ? AND ?
+                    ORDER BY sp.tanggal_dibuat DESC, sp.id DESC';
+            $st = $this->db->prepare($sql);
+            $st->execute([$dari, $sampai]);
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $st->fetchAll(\PDO::FETCH_ASSOC),
+                'meta' => ['tanggal_dari' => $dari, 'tanggal_sampai' => $sampai],
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('listPelanggaranByTanggal: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'message' => 'Gagal mengambil daftar pelanggaran'], 500);
         }
     }
 

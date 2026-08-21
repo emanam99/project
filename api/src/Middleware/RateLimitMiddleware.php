@@ -230,6 +230,21 @@ class RateLimitMiddleware implements MiddlewareInterface
             }
         }
 
+        // Rate limit cek nomor WA publik (daftar/lupa password) — cegah enumerasi & abuse
+        if ($request->getMethod() === 'POST' && strpos($path, '/api/public/wa/check') !== false) {
+            if (!$skipRateLimit) {
+                $lockout = $this->checkLockoutWithLimit($ip, '/api/public/wa/check', 15, 300);
+                if ($lockout !== null) {
+                    $response = new Response();
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'message' => 'Terlalu banyak pengecekan nomor. Coba lagi dalam ' . ceil($lockout / 60) . ' menit.'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $this->withCorsHeaders($request, $response->withStatus(429)->withHeader('Content-Type', 'application/json; charset=utf-8'));
+                }
+            }
+        }
+
         // Rate limit endpoint publik santri/ijin/shohifah/juara + check-nik (cegah enumerasi massal)
         if ($this->isPublicSantriRateLimitPath($path)) {
             if (!$skipRateLimit) {
@@ -457,6 +472,10 @@ class RateLimitMiddleware implements MiddlewareInterface
 
         if ($request->getMethod() === 'POST' && strpos($path, '/api/v2/auth/send-otp-ganti-wa') !== false && !$skipRateLimit) {
             $this->recordAttemptWithLimit($ip, '/api/v2/auth/send-otp-ganti-wa', 3, 600);
+        }
+
+        if ($request->getMethod() === 'POST' && strpos($path, '/api/public/wa/check') !== false && !$skipRateLimit) {
+            $this->recordAttemptWithLimit($ip, '/api/public/wa/check', 15, 300);
         }
 
         if ($this->isPublicSantriRateLimitPath($path) && !$skipRateLimit) {
@@ -708,15 +727,10 @@ class RateLimitMiddleware implements MiddlewareInterface
 
     private function isTrustedCorsOrigin(string $origin): bool
     {
-        if (function_exists('cors_origin_is_trusted') ? cors_origin_is_trusted($origin) : cors_origin_is_alutsmani_id($origin)) {
-            return true;
+        if (function_exists('cors_origin_is_allowed')) {
+            return cors_origin_is_allowed($origin, false, []);
         }
-        $host = strtolower((string) parse_url($origin, PHP_URL_HOST));
-        $port = (int) (parse_url($origin, PHP_URL_PORT) ?: 0);
-        if ($host === 'localhost' || $host === '127.0.0.1') {
-            return in_array($port, [5173, 5174, 5175], true);
-        }
-        return false;
+        return function_exists('cors_origin_is_trusted') ? cors_origin_is_trusted($origin) : false;
     }
 
     /**
@@ -904,6 +918,7 @@ class RateLimitMiddleware implements MiddlewareInterface
     {
         return $this->isLoginRateLimitPath($path)
             || $this->isPublicSantriRateLimitPath($path)
+            || strpos($path, '/api/public/wa/check') !== false
             || strpos($path, '/api/v2/auth/') !== false
             || strpos($path, '/api/mybeddian/v2/auth/') !== false
             || strpos($path, '/api/auth/') !== false;

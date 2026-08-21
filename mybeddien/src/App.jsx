@@ -51,6 +51,7 @@ const PjgtRiwayatGuruTugasPage = lazy(() => import('./pages/pjgt/PjgtRiwayatGuru
 const SantriGtLaporanPage = lazy(() => import('./pages/santri/gt/SantriGtLaporanPage'))
 const KompasPage = lazy(() => import('./pages/kompas/KompasPage'))
 const RiwayatIjin = lazy(() => import('./pages/santri/riwayat/RiwayatIjin'))
+const Shohifah = lazy(() => import('./pages/santri/Shohifah'))
 const RiwayatPelanggaran = lazy(() => import('./pages/santri/riwayat/RiwayatPelanggaran'))
 const ERapor = lazy(() => import('./pages/santri/eRapor'))
 const RiwayatDiniyahFormal = lazy(() => import('./pages/santri/riwayat/RiwayatDiniyahFormal'))
@@ -281,6 +282,7 @@ function App() {
         <Route path="santri/laporan-gt" element={<SantriOnlyRoute><SantriGtLaporanPage /></SantriOnlyRoute>} />
         <Route path="santri/kompas" element={<SantriOnlyRoute><KompasPage /></SantriOnlyRoute>} />
         <Route path="santri/riwayat-ijin" element={<SantriOnlyRoute><RiwayatIjin /></SantriOnlyRoute>} />
+        <Route path="santri/shohifah" element={<SantriOnlyRoute><Shohifah /></SantriOnlyRoute>} />
         <Route path="santri/riwayat-pelanggaran" element={<SantriOnlyRoute><RiwayatPelanggaran /></SantriOnlyRoute>} />
         <Route path="santri/e-rapor" element={<SantriOnlyRoute><ERapor /></SantriOnlyRoute>} />
         <Route path="santri/riwayat-diniyah-formal" element={<SantriOnlyRoute><RiwayatDiniyahFormal /></SantriOnlyRoute>} />

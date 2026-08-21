@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { santriAPI } from '../../../services/api'
 import { useIjinTahunAjaran } from '../../../hooks/useIjinTahunAjaran'
 import { getSantriQrCode } from '../../../utils/qrCodeCache'
+import { getMybeddienShohifahUrl } from '../../../config/mybeddienAppUrl'
+import { getQrCodeUrl } from '../../../utils/qrCodeCache'
 import './PrintShofifahSantri.css'
 
 function PrintShohifahSantri({ santriId, inOffcanvas = false, qrCodeOverride = null }) {
@@ -65,9 +67,10 @@ function PrintShohifahSantri({ santriId, inOffcanvas = false, qrCodeOverride = n
     )
   }
 
-  const qrUrl = santriData?.id ? `${window.location.origin}/public/shohifah?id=${santriData.id}` : ''
-  // Gunakan qrCodeOverride jika ada (dari cache), jika tidak generate baru dengan cache
-  const qrCodeImageUrl = qrCodeOverride || (santriData?.id ? getSantriQrCode(santriData.id, 'shohifah', 120) : '')
+  const qrUrl = santriData?.id
+    ? getMybeddienShohifahUrl({ id: santriData.id, nis: santriData.nis })
+    : ''
+  const qrCodeImageUrl = qrCodeOverride || (qrUrl ? getQrCodeUrl(qrUrl, 120) : '')
 
   return (
     <div className={`print-shohifah-page ${inOffcanvas ? 'print-shohifah-in-offcanvas' : ''}`}>

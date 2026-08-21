@@ -19,7 +19,7 @@ function ImportPengurus() {
 
   const loadExistingUsers = async () => {
     try {
-      const response = await manageUsersAPI.getAll({ limit: 10000 })
+      const response = await manageUsersAPI.getAll({ limit: 1000 })
       if (response.success) {
         setExistingUsers(response.data.users || [])
       }

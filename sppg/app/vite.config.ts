@@ -75,6 +75,8 @@ export default defineConfig(({ command, mode }) => {
   const icon128 = icon('sppg.v3.u128.png', '128x128')
   const icon192 = icon('sppg.v3.u192.png', '192x192')
   const icon512 = icon('sppg.v3.u512.png', '512x512')
+  /** Query baru = URL ikon baru → OS/browser lebih mungkin refresh ikon home screen. */
+  const iconV = `?v=${encodeURIComponent(APP_VERSION)}`
 
   return {
     base: command === 'serve' ? '/' : normalizedBase,
@@ -122,43 +124,43 @@ export default defineConfig(({ command, mode }) => {
           categories: ['finance', 'productivity'],
           icons: [
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v3.u32.png`,
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u32.png${iconV}`,
               sizes: icon32,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v3.u64.png`,
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u64.png${iconV}`,
               sizes: icon64,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v3.u96.png`,
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u96.png${iconV}`,
               sizes: icon96,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v3.u128.png`,
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u128.png${iconV}`,
               sizes: icon128,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v3.u192.png`,
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u192.png${iconV}`,
               sizes: icon192,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v3.u512.png`,
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u512.png${iconV}`,
               sizes: icon512,
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: `${GAMBAR_BASE}/icon/sppg.v3.u512.png`,
+              src: `${GAMBAR_BASE}/icon/sppg.v3.u512.png${iconV}`,
               sizes: icon512,
               type: 'image/png',
               purpose: 'maskable',

@@ -112,7 +112,7 @@ final class PelanggaranMasterController
             if (!is_array($user) || !$this->canReadList($user)) {
                 return $this->json($response, ['success' => false, 'message' => 'Tidak berhak mengakses daftar pelanggaran'], 403);
             }
-            $sql = 'SELECT id, kategori, nama, urutan, aktif, tanggal_dibuat, tanggal_update FROM pelanggaran';
+            $sql = 'SELECT id, kategori, nama, keterangan, urutan, aktif, tanggal_dibuat, tanggal_update FROM pelanggaran';
             $onlyAktif = isset($request->getQueryParams()['aktif']) ? trim((string) $request->getQueryParams()['aktif']) : '';
             if ($onlyAktif === '1' || strtolower($onlyAktif) === 'true') {
                 $sql .= ' WHERE aktif = 1';
@@ -140,6 +140,7 @@ final class PelanggaranMasterController
             $body = is_array($body) ? TextSanitizer::sanitizeStringValues($body, []) : [];
             $kat = self::normalizeKategori($body['kategori'] ?? '');
             $nama = isset($body['nama']) ? trim((string) $body['nama']) : '';
+            $keterangan = isset($body['keterangan']) ? trim((string) $body['keterangan']) : '';
             $urutan = isset($body['urutan']) ? (int) $body['urutan'] : 0;
             if ($kat === null || $nama === '') {
                 return $this->json($response, ['success' => false, 'message' => 'kategori dan nama wajib'], 400);
@@ -147,14 +148,19 @@ final class PelanggaranMasterController
             if (mb_strlen($nama) > 255) {
                 $nama = mb_substr($nama, 0, 255);
             }
+            if ($keterangan === '') {
+                $keterangan = null;
+            } elseif (mb_strlen($keterangan) > 8000) {
+                $keterangan = mb_substr($keterangan, 0, 8000);
+            }
             $aktif = 1;
             if (array_key_exists('aktif', $body)) {
                 $aktif = ((int) $body['aktif'] === 0 || $body['aktif'] === false || $body['aktif'] === '0') ? 0 : 1;
             }
             $st = $this->db->prepare(
-                'INSERT INTO pelanggaran (kategori, nama, urutan, aktif) VALUES (?, ?, ?, ?)'
+                'INSERT INTO pelanggaran (kategori, nama, keterangan, urutan, aktif) VALUES (?, ?, ?, ?, ?)'
             );
-            $st->execute([$kat, $nama, $urutan, $aktif]);
+            $st->execute([$kat, $nama, $keterangan, $urutan, $aktif]);
             $id = (int) $this->db->lastInsertId();
 
             return $this->json($response, ['success' => true, 'message' => 'Jenis pelanggaran ditambahkan', 'data' => ['id' => $id]], 201);
@@ -185,6 +191,7 @@ final class PelanggaranMasterController
             $body = is_array($body) ? TextSanitizer::sanitizeStringValues($body, []) : [];
             $kat = self::normalizeKategori($body['kategori'] ?? '');
             $nama = isset($body['nama']) ? trim((string) $body['nama']) : '';
+            $keterangan = isset($body['keterangan']) ? trim((string) $body['keterangan']) : '';
             $urutan = isset($body['urutan']) ? (int) $body['urutan'] : 0;
             if ($kat === null || $nama === '') {
                 return $this->json($response, ['success' => false, 'message' => 'kategori dan nama wajib'], 400);
@@ -192,12 +199,17 @@ final class PelanggaranMasterController
             if (mb_strlen($nama) > 255) {
                 $nama = mb_substr($nama, 0, 255);
             }
+            if ($keterangan === '') {
+                $keterangan = null;
+            } elseif (mb_strlen($keterangan) > 8000) {
+                $keterangan = mb_substr($keterangan, 0, 8000);
+            }
             $aktif = 1;
             if (array_key_exists('aktif', $body)) {
                 $aktif = ((int) $body['aktif'] === 0 || $body['aktif'] === false || $body['aktif'] === '0') ? 0 : 1;
             }
-            $st = $this->db->prepare('UPDATE pelanggaran SET kategori = ?, nama = ?, urutan = ?, aktif = ? WHERE id = ?');
-            $st->execute([$kat, $nama, $urutan, $aktif, $id]);
+            $st = $this->db->prepare('UPDATE pelanggaran SET kategori = ?, nama = ?, keterangan = ?, urutan = ?, aktif = ? WHERE id = ?');
+            $st->execute([$kat, $nama, $keterangan, $urutan, $aktif, $id]);
 
             return $this->json($response, ['success' => true, 'message' => 'Data diperbarui'], 200);
         } catch (\Throwable $e) {

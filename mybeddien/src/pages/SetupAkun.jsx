@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authAPI } from '../services/api'
-import { readSecurityTokenFromUrl } from '../utils/securityTokenUrl'
+import { readSecurityTokenFromUrl, migrateLegacyTokenQueryToHash } from '../utils/securityTokenUrl'
 import { setStoredLoginUsername } from '../utils/passkeyLoginPrefs'
 import { blockPasswordPaste } from '../components/Auth/WaPreparePanel'
 
@@ -11,6 +11,11 @@ const PASSWORD_MIN = 8
 export default function SetupAkun() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    migrateLegacyTokenQueryToHash()
+  }, [])
+
   const token = readSecurityTokenFromUrl(searchParams)
   const portalPjgt = (searchParams.get('portal') || '') === 'pjgt'
   const portalToko = (searchParams.get('portal') || '') === 'toko'

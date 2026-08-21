@@ -16,6 +16,7 @@ use App\Helpers\UserAktivitasLogger;
 use App\Helpers\RoleHelper;
 use App\Helpers\PublicSantriViewTokenHelper;
 use App\Helpers\SantriJwtAccessHelper;
+use App\Helpers\ShohifahWindowHelper;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -1310,6 +1311,29 @@ class SantriController
                 ], 404);
             }
 
+            $fullAccess = SantriJwtAccessHelper::canAccessFullSantriData(
+                $this->db,
+                $request,
+                (int) $resolvedId,
+                PublicSantriViewTokenHelper::SCOPE_SHOHIFAH_READ
+            );
+            if (!$fullAccess) {
+                $fullAccess = SantriJwtAccessHelper::canAccessFullSantriData(
+                    $this->db,
+                    $request,
+                    (int) $resolvedId,
+                    PublicSantriViewTokenHelper::SCOPE_SHOHIFAH_WRITE
+                );
+            }
+            if (!$fullAccess) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Wajib login myBeddien untuk melihat/mengisi shohifah',
+                    'redirect' => 'mybeddien:/santri/shohifah',
+                ], 401);
+            }
+
+            $window = ShohifahWindowHelper::statusNow($this->db);
             $sql = "SELECT sh.*, s.nis FROM santri___shohifah sh INNER JOIN santri s ON sh.id_santri = s.id WHERE sh.id_santri = ? AND sh.tahun_ajaran = ? LIMIT 1";
             $stmt = $this->db->prepare($sql);
             $stmt->execute([$resolvedId, $tahunAjaran]);
@@ -1317,7 +1341,8 @@ class SantriController
 
             return $this->jsonResponse($response, [
                 'success' => true,
-                'data' => $data ?: null
+                'data' => $data ?: null,
+                'window' => $window,
             ], 200);
 
         } catch (\Exception $e) {
@@ -1380,6 +1405,21 @@ class SantriController
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Token tulis atau login santri diperlukan untuk menyimpan shohifah'
+                ], 401);
+            }
+
+            // Santri menulis hanya di jendela Sya'ban–Ramadhan–Syawal; staff (fitur) boleh di luar musim.
+            $boundSantri = SantriJwtAccessHelper::resolveJwtBoundSantriId(
+                $this->db,
+                is_array($request->getAttribute('user')) ? $request->getAttribute('user') : SantriJwtAccessHelper::extractOptionalJwtUser($request)
+            );
+            $isSelfSantri = $boundSantri !== null && $boundSantri === (int) $resolvedId;
+            if ($isSelfSantri && !ShohifahWindowHelper::isActiveNow($this->db)) {
+                $window = ShohifahWindowHelper::statusNow($this->db);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => $window['message'],
+                    'window' => $window,
                 ], 403);
             }
 

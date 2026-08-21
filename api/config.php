@@ -99,6 +99,75 @@ if (!function_exists('cors_origin_is_trusted')) {
     }
 }
 
+/** APP_ENV local/development — localhost & LAN CORS hanya diizinkan di sini. */
+if (!function_exists('app_env_is_local')) {
+    function app_env_is_local(): bool {
+        $env = strtolower(trim((string) env('APP_ENV', 'production')));
+        return in_array($env, ['local', 'development', 'dev'], true);
+    }
+}
+
+if (!function_exists('cors_origin_is_localhost_dev')) {
+    function cors_origin_is_localhost_dev($origin): bool {
+        if (!is_string($origin) || $origin === '') {
+            return false;
+        }
+        $origin = trim($origin);
+        return strpos($origin, 'localhost') !== false
+            || strpos($origin, '127.0.0.1') !== false
+            || strpos($origin, ':5173') !== false
+            || strpos($origin, ':5174') !== false
+            || strpos($origin, ':5175') !== false;
+    }
+}
+
+if (!function_exists('cors_origin_is_private_lan')) {
+    function cors_origin_is_private_lan($origin): bool {
+        if (!is_string($origin) || $origin === '') {
+            return false;
+        }
+        $host = parse_url(trim($origin), PHP_URL_HOST);
+        if (!$host || !filter_var($host, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+        return strpos($host, '10.') === 0
+            || strpos($host, '192.168.') === 0
+            || preg_match('/^172\.(1[6-9]|2[0-9]|3[0-1])\./', $host) === 1;
+    }
+}
+
+/** localhost, port dev Vite, atau IP privat LAN — hanya saat APP_ENV local/development. */
+if (!function_exists('cors_origin_is_dev_only')) {
+    function cors_origin_is_dev_only($origin): bool {
+        if (!app_env_is_local()) {
+            return false;
+        }
+        return cors_origin_is_localhost_dev($origin) || cors_origin_is_private_lan($origin);
+    }
+}
+
+/**
+ * Satu pintu cek origin CORS (middleware, error handler, shutdown).
+ * CORS_ALLOW_ALL hanya efektif di APP_ENV local/development.
+ */
+if (!function_exists('cors_origin_is_allowed')) {
+    function cors_origin_is_allowed($origin, bool $allowAll = false, array $allowedOrigins = []): bool {
+        if ($allowAll && app_env_is_local()) {
+            return true;
+        }
+        if (!is_string($origin) || ($origin = trim($origin)) === '') {
+            return false;
+        }
+        if ($allowedOrigins !== [] && in_array($origin, $allowedOrigins, true)) {
+            return true;
+        }
+        if (cors_origin_is_trusted($origin)) {
+            return true;
+        }
+        return cors_origin_is_dev_only($origin);
+    }
+}
+
 if (!function_exists('cors_allowed_request_headers')) {
     function cors_allowed_request_headers() {
         return 'Content-Type, Authorization, X-Requested-With, X-CSRF-Token, X-Frontend-Base-URL, X-Frontend-Env, X-App-Source, X-Public-Payment-Token, Cache-Control, Pragma, X-Client-App';
@@ -187,7 +256,7 @@ if (!function_exists('resolve_mybeddian_app_url_default')) {
 
 return [
     // Versi backend (API) saat ini — dipakai endpoint GET /api/version dan tampilan frontend (uwaba BACKEND_VERSION)
-    'api_version' => '2.13.85',
+    'api_version' => '2.13.89',
     /** Chat user-to-user (centang baca, edit window, pin, undangan) */
     'chat' => [
         'edit_window_minutes' => max(1, (int) env('CHAT_EDIT_WINDOW_MINUTES', 15)),
@@ -241,7 +310,7 @@ return [
         'password_require_special' => filter_var(env('PASSWORD_REQUIRE_SPECIAL', 'false'), FILTER_VALIDATE_BOOLEAN),
         // Default false: rate limit tetap jalan di localhost. Set true hanya kalau sengaja untuk dev.
         'disable_rate_limit_localhost' => filter_var(env('DISABLE_RATE_LIMIT_LOCALHOST', 'false'), FILTER_VALIDATE_BOOLEAN),
-        // Halaman pembayaran publik tanpa ?token= — default true; set ALLOW_PUBLIC_PAYMENT_LOOKUP=false untuk token wajib
+        // Pembayaran publik: default false (wajib X-Public-Payment-Token / JWT). Set ALLOW_PUBLIC_PAYMENT_LOOKUP=true hanya untuk legacy.
         'allow_public_payment_lookup' => $allowPublicPaymentLookup,
     ],
     // Backend WA baru (wa/). Jika APP_URL local (localhost/127.0.0.1) → default WA lokal (port 3001). Else wa.alutsmani.id. Set WA_API_URL untuk override.

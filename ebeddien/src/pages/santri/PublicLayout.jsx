@@ -59,7 +59,7 @@ function PublicLayout() {
     manifestLink.setAttribute('href', '/manifest-santri.json')
 
     // Update meta tags
-    updateMetaTag('description', 'Aplikasi pegangan wali santri untuk melihat data santri, riwayat pembayaran, ijin, dan informasi penting lainnya.')
+    updateMetaTag('description', 'Portal publik Santri Beddian: kalender pesantren dan riwayat registrasi PSB.')
     updateMetaTag('theme-color', '#0d9488')
     updateMetaTag('application-name', 'Santri Beddian')
     updateMetaTag('apple-mobile-web-app-title', 'Santri Beddian')

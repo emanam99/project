@@ -1,4 +1,4 @@
-import { Center, useGLTF } from '@react-three/drei'
+import { useGLTF } from '@react-three/drei'
 import { useEffect, useMemo } from 'react'
 import {
   CanvasTexture,
@@ -93,11 +93,11 @@ export default function TShirtModel() {
     [geometry, material, texture],
   )
 
-  const scale = useLongFile ? ([-0.72, 0.72, 0.72] as const) : ([-2.35, 2.35, 2.35] as const)
+  const scale = useLongFile ? ([-0.48, 0.48, 0.48] as const) : ([-1.55, 1.55, 1.55] as const)
 
   return (
-    <Center disableY>
+    <group>
       <mesh geometry={geometry} material={material} castShadow receiveShadow scale={scale} />
-    </Center>
+    </group>
   )
 }

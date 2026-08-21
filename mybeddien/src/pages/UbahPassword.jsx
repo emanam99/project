@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authAPI } from '../services/api'
-import { readSecurityTokenFromUrl } from '../utils/securityTokenUrl'
+import { readSecurityTokenFromUrl, migrateLegacyTokenQueryToHash } from '../utils/securityTokenUrl'
 import { blockPasswordPaste } from '../components/Auth/WaPreparePanel'
 
 const PASSWORD_MIN = 8
@@ -10,6 +10,11 @@ const PASSWORD_MIN = 8
 export default function UbahPassword() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    migrateLegacyTokenQueryToHash()
+  }, [])
+
   const token = useMemo(() => readSecurityTokenFromUrl(searchParams), [searchParams])
 
   const [valid, setValid] = useState(null)

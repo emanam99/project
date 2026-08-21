@@ -10,6 +10,7 @@ export function isNavPathActive(pathname, path) {
     return pathname === path || pathname.startsWith('/santri/riwayat-pembayaran/')
   }
   if (path === '/santri/riwayat-ijin') return pathname === '/santri/riwayat-ijin'
+  if (path === '/santri/shohifah') return pathname === '/santri/shohifah'
   if (path === '/santri/riwayat-pelanggaran') return pathname === '/santri/riwayat-pelanggaran'
   if (path === '/toko/barang') return pathname === path || pathname.startsWith('/toko/barang')
   if (path === '/toko/penjualan') return pathname === path || pathname.startsWith('/toko/penjualan')

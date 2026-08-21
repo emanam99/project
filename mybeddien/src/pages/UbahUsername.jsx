@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { authAPI } from '../services/api'
-import { readSecurityTokenFromUrl } from '../utils/securityTokenUrl'
+import { readSecurityTokenFromUrl, migrateLegacyTokenQueryToHash } from '../utils/securityTokenUrl'
 
 export default function UbahUsername() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    migrateLegacyTokenQueryToHash()
+  }, [])
+
   const token = readSecurityTokenFromUrl(searchParams)
 
   const [valid, setValid] = useState(null)

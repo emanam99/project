@@ -659,7 +659,7 @@ export default function ExcelPengurusEditor() {
     const load = async () => {
       setLoading(true)
       try {
-        const res = await manageUsersAPI.getAll({ limit: 10000 })
+        const res = await manageUsersAPI.getAll({ limit: 1000 })
         if (!cancelled && res?.success && res.data?.users) {
           const users = Array.isArray(res.data.users) ? res.data.users : []
           const filteredUsers = filterPengurusList(users, listFilters)

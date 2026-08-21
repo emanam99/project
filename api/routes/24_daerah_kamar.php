@@ -75,6 +75,7 @@ return function (\Slim\App $app): void {
         $group->post('/catatan', [SantriTarbiyahDomisiliController::class, 'createCatatan']);
         $group->delete('/catatan/{id}', [SantriTarbiyahDomisiliController::class, 'deleteCatatan']);
         $group->get('/pelanggaran-master', [SantriTarbiyahDomisiliController::class, 'listPelanggaranMaster']);
+        $group->get('/pelanggaran-by-tanggal', [SantriTarbiyahDomisiliController::class, 'listPelanggaranByTanggal']);
         $group->get('/pelanggaran', [SantriTarbiyahDomisiliController::class, 'listPelanggaranSantri']);
         $group->post('/pelanggaran', [SantriTarbiyahDomisiliController::class, 'createPelanggaran']);
         $group->post('/pindah-kamar', [SantriTarbiyahDomisiliController::class, 'pindahKamar']);

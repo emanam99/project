@@ -8,7 +8,6 @@ export const HEADER_NAV_GROUP_ORDER = [
   'UWABA',
   'UGT',
   'Keuangan',
-  'Ijin',
   'Wirid',
   'Kalender',
   'Cashless',

@@ -783,11 +783,7 @@ class IjinController
                 ], 404);
             }
 
-            $sql = $this->ijinSelectWithAdminSql() . ' WHERE i.id_santri = ? ORDER BY i.tahun_ajaran DESC, i.urutan ASC';
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute([$resolvedId]);
-            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
+            // Tidak lagi publik anonim — wajib JWT/view_token (riwayat santri: myBeddien /v2/ijin).
             $fullAccess = SantriJwtAccessHelper::canAccessFullSantriData(
                 $this->db,
                 $request,
@@ -795,13 +791,22 @@ class IjinController
                 PublicSantriViewTokenHelper::SCOPE_IJIN
             );
             if (!$fullAccess) {
-                $data = SantriJwtAccessHelper::redactPublicIjinRows($data);
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Wajib login myBeddien atau view_token untuk melihat riwayat ijin',
+                    'redirect' => 'mybeddien:/santri/riwayat-ijin',
+                ], 401);
             }
+
+            $sql = $this->ijinSelectWithAdminSql() . ' WHERE i.id_santri = ? ORDER BY i.tahun_ajaran DESC, i.urutan ASC';
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$resolvedId]);
+            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             return $this->jsonResponse($response, [
                 'success' => true,
                 'data' => $data,
-                'redacted' => !$fullAccess,
+                'redacted' => false,
             ], 200);
 
         } catch (\Exception $e) {
@@ -852,33 +857,10 @@ class IjinController
             $stmt->execute($params);
             $ijinPerBulan = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Statistik Shohifah
-            // Total shohifah yang sudah diisi
-            $sqlTotalShohifah = "SELECT COUNT(DISTINCT id_santri) as total FROM santri___shohifah" . ($whereClause ? " $whereClause" : "");
-            $stmt = $this->db->prepare($sqlTotalShohifah);
-            $stmt->execute($params);
-            $totalShohifah = (int)($stmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
-
-            // Total santri (untuk menghitung persentase)
-            $sqlTotalSantri = "SELECT COUNT(*) as total FROM santri";
+            $sqlTotalSantri = 'SELECT COUNT(*) as total FROM santri';
             $stmt = $this->db->prepare($sqlTotalSantri);
             $stmt->execute();
-            $totalSantri = (int)($stmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
-
-            // Persentase shohifah yang sudah diisi
-            $persentaseShohifah = $totalSantri > 0 ? round(($totalShohifah / $totalSantri) * 100, 2) : 0;
-
-            // Shohifah per bulan (berdasarkan tanggal_dibuat)
-            $sqlShohifahPerBulan = "SELECT 
-                DATE_FORMAT(tanggal_dibuat, '%Y-%m') as bulan,
-                COUNT(DISTINCT id_santri) as jumlah
-                FROM santri___shohifah" . ($whereClause ? " $whereClause" : "") . "
-                GROUP BY DATE_FORMAT(tanggal_dibuat, '%Y-%m')
-                ORDER BY bulan DESC
-                LIMIT 12";
-            $stmt = $this->db->prepare($sqlShohifahPerBulan);
-            $stmt->execute($params);
-            $shohifahPerBulan = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $totalSantri = (int) ($stmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
 
             // Ijin terbaru (5 terakhir)
             $sqlIjinTerbaru = "SELECT 
@@ -892,28 +874,112 @@ class IjinController
             $stmt->execute($params);
             $ijinTerbaru = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Shohifah terbaru (5 terakhir)
-            $sqlShohifahTerbaru = "SELECT 
-                sh.*,
-                s.nama as nama_santri
-                FROM santri___shohifah sh
-                INNER JOIN santri s ON sh.id_santri = s.id" . ($whereClause ? " $whereClause" : "") . "
-                ORDER BY sh.tanggal_dibuat DESC
-                LIMIT 5";
-            $stmt = $this->db->prepare($sqlShohifahTerbaru);
-            $stmt->execute($params);
-            $shohifahTerbaru = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            // Statistik Pelanggaran
+            $stmtPelTotal = $this->db->query('SELECT COUNT(*) AS total FROM santri___pelanggaran');
+            $pelanggaranTotal = (int) ($stmtPelTotal->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+            $stmtPelHariIni = $this->db->query(
+                'SELECT COUNT(*) AS total FROM santri___pelanggaran WHERE DATE(tanggal_dibuat) = CURDATE()'
+            );
+            $pelanggaranHariIni = (int) ($stmtPelHariIni->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
 
-            // Statistik Boyong: tahun ajaran ini (sesuai tahun hijriyah di header) dan hari ini
+            $stmtPelKat = $this->db->query(
+                "SELECT pg.kategori, COUNT(*) AS jumlah
+                 FROM santri___pelanggaran sp
+                 INNER JOIN pelanggaran pg ON pg.id = sp.id_pelanggaran
+                 GROUP BY pg.kategori
+                 ORDER BY FIELD(pg.kategori, 'berat', 'sedang', 'ringan', 'buku_hitam'), pg.kategori"
+            );
+            $pelanggaranPerKategori = $stmtPelKat->fetchAll(\PDO::FETCH_ASSOC);
+
+            $stmtPelBulan = $this->db->query(
+                "SELECT DATE_FORMAT(tanggal_dibuat, '%Y-%m') AS bulan, COUNT(*) AS jumlah
+                 FROM santri___pelanggaran
+                 GROUP BY DATE_FORMAT(tanggal_dibuat, '%Y-%m')
+                 ORDER BY bulan DESC
+                 LIMIT 12"
+            );
+            $pelanggaranPerBulan = $stmtPelBulan->fetchAll(\PDO::FETCH_ASSOC);
+
+            $stmtPelTerbaru = $this->db->query(
+                "SELECT sp.id, sp.tanggal_dibuat, sp.catatan, s.nama AS nama_santri, s.nis,
+                        pg.nama AS pelanggaran_nama, pg.kategori AS pelanggaran_kategori
+                 FROM santri___pelanggaran sp
+                 INNER JOIN santri s ON s.id = sp.id_santri
+                 INNER JOIN pelanggaran pg ON pg.id = sp.id_pelanggaran
+                 ORDER BY sp.tanggal_dibuat DESC
+                 LIMIT 5"
+            );
+            $pelanggaranTerbaru = $stmtPelTerbaru->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Statistik Boyong
             $boyongTahunIni = 0;
             if ($tahunAjaran) {
-                $stmtBoyong = $this->db->prepare("SELECT COUNT(*) as total FROM santri___boyong WHERE tahun_hijriyah = ?");
+                $stmtBoyong = $this->db->prepare('SELECT COUNT(*) as total FROM santri___boyong WHERE tahun_hijriyah = ?');
                 $stmtBoyong->execute([$tahunAjaran]);
-                $boyongTahunIni = (int)($stmtBoyong->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+                $boyongTahunIni = (int) ($stmtBoyong->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
             }
-            $stmtBoyongHariIni = $this->db->prepare("SELECT COUNT(*) as total FROM santri___boyong WHERE DATE(tanggal_dibuat) = CURDATE()");
+            $stmtBoyongHariIni = $this->db->prepare('SELECT COUNT(*) as total FROM santri___boyong WHERE DATE(tanggal_dibuat) = CURDATE()');
             $stmtBoyongHariIni->execute();
-            $boyongHariIni = (int)($stmtBoyongHariIni->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+            $boyongHariIni = (int) ($stmtBoyongHariIni->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+
+            $stmtBoyongBulan = $this->db->query(
+                "SELECT DATE_FORMAT(tanggal_dibuat, '%Y-%m') AS bulan, COUNT(*) AS jumlah
+                 FROM santri___boyong
+                 GROUP BY DATE_FORMAT(tanggal_dibuat, '%Y-%m')
+                 ORDER BY bulan DESC
+                 LIMIT 12"
+            );
+            $boyongPerBulan = $stmtBoyongBulan->fetchAll(\PDO::FETCH_ASSOC);
+
+            $stmtBoyongTerbaru = $this->db->query(
+                "SELECT b.id, b.tanggal_dibuat, b.tahun_hijriyah, b.diniyah, b.formal, s.nama AS nama_santri, s.nis
+                 FROM santri___boyong b
+                 INNER JOIN santri s ON s.id = b.id_santri
+                 ORDER BY b.tanggal_dibuat DESC
+                 LIMIT 5"
+            );
+            $boyongTerbaru = $stmtBoyongTerbaru->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Domisili: daerah / kamar / okupansi Mukim
+            $stmtDaerah = $this->db->query(
+                "SELECT COUNT(*) AS total FROM daerah WHERE LOWER(TRIM(status)) = 'aktif'"
+            );
+            $jumlahDaerah = (int) ($stmtDaerah->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+            $stmtKamar = $this->db->query(
+                "SELECT COUNT(*) AS total FROM daerah___kamar WHERE LOWER(TRIM(status)) = 'aktif'"
+            );
+            $jumlahKamar = (int) ($stmtKamar->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+
+            $statusJoin = \App\Helpers\SantriStatusHelper::currentStatusJoinSql('s', 'st');
+            $statusExpr = \App\Helpers\SantriStatusHelper::statusSelectSql('st', 's');
+            $sqlTopDaerah = "SELECT d.id, d.daerah AS nama, COUNT(s.id) AS jumlah_santri
+                FROM daerah d
+                INNER JOIN daerah___kamar dk ON dk.id_daerah = d.id AND LOWER(TRIM(dk.status)) = 'aktif'
+                INNER JOIN santri s ON s.id_kamar = dk.id
+                {$statusJoin}
+                WHERE LOWER(TRIM(d.status)) = 'aktif'
+                  AND LOWER(TRIM({$statusExpr})) = 'mukim'
+                GROUP BY d.id, d.daerah
+                ORDER BY jumlah_santri DESC
+                LIMIT 8";
+            $stmtTop = $this->db->query($sqlTopDaerah);
+            $topDaerah = $stmtTop ? $stmtTop->fetchAll(\PDO::FETCH_ASSOC) : [];
+
+            $sqlKamarOkupansi = "SELECT
+                COUNT(DISTINCT dk.id) AS kamar_terisi,
+                (
+                  SELECT COUNT(*) FROM daerah___kamar dk2 WHERE LOWER(TRIM(dk2.status)) = 'aktif'
+                ) AS kamar_aktif
+                FROM daerah___kamar dk
+                INNER JOIN santri s ON s.id_kamar = dk.id
+                {$statusJoin}
+                WHERE LOWER(TRIM(dk.status)) = 'aktif'
+                  AND LOWER(TRIM({$statusExpr})) = 'mukim'";
+            $stmtOk = $this->db->query($sqlKamarOkupansi);
+            $okRow = $stmtOk ? $stmtOk->fetch(\PDO::FETCH_ASSOC) : [];
+            $kamarAktif = (int) ($okRow['kamar_aktif'] ?? $jumlahKamar);
+            $kamarTerisi = (int) ($okRow['kamar_terisi'] ?? 0);
+            $kamarKosong = max(0, $kamarAktif - $kamarTerisi);
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -922,20 +988,30 @@ class IjinController
                         'total' => $totalIjin,
                         'total_santri' => $totalSantriIjin,
                         'per_bulan' => $ijinPerBulan,
-                        'terbaru' => $ijinTerbaru
+                        'terbaru' => $ijinTerbaru,
                     ],
-                    'shohifah' => [
-                        'total' => $totalShohifah,
-                        'persentase' => $persentaseShohifah,
-                        'per_bulan' => $shohifahPerBulan,
-                        'terbaru' => $shohifahTerbaru
+                    'pelanggaran' => [
+                        'total' => $pelanggaranTotal,
+                        'hari_ini' => $pelanggaranHariIni,
+                        'per_kategori' => $pelanggaranPerKategori,
+                        'per_bulan' => $pelanggaranPerBulan,
+                        'terbaru' => $pelanggaranTerbaru,
                     ],
                     'boyong' => [
                         'tahun_ini' => $boyongTahunIni,
-                        'hari_ini' => $boyongHariIni
+                        'hari_ini' => $boyongHariIni,
+                        'per_bulan' => $boyongPerBulan,
+                        'terbaru' => $boyongTerbaru,
                     ],
-                    'total_santri' => $totalSantri
-                ]
+                    'domisili' => [
+                        'jumlah_daerah' => $jumlahDaerah,
+                        'jumlah_kamar' => $jumlahKamar,
+                        'kamar_terisi' => $kamarTerisi,
+                        'kamar_kosong' => $kamarKosong,
+                        'top_daerah' => $topDaerah,
+                    ],
+                    'total_santri' => $totalSantri,
+                ],
             ], 200);
 
         } catch (\Exception $e) {

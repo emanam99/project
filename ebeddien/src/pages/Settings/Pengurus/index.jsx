@@ -589,7 +589,7 @@ function Pengurus() {
         setError('Anda belum login. Silakan login terlebih dahulu.')
         return
       }
-      const response = await manageUsersAPI.getAll({ limit: 10000 })
+      const response = await manageUsersAPI.getAll({ limit: 1000 })
       if (response.success) {
         setAllPengurus(response.data?.users || [])
       } else {

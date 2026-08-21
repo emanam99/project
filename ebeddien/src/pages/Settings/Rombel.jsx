@@ -358,7 +358,7 @@ function Rombel() {
         rombelScope.canFilterPengurusAmpu && filterPengurusAmpu ? filterPengurusAmpu : undefined
       const res = await rombelAPI.getAll({
         page: 1,
-        limit: 9999,
+        limit: 1000,
         lembaga_ids: lembagaAccess.allowedLembagaIds?.length ? lembagaAccess.allowedLembagaIds.join(',') : undefined,
         id_pengurus_ampu: idPengurusAmpu
       })
