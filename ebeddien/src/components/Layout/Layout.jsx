@@ -78,8 +78,17 @@ function Layout() {
   /** Chat AI eBeddien + sub-rute training: sama seperti /chat-ai — tanpa animasi y agar tidak “terangkat” vs nav bawah */
   const isChatAiRoute =
     location.pathname === '/chat-ai' || location.pathname.startsWith('/chat-ai/')
+  /** Tentang / Info aplikasi / Versi: satu shell agar hero+tab tidak remount saat pindah tab */
+  const isTentangRoute =
+    location.pathname === '/tentang' ||
+    location.pathname === '/info-aplikasi' ||
+    location.pathname === '/version'
   /** Satu "halaman" shell untuk semua /chat-ai/* agar ChatAiLayout + tab tidak remount saat pindah tab */
-  const layoutMotionPageKey = isChatAiRoute ? '__chat_ai__' : location.pathname
+  const layoutMotionPageKey = isChatAiRoute
+    ? '__chat_ai__'
+    : isTentangRoute
+      ? '__tentang__'
+      : location.pathname
   const hideHeader =
     location.pathname === '/beranda' ||
     location.pathname === '/semua-menu' ||
@@ -175,7 +184,7 @@ function Layout() {
               <motion.div
                 key={layoutMotionPageKey}
                 variants={
-                  location.pathname === '/beranda' || isChatAiRoute
+                  location.pathname === '/beranda' || isChatAiRoute || isTentangRoute
                     ? berandaInstantVariants
                     : location.pathname.startsWith('/kalender')
                       ? offcanvasRightVariants

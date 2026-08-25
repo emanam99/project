@@ -1,5 +1,18 @@
 /** Kualitas JPEG saat capture still (0–1) */
-export const JPEG_CAPTURE_QUALITY = 0.96
+export const JPEG_CAPTURE_QUALITY = 0.92
+
+/** Sisi terpanjang foto still — max ImageCapture sering hang di Android Chrome. */
+export const STILL_CAPTURE_MAX_DIM = 1920
+
+export function withTimeout(promise, ms, message = 'Timeout') {
+  let timer = null
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer)
+  })
+}
 
 /**
  * Hentikan semua track MediaStream (indikator kamera browser ikut mati).
@@ -167,8 +180,39 @@ export async function setTrackTorch(track, enabled) {
   }
 }
 
+function drawScaledToCanvas(source, maxDim) {
+  const srcW = source.videoWidth || source.naturalWidth || source.width || 1920
+  const srcH = source.videoHeight || source.naturalHeight || source.height || 1080
+  let w = srcW
+  let h = srcH
+  if (maxDim && Math.max(w, h) > maxDim) {
+    const scale = maxDim / Math.max(w, h)
+    w = Math.round(w * scale)
+    h = Math.round(h * scale)
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(source, 0, 0, w, h)
+  return { canvas, w, h }
+}
+
+function canvasToJpegBlob(canvas, quality = JPEG_CAPTURE_QUALITY) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error('Gagal membuat blob dari canvas'))),
+      'image/jpeg',
+      quality
+    )
+  })
+}
+
 /**
- * Ambil foto still — ImageCapture (resolusi foto penuh) atau fallback canvas video frame.
+ * Ambil foto still — ImageCapture (tanpa max foto) atau fallback canvas video.
+ * Max resolusi dibatasi agar HP tidak hang di toBlob/OpenCV.
  */
 export async function captureStillFrame(stream, videoEl) {
   const track = stream?.getVideoTracks?.()[0]
@@ -176,17 +220,7 @@ export async function captureStillFrame(stream, videoEl) {
   if (track && typeof ImageCapture !== 'undefined') {
     try {
       const capturer = new ImageCapture(track)
-      const photoSettings = {}
-
-      if (capturer.getPhotoCapabilities) {
-        const photoCaps = await capturer.getPhotoCapabilities()
-        if (photoCaps.imageWidth?.max) photoSettings.imageWidth = photoCaps.imageWidth.max
-        if (photoCaps.imageHeight?.max) photoSettings.imageHeight = photoCaps.imageHeight.max
-      }
-
-      const blob = await capturer.takePhoto(
-        Object.keys(photoSettings).length ? photoSettings : undefined
-      )
+      const blob = await withTimeout(capturer.takePhoto(), 2500, 'ImageCapture timeout')
       if (blob?.size) {
         return { blob, source: 'imageCapture' }
       }
@@ -195,42 +229,28 @@ export async function captureStillFrame(stream, videoEl) {
     }
   }
 
-  const w = videoEl?.videoWidth || 1920
-  const h = videoEl?.videoHeight || 1080
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(videoEl, 0, 0, w, h)
-
-  const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('Gagal membuat blob dari canvas'))),
-      'image/jpeg',
-      JPEG_CAPTURE_QUALITY
-    )
-  })
-
+  const { canvas, w, h } = drawScaledToCanvas(videoEl, STILL_CAPTURE_MAX_DIM)
+  const blob = await withTimeout(canvasToJpegBlob(canvas), 4000, 'toBlob timeout')
   return { blob, canvas, w, h, source: 'canvas' }
 }
 
-/** Muat blob JPEG ke canvas resolusi penuh */
-export function blobToCaptureCanvas(blob) {
+/** Muat blob JPEG ke canvas, downscale jika lebih besar dari maxDim. */
+export function blobToCaptureCanvas(blob, maxDim = STILL_CAPTURE_MAX_DIM) {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(blob)
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      ctx.imageSmoothingEnabled = false
-      ctx.drawImage(img, 0, 0)
+    const timer = setTimeout(() => {
       URL.revokeObjectURL(url)
-      resolve({ canvas, w: canvas.width, h: canvas.height })
+      reject(new Error('Timeout memuat foto capture'))
+    }, 6000)
+    img.onload = () => {
+      clearTimeout(timer)
+      const { canvas, w, h } = drawScaledToCanvas(img, maxDim)
+      URL.revokeObjectURL(url)
+      resolve({ canvas, w, h })
     }
     img.onerror = () => {
+      clearTimeout(timer)
       URL.revokeObjectURL(url)
       reject(new Error('Gagal memuat foto capture'))
     }

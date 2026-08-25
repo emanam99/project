@@ -14,11 +14,40 @@ final class DaftarSantriWaFlow
 {
     private const TRIGGER = 'daftar santri';
 
+    private static ?int $lastHandledTokenId = null;
+
+    private static ?string $immediateNotice = null;
+
+    private static bool $consumed = false;
+
+    public static function lastHandledTokenId(): ?int
+    {
+        return self::$lastHandledTokenId;
+    }
+
+    /** True jika pesan handshake daftar sudah ditangani (termasuk sudah antri / sudah dikirim). */
+    public static function lastConsumed(): bool
+    {
+        return self::$consumed;
+    }
+
+    /** Pemberitahuan singkat yang dikirim segera (bukan antrian link). */
+    public static function takeImmediateNotice(): ?string
+    {
+        $notice = self::$immediateNotice;
+        self::$immediateNotice = null;
+
+        return $notice !== null && trim($notice) !== '' ? trim($notice) : null;
+    }
+
     /**
      * @return string|null Teks balasan (boleh SPLIT_MARKER) atau null
      */
     public static function handle(string $nomor, string $message, ?string $fromJid = null): ?string
     {
+        self::$lastHandledTokenId = null;
+        self::$immediateNotice = null;
+        self::$consumed = false;
         $fromJid = $fromJid !== null && $fromJid !== '' ? trim($fromJid) : null;
         $sender = self::normalizeIncomingNumber($nomor, $fromJid);
         if (strlen($sender) < 8) {
@@ -60,6 +89,15 @@ final class DaftarSantriWaFlow
             );
             $stmt->execute([$tokenHash]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row && self::hasFollowupStatusColumns($db)) {
+                $extra = $db->prepare(
+                    'SELECT pending_followup, followup_sent_at FROM daftar_santri_wa_tokens WHERE id = ? LIMIT 1'
+                );
+                $extra->execute([(int) $row['id']]);
+                $more = $extra->fetch(\PDO::FETCH_ASSOC) ?: [];
+                $row['pending_followup'] = $more['pending_followup'] ?? null;
+                $row['followup_sent_at'] = $more['followup_sent_at'] ?? null;
+            }
             if (!$row) {
                 return 'Token tidak dikenali atau sudah tidak berlaku. Buka ulang aplikasi pendaftaran dan buat tautan WhatsApp baru.';
             }
@@ -86,21 +124,35 @@ final class DaftarSantriWaFlow
                 return WhatsAppTemplates::pesanHarusDariNomorSama($storedWa, $sender);
             }
 
-            $upd = $db->prepare(
-                'UPDATE daftar_santri_wa_tokens
-                 SET wa_verified_at = NOW(), sender_wa = ?
-                 WHERE id = ? AND used_at IS NULL'
-            );
-            $upd->execute([$senderMsisdn, (int) $row['id']]);
+            if (!empty($row['wa_verified_at'])) {
+                if (!empty($row['followup_sent_at'])) {
+                    self::$consumed = true;
+                    self::$immediateNotice = 'Link login sudah dikirim. Cek pesan sebelumnya di chat ini.';
+
+                    return null;
+                }
+                if (!empty($row['pending_followup'])) {
+                    self::$consumed = true;
+
+                    return null;
+                }
+            } else {
+                $upd = $db->prepare(
+                    'UPDATE daftar_santri_wa_tokens
+                     SET wa_verified_at = NOW(), sender_wa = ?
+                     WHERE id = ? AND used_at IS NULL'
+                );
+                $upd->execute([$senderMsisdn, (int) $row['id']]);
+            }
+            self::$consumed = true;
+            self::$lastHandledTokenId = (int) $row['id'];
 
             $link = self::buildLoginUrl($plainToken);
-            $msg2 = "NIK: {$nik}\n"
+            return "NIK: {$nik}\n"
                 . "Nomor WA tercatat: {$claimedWa}\n"
-                . "Nomor WA penirim: {$senderMsisdn}\n\n"
+                . "Nomor WA pengirim: {$senderMsisdn}\n\n"
                 . "Buka link berikut untuk masuk dashboard pendaftaran (sekali pakai):\n"
                 . $link;
-
-            return WhatsAppTemplates::prependPermintaanSedangDiprosesAck($db, $senderMsisdn, $msg2);
         } catch (\Throwable $e) {
             error_log('DaftarSantriWaFlow::handle ' . $e->getMessage());
             return 'Terjadi gangguan saat memverifikasi. Silakan coba lagi sebentar.';
@@ -122,5 +174,15 @@ final class DaftarSantriWaFlow
             return $digits;
         }
         return WhatsAppService::formatPhoneNumber($nomor);
+    }
+
+    private static function hasFollowupStatusColumns(\PDO $db): bool
+    {
+        try {
+            return $db->query("SHOW COLUMNS FROM daftar_santri_wa_tokens LIKE 'pending_followup'")->rowCount() > 0
+                && $db->query("SHOW COLUMNS FROM daftar_santri_wa_tokens LIKE 'followup_sent_at'")->rowCount() > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }

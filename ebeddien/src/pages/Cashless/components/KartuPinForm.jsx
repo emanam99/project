@@ -1,5 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cashlessAPI } from '../../../services/api'
+
+function formatRp(n) {
+  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(Number(n) || 0)
+}
 
 /**
  * Form set/ganti PIN 6 digit untuk kartu santri (CS).
@@ -10,6 +14,16 @@ export default function KartuPinForm({ kartuId, hasPin = false, onSaved }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [batasPin, setBatasPin] = useState(10000)
+
+  useEffect(() => {
+    cashlessAPI.getConfig().then((res) => {
+      const n = res?.data?.batas_pin_belanja
+      if (n != null && Number.isFinite(Number(n))) {
+        setBatasPin(Number(n))
+      }
+    }).catch(() => {})
+  }, [])
 
   if (!kartuId) return null
 
@@ -51,7 +65,9 @@ export default function KartuPinForm({ kartuId, hasPin = false, onSaved }) {
           <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">PIN belanja</p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
             {hasPin
-              ? 'PIN sudah diatur (wajib belanja ≥ Rp 10.000; tanpa PIN kartu tidak bisa transaksi)'
+              ? batasPin > 0
+                ? `PIN sudah diatur (wajib belanja ≥ Rp ${formatRp(batasPin)}; tanpa PIN kartu tidak bisa transaksi)`
+                : 'PIN sudah diatur (setiap belanja wajib PIN; tanpa PIN kartu tidak bisa transaksi)'
               : 'Belum ada PIN — kartu belum bisa dipakai transaksi hingga PIN diatur (santri di myBeddien atau di sini)'}
           </p>
         </div>

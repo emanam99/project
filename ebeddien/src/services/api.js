@@ -1262,16 +1262,26 @@ export const ijinAPI = {
     return response.data
   },
 
-  /** Daftar ijin yang dicatat pada tanggal / rentang (Y-m-d). */
+  /** Daftar ijin yang dicatat pada tanggal / rentang (Y-m-d). Opsional telat=1 (belum kembali & deadline lewat). */
   getByTanggal: async (tanggalOrRange, tahunAjaran = null) => {
     const params = new URLSearchParams()
     if (tanggalOrRange && typeof tanggalOrRange === 'object') {
+      if (tanggalOrRange.telat) params.set('telat', '1')
       if (tanggalOrRange.tanggal_dari) params.set('tanggal_dari', tanggalOrRange.tanggal_dari)
       if (tanggalOrRange.tanggal_sampai) params.set('tanggal_sampai', tanggalOrRange.tanggal_sampai)
       if (tanggalOrRange.tanggal) params.set('tanggal', tanggalOrRange.tanggal)
     } else if (tanggalOrRange) {
       params.set('tanggal', String(tanggalOrRange))
     }
+    if (tahunAjaran) params.set('tahun_ajaran', tahunAjaran)
+    const response = await api.get(`/ijin?${params.toString()}`)
+    return response.data
+  },
+
+  /** Ijin telat: belum kembali & deadline Masehi sudah lewat. */
+  getTelat: async (tahunAjaran = null) => {
+    const params = new URLSearchParams()
+    params.set('telat', '1')
     if (tahunAjaran) params.set('tahun_ajaran', tahunAjaran)
     const response = await api.get(`/ijin?${params.toString()}`)
     return response.data
@@ -4534,6 +4544,16 @@ export const cashlessAPI = {
     return response.data
   },
 
+  listBatasHarianOpsional: async (params = {}) => {
+    const response = await api.get('/v2/cashless/batas-harian-opsional', { params })
+    return response.data
+  },
+
+  setSantriBatasHarian: async (santriId, data) => {
+    const response = await api.put(`/v2/cashless/batas-harian-santri/${santriId}`, data)
+    return response.data
+  },
+
   /** Top-up dana ke wallet santri (orang tua bayar cash ke kantor, petugas input manual). Body: { santri_id, nominal, referensi?, metode? }. */
   topUp: async (data) => {
     const response = await api.post('/v2/cashless/topup', data)
@@ -5865,6 +5885,20 @@ export const uploadsManagerAPI = {
 }
 
 export const umrohJamaahAPI = {
+  getDashboard: async () => {
+    const response = await api.get('/umroh/dashboard')
+    return response.data
+  },
+
+  getLaporan: async (params = {}) => {
+    const queryString = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v != null))
+    ).toString()
+    const url = queryString ? `/umroh/laporan?${queryString}` : '/umroh/laporan'
+    const response = await api.get(url)
+    return response.data
+  },
+
   getAll: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString()
     const url = queryString ? `/umroh/jamaah?${queryString}` : '/umroh/jamaah'
@@ -5925,6 +5959,47 @@ export const umrohTabunganAPI = {
     const response = await api.delete(`/umroh/tabungan/${id}`)
     return response.data
   }
+}
+
+export const umrohPengeluaranAPI = {
+  getAll: async (params = {}) => {
+    const queryString = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== '' && v != null))
+    ).toString()
+    const url = queryString ? `/umroh/pengeluaran?${queryString}` : '/umroh/pengeluaran'
+    const response = await api.get(url)
+    return response.data
+  },
+
+  getById: async (id) => {
+    const response = await api.get(`/umroh/pengeluaran/${id}`)
+    return response.data
+  },
+
+  create: async (data) => {
+    const response = await api.post('/umroh/pengeluaran', data)
+    return response.data
+  },
+
+  update: async (id, data) => {
+    const response = await api.put(`/umroh/pengeluaran/${id}`, data)
+    return response.data
+  },
+
+  approve: async (id) => {
+    const response = await api.post(`/umroh/pengeluaran/${id}/approve`)
+    return response.data
+  },
+
+  reject: async (id) => {
+    const response = await api.post(`/umroh/pengeluaran/${id}/reject`)
+    return response.data
+  },
+
+  delete: async (id) => {
+    const response = await api.delete(`/umroh/pengeluaran/${id}`)
+    return response.data
+  },
 }
 
 // Payment Transaction API (iPayMu)

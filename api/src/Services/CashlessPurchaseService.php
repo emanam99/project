@@ -12,7 +12,10 @@ use App\Helpers\CashlessCardTokenHelper;
  */
 class CashlessPurchaseService
 {
+    /** Default jika config `batas_pin_belanja` belum ada. */
     public const PIN_THRESHOLD = 10000.0;
+
+    public const CONFIG_PIN_THRESHOLD_KEY = 'batas_pin_belanja';
 
     public const PIN_LENGTH = 6;
 
@@ -178,7 +181,7 @@ class CashlessPurchaseService
                 'pedagang_id' => $pedagangId,
                 'santri_id' => $santriId,
                 'kartu_id' => $kartuId,
-                'pin_required' => $total >= self::PIN_THRESHOLD,
+                'pin_required' => $this->totalRequiresPin($total),
             ];
 
             $posted = $this->ledger->postJournal(
@@ -281,7 +284,7 @@ class CashlessPurchaseService
                     'saldo_sesudah' => $saldoBaru,
                     'toko' => $tokoNama,
                     'items' => $itemOut,
-                    'pin_used' => $total >= self::PIN_THRESHOLD,
+                    'pin_used' => $this->totalRequiresPin($total),
                 ],
             ];
         } catch (\Throwable $e) {
@@ -370,8 +373,34 @@ class CashlessPurchaseService
     }
 
     /**
+     * Ambang belanja wajib PIN (Rp). 0 = setiap belanja wajib PIN.
+     */
+    public static function getPinThreshold(\PDO $db): float
+    {
+        try {
+            $stmt = $db->prepare(
+                'SELECT nilai FROM cashless___config WHERE kunci = ? LIMIT 1'
+            );
+            $stmt->execute([self::CONFIG_PIN_THRESHOLD_KEY]);
+            $val = $stmt->fetchColumn();
+            if ($val !== false && $val !== null && trim((string) $val) !== '') {
+                return max(0.0, (float) str_replace(',', '.', (string) $val));
+            }
+        } catch (\Throwable $e) {
+            // Config belum ada — pakai default.
+        }
+
+        return self::PIN_THRESHOLD;
+    }
+
+    private function totalRequiresPin(float $total): bool
+    {
+        return $total >= self::getPinThreshold($this->db);
+    }
+
+    /**
      * Kartu tanpa PIN tidak boleh dipakai transaksi sama sekali.
-     * Input PIN 6 digit wajib jika total ≥ PIN_THRESHOLD.
+     * Input PIN 6 digit wajib jika total ≥ ambang dari pengaturan cashless.
      *
      * @return array{success: bool, message?: string, code?: string}
      */
@@ -388,7 +417,7 @@ class CashlessPurchaseService
             ];
         }
 
-        if ($total < self::PIN_THRESHOLD) {
+        if (!$this->totalRequiresPin($total)) {
             return ['success' => true];
         }
 

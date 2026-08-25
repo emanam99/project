@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Database;
 use App\Helpers\AiAssistantReplyStyleHelper;
+use App\Helpers\AuthWaFollowupHelper;
 
 /**
  * Alur balasan otomatis untuk pesan WA masuk (webhook Node WA, WatZap, atau Evolution).
@@ -17,6 +18,7 @@ final class WhatsAppInboundService
      */
     /**
      * @param list<array{mime_type: string, data: string}> $attachments
+     * @return array{immediate_ack?: string, immediate_jid?: string}
      */
     public static function runAutomatedReplies(
         \PDO $db,
@@ -26,21 +28,63 @@ final class WhatsAppInboundService
         ?bool $incomingIsGroup,
         string $sumberMasuk = 'api_wa',
         array $attachments = []
-    ): void {
+    ): array {
+        $immediateAck = '';
         $reply = DaftarNotifFlow::handle($nomorTujuan, $message, $jid);
         $isDaftarNotif = $reply !== null && $reply !== '';
         $replySource = $isDaftarNotif ? 'daftar_notif' : null;
         $skipOtherIncomingFlows = $isDaftarNotif;
+        $queuedAuthFollowup = false;
         if (!$skipOtherIncomingFlows) {
             $reply = DaftarSantriWaFlow::handle($nomorTujuan, $message, $jid);
-            if ($reply !== null && $reply !== '') {
+            $notice = DaftarSantriWaFlow::takeImmediateNotice();
+            if ($notice !== null && $notice !== '') {
+                $immediateAck = $notice;
+                $skipOtherIncomingFlows = true;
+                $reply = null;
+            } elseif ($reply !== null && $reply !== '') {
                 $replySource = 'daftar_santri_wa';
+                $tokenId = DaftarSantriWaFlow::lastHandledTokenId();
+                if ($tokenId !== null && $tokenId > 0) {
+                    AuthWaFollowupHelper::enqueue(
+                        'daftar_santri_wa_tokens',
+                        $tokenId,
+                        $nomorTujuan,
+                        $jid,
+                        $reply,
+                        AuthWaFollowupHelper::SOURCE_DAFTAR_SANTRI
+                    );
+                    $reply = null;
+                    $replySource = null;
+                    $queuedAuthFollowup = true;
+                    $skipOtherIncomingFlows = true;
+                }
+            } elseif (DaftarSantriWaFlow::lastConsumed()) {
+                $skipOtherIncomingFlows = true;
             }
         }
         if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
             $reply = MybeddianAuthWaFlow::handle($nomorTujuan, $message, $jid);
             if ($reply !== null && $reply !== '') {
                 $replySource = 'mybeddian_auth_wa';
+                $tokenId = MybeddianAuthWaFlow::lastHandledTokenId();
+                if ($tokenId !== null && $tokenId > 0) {
+                    $bind = MybeddianAuthWaFlow::peekPendingLinkBind();
+                    AuthWaFollowupHelper::enqueue(
+                        'mybeddian_auth_wa_tokens',
+                        $tokenId,
+                        $nomorTujuan,
+                        $jid,
+                        $reply,
+                        AuthWaFollowupHelper::SOURCE_MYBEDDIEN,
+                        is_array($bind) ? (string) ($bind['table'] ?? '') : null,
+                        is_array($bind) ? (int) ($bind['id'] ?? 0) : null
+                    );
+                    $reply = null;
+                    $replySource = null;
+                    $queuedAuthFollowup = true;
+                    $skipOtherIncomingFlows = true;
+                }
             }
         }
         if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
@@ -70,9 +114,21 @@ final class WhatsAppInboundService
                 'kategori' => $replySource ?? 'custom',
                 'sumber' => $sumberMasuk,
             ];
-            $messageIds = self::sendAutomatedReplyText($nomorTujuan, $reply, $logContext, $jid, $replySource ?? 'auto_reply');
-            if ($replySource === 'mybeddian_auth_wa' && $messageIds !== []) {
-                MybeddianAuthWaFlow::bindPendingLinkMessageId($messageIds[count($messageIds) - 1]);
+            if (in_array($replySource, ['daftar_santri_wa', 'mybeddian_auth_wa'], true)) {
+                $immediateAck = $reply;
+            } else {
+                $messageIds = self::sendAutomatedReplyText($nomorTujuan, $reply, $logContext, $jid, $replySource ?? 'auto_reply');
+                if ($replySource === 'mybeddian_auth_wa' && $messageIds !== []) {
+                    MybeddianAuthWaFlow::bindPendingLinkMessageId($messageIds[count($messageIds) - 1]);
+                }
+            }
+        } elseif ($queuedAuthFollowup) {
+            error_log('WhatsAppInboundService: auth followup diantrikan from=' . $nomorTujuan);
+            if ($immediateAck === '') {
+                $claimed = WhatsAppTemplates::claimPermintaanSedangDiprosesAck($db, $nomorTujuan);
+                if ($claimed !== null && $claimed !== '') {
+                    $immediateAck = $claimed;
+                }
             }
         } else {
             error_log('WhatsAppInboundService: no auto reply. from=' . $nomorTujuan . ' preview=' . substr($message, 0, 60));
@@ -83,13 +139,23 @@ final class WhatsAppInboundService
                 );
             }
         }
+
+        $out = [];
+        if ($immediateAck !== '') {
+            $out['immediate_ack'] = $immediateAck;
+            if ($jid !== null && trim($jid) !== '') {
+                $out['immediate_jid'] = trim($jid);
+            }
+        }
+
+        return $out;
     }
 
     /**
      * Simpan pesan masuk lalu jalankan alur balasan (satu entri DB).
      *
      * @param 'api_wa'|'evolution'|'watzap' $sumber
-     * @return array{success: bool, message: string, id?: int}
+     * @return array{success: bool, message: string, id?: int, immediate_ack?: string, immediate_jid?: string}
      */
     /**
      * @param list<array{mime_type: string, data: string}> $attachments
@@ -139,9 +205,9 @@ final class WhatsAppInboundService
         }
 
         WhatsAppService::syncKontakLidFromIncomingMeta($nomorTujuan, $fromJid);
-        self::runAutomatedReplies($db, $nomorTujuan, $messageText, $fromJid, $incomingIsGroup, $sumber, $attachments);
+        $auto = self::runAutomatedReplies($db, $nomorTujuan, $messageText, $fromJid, $incomingIsGroup, $sumber, $attachments);
 
-        return ['success' => true, 'message' => 'OK', 'id' => $id];
+        return array_merge(['success' => true, 'message' => 'OK', 'id' => $id], $auto);
     }
 
     /**
@@ -181,8 +247,9 @@ final class WhatsAppInboundService
                 . ($jid ? ' jid=' . $jid : '')
             );
             $sendResult = WhatsAppService::sendMessage($nomorTujuan, $part, null, $logContext, $jid);
-            if (!empty($sendResult['messageId'])) {
-                $messageIds[] = trim((string) $sendResult['messageId']);
+            if (!empty($sendResult['success'])) {
+                $mid = isset($sendResult['messageId']) ? trim((string) $sendResult['messageId']) : '';
+                $messageIds[] = $mid !== '' ? $mid : 'ok';
             }
             error_log(
                 'WhatsAppInboundService sendMessage success='

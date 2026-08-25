@@ -17,6 +17,20 @@ final class MybeddianAuthWaFlow
     /** @var array{table: string, id: int}|null Token link yang baru dibuat — diikat ke wa_message_id setelah kirim. */
     private static ?array $pendingLinkBind = null;
 
+    /** Token handshake yang baru diverifikasi (untuk antrian follow-up di luar webhook). */
+    private static ?int $lastHandledTokenId = null;
+
+    public static function lastHandledTokenId(): ?int
+    {
+        return self::$lastHandledTokenId;
+    }
+
+    /** @return array{table: string, id: int}|null */
+    public static function peekPendingLinkBind(): ?array
+    {
+        return self::$pendingLinkBind;
+    }
+
     /**
      * Setelah kirim balasan otomatis: simpan messageId bagian yang berisi link.
      */
@@ -24,13 +38,16 @@ final class MybeddianAuthWaFlow
     {
         $pending = self::$pendingLinkBind;
         self::$pendingLinkBind = null;
-        $messageId = $messageId !== null ? trim($messageId) : '';
-        if ($pending === null || $messageId === '') {
+        if ($pending === null) {
             return;
         }
-        $table = (string) ($pending['table'] ?? '');
-        $id = (int) ($pending['id'] ?? 0);
-        if ($id < 1 || !in_array($table, ['user___setup_tokens', 'user___password_reset_tokens'], true)) {
+        self::bindLinkMessageId((string) ($pending['table'] ?? ''), (int) ($pending['id'] ?? 0), $messageId);
+    }
+
+    public static function bindLinkMessageId(string $table, int $id, ?string $messageId): void
+    {
+        $messageId = $messageId !== null ? trim($messageId) : '';
+        if ($id < 1 || $messageId === '' || !in_array($table, ['user___setup_tokens', 'user___password_reset_tokens'], true)) {
             return;
         }
         try {
@@ -47,7 +64,7 @@ final class MybeddianAuthWaFlow
             }
             $db->prepare('UPDATE user___password_reset_tokens SET wa_message_id = ? WHERE id = ?')->execute([$messageId, $id]);
         } catch (\Throwable $e) {
-            error_log('MybeddianAuthWaFlow::bindPendingLinkMessageId ' . $e->getMessage());
+            error_log('MybeddianAuthWaFlow::bindLinkMessageId ' . $e->getMessage());
         }
     }
 
@@ -57,6 +74,7 @@ final class MybeddianAuthWaFlow
     public static function handle(string $nomor, string $message, ?string $fromJid = null): ?string
     {
         self::$pendingLinkBind = null;
+        self::$lastHandledTokenId = null;
         $fromJid = $fromJid !== null && $fromJid !== '' ? trim($fromJid) : null;
         $sender = self::normalizeIncomingNumber($nomor, $fromJid);
         if (strlen($sender) < 8) {
@@ -150,6 +168,7 @@ final class MybeddianAuthWaFlow
 
                 $replyBody = self::buildVerifiedReply($db, $purpose, $modeMsg, $payload, $claimedWa, $senderMsisdn, $adminNotif);
                 $db->commit();
+                self::$lastHandledTokenId = (int) $row['id'];
             } catch (\Throwable $e) {
                 if ($db->inTransaction()) {
                     $db->rollBack();
@@ -161,7 +180,7 @@ final class MybeddianAuthWaFlow
                 NisPengajuanWaHelper::sendAdminNotifFromVerify($adminNotif);
             }
 
-            return WhatsAppTemplates::prependPermintaanSedangDiprosesAck($db, $senderMsisdn, $replyBody);
+            return $replyBody;
         } catch (\Throwable $e) {
             error_log('MybeddianAuthWaFlow::handle ' . $e->getMessage());
             return 'Terjadi gangguan saat memverifikasi. Silakan coba lagi sebentar.';
@@ -186,7 +205,7 @@ final class MybeddianAuthWaFlow
         $base = rtrim((string) ($config['app']['mybeddian_url'] ?? 'https://mybeddien.alutsmani.id'), '/');
         $linkTtl = WaSecurityLinkHelper::LINK_TTL_MINUTES;
 
-        $header = "Nomor WA tercatat: {$claimedWa}\nNomor WA penirim: {$senderNorm}\n";
+        $header = "Nomor WA tercatat: {$claimedWa}\nNomor WA pengirim: {$senderNorm}\n";
 
         if ($purpose === MybeddianAuthWaHelper::PURPOSE_PENGAJUAN_NIS) {
             $done = NisPengajuanWaHelper::finalizeAfterWaVerify($db, $payload);

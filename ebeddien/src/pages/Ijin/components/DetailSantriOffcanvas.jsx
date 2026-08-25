@@ -156,6 +156,25 @@ function localWaktuHmsNow() {
   return `${h}:${mi}:${s}`
 }
 
+/** Jam HH:MM saat ijin dibuat (untuk default jam_dari). */
+function nowJamHm() {
+  const now = new Date()
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+}
+
+/** Default jam sampai ijin sehari: 17:00 (jam 5 sore). */
+const JAM_SAMPAI_DEFAULT = '17:00'
+
+function defaultJamIjinSehari(prev = {}) {
+  const jamDari = jamToInputValue(prev.jam_dari) || nowJamHm()
+  let jamSampai = jamToInputValue(prev.jam_sampai) || JAM_SAMPAI_DEFAULT
+  if (jamSampai <= jamDari) {
+    jamSampai = JAM_SAMPAI_DEFAULT
+    if (jamSampai <= jamDari) jamSampai = '23:59'
+  }
+  return { jam_dari: jamDari, jam_sampai: jamSampai }
+}
+
 async function fetchHijriyahHariIni() {
   try {
     const res = await kalenderAPI.get({
@@ -482,6 +501,15 @@ function DetailSantriOffcanvas({
         showNotification('Jam sampai harus setelah jam dari', 'error')
         return
       }
+    } else {
+      if (!formData.dari) {
+        showNotification('Tanggal dari wajib diisi', 'error')
+        return
+      }
+      if (!formData.sampai) {
+        showNotification('Tanggal sampai wajib diisi', 'error')
+        return
+      }
     }
 
     const payload = {
@@ -590,15 +618,16 @@ function DetailSantriOffcanvas({
       return
     }
     setFormData((prev) => {
-      const lamaJam = formatLamaJam(prev.jam_dari, prev.jam_sampai)
+      const jam = defaultJamIjinSehari(prev)
+      const lamaJam = formatLamaJam(jam.jam_dari, jam.jam_sampai)
       return {
         ...prev,
         ijin_sehari: true,
         sampai: prev.dari || prev.sampai,
         perpanjang: '',
         lama: lamaJam || '',
-        jam_dari: prev.jam_dari || '',
-        jam_sampai: prev.jam_sampai || '',
+        jam_dari: jam.jam_dari,
+        jam_sampai: jam.jam_sampai,
       }
     })
     ;(async () => {
@@ -606,12 +635,15 @@ function DetailSantriOffcanvas({
       if (!hijriToday) return
       setFormData((prev) => {
         if (!prev.ijin_sehari) return prev
+        const jam = defaultJamIjinSehari(prev)
         return {
           ...prev,
           dari: hijriToday,
           sampai: hijriToday,
           perpanjang: '',
-          lama: formatLamaJam(prev.jam_dari, prev.jam_sampai) || prev.lama,
+          jam_dari: jam.jam_dari,
+          jam_sampai: jam.jam_sampai,
+          lama: formatLamaJam(jam.jam_dari, jam.jam_sampai) || prev.lama,
         }
       })
     })()
@@ -1629,14 +1661,14 @@ function DetailSantriOffcanvas({
                           </span>
                         </label>
                         <p className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-                          Centang: tanggal Hijriyah hari ini + jam mulai–selesai; lama dihitung otomatis.
+                          Centang: tanggal dari &amp; sampai sama (Hijriyah hari ini); jam dari = sekarang, jam sampai = 17:00 (bisa diubah).
                         </p>
                       </div>
 
                       <div className={`grid grid-cols-1 gap-3 ${formData.ijin_sehari ? '' : 'sm:grid-cols-2'}`}>
                         <div>
                           <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">
-                            {formData.ijin_sehari ? 'Tanggal (Hijriyah)' : 'Dari (Hijriyah)'}
+                            {formData.ijin_sehari ? 'Tanggal (Hijriyah) *' : 'Dari (Hijriyah) *'}
                           </label>
                           <PickDateHijri
                             id="ijin-dari-hijri"
@@ -1673,7 +1705,7 @@ function DetailSantriOffcanvas({
                         {!formData.ijin_sehari && (
                           <div>
                             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">
-                              Sampai (Hijriyah)
+                              Sampai (Hijriyah) *
                             </label>
                             <PickDateHijri
                               id="ijin-sampai-hijri"
@@ -1701,7 +1733,7 @@ function DetailSantriOffcanvas({
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
                             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">
-                              Jam dari
+                              Jam dari *
                             </label>
                             <input
                               type="time"
@@ -1719,7 +1751,7 @@ function DetailSantriOffcanvas({
                           </div>
                           <div>
                             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">
-                              Jam sampai
+                              Jam sampai *
                             </label>
                             <input
                               type="time"

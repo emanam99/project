@@ -182,6 +182,7 @@ class MybeddianCashlessController
                     'pin_updated_at' => $pinStatus['pin_updated_at'] ?? null,
                 ],
                 'has_passkey' => $hasPasskey,
+                'batas_pin_belanja' => CashlessPurchaseService::getPinThreshold($this->db),
                 'reconcile' => $reconcileInfo,
             ],
         ]);
@@ -383,7 +384,10 @@ class MybeddianCashlessController
 
             return $this->json($response, [
                 'success' => true,
-                'data' => array_merge($pinStatus, ['has_passkey' => $hasPasskey]),
+                'data' => array_merge($pinStatus, [
+                    'has_passkey' => $hasPasskey,
+                    'batas_pin_belanja' => CashlessPurchaseService::getPinThreshold($this->db),
+                ]),
             ]);
         } catch (\Throwable $e) {
             error_log('MybeddianCashlessController::getKartuPin ' . $e->getMessage());

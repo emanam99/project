@@ -339,6 +339,7 @@ export default function Cashless({ mode = 'santri' }) {
           onClose={() => setPinOpen(false)}
           mode={pinMode}
           hasPasskey={Boolean(wallet?.has_passkey)}
+          pinThreshold={wallet?.batas_pin_belanja ?? 10000}
           onSuccess={handlePinSuccess}
           onNotify={showToast}
         />

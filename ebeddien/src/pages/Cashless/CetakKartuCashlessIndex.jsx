@@ -14,6 +14,28 @@ import { CARD_TYPE_BY_KEY, CARD_TYPE_LABELS } from './constants/cashlessKartu'
 
 const ACCOUNTS_FETCH_LIMIT = 500
 const ACCOUNTS_PAGE_SIZE = 20
+const CAMERA_STORAGE_KEY = 'ebeddien_cetak_kartu_camera_open'
+
+function readCameraOpen() {
+  if (typeof window === 'undefined') return true
+  try {
+    const raw = window.localStorage.getItem(CAMERA_STORAGE_KEY)
+    if (raw === '0') return false
+    if (raw === '1') return true
+    if (window.localStorage.getItem('ebeddien_cetak_kartu_scan_camera') === '1') return false
+  } catch {
+    /* ignore */
+  }
+  return true
+}
+
+function persistCameraOpen(open) {
+  try {
+    window.localStorage.setItem(CAMERA_STORAGE_KEY, open ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
 
 function isDesktopLayout() {
   return typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
@@ -111,6 +133,7 @@ export default function CetakKartuCashlessIndex() {
   const [santriPickerOpen, setSantriPickerOpen] = useState(false)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
   const [mobileScanOpen, setMobileScanOpen] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(readCameraOpen)
   const [createSaving, setCreateSaving] = useState(false)
   const panelReqRef = useRef(0)
   /** Hindari history.back() dari Cari Santri menutup offcanvas detail yang baru dibuka. */
@@ -209,6 +232,22 @@ export default function CetakKartuCashlessIndex() {
 
   const handleOpenCariSantri = useCallback(() => {
     setSantriPickerOpen(true)
+  }, [])
+
+  const handleToggleCamera = useCallback(() => {
+    if (!isDesktopLayout()) {
+      setMobileScanOpen((open) => {
+        const next = !open
+        if (next) setMobileDetailOpen(false)
+        return next
+      })
+      return
+    }
+    setCameraOpen((open) => {
+      const next = !open
+      persistCameraOpen(next)
+      return next
+    })
   }, [])
 
   const handleScanSantriResolved = useCallback(
@@ -657,7 +696,13 @@ export default function CetakKartuCashlessIndex() {
         <div className="hidden lg:flex lg:w-80 xl:w-96 shrink-0 flex-col min-h-0 gap-3">
           <CashlessSantriScanBlock
             onSantriResolved={handleScanSantriResolved}
-            storageKey="ebeddien_cetak_kartu_scan_camera"
+            cameraOpen={cameraOpen}
+            onCameraOpenChange={(open) => {
+              persistCameraOpen(open)
+              setCameraOpen(open)
+            }}
+            showHeader={false}
+            hidePlaceholder
           />
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <CetakKartuSantriSidePanel
@@ -668,50 +713,62 @@ export default function CetakKartuCashlessIndex() {
               onBuatAkun={handleBuatAkunCashless}
               createSaving={createSaving}
               onAccountRefresh={handleAccountRefresh}
+              cameraOpen={cameraOpen}
+              onToggleCamera={handleToggleCamera}
             />
           </div>
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setMobileScanOpen(true)}
-        className="lg:hidden fixed z-[50] bottom-36 right-5 w-14 h-14 rounded-full bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white shadow-lg flex items-center justify-center transition-colors"
-        aria-label="Scan kartu santri"
-        title="Scan kartu santri"
-      >
-        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h2M4 12h2m10 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-          />
-        </svg>
-      </button>
-
-      <button
-        type="button"
-        onClick={handleOpenCariSantri}
-        className="lg:hidden fixed z-[50] bottom-20 right-5 w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-lg flex items-center justify-center transition-colors"
-        aria-label="Cari santri"
-        title="Cari santri"
-      >
-        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-        </svg>
-      </button>
+      <div className="lg:hidden fixed z-[50] bottom-20 right-5 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleToggleCamera}
+          className={`w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-colors ${
+            mobileScanOpen
+              ? 'bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white'
+              : 'bg-white text-gray-600 hover:bg-gray-50 active:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+          }`}
+          aria-label={mobileScanOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+          title={mobileScanOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+          aria-pressed={mobileScanOpen}
+        >
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+            />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            {!mobileScanOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4l16 16" />
+            ) : null}
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={handleOpenCariSantri}
+          className="w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-lg flex items-center justify-center transition-colors"
+          aria-label="Cari santri"
+          title="Cari santri"
+        >
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+      </div>
 
       {createPortal(
         mobileScanOpen ? (
           <div
-            className="lg:hidden fixed inset-0 z-[255] flex items-end justify-center bg-black/50"
+            className="lg:hidden fixed inset-0 z-[255] flex items-start justify-center bg-black/50"
             onClick={closeMobileScan}
             role="presentation"
           >
             <div
-              className="w-full max-w-lg rounded-t-2xl bg-white p-4 shadow-xl dark:bg-gray-900"
-              style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+              className="w-full max-w-lg rounded-b-2xl bg-white p-4 shadow-xl dark:bg-gray-900"
+              style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-3 flex items-center justify-between gap-2">
@@ -729,7 +786,10 @@ export default function CetakKartuCashlessIndex() {
               </div>
               <CashlessSantriScanBlock
                 onSantriResolved={handleScanSantriResolved}
-                storageKey="ebeddien_cetak_kartu_scan_camera_mobile"
+                cameraOpen
+                onCameraOpenChange={() => setMobileScanOpen(false)}
+                showHeader={false}
+                hidePlaceholder
                 compact
               />
             </div>
@@ -748,6 +808,8 @@ export default function CetakKartuCashlessIndex() {
         onBuatAkun={handleBuatAkunCashless}
         createSaving={createSaving}
         onAccountRefresh={handleAccountRefresh}
+        cameraOpen={mobileScanOpen}
+        onToggleCamera={handleToggleCamera}
       />
 
       {createPortal(

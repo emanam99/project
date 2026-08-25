@@ -95,6 +95,8 @@ class CashlessStatementService
                 'description' => $row['description'] ?? null,
                 'reference' => $row['reference'] ?? null,
                 'referensi' => $meta['referensi'] ?? null,
+                'metode' => isset($meta['metode']) ? (string) $meta['metode'] : null,
+                'metode_label' => isset($meta['metode_label']) ? (string) $meta['metode_label'] : null,
                 'created_at' => $row['created_at'] ?? null,
                 'actor_user_id' => $actorUserId !== null && $actorUserId !== '' ? (int) $actorUserId : null,
                 'actor_username' => is_string($actorUsername) && $actorUsername !== '' ? $actorUsername : null,
@@ -395,13 +397,13 @@ class CashlessStatementService
             return 'Top-up iPayMu';
         }
         if ($type === 'TOPUP') {
-            return (string) ($meta['metode_label'] ?? 'Top-up');
+            return 'Top-up';
         }
         if ($type === 'PURCHASE') {
             return 'Belanja';
         }
         if ($type === 'WITHDRAWAL') {
-            return 'Penarikan';
+            return 'Tarik';
         }
         return $type !== '' ? $type : 'Transaksi';
     }

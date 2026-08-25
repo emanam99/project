@@ -31,24 +31,21 @@ export const loadOpenCV = () => {
     script.defer = true
     script.crossOrigin = 'anonymous'
     script.onload = () => {
-      // Tunggu OpenCV siap
+      const started = Date.now()
       const checkOpenCV = setInterval(() => {
         if (window.cv && window.cv.Mat) {
           clearInterval(checkOpenCV)
           cvLoaded = true
           cvLoading = false
           resolve(window.cv)
+          return
         }
-      }, 100)
-
-      // Timeout setelah 30 detik
-      setTimeout(() => {
-        if (!cvLoaded) {
+        if (Date.now() - started > 8000) {
           clearInterval(checkOpenCV)
           cvLoading = false
-          reject(new Error('OpenCV gagal dimuat dalam waktu 30 detik'))
+          reject(new Error('OpenCV gagal siap dalam waktu 8 detik'))
         }
-      }, 30000)
+      }, 100)
     }
     script.onerror = () => {
       cvLoading = false

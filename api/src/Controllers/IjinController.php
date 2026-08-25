@@ -64,6 +64,8 @@ class IjinController
             $tanggal = isset($queryParams['tanggal']) ? trim((string) $queryParams['tanggal']) : '';
             $tanggalDari = isset($queryParams['tanggal_dari']) ? trim((string) $queryParams['tanggal_dari']) : '';
             $tanggalSampai = isset($queryParams['tanggal_sampai']) ? trim((string) $queryParams['tanggal_sampai']) : '';
+            $telatOnly = isset($queryParams['telat'])
+                && in_array(strtolower(trim((string) $queryParams['telat'])), ['1', 'true', 'yes'], true);
 
             // Daftar ijin per rentang / tanggal dicatat (meja input)
             // Status: subquery 1 baris agar tidak dobel jika santri punya >1 status aktif (sampai IS NULL)
@@ -73,8 +75,7 @@ class IjinController
             $useRange = $ymdOk($tanggalDari) && $ymdOk($tanggalSampai);
             $useSingle = !$useRange && $ymdOk($tanggal);
 
-            if ($useRange || $useSingle) {
-                $sql = 'SELECT i.*,
+            $listSelectSql = 'SELECT i.*,
                         pi.nama AS admin_ijin_nama,
                         pk.nama AS admin_kembali_nama,
                         s.nama AS nama_santri,
@@ -110,6 +111,35 @@ class IjinController
                         LEFT JOIN lembaga___rombel rf ON rf.id = s.id_formal
                         LEFT JOIN lembaga lf ON lf.id = rf.lembaga_id
                         WHERE ';
+
+            $deadlineExpr = "COALESCE(NULLIF(TRIM(i.perpanjang_masehi), ''), NULLIF(TRIM(i.sampai_masehi), ''), NULLIF(TRIM(i.dari_masehi), ''))";
+
+            // Mode telat: belum kembali & deadline Masehi sudah lewat (abaikan filter tanggal_dibuat)
+            if ($telatOnly) {
+                $sql = $listSelectSql . " i.tanggal_kembali IS NULL
+                        AND {$deadlineExpr} IS NOT NULL
+                        AND {$deadlineExpr} <> ''
+                        AND {$deadlineExpr} REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                        AND {$deadlineExpr} < CURDATE()";
+                $params = [];
+                if ($tahunAjaran) {
+                    $sql .= ' AND i.tahun_ajaran = ?';
+                    $params[] = $tahunAjaran;
+                }
+                $sql .= ' ORDER BY ' . $deadlineExpr . ' ASC, i.tanggal_dibuat DESC';
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute($params);
+                $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'data' => $data,
+                    'meta' => ['mode' => 'telat', 'count' => count($data)],
+                ], 200);
+            }
+
+            if ($useRange || $useSingle) {
+                $sql = $listSelectSql;
                 $params = [];
 
                 if ($useRange) {
@@ -372,6 +402,13 @@ class IjinController
                 'jam_dari' => $jamDari,
                 'jam_sampai' => $jamSampai,
             ];
+        }
+
+        if ($dari === null || trim((string) $dari) === '') {
+            return ['ok' => false, 'message' => 'Tanggal dari wajib diisi'];
+        }
+        if ($sampai === null || trim((string) $sampai) === '') {
+            return ['ok' => false, 'message' => 'Tanggal sampai wajib diisi'];
         }
 
         return [
@@ -952,14 +989,14 @@ class IjinController
 
             $statusJoin = \App\Helpers\SantriStatusHelper::currentStatusJoinSql('s', 'st');
             $statusExpr = \App\Helpers\SantriStatusHelper::statusSelectSql('st', 's');
-            $sqlTopDaerah = "SELECT d.id, d.daerah AS nama, COUNT(s.id) AS jumlah_santri
+            $sqlTopDaerah = "SELECT d.id, d.daerah AS nama, d.kategori, COUNT(s.id) AS jumlah_santri
                 FROM daerah d
                 INNER JOIN daerah___kamar dk ON dk.id_daerah = d.id AND LOWER(TRIM(dk.status)) = 'aktif'
                 INNER JOIN santri s ON s.id_kamar = dk.id
                 {$statusJoin}
                 WHERE LOWER(TRIM(d.status)) = 'aktif'
                   AND LOWER(TRIM({$statusExpr})) = 'mukim'
-                GROUP BY d.id, d.daerah
+                GROUP BY d.id, d.daerah, d.kategori
                 ORDER BY jumlah_santri DESC
                 LIMIT 8";
             $stmtTop = $this->db->query($sqlTopDaerah);

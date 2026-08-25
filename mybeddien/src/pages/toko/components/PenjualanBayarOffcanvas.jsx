@@ -5,15 +5,13 @@ import BarangScannerSection from './BarangScannerSection'
 import PinKeypad from './PinKeypad'
 import { penjualanAPI } from '../../../services/api'
 
-const PIN_THRESHOLD = 10000
-
 function formatRupiah(n) {
   if (n == null || Number.isNaN(Number(n))) return 'Rp 0'
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)
 }
 
 /**
- * Alur bayar: scan kartu CS → (PIN jika total ≥ 10rb) → checkout.
+ * Alur bayar: scan kartu CS → (PIN jika total ≥ ambang pengaturan) → checkout.
  */
 export default function PenjualanBayarOffcanvas({
   isOpen,
@@ -22,6 +20,7 @@ export default function PenjualanBayarOffcanvas({
   total,
   onSuccess,
   onNotify,
+  pinThreshold = 10000,
 }) {
   const [step, setStep] = useState('scan') // scan | pin | success
   const [cardToken, setCardToken] = useState('')
@@ -43,7 +42,7 @@ export default function PenjualanBayarOffcanvas({
     }
   }, [isOpen])
 
-  const needsPin = total >= PIN_THRESHOLD
+  const needsPin = total >= Number(pinThreshold)
 
   const runCheckout = async (token, pinValue) => {
     if (processing) return
@@ -161,7 +160,9 @@ export default function PenjualanBayarOffcanvas({
             <div className="space-y-3">
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Arahkan kamera ke QR kartu santri (CS).
-                {needsPin ? ' Setelah scan, masukkan PIN 6 digit.' : ' Transaksi di bawah Rp 10.000 tanpa PIN.'}
+                {needsPin
+                  ? ' Setelah scan, masukkan PIN 6 digit.'
+                  : ` Transaksi di bawah ${formatRupiah(pinThreshold)} tanpa PIN.`}
               </p>
               <BarangScannerSection
                 expanded

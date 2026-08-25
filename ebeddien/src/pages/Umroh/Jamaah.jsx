@@ -10,6 +10,7 @@ function Jamaah() {
   const [jamaahList, setJamaahList] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [filters, setFilters] = useState({
@@ -34,8 +35,8 @@ function Jamaah() {
         limit: pagination.limit,
         ...filters
       }
-      if (searchInput) {
-        params.search = searchInput
+      if (debouncedSearch) {
+        params.search = debouncedSearch
       }
       
       const response = await umrohJamaahAPI.getAll(params)
@@ -52,8 +53,13 @@ function Jamaah() {
   }
 
   useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 350)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  useEffect(() => {
     fetchJamaah()
-  }, [pagination.page, filters, searchInput])
+  }, [pagination.page, filters, debouncedSearch])
 
   const handleSearchInputChange = (e) => {
     setSearchInput(e.target.value)
@@ -278,7 +284,30 @@ function Jamaah() {
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(jamaah.total_tabungan || 0)}
+                        {(() => {
+                          const total = Number(jamaah.total_tabungan || 0)
+                          const target = Number(jamaah.target_tabungan || 0)
+                          const pct = target > 0 ? Math.min(100, Math.round((total / target) * 100)) : null
+                          return (
+                            <div className="min-w-[140px]">
+                              <div className="text-gray-900 dark:text-white">
+                                {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(total)}
+                              </div>
+                              {pct != null ? (
+                                <>
+                                  <div className="mt-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                                    <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                    {pct}% dari {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(target)}
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="text-[10px] text-gray-400 dark:text-gray-500">Target belum diisi</div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </td>
                     </tr>
                   ))}

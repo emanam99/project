@@ -37,11 +37,26 @@ export default function CashlessSantriScanBlock({
   compact = false,
   storageKey = 'ebeddien_cashless_scan_camera',
   className = '',
+  cameraOpen: cameraOpenProp,
+  onCameraOpenChange,
+  showHeader = true,
+  hidePlaceholder = false,
 }) {
   const { showNotification } = useNotification()
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState(null)
-  const [cameraOpen, setCameraOpen] = useState(true)
+  const [cameraOpenInternal, setCameraOpenInternal] = useState(true)
+  const controlled = typeof onCameraOpenChange === 'function'
+  const cameraOpen = controlled ? Boolean(cameraOpenProp) : cameraOpenInternal
+
+  const setCameraOpen = useCallback(
+    (next) => {
+      const value = typeof next === 'function' ? next(cameraOpen) : next
+      if (controlled) onCameraOpenChange(value)
+      else setCameraOpenInternal(value)
+    },
+    [cameraOpen, controlled, onCameraOpenChange]
+  )
 
   const handleScan = useCallback(
     async (token) => {
@@ -75,25 +90,29 @@ export default function CashlessSantriScanBlock({
     [onSantriResolved, showNotification]
   )
 
+  if (!cameraOpen && hidePlaceholder && !scanError) return null
+
   return (
     <div className={`space-y-2 ${className}`}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Scan kartu santri</p>
-        <button
-          type="button"
-          onClick={() => setCameraOpen((v) => !v)}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-            cameraOpen
-              ? 'bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-900/40 dark:text-teal-300 dark:hover:bg-teal-900/60'
-              : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
-          }`}
-          title={cameraOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
-          aria-label={cameraOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
-          aria-pressed={cameraOpen}
-        >
-          <CameraToggleIcon active={cameraOpen} />
-        </button>
-      </div>
+      {showHeader ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Scan kartu santri</p>
+          <button
+            type="button"
+            onClick={() => setCameraOpen((v) => !v)}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+              cameraOpen
+                ? 'bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-900/40 dark:text-teal-300 dark:hover:bg-teal-900/60'
+                : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+            }`}
+            title={cameraOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+            aria-label={cameraOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+            aria-pressed={cameraOpen}
+          >
+            <CameraToggleIcon active={cameraOpen} />
+          </button>
+        </div>
+      ) : null}
 
       {scanError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
@@ -108,11 +127,11 @@ export default function CashlessSantriScanBlock({
           active={cameraOpen}
           acceptPrefixes={['CS', 'CM']}
           hintText="Arahkan kamera ke QR kartu santri (CS) atau mahrom (CM)."
-          collapsible
-          storageKey={storageKey}
+          collapsible={!controlled}
+          storageKey={controlled ? null : storageKey}
           compact={compact}
         />
-      ) : (
+      ) : !hidePlaceholder ? (
         <button
           type="button"
           onClick={() => setCameraOpen(true)}
@@ -121,7 +140,7 @@ export default function CashlessSantriScanBlock({
           <span className="text-sm font-medium text-gray-800 dark:text-gray-100">Tampilkan kamera</span>
           <span className="text-xs text-teal-700 dark:text-teal-300">Buka</span>
         </button>
-      )}
+      ) : null}
     </div>
   )
 }

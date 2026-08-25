@@ -44,6 +44,8 @@ function SearchOffcanvas({
   onSelectSantri,
   onSelectSantriRecord,
   zIndex = SEARCH_OFFCANVAS_Z_PAGE_DEFAULT,
+  allowedSantriIds = null,
+  restrictedEmptyText = 'Data tidak ditemukan.',
 }) {
   const { openSantriDetail } = useSantriDetailOffcanvas()
   const { canCariSantri, canDetailSantri } = useUmumFiturAccess()
@@ -63,7 +65,11 @@ function SearchOffcanvas({
   const [selectedTahunMasehi, setSelectedTahunMasehi] = useState('')
   const [tahunHijriyahOptions, setTahunHijriyahOptions] = useState([])
   const [tahunMasehiOptions, setTahunMasehiOptions] = useState([])
-  
+  const allowedIdSet = useMemo(() => {
+    if (allowedSantriIds == null) return null
+    return new Set(Array.from(allowedSantriIds, (id) => Number(id)).filter((n) => n > 0))
+  }, [allowedSantriIds])
+
   const [filters, setFilters] = useState({
     diniyah: '',
     formal: '',
@@ -715,6 +721,10 @@ function SearchOffcanvas({
   const applyFilters = () => {
     let filtered = [...santriList]
 
+    if (allowedIdSet) {
+      filtered = filtered.filter((s) => allowedIdSet.has(Number(s.id)))
+    }
+
     if (isPendaftarOnly && pendaftarIds.length > 0) {
       filtered = filtered.filter((s) => pendaftarIds.includes(s.id))
     }
@@ -873,6 +883,7 @@ function SearchOffcanvas({
     kelDiniyahFilter,
     kelasFormalFilter,
     kelFormalFilter,
+    allowedIdSet,
   ])
 
   const getFilterOptions = (key) => {
@@ -1490,7 +1501,9 @@ function SearchOffcanvas({
                   <span className="ml-3 text-gray-600 dark:text-gray-400">Memuat data...</span>
                 </div>
               ) : filteredList.length === 0 ? (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-8">Data tidak ditemukan.</p>
+                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                  {allowedIdSet && !searchQuery.trim() ? restrictedEmptyText : 'Data tidak ditemukan.'}
+                </p>
               ) : (
                 <div className="space-y-0">
                   {filteredList.map((santri) => (

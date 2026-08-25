@@ -58,6 +58,7 @@ import {
   reconcileWaSessionsWithSockets,
   startWaWatchdog,
 } from './controllers/whatsappController.js';
+import { startAuthFollowupSweep } from './controllers/waBaileys.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -218,6 +219,7 @@ const server = app.listen(PORT, () => {
   console.log('[WA] CORS: *.alutsmani.id + *.alutsmani.my.id + localhost');
   initWaOnStart();
   startWaWatchdog();
+  startAuthFollowupSweep();
   if (incomingUrl && incomingUrl !== '(belum di-set)') {
     probeIncomingWebhookReachable(incomingUrl).catch(() => {});
   }

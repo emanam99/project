@@ -3,7 +3,7 @@ import { umrohJamaahAPI } from '../../services/api'
 import { motion } from 'framer-motion'
 import { useNotification } from '../../contexts/NotificationContext'
 
-function BiodataJamaah({ onJamaahChange, onOpenSearch, externalJamaahId }) {
+function BiodataJamaah({ onJamaahChange, onOpenSearch, externalJamaahId, refreshNonce = 0 }) {
   const { showNotification } = useNotification()
   const [jamaahId, setJamaahId] = useState('')
   const [biodata, setBiodata] = useState(null)
@@ -98,6 +98,12 @@ function BiodataJamaah({ onJamaahChange, onOpenSearch, externalJamaahId }) {
       }
     }
   }, [externalJamaahId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (refreshNonce && isValidJamaahId(jamaahId)) {
+      fetchJamaahData(jamaahId)
+    }
+  }, [refreshNonce]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle input change
   const handleIdChange = (e) => {
@@ -194,12 +200,37 @@ function BiodataJamaah({ onJamaahChange, onOpenSearch, externalJamaahId }) {
             
             <div>
               <label className={getLabelClassName('telepon')}>Telepon</label>
-              <p className="text-gray-900 dark:text-white">{biodata.telepon || '-'}</p>
+              <p className="text-gray-900 dark:text-white">{biodata.no_telpon || biodata.telepon || '-'}</p>
             </div>
             
             <div>
               <label className={getLabelClassName('paket')}>Paket Umroh</label>
               <p className="text-gray-900 dark:text-white">{biodata.paket_umroh || '-'}</p>
+            </div>
+
+            <div>
+              <label className={getLabelClassName('tabungan')}>Progress Tabungan</label>
+              {(() => {
+                const total = Number(biodata.total_tabungan || 0)
+                const target = Number(biodata.target_tabungan || 0)
+                const pct = target > 0 ? Math.min(100, Math.round((total / target) * 100)) : null
+                const fmt = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n)
+                return (
+                  <div>
+                    <p className="text-gray-900 dark:text-white font-medium">{fmt(total)}</p>
+                    {pct != null ? (
+                      <>
+                        <div className="mt-1.5 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                          <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{pct}% dari target {fmt(target)}</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Target tabungan belum diisi</p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </motion.div>

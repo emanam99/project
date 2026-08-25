@@ -197,6 +197,61 @@ function jamShort(raw) {
   return `${String(m[1]).padStart(2, '0')}:${m[2]}`
 }
 
+function isIjinSehariRow(row) {
+  return Number(row?.ijin_sehari) === 1 || row?.ijin_sehari === true
+}
+
+/** Deadline Masehi Y-m-d: perpanjang → sampai → dari. */
+function ijinDeadlineMasehiYmd(row) {
+  for (const key of ['perpanjang_masehi', 'sampai_masehi', 'dari_masehi']) {
+    const v = String(row?.[key] ?? '').trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
+  }
+  return ''
+}
+
+function parseLocalDateYmd(ymd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
+  const [y, m, d] = ymd.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  return Number.isNaN(dt.getTime()) ? null : dt
+}
+
+/**
+ * Label telat di bawah tombol Kembali.
+ * Ijin sehari → jam (berdasarkan tanggal Masehi + jam_sampai).
+ * Multi-hari → hari (berdasarkan deadline tanggal Masehi).
+ */
+function formatIjinTelatLabel(row, now = new Date()) {
+  if (!row || row.tanggal_kembali) return ''
+  const ymd = ijinDeadlineMasehiYmd(row)
+  if (!ymd) return ''
+
+  if (isIjinSehariRow(row)) {
+    const jam = jamShort(row.jam_sampai) || '17:00'
+    const [hh, mm] = jam.split(':').map(Number)
+    const deadline = parseLocalDateYmd(ymd)
+    if (!deadline) return ''
+    deadline.setHours(hh || 0, mm || 0, 0, 0)
+    const diffMs = now.getTime() - deadline.getTime()
+    if (diffMs <= 0) return ''
+    const totalMins = Math.floor(diffMs / 60000)
+    if (totalMins < 60) {
+      const m = Math.max(1, totalMins)
+      return `(telat ${m} menit)`
+    }
+    const hours = Math.floor(totalMins / 60)
+    return `(telat ${hours} jam)`
+  }
+
+  const today = parseLocalDateYmd(todayYmdFromDate(now))
+  const deadlineDay = parseLocalDateYmd(ymd)
+  if (!today || !deadlineDay) return ''
+  const diffDays = Math.round((today.getTime() - deadlineDay.getTime()) / 86400000)
+  if (diffDays <= 0) return ''
+  return `(telat ${diffDays} hari)`
+}
+
 function DataIjin() {
   const { showNotification } = useNotification()
   const activeTahunAjaran = useActiveHijriyahTahunAjaran()
@@ -271,6 +326,8 @@ function DataIjin() {
   const [kelFormalFilter, setKelFormalFilter] = useState('')
   const [alasanFilter, setAlasanFilter] = useState('')
   const [kembaliFilter, setKembaliFilter] = useState('') // '' | 'sudah' | 'belum'
+  const [telatFilter, setTelatFilter] = useState(false)
+  const [telatCount, setTelatCount] = useState(0)
   const [markingKembaliId, setMarkingKembaliId] = useState(null)
 
   const [selectedSantri, setSelectedSantri] = useState(null)
@@ -353,9 +410,20 @@ function DataIjin() {
     }
   }, [listPeriod, customHijriDari, customHijriSampai])
 
+  const loadTelatCount = useCallback(async () => {
+    try {
+      const res = await ijinAPI.getTelat(tahunAjaran || null)
+      if (res?.success) {
+        setTelatCount(Array.isArray(res.data) ? res.data.length : Number(res.meta?.count) || 0)
+      }
+    } catch {
+      /* diam: count telat opsional */
+    }
+  }, [tahunAjaran])
+
   const loadList = useCallback(
     async ({ quiet = false } = {}) => {
-      if (!listRange) {
+      if (!telatFilter && !listRange) {
         if (!quiet) {
           setList([])
           setLoading(false)
@@ -372,9 +440,17 @@ function DataIjin() {
         setError(null)
       }
       try {
-        const res = await ijinAPI.getByTanggal(listRange, tahunAjaran || null)
+        const res = telatFilter
+          ? await ijinAPI.getTelat(tahunAjaran || null)
+          : await ijinAPI.getByTanggal(listRange, tahunAjaran || null)
         if (res?.success) {
-          setList(Array.isArray(res.data) ? res.data : [])
+          const rows = Array.isArray(res.data) ? res.data : []
+          setList(rows)
+          if (telatFilter) {
+            setTelatCount(rows.length)
+          } else {
+            void loadTelatCount()
+          }
         } else if (!quiet) {
           setList([])
           setError(res?.message || 'Gagal memuat daftar ijin')
@@ -388,8 +464,14 @@ function DataIjin() {
         if (!quiet) setLoading(false)
       }
     },
-    [listRange, listPeriod, tahunAjaran]
+    [listRange, listPeriod, tahunAjaran, telatFilter, loadTelatCount]
   )
+
+  useEffect(() => {
+    if (viewMode !== 'desk') return undefined
+    void loadTelatCount()
+    return undefined
+  }, [loadTelatCount, viewMode])
 
   useEffect(() => {
     if (viewMode !== 'desk') return undefined
@@ -551,7 +633,8 @@ function DataIjin() {
       kelasFormalFilter ||
       kelFormalFilter ||
       alasanFilter ||
-      kembaliFilter
+      kembaliFilter ||
+      telatFilter
   )
 
   const clearFilters = () => {
@@ -565,17 +648,22 @@ function DataIjin() {
     setKelFormalFilter('')
     setAlasanFilter('')
     setKembaliFilter('')
+    setTelatFilter(false)
   }
   const emptyListMessage =
-    hasActiveFilters || searchInput.trim()
-      ? 'Tidak ada ijin yang sesuai filter / pencarian.'
-      : listPeriod === 'custom'
-        ? !customHijriDari || !customHijriSampai
-          ? 'Pilih rentang tanggal Hijriyah.'
-          : 'Belum ada ijin pada rentang tanggal ini.'
-        : listPeriod === 'hari'
-          ? 'Belum ada ijin dicatat hari ini.'
-          : `Belum ada ijin dalam ${listPeriod} hari terakhir.`
+    telatFilter
+      ? hasActiveFilters || searchInput.trim()
+        ? 'Tidak ada ijin telat yang sesuai filter / pencarian.'
+        : 'Tidak ada ijin telat (lewat tanggal kembali, belum dicatat kembali).'
+      : hasActiveFilters || searchInput.trim()
+        ? 'Tidak ada ijin yang sesuai filter / pencarian.'
+        : listPeriod === 'custom'
+          ? !customHijriDari || !customHijriSampai
+            ? 'Pilih rentang tanggal Hijriyah.'
+            : 'Belum ada ijin pada rentang tanggal ini.'
+          : listPeriod === 'hari'
+            ? 'Belum ada ijin dicatat hari ini.'
+            : `Belum ada ijin dalam ${listPeriod} hari terakhir.`
 
   const setPresetPeriod = (id) => {
     setListPeriod(id)
@@ -854,6 +942,26 @@ function DataIjin() {
                 Refresh
               </button>
               <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setTelatFilter((v) => !v)}
+                  className={`inline-flex items-center gap-1 h-7 px-2.5 text-xs font-semibold rounded-lg border tabular-nums ${
+                    telatFilter
+                      ? 'bg-red-600 border-red-600 text-white shadow-sm'
+                      : 'bg-red-50 dark:bg-red-950/40 border-red-300 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50'
+                  }`}
+                  title="Ijin yang sudah lewat tanggal kembali tapi belum dicatat kembali"
+                  aria-pressed={telatFilter}
+                >
+                  Telat
+                  <span
+                    className={`min-w-[1.25rem] text-center rounded px-1 ${
+                      telatFilter ? 'bg-white/20' : 'bg-red-600/10 dark:bg-red-400/10'
+                    }`}
+                  >
+                    {telatCount}
+                  </span>
+                </button>
                 <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
                   {filteredList.length} ijin
                   {(searchInput.trim() || hasActiveFilters) && filteredList.length !== list.length
@@ -1228,7 +1336,9 @@ function DataIjin() {
               </p>
             ) : (
               <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-                {filteredList.map((row) => (
+                {filteredList.map((row) => {
+                  const telatLabel = !row.tanggal_kembali ? formatIjinTelatLabel(row) : ''
+                  return (
                   <li
                     key={row.id}
                     className={`px-3 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer ${
@@ -1266,41 +1376,49 @@ function DataIjin() {
                         <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-snug">
                           {formatWaktuMasehi(row.tanggal_dibuat)}
                         </p>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={(e) => handleListPrint(row, e)}
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-900/30"
-                            title="Print surat ijin"
-                            aria-label="Print surat ijin"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-                              />
-                            </svg>
-                          </button>
-                          {row.tanggal_kembali ? (
-                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 px-1">Sudah Kembali</p>
-                          ) : (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              disabled={markingKembaliId === row.id}
-                              onClick={(e) => void handleListMarkKembali(row, e)}
-                              className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Catat sudah kembali"
+                              onClick={(e) => handleListPrint(row, e)}
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-900/30"
+                              title="Print surat ijin"
+                              aria-label="Print surat ijin"
                             >
-                              {markingKembaliId === row.id ? '…' : 'Kembali'}
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth="2"
+                                  d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                                />
+                              </svg>
                             </button>
-                          )}
+                            {row.tanggal_kembali ? (
+                              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 px-1">Sudah Kembali</p>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={markingKembaliId === row.id}
+                                onClick={(e) => void handleListMarkKembali(row, e)}
+                                className="px-2 py-0.5 text-[10px] font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Catat sudah kembali"
+                              >
+                                {markingKembaliId === row.id ? '…' : 'Kembali'}
+                              </button>
+                            )}
+                          </div>
+                          {telatLabel ? (
+                            <p className="text-[10px] font-medium text-red-600 dark:text-red-400 leading-tight">
+                              {telatLabel}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     </div>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
           </div>

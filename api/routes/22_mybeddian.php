@@ -130,6 +130,8 @@ return function (\Slim\App $app): void {
         // Kasir penjualan toko
         $group->post('/v2/penjualan/checkout', [MybeddianPenjualanController::class, 'checkout'])
             ->add(new RoleMiddleware(['toko']))->add(new AuthMiddleware());
+        $group->get('/v2/penjualan/config', [MybeddianPenjualanController::class, 'config'])
+            ->add(new RoleMiddleware(['toko']))->add(new AuthMiddleware());
         $group->get('/v2/penjualan', [MybeddianPenjualanController::class, 'list'])
             ->add(new RoleMiddleware(['toko']))->add(new AuthMiddleware());
         $group->get('/v2/penjualan/{id}', [MybeddianPenjualanController::class, 'detail'])

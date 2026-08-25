@@ -5,7 +5,7 @@ import BarangScannerSection from './BarangScannerSection'
 import BarangQrScanButton from './BarangQrScanButton'
 
 /**
- * Offcanvas kanan (HP): scan di atas, form barang di bawah.
+ * Offcanvas HP: kanan (form barang) atau atas (scan penjualan).
  * Kamera dimatikan segera saat tutup (sebelum panel hilang).
  */
 export default function BarangMobileOffcanvas({
@@ -20,8 +20,10 @@ export default function BarangMobileOffcanvas({
   showQrButton = false,
   onOpenQrScanner,
   children,
+  placement = 'right',
 }) {
   const handleBackClose = useOffcanvasBackClose(isOpen && !closeDisabled, onClose)
+  const fromTop = placement === 'top'
 
   const handleClose = () => {
     scannerRef?.current?.stop()
@@ -37,16 +39,26 @@ export default function BarangMobileOffcanvas({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
-          className="fixed inset-0 z-9998 flex justify-end bg-black/50 lg:hidden"
+          className={`fixed inset-0 z-9998 flex bg-black/50 lg:hidden ${
+            fromTop ? 'items-start justify-center' : 'justify-end'
+          }`}
           onClick={closeDisabled ? undefined : handleClose}
         >
           <motion.aside
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            initial={fromTop ? { y: '-100%' } : { x: '100%' }}
+            animate={fromTop ? { y: 0 } : { x: 0 }}
+            exit={fromTop ? { y: '-100%' } : { x: '100%' }}
             transition={{ type: 'tween', duration: 0.22, ease: 'easeInOut' }}
-            className="flex h-full w-full max-w-md flex-col overflow-hidden bg-white shadow-xl dark:bg-gray-900"
-            style={{ paddingRight: 'env(safe-area-inset-right, 0px)' }}
+            className={`flex w-full flex-col overflow-hidden bg-white shadow-xl dark:bg-gray-900 ${
+              fromTop
+                ? 'max-h-[92vh] max-w-lg rounded-b-2xl'
+                : 'h-full max-w-md'
+            }`}
+            style={
+              fromTop
+                ? { paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))' }
+                : { paddingRight: 'env(safe-area-inset-right, 0px)' }
+            }
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">

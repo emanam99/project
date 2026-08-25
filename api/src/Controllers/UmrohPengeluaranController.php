@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\TextSanitizer;
+use App\Helpers\UmrohPayloadHelper;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -91,12 +92,7 @@ class UmrohPengeluaranController
                     ORDER BY p.tanggal_dibuat DESC
                     LIMIT ? OFFSET ?";
             
-            $params[] = $limit;
-            $params[] = $offset;
-            
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $data = UmrohPayloadHelper::fetchLimited($this->db, $sql, $params, $limit, $offset);
 
             // Get details for each pengeluaran
             foreach ($data as &$item) {
@@ -198,15 +194,15 @@ class UmrohPengeluaranController
             }
             $user = $request->getAttribute('user');
             
-            $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
-            $keterangan = $data['keterangan'] ?? '';
-            $kategori = $data['kategori'] ?? null;
+            $idAdmin = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
+            $keterangan = trim((string) ($data['keterangan'] ?? ''));
+            $kategori = UmrohPayloadHelper::nullIfEmpty($data['kategori'] ?? null);
             $sumberUang = $data['sumber_uang'] ?? 'Cash';
-            $hijriyah = $data['hijriyah'] ?? null;
+            $hijriyah = UmrohPayloadHelper::nullIfEmpty($data['hijriyah'] ?? null);
             $details = $data['details'] ?? [];
             $status = $data['status'] ?? 'Draft';
 
-            if (empty($keterangan)) {
+            if ($keterangan === '') {
                 $this->db->rollBack();
                 return $this->jsonResponse($response, [
                     'success' => false,
@@ -214,11 +210,20 @@ class UmrohPengeluaranController
                 ], 400);
             }
 
+            if ((!is_array($details) || $details === []) && isset($data['nominal']) && (float) $data['nominal'] > 0) {
+                $details = [[
+                    'item' => $kategori ?: $keterangan,
+                    'harga' => (float) $data['nominal'],
+                    'jumlah' => 1,
+                    'satuan' => 'paket',
+                ]];
+            }
+
             if (empty($details) || !is_array($details)) {
                 $this->db->rollBack();
                 return $this->jsonResponse($response, [
                     'success' => false,
-                    'message' => 'Detail item wajib diisi'
+                    'message' => 'Detail item atau nominal wajib diisi'
                 ], 400);
             }
 
@@ -420,7 +425,7 @@ class UmrohPengeluaranController
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmtDetail = $this->db->prepare($sqlDetail);
                 $user = $request->getAttribute('user');
-                $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
+                $idAdmin = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
 
                 foreach ($data['details'] as $detail) {
                     $item = trim($detail['item'] ?? '');
@@ -464,7 +469,7 @@ class UmrohPengeluaranController
             $stmtNew->execute([$id]);
             $newRow = $stmtNew->fetch(\PDO::FETCH_ASSOC);
             $user = $request->getAttribute('user');
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            $pengurusId = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
             if ($newRow && $oldPengeluaran && $pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'umroh___pengeluaran', $id, $oldPengeluaran, $newRow, $request);
             }
@@ -503,7 +508,7 @@ class UmrohPengeluaranController
         try {
             $id = $args['id'] ?? null;
             $user = $request->getAttribute('user');
-            $idAdminApprove = $user['user_id'] ?? $user['id'] ?? null;
+            $idAdminApprove = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
 
             if (!$id) {
                 return $this->jsonResponse($response, [
@@ -613,7 +618,7 @@ class UmrohPengeluaranController
             $stmt = $this->db->prepare($sql);
             $stmt->execute([$id]);
             $user = $request->getAttribute('user');
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            $pengurusId = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
             if ($pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_DELETE, 'umroh___pengeluaran', $id, $oldRow, null, $request);
             }

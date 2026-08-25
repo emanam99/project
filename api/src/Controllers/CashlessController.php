@@ -935,17 +935,19 @@ class CashlessController
                 'fee_value' => 0,
                 'fee_percent' => 0,
                 'batas_harian_global' => 0,
+                'batas_pin_belanja' => CashlessPurchaseService::PIN_THRESHOLD,
                 'topup_max_per_tx' => CashlessMoneyLimitsHelper::DEFAULT_TOPUP_MAX,
                 'withdraw_max_per_tx' => CashlessMoneyLimitsHelper::DEFAULT_WITHDRAW_MAX,
                 'transfer_max_per_tx' => CashlessMoneyLimitsHelper::DEFAULT_TRANSFER_MAX,
                 'wallet_saldo_max' => CashlessMoneyLimitsHelper::DEFAULT_WALLET_SALDO_MAX,
                 'transfer_daily_max' => CashlessMoneyLimitsHelper::DEFAULT_TRANSFER_DAILY_MAX,
                 'duplicate_window_sec' => CashlessMoneyLimitsHelper::DEFAULT_DUPLICATE_WINDOW_SEC,
+                'batas_harian_opsional_count' => 0,
             ];
             try {
                 $stmt = $this->db->query(
                     "SELECT kunci, nilai FROM cashless___config WHERE kunci IN (
-                        'fee_type', 'fee_value', 'fee_percent', 'batas_harian_global',
+                        'fee_type', 'fee_value', 'fee_percent', 'batas_harian_global', 'batas_pin_belanja',
                         'topup_max_per_tx','withdraw_max_per_tx','transfer_max_per_tx',
                         'wallet_saldo_max','transfer_daily_max','duplicate_window_sec'
                     )"
@@ -963,6 +965,9 @@ class CashlessController
                     }
                     if ($row['kunci'] === 'batas_harian_global') {
                         $out['batas_harian_global'] = max(0, (float) str_replace(',', '.', $row['nilai'] ?? '0'));
+                    }
+                    if ($row['kunci'] === 'batas_pin_belanja') {
+                        $out['batas_pin_belanja'] = max(0, (float) str_replace(',', '.', $row['nilai'] ?? '10000'));
                     }
                     foreach (
                         [
@@ -991,6 +996,7 @@ class CashlessController
             } catch (\Throwable $e) {
                 // Tabel cashless___config belum ada (migration belum dijalankan)
             }
+            $out['batas_harian_opsional_count'] = $this->countBatasHarianOpsional();
             $out['card_secret_version'] = CashlessCardTokenHelper::getSecretVersion();
             $out['maintenance'] = CashlessMaintenanceHelper::getSnapshot($this->db);
             return $this->jsonResponse($response, ['success' => true, 'data' => $out], 200);
@@ -1002,7 +1008,8 @@ class CashlessController
 
     /**
      * PUT /api/v2/cashless/config - Update config.
-     * Body: fee_type/fee_value dan/atau batas_harian_global (Rp, 0 = nonaktif).
+     * Body: fee_type/fee_value, batas_harian_global (0 = nonaktif),
+     * dan/atau batas_pin_belanja (Rp, 0 = setiap belanja wajib PIN).
      */
     public function setConfig(Request $request, Response $response): Response
     {
@@ -1011,6 +1018,7 @@ class CashlessController
             $feeType = isset($data['fee_type']) ? trim((string) $data['fee_type']) : null;
             $feeValue = isset($data['fee_value']) ? (float) str_replace(',', '.', (string) $data['fee_value']) : null;
             $hasBatasGlobal = array_key_exists('batas_harian_global', $data);
+            $hasBatasPin = array_key_exists('batas_pin_belanja', $data);
             $moneyKeys = [
                 'topup_max_per_tx',
                 'withdraw_max_per_tx',
@@ -1054,6 +1062,23 @@ class CashlessController
                     $this->db->prepare(
                         "INSERT INTO cashless___config (kunci, nilai) VALUES ('batas_harian_global', ?) ON DUPLICATE KEY UPDATE nilai = VALUES(nilai)"
                     )->execute([(string) $batas]);
+                } catch (\Throwable $e) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'Tabel config belum tersedia. Jalankan migration cashless terlebih dahulu.'], 503);
+                }
+            }
+
+            if ($hasBatasPin) {
+                $batasPin = (float) str_replace(',', '.', (string) ($data['batas_pin_belanja'] ?? 0));
+                if ($batasPin < 0) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'Batas PIN belanja tidak boleh negatif'], 400);
+                }
+                if ($batasPin > 100_000_000) {
+                    return $this->jsonResponse($response, ['success' => false, 'message' => 'Batas PIN belanja maksimal Rp 100.000.000'], 400);
+                }
+                try {
+                    $this->db->prepare(
+                        "INSERT INTO cashless___config (kunci, nilai) VALUES ('batas_pin_belanja', ?) ON DUPLICATE KEY UPDATE nilai = VALUES(nilai)"
+                    )->execute([(string) $batasPin]);
                 } catch (\Throwable $e) {
                     return $this->jsonResponse($response, ['success' => false, 'message' => 'Tabel config belum tersedia. Jalankan migration cashless terlebih dahulu.'], 503);
                 }
@@ -1143,20 +1168,8 @@ class CashlessController
 
             $rawUserId = $request->getAttribute('user_id');
             $userId = $rawUserId !== null ? (int) $rawUserId : null;
-
-            try {
-                $stmt = $this->db->prepare(
-                    'INSERT INTO cashless___batas_harian_santri (santri_id, batas_per_hari, aktif, updated_by)
-                     VALUES (?, ?, ?, ?)
-                     ON DUPLICATE KEY UPDATE batas_per_hari = VALUES(batas_per_hari), aktif = VALUES(aktif), updated_by = VALUES(updated_by)'
-                );
-                $stmt->execute([
-                    $resolved,
-                    $batas,
-                    $aktif ? 1 : 0,
-                    $userId > 0 ? $userId : null,
-                ]);
-            } catch (\Throwable $e) {
+            $saved = $this->upsertSantriBatasHarian($resolved, $batas, $aktif, $userId > 0 ? $userId : null);
+            if ($saved === false) {
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'Tabel batas harian belum tersedia. Jalankan migration cashless terlebih dahulu.',
@@ -1172,6 +1185,147 @@ class CashlessController
         } catch (\Exception $e) {
             error_log('CashlessController::setAccountBatasHarian ' . $e->getMessage());
             return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menyimpan batas harian'], 500);
+        }
+    }
+
+    /**
+     * GET /api/v2/cashless/batas-harian-opsional — santri yang memakai batas khusus (bukan masal).
+     */
+    public function listBatasHarianOpsional(Request $request, Response $response): Response
+    {
+        try {
+            $q = trim((string) ($request->getQueryParams()['q'] ?? ''));
+            $like = $q !== '' ? '%' . $q . '%' : '';
+            $sql = "SELECT b.santri_id, b.batas_per_hari, b.aktif, b.tanggal_update,
+                           s.nama, s.nis,
+                           a.id AS account_id,
+                           COALESCE(t.terpakai, 0) AS terpakai_hari_ini
+                    FROM cashless___batas_harian_santri b
+                    INNER JOIN santri s ON s.id = b.santri_id
+                    LEFT JOIN cashless___accounts a
+                      ON a.entity_type = 'SANTRI' AND a.entity_id = b.santri_id
+                    LEFT JOIN (
+                        SELECT santri_id, SUM(nominal) AS terpakai
+                        FROM cashless___transaksi_detail
+                        WHERE DATE(transaksi_at) = CURDATE()
+                        GROUP BY santri_id
+                    ) t ON t.santri_id = b.santri_id
+                    WHERE b.aktif = 1";
+            $params = [];
+            if ($like !== '') {
+                $sql .= ' AND (s.nama LIKE ? OR s.nis LIKE ?)';
+                $params[] = $like;
+                $params[] = $like;
+            }
+            $sql .= ' ORDER BY s.nama ASC LIMIT 300';
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $list = [];
+            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                $list[] = [
+                    'santri_id' => (int) $row['santri_id'],
+                    'nama' => (string) ($row['nama'] ?? ''),
+                    'nis' => (string) ($row['nis'] ?? ''),
+                    'account_id' => isset($row['account_id']) && $row['account_id'] !== null ? (int) $row['account_id'] : null,
+                    'batas_per_hari' => (float) ($row['batas_per_hari'] ?? 0),
+                    'aktif' => true,
+                    'terpakai_hari_ini' => (float) ($row['terpakai_hari_ini'] ?? 0),
+                    'tanggal_update' => $row['tanggal_update'] ?? null,
+                ];
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $list,
+                'count' => count($list),
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('CashlessController::listBatasHarianOpsional ' . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => true, 'data' => [], 'count' => 0], 200);
+        }
+    }
+
+    /**
+     * PUT /api/v2/cashless/batas-harian-santri/{santriId}
+     * Body: { aktif: bool, batas_per_hari: number }
+     */
+    public function setSantriBatasHarian(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $santriId = (int) ($args['santriId'] ?? 0);
+            if ($santriId <= 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'santri_id tidak valid'], 400);
+            }
+            $cek = $this->db->prepare('SELECT id FROM santri WHERE id = ? LIMIT 1');
+            $cek->execute([$santriId]);
+            if (!$cek->fetchColumn()) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Santri tidak ditemukan'], 404);
+            }
+
+            $data = $request->getParsedBody() ?? [];
+            $aktif = !empty($data['aktif']);
+            $batas = (float) str_replace(',', '.', (string) ($data['batas_per_hari'] ?? 0));
+            if ($batas < 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Batas harian tidak boleh negatif'], 400);
+            }
+            if ($aktif && $batas <= 0) {
+                return $this->jsonResponse($response, ['success' => false, 'message' => 'Isi batas per hari (Rp) jika mengaktifkan batas khusus'], 400);
+            }
+
+            $rawUserId = $request->getAttribute('user_id');
+            $userId = $rawUserId !== null ? (int) $rawUserId : null;
+            $saved = $this->upsertSantriBatasHarian($santriId, $batas, $aktif, $userId > 0 ? $userId : null);
+            if ($saved === false) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tabel batas harian belum tersedia. Jalankan migration cashless terlebih dahulu.',
+                ], 503);
+            }
+
+            $payload = $this->buildBatasHarianPayload($santriId);
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'message' => 'Batas harian santri disimpan',
+                'data' => $payload,
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('CashlessController::setSantriBatasHarian ' . $e->getMessage());
+            return $this->jsonResponse($response, ['success' => false, 'message' => 'Gagal menyimpan batas harian'], 500);
+        }
+    }
+
+    /**
+     * @return bool false jika tabel belum ada
+     */
+    private function upsertSantriBatasHarian(int $santriId, float $batas, bool $aktif, ?int $userId): bool
+    {
+        try {
+            $stmt = $this->db->prepare(
+                'INSERT INTO cashless___batas_harian_santri (santri_id, batas_per_hari, aktif, updated_by)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE batas_per_hari = VALUES(batas_per_hari), aktif = VALUES(aktif), updated_by = VALUES(updated_by)'
+            );
+            $stmt->execute([
+                $santriId,
+                $batas,
+                $aktif ? 1 : 0,
+                $userId,
+            ]);
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function countBatasHarianOpsional(): int
+    {
+        try {
+            $n = $this->db->query(
+                'SELECT COUNT(*) FROM cashless___batas_harian_santri WHERE aktif = 1'
+            )->fetchColumn();
+            return (int) $n;
+        } catch (\Throwable $e) {
+            return 0;
         }
     }
 

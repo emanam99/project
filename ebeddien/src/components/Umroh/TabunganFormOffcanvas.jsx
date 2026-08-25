@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { umrohTabunganAPI } from '../../services/api'
-import { useAuthStore } from '../../store/authStore'
 import { useNotification } from '../../contexts/NotificationContext'
 import { getTanggalFromAPI } from '../../utils/hijriDate'
 import { getGambarUrl } from '../../config/images'
@@ -14,7 +13,6 @@ function TabunganFormOffcanvas({
   jamaahData,
   onSuccess 
 }) {
-  const { user } = useAuthStore()
   const { showNotification } = useNotification()
   const [formData, setFormData] = useState({
     jenis: 'Setoran',
@@ -154,12 +152,6 @@ function TabunganFormOffcanvas({
 
     setLoading(true)
     try {
-      // Format id_admin - remove "ID" prefix if exists
-      let idAdmin = user?.id || '0000000'
-      if (typeof idAdmin === 'string' && idAdmin.startsWith('ID')) {
-        idAdmin = idAdmin.replace(/^ID/, '')
-      }
-
       const payload = {
         id_jamaah: jamaahId,
         jenis: formData.jenis,

@@ -14,6 +14,8 @@ use App\Controllers\UmrohPengeluaranController;
 return function (\Slim\App $app): void {
     // Akses by role (sama dengan frontend): admin_uwaba, petugas_uwaba, admin_umroh, petugas_umroh, super_admin
     $app->group('/api/umroh', function ($group) {
+        $group->get('/dashboard', [UmrohJamaahController::class, 'getDashboard']);
+        $group->get('/laporan', [UmrohJamaahController::class, 'getLaporan']);
         $group->get('/jamaah', [UmrohJamaahController::class, 'getAllJamaah']);
         $group->get('/jamaah/{id}', [UmrohJamaahController::class, 'getJamaahById']);
         $group->post('/jamaah', [UmrohJamaahController::class, 'createJamaah']);

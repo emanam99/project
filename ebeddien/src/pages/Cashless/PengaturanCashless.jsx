@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNotification } from '../../contexts/NotificationContext'
 import { cashlessAPI } from '../../services/api'
+import BatasHarianOpsionalOffcanvas from './components/BatasHarianOpsionalOffcanvas'
 
 const MAINTENANCE_OPTIONS = [
   { value: 5, label: '5 menit' },
@@ -47,6 +48,8 @@ export default function PengaturanCashless() {
   const [feeSaving, setFeeSaving] = useState(false)
   const [batasHarianGlobal, setBatasHarianGlobal] = useState(0)
   const [batasHarianSaving, setBatasHarianSaving] = useState(false)
+  const [batasPinBelanja, setBatasPinBelanja] = useState(10000)
+  const [batasPinSaving, setBatasPinSaving] = useState(false)
   const [moneyLimits, setMoneyLimits] = useState({
     topup_max_per_tx: 10000000,
     withdraw_max_per_tx: 10000000,
@@ -59,6 +62,8 @@ export default function PengaturanCashless() {
   const [maintenance, setMaintenance] = useState(null)
   const [maintenanceDuration, setMaintenanceDuration] = useState(30)
   const [maintenanceSaving, setMaintenanceSaving] = useState(false)
+  const [opsionalCount, setOpsionalCount] = useState(0)
+  const [opsionalOpen, setOpsionalOpen] = useState(false)
 
   const loadConfig = useCallback(() => {
     cashlessAPI.getConfig().then((res) => {
@@ -68,6 +73,8 @@ export default function PengaturanCashless() {
         setFeeValue(Number.isFinite(val) ? val : 0)
         const bg = res.data.batas_harian_global != null ? Number(res.data.batas_harian_global) : 0
         setBatasHarianGlobal(Number.isFinite(bg) ? bg : 0)
+        const bp = res.data.batas_pin_belanja != null ? Number(res.data.batas_pin_belanja) : 10000
+        setBatasPinBelanja(Number.isFinite(bp) ? bp : 10000)
         setMoneyLimits((prev) => ({
           ...prev,
           topup_max_per_tx: Number(res.data.topup_max_per_tx) || prev.topup_max_per_tx,
@@ -80,6 +87,8 @@ export default function PengaturanCashless() {
         if (res.data.maintenance) {
           setMaintenance(res.data.maintenance)
         }
+        const oc = res.data.batas_harian_opsional_count
+        setOpsionalCount(Number.isFinite(Number(oc)) ? Number(oc) : 0)
       }
     }).catch(() => {})
   }, [])
@@ -118,6 +127,20 @@ export default function PengaturanCashless() {
       showNotification(err.response?.data?.message || 'Gagal menyimpan batas harian', 'error')
     } finally {
       setBatasHarianSaving(false)
+    }
+  }
+
+  const handleSaveBatasPin = async (e) => {
+    e.preventDefault()
+    try {
+      setBatasPinSaving(true)
+      await cashlessAPI.setConfig({ batas_pin_belanja: Math.max(0, Number(batasPinBelanja) || 0) })
+      showNotification('Batas PIN belanja berhasil disimpan.', 'success')
+      loadConfig()
+    } catch (err) {
+      showNotification(err.response?.data?.message || 'Gagal menyimpan batas PIN', 'error')
+    } finally {
+      setBatasPinSaving(false)
     }
   }
 
@@ -336,6 +359,54 @@ export default function PengaturanCashless() {
               ) : (
                 <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Limit masal nonaktif.</p>
               )}
+              <button
+                type="button"
+                onClick={() => setOpsionalOpen(true)}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-800 hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-200 dark:hover:bg-teal-900/50"
+              >
+                <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                  {opsionalCount}
+                </span>
+                santri memakai batas opsional
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div className="p-4">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">PIN belanja kartu santri</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                Belanja di kasir toko <strong>mulai nominal ini</strong> wajib PIN 6 digit.
+                Isi <strong>0</strong> agar setiap belanja wajib PIN. Berlaku langsung di eBeddien &amp; myBeddien.
+              </p>
+              <form onSubmit={handleSaveBatasPin} className="flex flex-wrap gap-4 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Wajib PIN jika belanja ≥ (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={batasPinBelanja}
+                    onChange={(e) => setBatasPinBelanja(parseFloat(e.target.value) || 0)}
+                    className="w-40 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                    placeholder="Contoh: 5000"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={batasPinSaving}
+                  className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  {batasPinSaving ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </form>
+              <p className="mt-2 text-xs text-teal-700 dark:text-teal-300">
+                {batasPinBelanja > 0
+                  ? `Aktif: belanja ≥ Rp ${formatRp(batasPinBelanja)} wajib PIN`
+                  : 'Setiap belanja wajib PIN'}
+              </p>
             </div>
           </div>
 
@@ -409,6 +480,11 @@ export default function PengaturanCashless() {
           </div>
         </div>
       </div>
+      <BatasHarianOpsionalOffcanvas
+        isOpen={opsionalOpen}
+        onClose={() => setOpsionalOpen(false)}
+        onChanged={loadConfig}
+      />
     </div>
   )
 }

@@ -315,6 +315,7 @@ function Sidebar() {
     if (path === '/dashboard-umroh') return location.pathname === '/dashboard-umroh'
     if (path === '/umroh/jamaah') return location.pathname === '/umroh/jamaah' || location.pathname.startsWith('/umroh/jamaah/')
     if (path === '/umroh/tabungan') return location.pathname === '/umroh/tabungan'
+    if (path === '/umroh/pengeluaran') return location.pathname === '/umroh/pengeluaran'
     if (path === '/laporan-umroh') return location.pathname === '/laporan-umroh'
     // Untuk ijin: Data Ijin dan Data Boyong masing-masing exact path
     if (path === '/ijin/data-ijin') return location.pathname === '/ijin/data-ijin'

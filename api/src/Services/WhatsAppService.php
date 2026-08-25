@@ -28,6 +28,8 @@ class WhatsAppService
         'pembayaran_ipaymu_order',
         'pembayaran_ipaymu_qris',
         'pembayaran_dibatalkan',
+        'mybeddian_auth_wa_apology',
+        'daftar_santri_wa_apology',
     ];
     /** Kategori notifikasi yang dipicu dari alur pendaftaran. */
     private const PENDAFTARAN_KATEGORI = [
@@ -186,24 +188,18 @@ class WhatsAppService
     }
 
     /**
-     * Matikan link preview Baileys untuk notif yang diawali URL / kategori pengeluaran.
-     * Preview rusak di beberapa HP memunculkan "Menunggu pesan ini…".
+     * Matikan link preview Baileys (default). Kartu preview (extendedTextMessage) membuat
+     * sebagian HP menampilkan "Menunggu pesan ini…". Nyalakan hanya jika logContext['link_preview'] === true.
      *
      * @param array<string, mixed>|null $logContext
      */
     private static function shouldDisableWaLinkPreview(?array $logContext, string $message): bool
     {
-        $kat = is_array($logContext) ? (string) ($logContext['kategori'] ?? '') : '';
-        if (in_array($kat, [
-            'pengeluaran_rencana_notif',
-            'pengeluaran_draft_notif',
-            'pengeluaran_notif',
-        ], true)) {
-            return true;
+        if (is_array($logContext) && ($logContext['link_preview'] ?? false) === true) {
+            return false;
         }
-        $trim = ltrim($message);
 
-        return (bool) preg_match('#^https?://#i', $trim);
+        return true;
     }
 
     /**
@@ -1160,7 +1156,14 @@ class WhatsAppService
             return false;
         }
         // Handshake auth (user kirim token ke nomor QR): wajib balas meski kontak opt-out notif massal.
-        if (in_array($k, ['mybeddian_auth_wa', 'daftar_santri_wa', 'ebeddien_daftar_wa'], true)) {
+        if (in_array($k, [
+            'mybeddian_auth_wa',
+            'mybeddian_auth_wa_apology',
+            'daftar_santri_wa',
+            'daftar_santri_wa_apology',
+            'auth_wa_followup',
+            'ebeddien_daftar_wa',
+        ], true)) {
             return false;
         }
         if ($k === 'wa_change_otp') {
@@ -2515,7 +2518,20 @@ class WhatsAppService
         } catch (\Throwable $e) {
             error_log('WhatsAppService::processPending sweepExpired: ' . $e->getMessage());
         }
-        return ['success' => true, 'sent' => $sent, 'skipped' => $skipped, 'expired_link_edited' => $expiredEdited];
+        $authFollowup = ['followup_sent' => 0, 'apology_sent' => 0];
+        try {
+            $authFollowup = \App\Helpers\AuthWaFollowupHelper::flush();
+        } catch (\Throwable $e) {
+            error_log('WhatsAppService::processPending authFollowup: ' . $e->getMessage());
+        }
+        return [
+            'success' => true,
+            'sent' => $sent,
+            'skipped' => $skipped,
+            'expired_link_edited' => $expiredEdited,
+            'auth_followup_sent' => (int) ($authFollowup['followup_sent'] ?? 0),
+            'auth_apology_sent' => (int) ($authFollowup['apology_sent'] ?? 0),
+        ];
     }
 
     /**

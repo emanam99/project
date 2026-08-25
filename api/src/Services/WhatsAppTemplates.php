@@ -19,7 +19,7 @@ class WhatsAppTemplates
      */
     public static function permintaanSedangDiprosesAck(): string
     {
-        return "Terima kasih. permintaan sedang diproses 🔄\n\n"
+        return "Terima kasih. permintaan sedang diproses \u{1F504}\n\n"
             . '> Mohon simpan nomor ini sebagai nomor resmi pesantren.';
     }
 
@@ -48,6 +48,68 @@ class WhatsAppTemplates
         }
 
         return $ack . "\n" . \App\Helpers\AiAssistantReplyStyleHelper::SPLIT_MARKER . "\n" . $replyBody;
+    }
+
+    /**
+     * Buang ack «sedang diproses» dari payload antrian lama (ack sekarang dikirim segera, bukan lewat follow-up).
+     */
+    public static function stripPermintaanSedangDiprosesAckPrefix(string $payload): string
+    {
+        $payload = trim($payload);
+        if ($payload === '') {
+            return '';
+        }
+        $marker = \App\Helpers\AiAssistantReplyStyleHelper::SPLIT_MARKER;
+        $parts = strpos($payload, $marker) !== false
+            ? preg_split('/\s*' . preg_quote($marker, '/') . '\s*/', $payload) ?: [$payload]
+            : [$payload];
+        $kept = [];
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if ($part === '' || self::isPermintaanSedangDiprosesAckPart($part)) {
+                continue;
+            }
+            $stripped = self::stripLeadingPermintaanSedangDiprosesAck($part);
+            if ($stripped === '') {
+                continue;
+            }
+            $kept[] = $stripped;
+        }
+
+        return implode("\n" . $marker . "\n", $kept);
+    }
+
+    /** Bagian payload yang hanya ack (termasuk versi rusak: 🔄 jadi ?). */
+    private static function isPermintaanSedangDiprosesAckPart(string $part): bool
+    {
+        $part = trim($part);
+        if ($part === '' || preg_match('/https?:\/\//i', $part) === 1) {
+            return false;
+        }
+        if ($part === trim(self::permintaanSedangDiprosesAck())) {
+            return true;
+        }
+
+        return preg_match(
+            '/^Terima kasih\.\s*permintaan sedang diproses(?:\s*[🔄\x{FFFD}?])?\s*(?:\n+\>\s*Mohon simpan nomor ini sebagai nomor resmi pesantren\.)?\s*$/u',
+            $part
+        ) === 1;
+    }
+
+    private static function stripLeadingPermintaanSedangDiprosesAck(string $part): string
+    {
+        $part = trim($part);
+        $ack = trim(self::permintaanSedangDiprosesAck());
+        if (str_starts_with($part, $ack)) {
+            return trim(substr($part, strlen($ack)));
+        }
+        $stripped = preg_replace(
+            '/^Terima kasih\.\s*permintaan sedang diproses(?:\s*[🔄\x{FFFD}?])?\s*(?:\n+\>\s*Mohon simpan nomor ini sebagai nomor resmi pesantren\.)?\s*/u',
+            '',
+            $part
+        );
+
+        return is_string($stripped) ? trim($stripped) : $part;
     }
 
     /**

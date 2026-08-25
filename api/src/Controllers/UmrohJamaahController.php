@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\TextSanitizer;
+use App\Helpers\UmrohPayloadHelper;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -93,12 +94,7 @@ class UmrohJamaahController
                     ORDER BY j.tanggal_dibuat DESC
                     LIMIT ? OFFSET ?";
             
-            $params[] = $limit;
-            $params[] = $offset;
-            
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $data = UmrohPayloadHelper::fetchLimited($this->db, $sql, $params, $limit, $offset);
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -187,9 +183,9 @@ class UmrohJamaahController
         try {
             $data = $request->getParsedBody();
             $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            $data = $this->normalizeJamaahRow($data);
             $user = $request->getAttribute('user');
-            
-            $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
+            $idAdmin = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
 
             if (empty($data['nama_lengkap'])) {
                 return $this->jsonResponse($response, [
@@ -235,27 +231,34 @@ class UmrohJamaahController
             $params = [];
 
             foreach ($fields as $field) {
-                if (isset($data[$field])) {
-                    $insertFields[] = $field;
-                    $insertValues[] = '?';
-                    $params[] = $data[$field];
+                if ($field === 'id_admin') {
+                    continue;
                 }
+                if (!array_key_exists($field, $data)) {
+                    continue;
+                }
+                if ($data[$field] === null && !in_array($field, ['nik', 'tanggal_lahir', 'gender', 'status_nikah', 'golongan_darah'], true)) {
+                    continue;
+                }
+                $insertFields[] = $field;
+                $insertValues[] = '?';
+                $params[] = $data[$field];
             }
 
             // Set default values
-            if (!isset($data['status'])) {
+            if (empty($data['status'])) {
                 $insertFields[] = 'status';
                 $insertValues[] = '?';
                 $params[] = 'Aktif';
             }
 
-            if (!isset($data['status_keberangkatan'])) {
+            if (empty($data['status_keberangkatan'])) {
                 $insertFields[] = 'status_keberangkatan';
                 $insertValues[] = '?';
                 $params[] = 'Belum Berangkat';
             }
 
-            if (!isset($data['status_pembayaran'])) {
+            if (empty($data['status_pembayaran'])) {
                 $insertFields[] = 'status_pembayaran';
                 $insertValues[] = '?';
                 $params[] = 'Belum Lunas';
@@ -325,6 +328,7 @@ class UmrohJamaahController
             $id = $args['id'] ?? null;
             $data = $request->getParsedBody();
             $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
+            $data = $this->normalizeJamaahRow($data);
 
             if (!$id) {
                 return $this->jsonResponse($response, [
@@ -363,10 +367,11 @@ class UmrohJamaahController
             $set = [];
             $params = [];
             foreach ($fields as $field) {
-                if (isset($data[$field])) {
-                    $set[] = "$field = ?";
-                    $params[] = $data[$field];
+                if (!array_key_exists($field, $data)) {
+                    continue;
                 }
+                $set[] = "$field = ?";
+                $params[] = $data[$field];
             }
 
             if (empty($set)) {
@@ -384,7 +389,7 @@ class UmrohJamaahController
             $stmtNew->execute([$id]);
             $newJamaah = $stmtNew->fetch(\PDO::FETCH_ASSOC);
             $user = $request->getAttribute('user');
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            $pengurusId = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
             if ($newJamaah && $pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'umroh___jamaah', $id, $oldJamaah, $newJamaah, $request);
             }
@@ -439,7 +444,7 @@ class UmrohJamaahController
             $stmt = $this->db->prepare($sql);
             $stmt->execute([$id]);
             $user = $request->getAttribute('user');
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            $pengurusId = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
             if ($pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_DELETE, 'umroh___jamaah', $id, $oldJamaah, null, $request);
             }
@@ -483,6 +488,174 @@ class UmrohJamaahController
         }
 
         return $prefix . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function normalizeJamaahRow(array $data): array
+    {
+        return UmrohPayloadHelper::normalizeRow(
+            $data,
+            [
+                'tanggal_lahir', 'tanggal_terbit_paspor', 'tanggal_berlaku_paspor',
+                'tanggal_terbit_visa', 'tanggal_berlaku_visa', 'tanggal_keberangkatan',
+                'tanggal_kepulangan',
+            ],
+            ['gender', 'status_nikah', 'golongan_darah', 'status', 'status_keberangkatan', 'status_pembayaran'],
+            ['nik', 'kode_jamaah']
+        );
+    }
+
+    /**
+     * GET /api/umroh/dashboard
+     */
+    public function getDashboard(Request $request, Response $response): Response
+    {
+        try {
+            $stats = [
+                'total_jamaah' => (int) $this->db->query('SELECT COUNT(*) FROM umroh___jamaah')->fetchColumn(),
+                'aktif' => (int) $this->db->query("SELECT COUNT(*) FROM umroh___jamaah WHERE status = 'Aktif'")->fetchColumn(),
+                'belum_berangkat' => (int) $this->db->query("SELECT COUNT(*) FROM umroh___jamaah WHERE status_keberangkatan = 'Belum Berangkat'")->fetchColumn(),
+                'lunas' => (int) $this->db->query("SELECT COUNT(*) FROM umroh___jamaah WHERE status_pembayaran = 'Lunas'")->fetchColumn(),
+                'total_tabungan' => (float) $this->db->query('SELECT COALESCE(SUM(total_tabungan), 0) FROM umroh___jamaah')->fetchColumn(),
+                'pengeluaran_approved' => (float) $this->db->query("SELECT COALESCE(SUM(nominal), 0) FROM umroh___pengeluaran WHERE status = 'Approved'")->fetchColumn(),
+            ];
+
+            $jamaahBaru = $this->db->query(
+                'SELECT id, kode_jamaah, nama_lengkap, paket_umroh, status, status_pembayaran, total_tabungan, target_tabungan, tanggal_dibuat
+                 FROM umroh___jamaah ORDER BY tanggal_dibuat DESC LIMIT 8'
+            )->fetchAll(\PDO::FETCH_ASSOC);
+
+            $setoranBaru = $this->db->query(
+                "SELECT t.id, t.kode_transaksi, t.jenis, t.nominal, t.tanggal_dibuat, j.nama_lengkap, j.kode_jamaah
+                 FROM umroh___tabungan t
+                 LEFT JOIN umroh___jamaah j ON j.id = t.id_jamaah
+                 ORDER BY t.tanggal_dibuat DESC LIMIT 8"
+            )->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'stats' => $stats,
+                    'jamaah_terbaru' => $jamaahBaru ?: [],
+                    'transaksi_terbaru' => $setoranBaru ?: [],
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Umroh dashboard error: ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal memuat dashboard umroh',
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/umroh/laporan
+     */
+    public function getLaporan(Request $request, Response $response): Response
+    {
+        try {
+            $q = $request->getQueryParams();
+            $dari = isset($q['tanggal_dari']) ? trim((string) $q['tanggal_dari']) : '';
+            $sampai = isset($q['tanggal_sampai']) ? trim((string) $q['tanggal_sampai']) : '';
+            $paket = isset($q['paket_umroh']) ? trim((string) $q['paket_umroh']) : '';
+
+            $jamaahWhere = [];
+            $jamaahParams = [];
+            if ($paket !== '') {
+                $jamaahWhere[] = 'paket_umroh = ?';
+                $jamaahParams[] = $paket;
+            }
+            $jw = $jamaahWhere ? ('WHERE ' . implode(' AND ', $jamaahWhere)) : '';
+            $stmtJ = $this->db->prepare("SELECT COUNT(*) AS c, COALESCE(SUM(total_tabungan),0) AS saldo FROM umroh___jamaah $jw");
+            $stmtJ->execute($jamaahParams);
+            $jRow = $stmtJ->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+            $tabWhere = [];
+            $tabParams = [];
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dari)) {
+                $tabWhere[] = 'DATE(t.tanggal_dibuat) >= ?';
+                $tabParams[] = $dari;
+            }
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $sampai)) {
+                $tabWhere[] = 'DATE(t.tanggal_dibuat) <= ?';
+                $tabParams[] = $sampai;
+            }
+            if ($paket !== '') {
+                $tabWhere[] = 'j.paket_umroh = ?';
+                $tabParams[] = $paket;
+            }
+            $tw = $tabWhere ? ('WHERE ' . implode(' AND ', $tabWhere)) : '';
+
+            $sumSql = "SELECT
+                COALESCE(SUM(CASE WHEN t.jenis = 'Setoran' THEN t.nominal ELSE 0 END), 0) AS setoran,
+                COALESCE(SUM(CASE WHEN t.jenis = 'Penarikan' THEN t.nominal ELSE 0 END), 0) AS penarikan
+                FROM umroh___tabungan t
+                LEFT JOIN umroh___jamaah j ON j.id = t.id_jamaah
+                $tw";
+            $stmtS = $this->db->prepare($sumSql);
+            $stmtS->execute($tabParams);
+            $sum = $stmtS->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+            $listSql = "SELECT t.*, j.nama_lengkap, j.kode_jamaah, j.paket_umroh
+                FROM umroh___tabungan t
+                LEFT JOIN umroh___jamaah j ON j.id = t.id_jamaah
+                $tw
+                ORDER BY t.tanggal_dibuat DESC
+                LIMIT 200";
+            $stmtL = $this->db->prepare($listSql);
+            $stmtL->execute($tabParams);
+            $transaksi = $stmtL->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+            $pengWhere = [];
+            $pengParams = [];
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dari)) {
+                $pengWhere[] = 'DATE(tanggal_dibuat) >= ?';
+                $pengParams[] = $dari;
+            }
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $sampai)) {
+                $pengWhere[] = 'DATE(tanggal_dibuat) <= ?';
+                $pengParams[] = $sampai;
+            }
+            $pw = $pengWhere ? ('WHERE ' . implode(' AND ', $pengWhere)) : '';
+            $stmtP = $this->db->prepare("SELECT COALESCE(SUM(nominal),0) FROM umroh___pengeluaran $pw");
+            $stmtP->execute($pengParams);
+            $pengeluaranTotal = (float) $stmtP->fetchColumn();
+
+            $stmtPL = $this->db->prepare("SELECT id, kode_pengeluaran, keterangan, kategori, nominal, status, tanggal_dibuat FROM umroh___pengeluaran $pw ORDER BY tanggal_dibuat DESC LIMIT 100");
+            $stmtPL->execute($pengParams);
+            $pengeluaran = $stmtPL->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+            $paketStmt = $this->db->query("SELECT DISTINCT paket_umroh FROM umroh___jamaah WHERE paket_umroh IS NOT NULL AND TRIM(paket_umroh) <> '' ORDER BY paket_umroh");
+            $paketOptions = $paketStmt ? array_values(array_filter(array_map(static function ($r) {
+                return $r['paket_umroh'] ?? null;
+            }, $paketStmt->fetchAll(\PDO::FETCH_ASSOC) ?: []))) : [];
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'ringkasan' => [
+                        'jamaah' => (int) ($jRow['c'] ?? 0),
+                        'saldo' => (float) ($jRow['saldo'] ?? 0),
+                        'setoran' => (float) ($sum['setoran'] ?? 0),
+                        'penarikan' => (float) ($sum['penarikan'] ?? 0),
+                        'pengeluaran' => $pengeluaranTotal,
+                    ],
+                    'transaksi' => $transaksi,
+                    'pengeluaran' => $pengeluaran,
+                    'paket_options' => $paketOptions,
+                ],
+            ], 200);
+        } catch (\Exception $e) {
+            error_log('Umroh laporan error: ' . $e->getMessage());
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal memuat laporan umroh',
+            ], 500);
+        }
     }
 }
 

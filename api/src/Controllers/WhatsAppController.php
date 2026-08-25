@@ -272,6 +272,32 @@ class WhatsAppController
     }
 
     /**
+     * Kirim antrian follow-up handshake WA (link/username) + pesan maaf 15 menit.
+     * Dipanggil mesin WA setelah webhook incoming selesai (hindari deadlock kirim-di-dalam-webhook).
+     * POST /api/wa/flush-auth-followup — header X-API-Key = WA_API_KEY.
+     */
+    public function flushAuthFollowup(Request $request, Response $response): Response
+    {
+        $apiKey = $request->getHeaderLine('X-API-Key');
+        $config = require __DIR__ . '/../../config.php';
+        $expectedKey = (string) (getenv('WA_API_KEY') ?: ($config['whatsapp']['api_key'] ?? ''));
+        if ($expectedKey === '' || !hash_equals($expectedKey, $apiKey)) {
+            return $this->json($response, ['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+        try {
+            $result = \App\Helpers\AuthWaFollowupHelper::flush();
+            return $this->json($response, [
+                'success' => true,
+                'followup_sent' => (int) ($result['followup_sent'] ?? 0),
+                'apology_sent' => (int) ($result['apology_sent'] ?? 0),
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('WhatsAppController::flushAuthFollowup ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'message' => 'Gagal memproses antrian follow-up'], 500);
+        }
+    }
+
+    /**
      * Terima pesan masuk dari WA (webhook). Public, tanpa auth. CSRF di-exclude di CsrfMiddleware.
      * WA mengirim ke sini dan kirim ulang sampai dapat 200. Simpan ke tabel whatsapp (arah=masuk).
      * POST /api/wa/incoming
@@ -365,7 +391,15 @@ class WhatsAppController
                 return $this->json($response, ['success' => true, 'message' => 'OK'], 200);
             }
 
-            return $this->json($response, ['success' => true, 'message' => 'OK', 'id' => $res['id'] ?? null], 200);
+            $payload = ['success' => true, 'message' => 'OK', 'id' => $res['id'] ?? null];
+            if (!empty($res['immediate_ack']) && is_string($res['immediate_ack'])) {
+                $payload['immediate_ack'] = $res['immediate_ack'];
+                if (!empty($res['immediate_jid']) && is_string($res['immediate_jid'])) {
+                    $payload['immediate_jid'] = $res['immediate_jid'];
+                }
+            }
+
+            return $this->json($response, $payload, 200);
         } catch (\Throwable $e) {
             error_log('WhatsAppController::incoming ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'message' => 'Gagal menyimpan pesan masuk'], 500);

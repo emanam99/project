@@ -4,6 +4,7 @@ import { ijinAPI } from '../../services/api'
 import { useIjinTahunAjaran } from '../../hooks/useIjinTahunAjaran'
 import { EBEDDIEN_IJIN_HINT, ijinHintMatches } from '../../services/ijinLiveEvents'
 import { labelKategoriPelanggaran } from '../Domisili/components/PelanggaranMasterFormOffcanvas'
+import { kategoriBadgeClass } from '../Domisili/kategoriBadgeClass'
 
 function monthBarList(rows, colorClass) {
   if (!rows || rows.length === 0) {
@@ -313,12 +314,20 @@ function DashboardIjin() {
                 {topDaerah.map((row, index) => {
                   const n = parseInt(row.jumlah_santri, 10) || 0
                   const pct = maxDaerah > 0 ? (n / maxDaerah) * 100 : 0
+                  const kategori = String(row.kategori || '').trim()
                   return (
-                    <div key={row.id || index} className="flex items-center gap-2.5">
-                      <div className="w-24 text-[10px] md:text-xs text-gray-600 dark:text-gray-400 truncate">
-                        {row.nama}
+                    <div key={row.id || index} className="flex items-center gap-2">
+                      <div className="shrink-0 max-w-[42%] sm:max-w-[38%] flex items-center gap-1.5 min-w-0">
+                        <span className="text-[10px] md:text-xs text-gray-700 dark:text-gray-300 truncate">
+                          {row.nama}
+                        </span>
+                        {kategori ? (
+                          <span className={`${kategoriBadgeClass(kategori)} !text-[10px] !px-1.5 !py-0`}>
+                            {kategori}
+                          </span>
+                        ) : null}
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="h-4 md:h-5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                           <div
                             className="h-full bg-emerald-500 rounded-full transition-all duration-500"
@@ -326,7 +335,7 @@ function DashboardIjin() {
                           />
                         </div>
                       </div>
-                      <div className="w-10 text-right text-xs md:text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      <div className="w-8 text-right text-xs md:text-sm font-semibold text-gray-700 dark:text-gray-300 shrink-0">
                         {n}
                       </div>
                     </div>

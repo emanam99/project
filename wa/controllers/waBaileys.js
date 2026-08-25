@@ -287,6 +287,65 @@ export function humanizeLidSendError(raw) {
   return 'WhatsApp membutuhkan sinkron kontak (LID) untuk nomor ini. Pastikan koneksi WhatsApp (Baileys) terhubung untuk slot yang sama dengan WA_SESSION_ID di api/.env. Jika sudah, buka sekali obrolan ke nomor tersebut di aplikasi WhatsApp di HP lalu coba lagi.';
 }
 
+const PERMINTAAN_PROSES_ACK =
+  'Terima kasih. permintaan sedang diproses \u{1F504}\n\n> Mohon simpan nomor ini sebagai nomor resmi pesantren.';
+
+let authFollowupFlushInFlight = false;
+
+function normalizeImmediateAck(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  if (/^Terima kasih\.?\s*permintaan sedang diproses/i.test(t)) {
+    return PERMINTAAN_PROSES_ACK;
+  }
+  return t;
+}
+
+function buildAuthFollowupFlushUrl(apiBase) {
+  const base = String(apiBase || '').trim().replace(/\/$/, '');
+  if (!base) return '';
+  return base + (base.endsWith('/api') ? '/wa/flush-auth-followup' : '/api/wa/flush-auth-followup');
+}
+
+export function flushAuthFollowupAfterWebhook(apiBase, apiKey) {
+  const url = buildAuthFollowupFlushUrl(apiBase);
+  const key = String(apiKey || '').trim();
+  if (!url || !key) return;
+  if (authFollowupFlushInFlight) return;
+  authFollowupFlushInFlight = true;
+  fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+      body: '{}',
+    },
+    120000
+  )
+    .then((res) => {
+      if (!res.ok) {
+        console.warn('[WA Baileys] flush-auth-followup HTTP', res.status);
+      }
+    })
+    .catch((e) => {
+      console.warn('[WA Baileys] flush-auth-followup gagal:', e?.message || e);
+    })
+    .finally(() => {
+      authFollowupFlushInFlight = false;
+    });
+}
+
+export function startAuthFollowupSweep() {
+  const apiBase = (process.env.UWABA_API_BASE_URL || '').trim().replace(/\/$/, '');
+  const apiKey = (process.env.WA_API_KEY || '').trim();
+  if (!apiBase || !apiKey) {
+    return;
+  }
+  const tick = () => flushAuthFollowupAfterWebhook(apiBase, apiKey);
+  setInterval(tick, 60000);
+  setTimeout(tick, 8000);
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = WA_FORWARD_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -340,16 +399,15 @@ export function phoneToJid(phone) {
 }
 
 /**
- * Selesaikan JID tujuan lewat onWhatsApp (mapping PN ↔ LID). Mengurangi kegagalan kirim vs jid ditebak saja.
- *
- * @returns {{ jid: string } | { jid: null, reason: 'invalid' | 'not_registered' }}
+ * Urutan coba kirim: nomor HP (@s.whatsapp.net) dulu, @lid hanya jika itu gagal.
+ * Kirim @lid dulu membuat sebagian HP gagal dekripsi («Menunggu pesan ini») meski Baileys menganggap sukses.
+ * Evolution/WA native juga menarget JID nomor; @lid tetap fallback untuk nomor baru / MD.
  */
-/** Urutan coba kirim: @lid dulu (MD sering wajib untuk PN baru), baru @s.whatsapp.net / @c.us. */
 function scoreJidForSendOrder(jid) {
   const j = String(jid);
-  if (/@lid$/i.test(j)) return 0;
-  if (/@s\.whatsapp\.net$/i.test(j)) return 1;
-  if (/@c\.us$/i.test(j)) return 2;
+  if (/@s\.whatsapp\.net$/i.test(j)) return 0;
+  if (/@c\.us$/i.test(j)) return 1;
+  if (/@lid$/i.test(j)) return 2;
   return 3;
 }
 
@@ -695,6 +753,8 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
         };
         let lastOk = false;
         let lastErr = null;
+        let immediateAck = '';
+        let immediateJid = fromJid || '';
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             const res = await fetchWithTimeout(url, {
@@ -703,7 +763,18 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
               body: JSON.stringify(payload),
             });
             lastOk = res.ok;
-            if (res.ok) break;
+            if (res.ok) {
+              try {
+                const data = await res.json();
+                if (data && typeof data.immediate_ack === 'string' && data.immediate_ack.trim()) {
+                  immediateAck = data.immediate_ack.trim();
+                }
+                if (data && typeof data.immediate_jid === 'string' && data.immediate_jid.trim()) {
+                  immediateJid = data.immediate_jid.trim();
+                }
+              } catch (_) {}
+              break;
+            }
             lastErr = `HTTP ${res.status}`;
             const text = await res.text();
             if (text && text.length < 200) lastErr = text;
@@ -714,6 +785,22 @@ export async function initBaileys(sessionId = DEFAULT_SESSION) {
         }
         if (lastOk) {
           console.log('[WA Baileys]', id, 'forward OK →', url, 'from=', from62);
+          const flush = () => flushAuthFollowupAfterWebhook(apiBase, apiKey);
+          const ackText = normalizeImmediateAck(immediateAck);
+          if (ackText) {
+            sendMessageBaileys(id, from62, ackText, null, null, immediateJid || fromJid || null)
+              .then((r) => {
+                if (!r?.ok) {
+                  console.warn('[WA Baileys]', id, 'immediate ack gagal:', r?.error || 'unknown');
+                }
+              })
+              .catch((e) => {
+                console.warn('[WA Baileys]', id, 'immediate ack error:', e?.message || e);
+              })
+              .finally(flush);
+          } else {
+            flush();
+          }
         } else {
           console.error('[WA Baileys] Gagal forward pesan masuk ke API: from=' + from62 + ' error=' + (lastErr || 'timeout'));
         }
@@ -883,16 +970,16 @@ export async function ensureBaileysReadyForSend(sessionId = DEFAULT_SESSION, max
   return isBaileysConnected(id);
 }
 
-/** Payload teks untuk Baileys: link preview diambil otomatis dari URL di teks (generateWAMessageContent). Set linkPreview=false untuk menonaktifkan. */
-function buildTextContent(text, linkPreviewEnabled = true) {
+/** Payload teks: preview URL (extendedTextMessage) sering gagal dekripsi di sebagian HP Android. Default mati; nyalakan hanya jika API kirim linkPreview=true. */
+function buildTextContent(text, linkPreviewEnabled = false) {
   const t = typeof text === 'string' ? text : '';
-  if (linkPreviewEnabled === false) {
-    return { text: t, linkPreview: false };
+  if (linkPreviewEnabled === true) {
+    return { text: t };
   }
-  return { text: t };
+  return { text: t, linkPreview: false };
 }
 
-export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase64, imageMimetype, chatId = null, linkPreviewEnabled = true) {
+export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase64, imageMimetype, chatId = null, linkPreviewEnabled = false) {
   const id = sessionId || DEFAULT_SESSION;
   const sock = sockRefBySession[id];
   const st = getBaileysStatusObj(id);
@@ -904,6 +991,13 @@ export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase
     /** Balasan ke chat yang sama (mis. pengirim @lid) — jangan lewat onWhatsApp dengan digit LID sebagai “nomor HP”. */
     jids = [cid];
     reason = null;
+    const fallback = phoneToJid(phoneNumber);
+    const n = formatPhoneNumber(phoneNumber);
+    const phoneLooksMsisdn = !!(n && /^62\d{8,15}$/.test(n));
+    /** Jika ada nomor HP nyata, coba JID nomor dulu — kirim hanya ke @lid sering «Menunggu pesan ini» di sebagian HP. */
+    if (/@lid$/i.test(cid) && fallback && phoneLooksMsisdn && !jids.includes(fallback)) {
+      jids = [fallback, cid];
+    }
   } else {
     const r = await resolveSendJidsOrdered(sock, phoneNumber);
     jids = r.jids;
@@ -993,7 +1087,7 @@ export async function sendMessageWithTypingBaileys(sessionId, phoneNumber, text,
         if (typeof sock.presenceSubscribe === 'function') await sock.presenceSubscribe(jid).catch(() => {});
         await delay(300);
       }
-      const result = await sock.sendMessage(jid, { text: content }, {});
+      const result = await sock.sendMessage(jid, buildTextContent(content, false), {});
       return { ok: true, messageId: result?.key?.id || null, senderPhoneNumber: st.phoneNumber };
     } catch (err) {
       lastErr = err;

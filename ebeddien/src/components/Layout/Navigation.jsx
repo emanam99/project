@@ -238,6 +238,7 @@ function Navigation() {
         { path: '/umroh/jamaah', label: 'Jemaah', icon: 'jamaah' },
         null,
         { path: '/umroh/tabungan', label: 'Tabungan', icon: 'tabungan' },
+        { path: '/umroh/pengeluaran', label: 'Pengeluaran', icon: 'pengeluaran' },
         { path: '/laporan-umroh', label: 'Laporan', icon: 'laporan' }
       ]
     } else if (hasIjinRole) {
@@ -320,6 +321,12 @@ function Navigation() {
         return (
           <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )
+      case 'pengeluaran':
+        return (
+          <svg className={iconClass} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
         )
       case 'ijin':
@@ -606,10 +613,11 @@ function Navigation() {
     if (path === '/pendaftaran/pengaturan' && location.pathname === '/pendaftaran/pengaturan') {
       return true
     }
-    // Special handling for /umroh - also match sub-paths
-    if (path === '/umroh/jamaah' && location.pathname.startsWith('/umroh')) {
-      return true
+    if (path === '/umroh/jamaah') {
+      return location.pathname === '/umroh/jamaah' || location.pathname.startsWith('/umroh/jamaah/')
     }
+    if (path === '/umroh/tabungan') return location.pathname === '/umroh/tabungan'
+    if (path === '/umroh/pengeluaran') return location.pathname === '/umroh/pengeluaran'
     // Special handling for /laporan-umroh
     if (path === '/laporan-umroh' && location.pathname === '/laporan-umroh') {
       return true

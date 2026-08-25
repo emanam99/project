@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\TextSanitizer;
+use App\Helpers\UmrohPayloadHelper;
 use App\Helpers\UserAktivitasLogger;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -144,12 +145,7 @@ class UmrohTabunganController
                     ORDER BY t.tanggal_dibuat DESC
                     LIMIT ? OFFSET ?";
             
-            $params[] = $limit;
-            $params[] = $offset;
-            
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $data = UmrohPayloadHelper::fetchLimited($this->db, $sql, $params, $limit, $offset);
 
             return $this->jsonResponse($response, [
                 'success' => true,
@@ -232,7 +228,7 @@ class UmrohTabunganController
             $data = is_array($data) ? TextSanitizer::sanitizeStringValues($data, []) : [];
             $user = $request->getAttribute('user');
             
-            $idAdmin = $user['user_id'] ?? $user['id'] ?? null;
+            $idAdmin = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
             $idJamaah = $data['id_jamaah'] ?? null;
             $jenis = $data['jenis'] ?? 'Setoran';
             $nominal = $data['nominal'] ?? 0;
@@ -462,7 +458,7 @@ class UmrohTabunganController
             $stmtNew->execute([$id]);
             $newRow = $stmtNew->fetch(\PDO::FETCH_ASSOC);
             $user = $request->getAttribute('user');
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            $pengurusId = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
             if ($newRow && $pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_UPDATE, 'umroh___tabungan', $id, $existing, $newRow, $request);
             }
@@ -547,7 +543,7 @@ class UmrohTabunganController
 
             $this->db->commit();
             $user = $request->getAttribute('user');
-            $pengurusId = isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null);
+            $pengurusId = UmrohPayloadHelper::pengurusId(is_array($user) ? $user : null);
             if ($pengurusId !== null) {
                 UserAktivitasLogger::log(null, $pengurusId, UserAktivitasLogger::ACTION_DELETE, 'umroh___tabungan', $id, $existing, null, $request);
             }

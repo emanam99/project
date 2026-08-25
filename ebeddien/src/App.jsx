@@ -7,6 +7,7 @@ import UbahPassword from './pages/UbahPassword'
 import UbahUsername from './pages/UbahUsername'
 import VerifikasiEmail from './pages/VerifikasiEmail'
 import Tentang from './pages/Tentang/index.jsx'
+import TentangPageLayout from './pages/Tentang/TentangPageLayout'
 import Version from './pages/Tentang/Version'
 import InfoAplikasi from './pages/Tentang/InfoAplikasi'
 import { useAuthStore, initAuthCrossTabSync, EBEDDIEN_PASSKEY_PROMPT_FLAG } from './store/authStore'
@@ -111,6 +112,7 @@ const ManageUploads = lazy(() => import('./pages/Settings/ManageUploads'))
 const UmrohJamaah = lazy(() => import('./pages/Umroh/Jamaah'))
 const UmrohJamaahForm = lazy(() => import('./pages/Umroh/JamaahForm'))
 const UmrohTabungan = lazy(() => import('./pages/Umroh/Tabungan'))
+const UmrohPengeluaran = lazy(() => import('./pages/Umroh/PengeluaranUmroh'))
 const DashboardIjin = lazy(() => import('./pages/Ijin/DashboardIjin'))
 const DataIjin = lazy(() => import('./pages/Ijin/DataIjin'))
 const DataBoyong = lazy(() => import('./pages/Ijin/DataBoyong'))
@@ -1005,29 +1007,16 @@ function App() {
               }
             />
             <Route
-              path="/tentang"
               element={
                 <Suspense fallback={<PageLoader />}>
-                  <Tentang />
+                  <TentangPageLayout />
                 </Suspense>
               }
-            />
-            <Route
-              path="/version"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Version />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/info-aplikasi"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <InfoAplikasi />
-                </Suspense>
-              }
-            />
+            >
+              <Route path="/tentang" element={<Tentang />} />
+              <Route path="/info-aplikasi" element={<InfoAplikasi />} />
+              <Route path="/version" element={<Version />} />
+            </Route>
             <Route
               path="/dashboard-pembayaran"
               element={
@@ -1787,6 +1776,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <UmrohTabungan />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/umroh/pengeluaran"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <UmrohPengeluaran />
                 </Suspense>
               }
             />

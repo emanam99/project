@@ -5,6 +5,56 @@ import CetakKartuSantriBerkasPanel from './CetakKartuSantriBerkasPanel'
 import CetakKartuSantriTopUpPanel from './CetakKartuSantriTopUpPanel'
 import CashlessWithdrawPanel from './CashlessWithdrawPanel'
 
+function CameraToggleIcon({ active, className = 'h-4 w-4' }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+      {!active ? (
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4l16 16" />
+      ) : null}
+    </svg>
+  )
+}
+
+function HeaderActions({ cameraOpen, onToggleCamera, onCariSantri }) {
+  const showCameraToggle = typeof onToggleCamera === 'function'
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {showCameraToggle ? (
+        <button
+          type="button"
+          onClick={onToggleCamera}
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+            cameraOpen
+              ? 'bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-900/40 dark:text-teal-300 dark:hover:bg-teal-900/60'
+              : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+          }`}
+          title={cameraOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+          aria-label={cameraOpen ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+          aria-pressed={cameraOpen}
+        >
+          <CameraToggleIcon active={cameraOpen} />
+        </button>
+      ) : null}
+      {typeof onCariSantri === 'function' ? (
+        <button
+          type="button"
+          onClick={onCariSantri}
+          className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+        >
+          Cari
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 function formatSaldo(n) {
   if (n == null || n === undefined) return '0'
   return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(Number(n))
@@ -48,6 +98,8 @@ export default function CetakKartuSantriSidePanel({
   onBuatAkun,
   createSaving,
   onAccountRefresh,
+  cameraOpen = true,
+  onToggleCamera,
 }) {
   const [activeTab, setActiveTab] = useState('detail')
   const santriId = santriDetail?.id ?? account?.entity_id ?? null
@@ -60,7 +112,11 @@ export default function CetakKartuSantriSidePanel({
 
   if (!santriDetail && !loading) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-4 py-8 text-center">
+      <div className="relative flex h-full flex-col">
+        <div className="absolute right-0 top-0 z-10">
+          <HeaderActions cameraOpen={cameraOpen} onToggleCamera={onToggleCamera} onCariSantri={onCariSantri} />
+        </div>
+        <div className="flex h-full flex-col items-center justify-center gap-4 px-4 py-8 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400">
           <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -86,6 +142,7 @@ export default function CetakKartuSantriSidePanel({
             <li>Tempat lahir terisi</li>
             <li>Tanggal lahir terisi</li>
           </ul>
+        </div>
         </div>
       </div>
     )
@@ -118,13 +175,7 @@ export default function CetakKartuSantriSidePanel({
             <h2 className="truncate text-base font-bold leading-snug text-gray-900 dark:text-gray-100">{nama}</h2>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">NIS {nis}</p>
           </div>
-          <button
-            type="button"
-            onClick={onCariSantri}
-            className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-          >
-            Cari
-          </button>
+          <HeaderActions cameraOpen={cameraOpen} onToggleCamera={onToggleCamera} onCariSantri={onCariSantri} />
         </div>
 
         <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800/80">

@@ -5,11 +5,18 @@ import { useNotification } from '../../../contexts/NotificationContext'
 import { formatSaldo, METODE_OPTIONS } from '../TopUpCashlessFormat'
 import CashlessTopUpHistoryList from './CashlessTopUpHistoryList'
 
-export default function CetakKartuSantriTopUpPanel({ account, santriId, onSuccess, hideHistory = false }) {
+export default function CetakKartuSantriTopUpPanel({
+  account,
+  santriId,
+  onSuccess,
+  hideHistory = false,
+  formOnly = false,
+  onCloseForm,
+}) {
   const { showNotification } = useNotification()
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
-  const [showForm, setShowForm] = useState(false)
+  const [showForm, setShowForm] = useState(formOnly)
   const [nominal, setNominal] = useState('')
   const [metode, setMetode] = useState('tunai')
   const [catatan, setCatatan] = useState('')
@@ -42,12 +49,12 @@ export default function CetakKartuSantriTopUpPanel({ account, santriId, onSucces
 
   useEffect(() => {
     loadHistory()
-    setShowForm(false)
+    setShowForm(formOnly)
     setNominal('')
     setMetode('tunai')
     setCatatan('')
     setError(null)
-  }, [loadHistory, sid, account?.id])
+  }, [loadHistory, sid, account?.id, formOnly])
 
   const handleAmountInput = (e) => {
     const digits = e.target.value.replace(/\D/g, '')
@@ -86,11 +93,12 @@ export default function CetakKartuSantriTopUpPanel({ account, santriId, onSucces
         setDisplayBalance(res.data.balance_cached)
       }
       showNotification(`Top-up Rp ${formatSaldo(amount)} berhasil.`, 'success')
-      setShowForm(false)
+      setShowForm(formOnly)
       setNominal('')
       setCatatan('')
       await loadHistory()
       onSuccess?.(res.data)
+      if (formOnly) onCloseForm?.()
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal menyimpan top-up')
     } finally {
@@ -108,6 +116,64 @@ export default function CetakKartuSantriTopUpPanel({ account, santriId, onSucces
         </div>
       </div>
     )
+  }
+
+  const topupForm = (
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={nominal}
+          onChange={handleAmountInput}
+          placeholder="Nominal"
+          className="min-w-0 flex-1 border-b-2 border-gray-300 bg-transparent p-2 text-right font-mono text-sm focus:border-teal-500 focus:outline-none dark:border-gray-600"
+          autoFocus={formOnly}
+        />
+        <select
+          value={metode}
+          onChange={(e) => setMetode(e.target.value)}
+          className="border-b-2 border-gray-300 bg-transparent p-2 text-xs focus:border-teal-500 focus:outline-none dark:border-gray-600"
+        >
+          {METODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          disabled={saving}
+          className="shrink-0 rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+        >
+          {saving ? '…' : 'Bayar'}
+        </button>
+      </div>
+      <input
+        type="text"
+        value={catatan}
+        onChange={(e) => setCatatan(e.target.value)}
+        placeholder="Catatan (opsional)"
+        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800"
+      />
+      {error ? (
+        <p className="text-center text-xs text-red-600 dark:text-red-400">{error}</p>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => {
+          setShowForm(formOnly)
+          setError(null)
+          onCloseForm?.()
+        }}
+        className="w-full text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+      >
+        Batal
+      </button>
+    </form>
+  )
+
+  if (formOnly) {
+    return topupForm
   }
 
   return (
@@ -132,64 +198,15 @@ export default function CetakKartuSantriTopUpPanel({ account, santriId, onSucces
       <div className="shrink-0 border-t border-gray-200 bg-white pt-3 dark:border-gray-700 dark:bg-gray-800">
         <AnimatePresence initial={false} mode="wait">
           {showForm ? (
-            <motion.form
+            <motion.div
               key="topup-form"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
               transition={{ duration: 0.15 }}
-              onSubmit={handleSubmit}
-              className="space-y-2"
             >
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={nominal}
-                  onChange={handleAmountInput}
-                  placeholder="Nominal"
-                  className="min-w-0 flex-1 border-b-2 border-gray-300 bg-transparent p-2 text-right font-mono text-sm focus:border-teal-500 focus:outline-none dark:border-gray-600"
-                  autoFocus
-                />
-                <select
-                  value={metode}
-                  onChange={(e) => setMetode(e.target.value)}
-                  className="border-b-2 border-gray-300 bg-transparent p-2 text-xs focus:border-teal-500 focus:outline-none dark:border-gray-600"
-                >
-                  {METODE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="shrink-0 rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
-                >
-                  {saving ? '…' : 'Bayar'}
-                </button>
-              </div>
-              <input
-                type="text"
-                value={catatan}
-                onChange={(e) => setCatatan(e.target.value)}
-                placeholder="Catatan (opsional)"
-                className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800"
-              />
-              {error ? (
-                <p className="text-center text-xs text-red-600 dark:text-red-400">{error}</p>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false)
-                  setError(null)
-                }}
-                className="w-full text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                Batal
-              </button>
-            </motion.form>
+              {topupForm}
+            </motion.div>
           ) : (
             <motion.div
               key="topup-btn"

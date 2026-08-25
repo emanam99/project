@@ -26,6 +26,8 @@ return function (\Slim\App $app): void {
         $group->get('/ledger-summary', [CashlessController::class, 'getLedgerSummary']);
         $group->get('/config', [CashlessController::class, 'getConfig']);
         $group->put('/config', [CashlessController::class, 'setConfig']);
+        $group->get('/batas-harian-opsional', [CashlessController::class, 'listBatasHarianOpsional']);
+        $group->put('/batas-harian-santri/{santriId}', [CashlessController::class, 'setSantriBatasHarian']);
         $group->post('/maintenance/start', [CashlessController::class, 'startMaintenance']);
         $group->post('/maintenance/stop', [CashlessController::class, 'stopMaintenance']);
         $group->post('/kartu/issue-bundle', [CashlessController::class, 'issueKartuBundle']);

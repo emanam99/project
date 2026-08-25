@@ -146,6 +146,21 @@ class AppFiturMenuSeed extends AbstractSeed
                 $conn->quote($code)
             ));
         }
+
+        // Role yang sudah punya Dashboard/Tabungan Umroh ikut mendapat menu Pengeluaran
+        $this->execute(
+            'INSERT IGNORE INTO `role___fitur` (`role_id`, `fitur_id`)
+             SELECT rf.role_id, pengeluaran.id
+             FROM `app___fitur` pengeluaran
+             INNER JOIN `app___fitur` sibling
+               ON sibling.id_app = pengeluaran.id_app
+              AND sibling.type = \'menu\'
+              AND sibling.path IN (\'/umroh/tabungan\', \'/dashboard-umroh\')
+             INNER JOIN `role___fitur` rf ON rf.fitur_id = sibling.id
+             WHERE pengeluaran.id_app = ' . self::ID_APP_EBEDDIEN . '
+               AND pengeluaran.type = \'menu\'
+               AND pengeluaran.path = \'/umroh/pengeluaran\''
+        );
     }
 
     private function pathToCode(string $path): string
@@ -209,6 +224,7 @@ class AppFiturMenuSeed extends AbstractSeed
             ['path' => '/dashboard-umroh', 'label' => 'Dashboard Umroh', 'iconKey' => 'dashboard', 'group' => 'Umroh'],
             ['path' => '/umroh/jamaah', 'label' => 'Jamaah Umroh', 'iconKey' => 'usersGroup', 'group' => 'Umroh'],
             ['path' => '/umroh/tabungan', 'label' => 'Tabungan Umroh', 'iconKey' => 'currency', 'group' => 'Umroh'],
+            ['path' => '/umroh/pengeluaran', 'label' => 'Pengeluaran Umroh', 'iconKey' => 'cash', 'group' => 'Umroh'],
             ['path' => '/laporan-umroh', 'label' => 'Laporan Umroh', 'iconKey' => 'chartBar', 'group' => 'Umroh'],
             ['path' => '/dashboard-ijin', 'label' => 'Dashboard', 'iconKey' => 'dashboard', 'group' => 'Domisili'],
             ['path' => '/ijin/data-ijin', 'label' => 'Data Ijin', 'iconKey' => 'documentText', 'group' => 'Domisili'],

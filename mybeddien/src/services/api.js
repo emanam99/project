@@ -1091,6 +1091,10 @@ export const penjualanAPI = {
     const response = await api.post(mybeddianPath('/v2/penjualan/checkout'), data)
     return response.data
   },
+  getConfig: async () => {
+    const response = await api.get(mybeddianPath('/v2/penjualan/config'))
+    return response.data
+  },
   getList: async (params = {}) => {
     const response = await api.get(mybeddianPath('/v2/penjualan'), { params })
     return response.data

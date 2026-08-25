@@ -127,6 +127,24 @@ class MybeddianPenjualanController
     }
 
     /**
+     * GET /api/mybeddian/v2/penjualan/config — ambang PIN belanja (dari pengaturan cashless).
+     */
+    public function config(Request $request, Response $response): Response
+    {
+        $pedagangId = $this->getTokoIdFromRequest($request);
+        if ($pedagangId === null) {
+            return $this->json($response, ['success' => false, 'message' => 'Akses hanya untuk toko'], 403);
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => [
+                'batas_pin_belanja' => CashlessPurchaseService::getPinThreshold($this->db),
+            ],
+        ], 200);
+    }
+
+    /**
      * GET /api/mybeddian/v2/penjualan — riwayat hari ini (default) atau ?days=7
      */
     public function list(Request $request, Response $response): Response

@@ -77,7 +77,7 @@ function SearchJamaahOffcanvas({ isOpen, onClose, onSelectJamaah }) {
         (j.id && j.id.toString().toLowerCase().includes(query)) ||
         (j.nama_lengkap && j.nama_lengkap.toLowerCase().includes(query)) ||
         (j.nik && j.nik.toString().toLowerCase().includes(query)) ||
-        (j.passport && j.passport.toString().toLowerCase().includes(query))
+        (j.no_paspor && j.no_paspor.toString().toLowerCase().includes(query))
       )
     }
 
@@ -210,7 +210,7 @@ function SearchJamaahOffcanvas({ isOpen, onClose, onSelectJamaah }) {
                     onFocus={() => setIsInputFocused(true)}
                     onBlur={() => setIsInputFocused(false)}
                     className="w-full p-2 pr-28 focus:outline-none bg-transparent text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
-                    placeholder="Cari Kode, ID, Nama, NIK, atau Passport"
+                    placeholder="Cari Kode, ID, Nama, NIK, atau No. Paspor"
                     autoFocus
                   />
                   {/* Tombol Filter dan Sync di kanan */}
@@ -316,7 +316,7 @@ function SearchJamaahOffcanvas({ isOpen, onClose, onSelectJamaah }) {
                           <strong>{jamaah.kode_jamaah || jamaah.id}</strong> - {jamaah.nama_lengkap || '-'}
                         </p>
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                          NIK: {jamaah.nik || '-'} | Passport: {jamaah.passport || '-'} | Paket: {jamaah.paket_umroh || '-'}
+                          NIK: {jamaah.nik || '-'} | Paspor: {jamaah.no_paspor || '-'} | Paket: {jamaah.paket_umroh || '-'}
                         </div>
                       </div>
                       <div className="flex flex-col items-end min-w-[70px] ml-2 flex-shrink-0">

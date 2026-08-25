@@ -47,7 +47,10 @@ export default function PenjualanCart({
   onCariBarang,
   onScanKamera,
   disabled,
+  pinThreshold = 10000,
 }) {
+  const threshold = Number(pinThreshold)
+  const needsPin = total > 0 && total >= threshold
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800/95">
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-3 py-3 dark:border-gray-700 sm:px-4">
@@ -181,14 +184,16 @@ export default function PenjualanCart({
             </button>
           ) : null}
         </div>
-        {total > 0 && total < 10000 && (
+        {total > 0 && !needsPin && (
           <p className="mt-2 text-center text-[11px] text-gray-500 dark:text-gray-400">
-            Di bawah Rp 10.000 — tanpa PIN
+            Di bawah {formatRupiah(threshold)} — tanpa PIN
           </p>
         )}
-        {total >= 10000 && (
+        {needsPin && (
           <p className="mt-2 text-center text-[11px] text-amber-700 dark:text-amber-300">
-            ≥ Rp 10.000 — wajib PIN 6 digit
+            {threshold > 0
+              ? `≥ ${formatRupiah(threshold)} — wajib PIN 6 digit`
+              : 'Wajib PIN 6 digit'}
           </p>
         )}
       </div>

@@ -16,11 +16,13 @@ export default function CashlessWithdrawPanel({
   tokoId,
   onSuccess,
   hideHistory = false,
+  formOnly = false,
+  onCloseForm,
 }) {
   const { showNotification } = useNotification()
   const [history, setHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
-  const [showForm, setShowForm] = useState(false)
+  const [showForm, setShowForm] = useState(formOnly)
   const [nominal, setNominal] = useState('')
   const [metode, setMetode] = useState('tunai')
   const [catatan, setCatatan] = useState('')
@@ -59,12 +61,12 @@ export default function CashlessWithdrawPanel({
 
   useEffect(() => {
     loadHistory()
-    setShowForm(false)
+    setShowForm(formOnly)
     setNominal('')
     setMetode('tunai')
     setCatatan('')
     setError(null)
-  }, [loadHistory, account?.id])
+  }, [loadHistory, account?.id, formOnly])
 
   const handleAmountInput = (e) => {
     const digits = e.target.value.replace(/\D/g, '')
@@ -110,11 +112,12 @@ export default function CashlessWithdrawPanel({
         setDisplayBalance(res.data.balance_cached)
       }
       showNotification(`Tarik tunai Rp ${formatSaldo(amount)} berhasil.`, 'success')
-      setShowForm(false)
+      setShowForm(formOnly)
       setNominal('')
       setCatatan('')
       await loadHistory()
       onSuccess?.(res.data)
+      if (formOnly) onCloseForm?.()
     } catch (err) {
       setError(err.response?.data?.message || 'Gagal tarik tunai')
     } finally {
@@ -134,6 +137,64 @@ export default function CashlessWithdrawPanel({
         </div>
       </div>
     )
+  }
+
+  const withdrawForm = (
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={nominal}
+          onChange={handleAmountInput}
+          placeholder="Nominal"
+          className="min-w-0 flex-1 border-b-2 border-gray-300 bg-transparent p-2 text-right font-mono text-sm focus:border-rose-500 focus:outline-none dark:border-gray-600"
+          autoFocus={formOnly}
+        />
+        <select
+          value={metode}
+          onChange={(e) => setMetode(e.target.value)}
+          className="border-b-2 border-gray-300 bg-transparent p-2 text-xs focus:border-rose-500 focus:outline-none dark:border-gray-600"
+        >
+          {METODE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          disabled={saving}
+          className="shrink-0 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+        >
+          {saving ? '…' : 'Tarik'}
+        </button>
+      </div>
+      <input
+        type="text"
+        value={catatan}
+        onChange={(e) => setCatatan(e.target.value)}
+        placeholder="Catatan (opsional)"
+        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800"
+      />
+      {error ? (
+        <p className="text-center text-xs text-red-600 dark:text-red-400">{error}</p>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => {
+          setShowForm(formOnly)
+          setError(null)
+          onCloseForm?.()
+        }}
+        className="w-full text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+      >
+        Batal
+      </button>
+    </form>
+  )
+
+  if (formOnly) {
+    return withdrawForm
   }
 
   return (
@@ -163,64 +224,15 @@ export default function CashlessWithdrawPanel({
       <div className="shrink-0 border-t border-gray-200 bg-white pt-3 dark:border-gray-700 dark:bg-gray-800">
         <AnimatePresence initial={false} mode="wait">
           {showForm ? (
-            <motion.form
+            <motion.div
               key="withdraw-form"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
               transition={{ duration: 0.15 }}
-              onSubmit={handleSubmit}
-              className="space-y-2"
             >
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={nominal}
-                  onChange={handleAmountInput}
-                  placeholder="Nominal"
-                  className="min-w-0 flex-1 border-b-2 border-gray-300 bg-transparent p-2 text-right font-mono text-sm focus:border-rose-500 focus:outline-none dark:border-gray-600"
-                  autoFocus
-                />
-                <select
-                  value={metode}
-                  onChange={(e) => setMetode(e.target.value)}
-                  className="border-b-2 border-gray-300 bg-transparent p-2 text-xs focus:border-rose-500 focus:outline-none dark:border-gray-600"
-                >
-                  {METODE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="shrink-0 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
-                >
-                  {saving ? '…' : 'Tarik'}
-                </button>
-              </div>
-              <input
-                type="text"
-                value={catatan}
-                onChange={(e) => setCatatan(e.target.value)}
-                placeholder="Catatan (opsional)"
-                className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800"
-              />
-              {error ? (
-                <p className="text-center text-xs text-red-600 dark:text-red-400">{error}</p>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false)
-                  setError(null)
-                }}
-                className="w-full text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                Batal
-              </button>
-            </motion.form>
+              {withdrawForm}
+            </motion.div>
           ) : (
             <motion.div
               key="withdraw-btn"

@@ -5,6 +5,9 @@
 /** Resolusi maksimum sisi terpanjang untuk deteksi live (balance kecepatan/akurasi) */
 export const LIVE_DETECTION_MAX_DIM = 720
 
+/** Deteksi saat capture (bukan live) — jangan proses foto 12MP di thread UI. */
+export const CAPTURE_DETECTION_MAX_DIM = 1280
+
 /** Resolusi minimum area dokumen terhadap frame (8%) */
 const MIN_DOC_AREA_RATIO = 0.08
 /** Resolusi maksimum — tolak deteksi hampir full-frame */
@@ -89,18 +92,9 @@ export const scaleCornersFromDetection = (corners, scale) => {
  * @param {boolean} options.fast - pipeline ringan untuk live preview
  */
 export const detectDocumentCornersBest = async (canvas, { useOpenCV = true, fast = false } = {}) => {
-  if (useOpenCV) {
+  if (useOpenCV && typeof window !== 'undefined' && window.cv?.Mat) {
     try {
-      if (typeof window !== 'undefined' && window.cv?.Mat) {
-        return detectDocumentCornersOpenCVSync(canvas, { fast })
-      }
-      const { isOpenCVLoaded, loadOpenCV } = await import('./opencvLoader')
-      if (!isOpenCVLoaded()) {
-        await loadOpenCV()
-      }
-      if (typeof window !== 'undefined' && window.cv?.Mat) {
-        return detectDocumentCornersOpenCVSync(canvas, { fast })
-      }
+      return detectDocumentCornersOpenCVSync(canvas, { fast })
     } catch (error) {
       console.warn('OpenCV detection unavailable, fallback JS:', error)
     }
@@ -117,9 +111,20 @@ export const detectDocumentCornersBest = async (canvas, { useOpenCV = true, fast
 export const detectDocumentCorners = async (canvas) => {
   return new Promise((resolve, reject) => {
     try {
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      const width = canvas.width
-      const height = canvas.height
+      let work = canvas
+      let scale = 1
+      const srcW = canvas.width
+      const srcH = canvas.height
+      if (Math.max(srcW, srcH) > CAPTURE_DETECTION_MAX_DIM) {
+        scale = CAPTURE_DETECTION_MAX_DIM / Math.max(srcW, srcH)
+        work = document.createElement('canvas')
+        work.width = Math.round(srcW * scale)
+        work.height = Math.round(srcH * scale)
+        work.getContext('2d', { willReadFrequently: true }).drawImage(canvas, 0, 0, work.width, work.height)
+      }
+      const ctx = work.getContext('2d', { willReadFrequently: true })
+      const width = work.width
+      const height = work.height
 
       // Ambil image data
       const imageData = ctx.getImageData(0, 0, width, height)
@@ -158,7 +163,11 @@ export const detectDocumentCorners = async (canvas) => {
       )
 
       const corners = findCorners(largestContour, width, height)
-      resolve(orderCornersToQuad(corners, width, height))
+      const inv = scale < 1 ? 1 / scale : 1
+      const scaled = scale < 1
+        ? corners.map((p) => ({ x: p.x * inv, y: p.y * inv }))
+        : corners
+      resolve(orderCornersToQuad(scaled, srcW, srcH))
     } catch (error) {
       console.error('Error detecting document:', error)
       resolve(orderCornersToQuad([
@@ -417,9 +426,9 @@ export const detectDocumentCornersOpenCVSync = (canvas, { fast = false } = {}) =
   let work = src
   let resized = null
   let scaleBack = 1
-  const maxDim = fast ? LIVE_DETECTION_MAX_DIM : Math.max(canvas.width, canvas.height)
+  const maxDim = fast ? LIVE_DETECTION_MAX_DIM : CAPTURE_DETECTION_MAX_DIM
 
-  if (fast && Math.max(canvas.width, canvas.height) > maxDim) {
+  if (Math.max(canvas.width, canvas.height) > maxDim) {
     scaleBack = maxDim / Math.max(canvas.width, canvas.height)
     resized = new cv.Mat()
     cv.resize(

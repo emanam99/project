@@ -25,6 +25,44 @@ function todayYmd() {
 }
 
 const MOBILE_OFFCANVAS_AUTO_CLOSE_SEC = 60
+const CAMERA_STORAGE_KEY = 'ebeddien_buku_tamu_camera_open'
+
+function readCameraOpen() {
+  if (typeof window === 'undefined') return true
+  try {
+    const raw = window.localStorage.getItem(CAMERA_STORAGE_KEY)
+    if (raw === '0') return false
+    if (raw === '1') return true
+  } catch {
+    /* ignore */
+  }
+  return true
+}
+
+function persistCameraOpen(open) {
+  try {
+    window.localStorage.setItem(CAMERA_STORAGE_KEY, open ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
+
+function CameraToggleIcon({ active, className = 'h-4 w-4' }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+      {!active ? (
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4l16 16" />
+      ) : null}
+    </svg>
+  )
+}
 
 /** @returns {{ masehiYmd: string, waktu: string } | null} */
 function parseWaktuDatang(raw) {
@@ -169,6 +207,7 @@ export default function BukuTamu() {
   const [autoCloseCountdown, setAutoCloseCountdown] = useState(MOBILE_OFFCANVAS_AUTO_CLOSE_SEC)
   const [autoCloseActive, setAutoCloseActive] = useState(false)
   const [maintenanceNotice, setMaintenanceNotice] = useState(null)
+  const [cameraOpen, setCameraOpen] = useState(readCameraOpen)
 
   const closeMobileOffcanvas = useCallback(() => {
     setMobileOffcanvasOpen(false)
@@ -187,6 +226,22 @@ export default function BukuTamu() {
     setAutoCloseCountdown(MOBILE_OFFCANVAS_AUTO_CLOSE_SEC)
     setMobileOffcanvasOpen(true)
   }, [])
+
+  const handleToggleCamera = useCallback(() => {
+    if (!isDesktopBukuTamuLayout()) {
+      if (mobileOffcanvasOpen) {
+        closeMobileOffcanvas()
+      } else {
+        openMobileScan()
+      }
+      return
+    }
+    setCameraOpen((open) => {
+      const next = !open
+      persistCameraOpen(next)
+      return next
+    })
+  }, [mobileOffcanvasOpen, closeMobileOffcanvas, openMobileScan])
 
   useEffect(() => {
     mobileOffcanvasOpenRef.current = mobileOffcanvasOpen
@@ -578,6 +633,20 @@ export default function BukuTamu() {
               />
               <button
                 type="button"
+                onClick={handleToggleCamera}
+                className={`inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg transition-colors ${
+                  (desktopLayout ? cameraOpen : mobileOffcanvasOpen)
+                    ? 'bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-900/40 dark:text-teal-300 dark:hover:bg-teal-900/60'
+                    : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
+                }`}
+                title={(desktopLayout ? cameraOpen : mobileOffcanvasOpen) ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+                aria-label={(desktopLayout ? cameraOpen : mobileOffcanvasOpen) ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+                aria-pressed={desktopLayout ? cameraOpen : mobileOffcanvasOpen}
+              >
+                <CameraToggleIcon active={desktopLayout ? cameraOpen : mobileOffcanvasOpen} className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
                 onClick={handleSearch}
                 className="px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
               >
@@ -660,8 +729,8 @@ export default function BukuTamu() {
 
         {/* Kanan: scan + biodata (desktop) */}
         <div className="hidden lg:flex w-full lg:w-[32rem] lg:max-w-lg lg:shrink-0 flex-col min-h-0 gap-3">
-          {desktopLayout ? (
-            <BukuTamuQrInlineScanner onScan={handleScan} disabled={scanning} active />
+          {desktopLayout && cameraOpen ? (
+            <BukuTamuQrInlineScanner onScan={handleScan} disabled={scanning} active={cameraOpen} />
           ) : null}
 
           <div className="flex-1 min-h-0 overflow-y-auto bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4">

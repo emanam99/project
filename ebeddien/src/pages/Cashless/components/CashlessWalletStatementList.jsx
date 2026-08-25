@@ -1,4 +1,10 @@
-import { formatSaldo, formatWaktu, getStatementBadge, resolveActorLabel } from '../TopUpCashlessFormat'
+import {
+  formatSaldo,
+  formatWaktu,
+  getStatementBadge,
+  getStatementKeterangan,
+  resolveActorLabel,
+} from '../TopUpCashlessFormat'
 
 export default function CashlessWalletStatementList({
   items = [],
@@ -27,10 +33,12 @@ export default function CashlessWalletStatementList({
           <ul className="space-y-2">
             {items.map((item) => {
               const badge = getStatementBadge(item)
+              const keterangan = getStatementKeterangan(item)
               const isOut = item.direction === 'out'
               const amount = Math.abs(Number(item.nominal) || 0)
               const actorLabel = resolveActorLabel(item)
               const key = `${item.journal_id || item.id}-${item.direction}-${item.created_at}`
+              const showToko = Boolean(item.toko_nama) && keterangan !== item.toko_nama
               return (
                 <li
                   key={key}
@@ -44,10 +52,12 @@ export default function CashlessWalletStatementList({
                       >
                         {badge.label}
                       </span>
-                      <p className="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white">
-                        {item.label || item.description || item.journal_type || 'Transaksi'}
-                      </p>
-                      {item.toko_nama ? (
+                      {keterangan ? (
+                        <p className="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+                          {keterangan}
+                        </p>
+                      ) : null}
+                      {showToko ? (
                         <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">
                           {item.toko_nama}
                         </p>

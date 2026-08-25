@@ -441,8 +441,10 @@ function CameraScanner({ onCapture, onClose, autoEnhance = true, jenisBerkas = n
 
   const createFileFromCanvas = (sourceCanvas) =>
     new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Timeout membuat file')), 5000)
       sourceCanvas.toBlob(
         (blob) => {
+          clearTimeout(timer)
           if (blob) {
             resolve(new File([blob], `scan_${Date.now()}.jpg`, { type: 'image/jpeg', lastModified: Date.now() }))
           } else reject(new Error('Gagal membuat blob dari canvas'))
@@ -473,7 +475,9 @@ function CameraScanner({ onCapture, onClose, autoEnhance = true, jenisBerkas = n
       if (video.readyState < 2) throw new Error('Video belum siap')
 
       const still = await captureStillFrame(streamRef.current, video)
-      const { canvas: captureCanvas, w, h } = await blobToCaptureCanvas(still.blob)
+      const { canvas: captureCanvas, w, h } = still.canvas && still.w
+        ? { canvas: still.canvas, w: still.w, h: still.h }
+        : await blobToCaptureCanvas(still.blob)
       if (!w || !h) throw new Error('Ukuran foto tidak valid')
 
       syncHiddenCanvas(captureCanvas, w, h)
@@ -483,47 +487,47 @@ function CameraScanner({ onCapture, onClose, autoEnhance = true, jenisBerkas = n
       const cornerScaleY = h / videoH
 
       const scaleCornersToCapture = (corners) => {
-        if (!corners || cornerScaleX === 1 && cornerScaleY === 1) return corners
+        if (!corners || (cornerScaleX === 1 && cornerScaleY === 1)) return corners
         return corners.map((p) => ({
           x: p.x * cornerScaleX,
           y: p.y * cornerScaleY
         }))
       }
 
-      const fullFile = await (async () => {
-        const blobFile = new File([still.blob], `scan_${Date.now()}.jpg`, {
-          type: 'image/jpeg',
-          lastModified: Date.now()
-        })
-        if (autoEnhance) {
-          try {
-            const enhancePromise = autoEnhanceImage(captureCanvas, opencvReadyRef.current)
-            const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 8000))
-            return await Promise.race([enhancePromise, timeoutPromise])
-          } catch {
-            return blobFile
-          }
+      const blobFile = new File([still.blob], `scan_${Date.now()}.jpg`, {
+        type: 'image/jpeg',
+        lastModified: Date.now()
+      })
+      let fullFile = blobFile
+      if (autoEnhance) {
+        try {
+          const enhancePromise = autoEnhanceImage(captureCanvas, false)
+          const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), 4000))
+          fullFile = await Promise.race([enhancePromise, timeoutPromise])
+        } catch {
+          fullFile = blobFile
         }
-        return blobFile
-      })()
+      }
 
       if (!fullFile?.size) throw new Error('Gagal membuat file dari gambar')
       setCapturedFile(fullFile)
-      setPreviewImage(captureCanvas.toDataURL('image/jpeg', JPEG_CAPTURE_QUALITY))
+      setPreviewImage(captureCanvas.toDataURL('image/jpeg', 0.82))
 
       try {
         if (autoDetectEnabled) {
           let corners = scaleCornersToCapture(smoothedCornersRef.current)
           if (!corners || !isValidDocumentQuad(corners, w, h)) {
-            corners = await detectDocumentCornersBest(captureCanvas, {
+            const detectPromise = detectDocumentCornersBest(captureCanvas, {
               useOpenCV: opencvReadyRef.current,
-              fast: false
+              fast: true
             })
+            const detectTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout deteksi')), 4000))
+            corners = await Promise.race([detectPromise, detectTimeout])
           }
           const ordered = corners ? orderCornersToQuad(corners, w, h) : null
           if (ordered && isValidDocumentQuad(ordered, w, h)) {
             const warped = perspectiveTransform(captureCanvas, ordered)
-            setPreviewImage(warped.toDataURL('image/jpeg', JPEG_CAPTURE_QUALITY))
+            setPreviewImage(warped.toDataURL('image/jpeg', 0.82))
             const cropped = await createFileFromCanvas(warped)
             if (cropped?.size) setCroppedFile(cropped)
           }

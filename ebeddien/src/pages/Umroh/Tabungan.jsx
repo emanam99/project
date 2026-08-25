@@ -17,6 +17,7 @@ function Tabungan() {
   const [activeTab, setActiveTab] = useState('biodata') // 'biodata' atau 'tabungan'
   const [isDesktop, setIsDesktop] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [biodataRefresh, setBiodataRefresh] = useState(0)
   const closeSearchOffcanvas = useOffcanvasBackClose(isSearchOpen, () => setIsSearchOpen(false))
   
   // Track window size untuk menentukan desktop/mobile
@@ -112,6 +113,7 @@ function Tabungan() {
               onJamaahChange={handleJamaahChange}
               onOpenSearch={() => setIsSearchOpen(true)}
               externalJamaahId={searchParams.get('id') || ''}
+              refreshNonce={biodataRefresh}
             />
           </div>
 
@@ -125,7 +127,11 @@ function Tabungan() {
               overflow: 'hidden'
             }}
           >
-            <TabunganList jamaahId={jamaahId} jamaahData={currentJamaah} />
+            <TabunganList
+              jamaahId={jamaahId}
+              jamaahData={currentJamaah}
+              onAfterSave={() => setBiodataRefresh((n) => n + 1)}
+            />
           </div>
         </div>
       </motion.div>

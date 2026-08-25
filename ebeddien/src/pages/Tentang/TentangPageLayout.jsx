@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useOutlet } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { getGambarUrl } from '../../config/images'
 
@@ -8,15 +8,33 @@ const NAV = [
   { to: '/version', label: 'Versi' },
 ]
 
+const PAGE_META = {
+  '/tentang': {
+    title: 'Tentang',
+    description:
+      'Pusat operasional digital pesantren untuk pengurus: data santri, keuangan, PSB, UWABA, UGT, publik, hingga Aplikasi Mybeddian—dalam satu alur kerja yang disatukan.',
+  },
+  '/info-aplikasi': {
+    title: 'Info aplikasi',
+    description: 'Versi terpasang, ringkas penilaian, hak cipta, dan pengembang.',
+  },
+  '/version': {
+    title: 'Catatan versi',
+    description: 'Fitur baru, perbaikan, dan catatan rilis eBeddien dari server.',
+  },
+}
+
 /**
- * Cangkang bersama halaman Tentang / Info aplikasi / Versi — hero + logo putih selaras sidebar & login.
- * Wadah full-page dengan scroll vertikal (min-h-dvh + overflow-y-auto) agar konten panjang tidak terpotong.
+ * Cangkang bersama Tentang / Info aplikasi / Versi — hero + tab tetap saat ganti rute;
+ * hanya judul/deskripsi kecil di hero dan konten di bawah tab yang berganti.
  */
-export default function TentangPageLayout({ title, description, children }) {
+export default function TentangPageLayout() {
   const { pathname } = useLocation()
+  const outlet = useOutlet()
+  const meta = PAGE_META[pathname] || PAGE_META['/tentang']
 
   return (
-    <div className="min-h-dvh flex flex-col overflow-y-auto overscroll-y-contain bg-gradient-to-b from-slate-100 via-white to-slate-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 text-gray-900 dark:text-gray-100">
+    <div className="h-full min-h-0 flex flex-col overflow-y-auto overscroll-y-contain bg-gradient-to-b from-slate-100 via-white to-slate-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 text-gray-900 dark:text-gray-100">
       <header className="relative shrink-0 overflow-hidden">
         <div
           className="absolute inset-0 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 dark:from-primary-800 dark:via-primary-900 dark:to-slate-900"
@@ -47,18 +65,32 @@ export default function TentangPageLayout({ title, description, children }) {
               className="h-9 sm:h-11 w-auto max-w-[min(240px,85vw)] object-contain object-center drop-shadow-md"
             />
           </div>
-          {title ? (
-            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight drop-shadow-sm">{title}</h1>
-          ) : null}
-          {description ? (
-            <p className="mt-2 text-sm sm:text-[0.9375rem] text-primary-100/95 max-w-xl mx-auto leading-relaxed">
-              {description}
-            </p>
-          ) : null}
+          <div className="min-h-[4.5rem] sm:min-h-[5rem]">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={pathname}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {meta.title ? (
+                  <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight drop-shadow-sm">
+                    {meta.title}
+                  </h1>
+                ) : null}
+                {meta.description ? (
+                  <p className="mt-2 text-sm sm:text-[0.9375rem] text-primary-100/95 max-w-xl mx-auto leading-relaxed">
+                    {meta.description}
+                  </p>
+                ) : null}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 w-full max-w-3xl mx-auto px-4 -mt-8 relative z-10 pb-16 sm:pb-24">
+      <div className="flex-1 w-full max-w-3xl mx-auto px-4 -mt-8 relative z-10 pb-10 sm:pb-12 max-sm:pb-[max(2.5rem,calc(1.25rem+env(safe-area-inset-bottom,0px)))]">
         <nav
           className="rounded-2xl border border-gray-200/90 dark:border-gray-500/50 bg-white/95 dark:bg-gray-800/95 shadow-lg shadow-primary-900/5 dark:shadow-black/40 backdrop-blur-md p-1.5 flex flex-wrap justify-center gap-1.5"
           aria-label="Navigasi tentang aplikasi"
@@ -66,7 +98,11 @@ export default function TentangPageLayout({ title, description, children }) {
           {NAV.map(({ to, label }) => {
             const active = pathname === to
             return (
-              <Link key={to} to={to} className="relative inline-flex rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900">
+              <Link
+                key={to}
+                to={to}
+                className="relative inline-flex rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+              >
                 {active ? (
                   <motion.span
                     layoutId="tentang-nav-pill"
@@ -89,22 +125,19 @@ export default function TentangPageLayout({ title, description, children }) {
         </nav>
 
         <div className="mt-6 rounded-2xl border border-gray-200/80 dark:border-gray-600/70 bg-white/90 dark:bg-gray-800/95 shadow-md shadow-gray-900/5 dark:shadow-black/30 backdrop-blur-sm overflow-x-hidden">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={pathname}
-              role="region"
-              aria-live="polite"
-              initial={{ opacity: 0, y: 16, filter: 'blur(6px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -12, filter: 'blur(4px)' }}
-              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          <motion.div
+            key={pathname}
+            role="region"
+            aria-live="polite"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {outlet}
+          </motion.div>
         </div>
 
-        <p className="text-center mt-8">
+        <p className="text-center mt-8 mb-2">
           <Link
             to="/"
             className="text-sm font-medium text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200 hover:underline underline-offset-2"

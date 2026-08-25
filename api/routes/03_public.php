@@ -105,6 +105,7 @@ return function (\Slim\App $app): void {
     // Cek nomor WA untuk halaman publik (daftar/lupa password), tanpa login.
     $app->post('/api/public/wa/check', [WhatsAppController::class, 'check']);
     $app->post('/api/wa/incoming', [WhatsAppController::class, 'incoming']);
+    $app->post('/api/wa/flush-auth-followup', [WhatsAppController::class, 'flushAuthFollowup']);
     // Update status pesan (sent/delivered/read) dari server WA. Header X-API-Key wajib (sama dengan WA_API_KEY).
     $app->post('/api/wa/message-status', [WhatsAppController::class, 'messageStatus']);
 

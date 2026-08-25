@@ -499,8 +499,8 @@ export const sendMessage = async (req, res) => {
     const safeId = resolveSlotLenient(req.body?.sessionId || DEFAULT_SESSION);
     const { phoneNumber, message, imageBase64, imageMimetype, chatId: bodyChatId, linkPreview: bodyLinkPreview } = req.body || {};
     const text = typeof message === 'string' ? message : '';
-    /** Default true: Baileys mengambil preview URL dari teks (lihat generateWAMessageContent / link preview). */
-    const linkPreviewEnabled = bodyLinkPreview !== false;
+    /** Default mati: kartu preview URL (extendedTextMessage) sering jadi «Menunggu pesan ini» di sebagian HP. */
+    const linkPreviewEnabled = bodyLinkPreview === true;
     const chatIdOverride = typeof bodyChatId === 'string' && bodyChatId.trim() ? bodyChatId.trim() : null;
     if (WA_VERBOSE_LOG) {
       console.log('[WA] POST /send to ' + (phoneNumber || '') + (chatIdOverride ? ' chatId=' + chatIdOverride : '') + ' len=' + text.length);

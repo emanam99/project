@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { barangAPI } from '../../services/api'
+import { barangAPI, penjualanAPI } from '../../services/api'
 import { useMybeddienToast } from '../../contexts/MybeddienToastContext'
 import { syncBarangCache, getLocalBarangList, upsertLocalBarang } from '../../services/barangIndexedDb'
 import BarangScannerSection from './components/BarangScannerSection'
 import BarangMobileOffcanvas from './components/BarangMobileOffcanvas'
-import BarangQrScanButton from './components/BarangQrScanButton'
 import PenjualanCart from './components/PenjualanCart'
 import PenjualanBayarOffcanvas from './components/PenjualanBayarOffcanvas'
 import CariBarangOffcanvas from './components/CariBarangOffcanvas'
@@ -62,6 +61,7 @@ export default function Penjualan() {
   const [lookupBusy, setLookupBusy] = useState(false)
   const desktopScannerRef = useRef(null)
   const mobileScannerRef = useRef(null)
+  const [batasPinBelanja, setBatasPinBelanja] = useState(10000)
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)')
@@ -101,6 +101,20 @@ export default function Penjualan() {
     const pid = Number(user?.toko_id)
     if (pid > 0) void syncBarangCache(pid)
   }, [user?.toko_id])
+
+  useEffect(() => {
+    if (!user?.has_toko) return undefined
+    let cancelled = false
+    penjualanAPI.getConfig().then((res) => {
+      const n = res?.data?.batas_pin_belanja
+      if (!cancelled && n != null && Number.isFinite(Number(n))) {
+        setBatasPinBelanja(Number(n))
+      }
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [user?.has_toko])
 
   const addToCart = useCallback(
     (barang) => {
@@ -220,6 +234,7 @@ export default function Penjualan() {
             setScanOpen(true)
           }}
           disabled={lookupBusy}
+          pinThreshold={batasPinBelanja}
         />
 
         <div className="hidden min-h-0 w-full shrink-0 flex-col gap-3 lg:flex lg:w-sm lg:max-w-sm">
@@ -253,21 +268,17 @@ export default function Penjualan() {
               </div>
             </div>
 
-            <div className="shrink-0 border-b border-gray-100 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-950/50">
-              <BarangScannerSection
-                expanded={scannerExpanded}
-                onScan={handleScanKode}
-                scannerRef={desktopScannerRef}
-                pageActive={desktopScannerActive}
-                compact
-              />
-              {!scannerExpanded ? (
-                <div className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 dark:border-gray-600 dark:bg-gray-800/80">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Kamera disembunyikan</p>
-                  <BarangQrScanButton onClick={() => setScannerExpanded(true)} size="sm" />
-                </div>
-              ) : null}
-            </div>
+            {scannerExpanded ? (
+              <div className="shrink-0 border-b border-gray-100 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-950/50">
+                <BarangScannerSection
+                  expanded={scannerExpanded}
+                  onScan={handleScanKode}
+                  scannerRef={desktopScannerRef}
+                  pageActive={desktopScannerActive}
+                  compact
+                />
+              </div>
+            ) : null}
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-white p-4 dark:bg-gray-800/95">
               {lastItem ? (
@@ -301,6 +312,7 @@ export default function Penjualan() {
 
       <BarangMobileOffcanvas
         isOpen={scanOpen}
+        placement="top"
         onClose={() => {
           mobileScannerRef.current?.stop()
           setScanOpen(false)
@@ -310,22 +322,23 @@ export default function Penjualan() {
         scannerExpanded={mobileScannerExpanded}
         onScan={handleScanKode}
         scannerRef={mobileScannerRef}
-        showQrButton={!mobileScannerExpanded}
-        onOpenQrScanner={() => setMobileScannerExpanded(true)}
+        showQrButton={false}
       >
         <div className="space-y-3 p-1">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-end gap-1">
             <button
               type="button"
               onClick={() => setMobileScannerExpanded((v) => !v)}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
                 mobileScannerExpanded
-                  ? 'border-primary-300 bg-primary-50 text-primary-700'
-                  : 'border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-300'
+                  ? 'bg-primary-50 text-primary-700 hover:bg-primary-100 dark:bg-primary-900/40 dark:text-primary-300 dark:hover:bg-primary-900/60'
+                  : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700'
               }`}
+              title={mobileScannerExpanded ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+              aria-label={mobileScannerExpanded ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
+              aria-pressed={mobileScannerExpanded}
             >
               <CameraToggleIcon active={mobileScannerExpanded} className="h-4 w-4" />
-              {mobileScannerExpanded ? 'Sembunyikan kamera' : 'Tampilkan kamera'}
             </button>
             <button
               type="button"
@@ -334,9 +347,8 @@ export default function Penjualan() {
                 setScanOpen(false)
                 openCari()
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-200"
+              className="shrink-0 rounded-md border border-gray-200 px-2 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
             >
-              <SearchIcon className="h-4 w-4" />
               Cari
             </button>
           </div>
@@ -368,6 +380,7 @@ export default function Penjualan() {
         total={total}
         onSuccess={handleBayarSuccess}
         onNotify={showToast}
+        pinThreshold={batasPinBelanja}
       />
     </div>
   )

@@ -90,6 +90,7 @@ class CsrfMiddleware implements MiddlewareInterface
         'api/wa/send',    // POST kirim WA — dilindungi Bearer
         'api/wa/edit-message', // POST edit pesan WA — dilindungi Bearer
         'api/wa/incoming', // POST webhook pesan masuk dari server WA (tanpa session browser)
+        'api/wa/flush-auth-followup', // POST mesin WA kirim antrian link/username setelah webhook
         'api/wa/message-status', // POST update status pesan (sent/delivered/read) dari server WA
         'api/wa/official/webhook', // POST webhook WhatsApp Cloud API (Meta) — tanpa session browser
         'api/watzap/webhook', // POST webhook pesan masuk dari WatZap (tanpa session browser)

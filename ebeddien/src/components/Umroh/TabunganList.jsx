@@ -8,7 +8,7 @@ import { motion } from 'framer-motion'
 import TabunganFormOffcanvas from './TabunganFormOffcanvas'
 import DeleteTabunganModal from './DeleteTabunganModal'
 
-function TabunganList({ jamaahId, jamaahData }) {
+function TabunganList({ jamaahId, jamaahData, onAfterSave }) {
   const { showNotification } = useNotification()
   const { user } = useAuthStore()
   const isSuperAdmin = userHasSuperAdminAccess(user)
@@ -40,7 +40,6 @@ function TabunganList({ jamaahId, jamaahData }) {
     setLoading(true)
     try {
       const response = await umrohTabunganAPI.getByJamaahId(jamaahId)
-      console.log('Tabungan response:', response) // Debug log
       if (response.success) {
         // Backend mengembalikan data langsung sebagai array di response.data
         // Bisa juga berupa object dengan pagination
@@ -116,8 +115,14 @@ function TabunganList({ jamaahId, jamaahData }) {
 
   if (!jamaahId) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-gray-500 dark:text-gray-400">Pilih jamaah terlebih dahulu untuk melihat tabungan</p>
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+        <svg className="w-10 h-10 text-teal-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-gray-800 dark:text-gray-200 font-medium">Belum ada jamaah dipilih</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Isi kode/ID di panel Biodata atau gunakan tombol cari untuk melihat dan menambah tabungan.
+        </p>
       </div>
     )
   }
@@ -262,6 +267,7 @@ function TabunganList({ jamaahId, jamaahData }) {
         onSuccess={() => {
           fetchTabungan()
           setShowFormOffcanvas(false)
+          if (onAfterSave) onAfterSave()
         }}
       />
 

@@ -3,6 +3,84 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { umrohJamaahAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 
+const JAMAHAH_FORM_FIELDS = [
+  'nama_lengkap', 'gelar_awal', 'gelar_akhir', 'nik', 'no_kk',
+  'tempat_lahir', 'tanggal_lahir', 'gender', 'status_nikah',
+  'email', 'no_telpon', 'whatsapp', 'alamat', 'dusun', 'rt', 'rw',
+  'desa', 'kecamatan', 'kabupaten', 'provinsi', 'kode_pos',
+  'paket_umroh', 'target_tabungan', 'status', 'status_keberangkatan', 'status_pembayaran',
+]
+
+const emptyForm = {
+  nama_lengkap: '',
+  gelar_awal: '',
+  gelar_akhir: '',
+  nik: '',
+  no_kk: '',
+  tempat_lahir: '',
+  tanggal_lahir: '',
+  gender: '',
+  status_nikah: '',
+  email: '',
+  no_telpon: '',
+  whatsapp: '',
+  alamat: '',
+  dusun: '',
+  rt: '',
+  rw: '',
+  desa: '',
+  kecamatan: '',
+  kabupaten: '',
+  provinsi: '',
+  kode_pos: '',
+  paket_umroh: '',
+  target_tabungan: '',
+  status: 'Aktif',
+  status_keberangkatan: 'Belum Berangkat',
+  status_pembayaran: 'Belum Lunas',
+}
+
+function emptyToNull(value) {
+  if (value === undefined || value === null) return null
+  if (typeof value === 'string' && value.trim() === '') return null
+  return typeof value === 'string' ? value.trim() : value
+}
+
+function usiaFromTanggalLahir(tanggalLahir) {
+  if (!tanggalLahir) return null
+  const born = new Date(tanggalLahir)
+  if (Number.isNaN(born.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - born.getFullYear()
+  const monthDiff = today.getMonth() - born.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < born.getDate())) {
+    age -= 1
+  }
+  return age >= 0 ? age : null
+}
+
+function mapJamaahToForm(data) {
+  const mapped = { ...emptyForm }
+  JAMAHAH_FORM_FIELDS.forEach((key) => {
+    let value = data?.[key]
+    if (value == null) value = ''
+    if (key === 'tanggal_lahir' && typeof value === 'string') {
+      value = value.slice(0, 10)
+    }
+    mapped[key] = value
+  })
+  return mapped
+}
+
+function buildJamaahPayload(formData) {
+  const payload = {}
+  JAMAHAH_FORM_FIELDS.forEach((key) => {
+    payload[key] = emptyToNull(formData[key])
+  })
+  payload.usia = usiaFromTanggalLahir(formData.tanggal_lahir)
+  return payload
+}
+
 function JamaahForm() {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -10,34 +88,7 @@ function JamaahForm() {
   const isEdit = !!id
   
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    nama_lengkap: '',
-    gelar_awal: '',
-    gelar_akhir: '',
-    nik: '',
-    no_kk: '',
-    tempat_lahir: '',
-    tanggal_lahir: '',
-    gender: '',
-    status_nikah: '',
-    email: '',
-    no_telpon: '',
-    whatsapp: '',
-    alamat: '',
-    dusun: '',
-    rt: '',
-    rw: '',
-    desa: '',
-    kecamatan: '',
-    kabupaten: '',
-    provinsi: '',
-    kode_pos: '',
-    paket_umroh: '',
-    target_tabungan: '',
-    status: 'Aktif',
-    status_keberangkatan: 'Belum Berangkat',
-    status_pembayaran: 'Belum Lunas'
-  })
+  const [formData, setFormData] = useState(emptyForm)
 
   // Load data jika edit
   useEffect(() => {
@@ -51,11 +102,14 @@ function JamaahForm() {
       setLoading(true)
       const response = await umrohJamaahAPI.getById(id)
       if (response.success && response.data) {
-        setFormData(response.data)
+        setFormData(mapJamaahToForm(response.data))
+      } else {
+        showNotification(response.message || 'Gagal memuat data jamaah', 'error')
+        navigate('/umroh/jamaah')
       }
     } catch (error) {
       console.error('Error loading jamaah:', error)
-      showNotification('Gagal memuat data jamaah', 'error')
+      showNotification(error.response?.data?.message || 'Gagal memuat data jamaah', 'error')
       navigate('/umroh/jamaah')
     } finally {
       setLoading(false)
@@ -75,13 +129,10 @@ function JamaahForm() {
     
     try {
       setLoading(true)
-      let response
-      
-      if (isEdit) {
-        response = await umrohJamaahAPI.update(id, formData)
-      } else {
-        response = await umrohJamaahAPI.create(formData)
-      }
+      const payload = buildJamaahPayload(formData)
+      const response = isEdit
+        ? await umrohJamaahAPI.update(id, payload)
+        : await umrohJamaahAPI.create(payload)
       
       if (response.success) {
         showNotification(
@@ -89,10 +140,12 @@ function JamaahForm() {
           'success'
         )
         navigate('/umroh/jamaah')
+      } else {
+        showNotification(response.message || 'Gagal menyimpan data jamaah', 'error')
       }
     } catch (error) {
       console.error('Error saving jamaah:', error)
-      showNotification('Gagal menyimpan data jamaah', 'error')
+      showNotification(error.response?.data?.message || 'Gagal menyimpan data jamaah', 'error')
     } finally {
       setLoading(false)
     }

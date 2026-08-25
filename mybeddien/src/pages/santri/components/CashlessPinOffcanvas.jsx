@@ -19,6 +19,7 @@ export default function CashlessPinOffcanvas({
   hasPasskey = false,
   onSuccess,
   onNotify,
+  pinThreshold = 10000,
 }) {
   const handleClose = useOffcanvasBackClose(isOpen, onClose)
   const isChange = mode === 'change'
@@ -62,7 +63,9 @@ export default function CashlessPinOffcanvas({
     step === 'old'
       ? 'Masukkan PIN 6 digit yang dipakai saat ini'
       : step === 'pin'
-        ? 'PIN dipakai saat belanja ≥ Rp 10.000. Kartu tanpa PIN tidak bisa transaksi.'
+        ? Number(pinThreshold) > 0
+          ? `PIN dipakai saat belanja ≥ ${new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(pinThreshold)}. Kartu tanpa PIN tidak bisa transaksi.`
+          : 'PIN dipakai di setiap belanja. Kartu tanpa PIN tidak bisa transaksi.'
         : step === 'confirm'
           ? 'Masukkan ulang PIN yang sama'
           : 'Masukkan password myBeddien atau verifikasi sidik jari / passkey'

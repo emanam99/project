@@ -16,6 +16,8 @@ export default function CetakKartuSantriMobileOffcanvas({
   onBuatAkun,
   createSaving,
   onAccountRefresh,
+  cameraOpen = false,
+  onToggleCamera,
 }) {
   const handleClose = useOffcanvasBackClose(isOpen, onClose)
 
@@ -66,6 +68,8 @@ export default function CetakKartuSantriMobileOffcanvas({
                 onBuatAkun={onBuatAkun}
                 createSaving={createSaving}
                 onAccountRefresh={onAccountRefresh}
+                cameraOpen={cameraOpen}
+                onToggleCamera={onToggleCamera}
               />
             </div>
           </motion.aside>
