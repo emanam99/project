@@ -136,9 +136,10 @@ class UmrohJamaahController
                     p.nama as admin_nama
                     FROM umroh___jamaah j
                     LEFT JOIN pengurus p ON j.id_admin = p.id
-                    WHERE j.id = ?";
+                    WHERE j.id = ? OR j.kode_jamaah = ?
+                    LIMIT 1";
             $stmt = $this->db->prepare($sql);
-            $stmt->execute([$id]);
+            $stmt->execute([$id, $id]);
             $data = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if ($data) {
@@ -150,7 +151,7 @@ class UmrohJamaahController
                     FROM umroh___tabungan
                     WHERE id_jamaah = ?";
                 $tabunganStmt = $this->db->prepare($tabunganSql);
-                $tabunganStmt->execute([$id]);
+                $tabunganStmt->execute([$data['id']]);
                 $tabunganData = $tabunganStmt->fetch(\PDO::FETCH_ASSOC);
                 
                 $data['tabungan_summary'] = $tabunganData;

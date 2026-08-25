@@ -58,6 +58,12 @@ class WhatsAppService
         'setup_akun',
         'setup_akun_santri',
         'username_change',
+        'mybeddian_auth_wa',
+        'mybeddian_auth_wa_apology',
+        'daftar_santri_wa',
+        'daftar_santri_wa_apology',
+        'auth_wa_followup',
+        'ebeddien_daftar_wa',
     ];
 
     /**

@@ -229,25 +229,32 @@ final class AuthWaFollowupHelper
                 'kategori' => $source,
                 'sumber' => 'auth_wa_followup',
             ];
-            $expectedParts = count(array_filter(
+            $parts = array_values(array_filter(
                 AiAssistantReplyStyleHelper::splitFormattedWhatsAppPayload($reply),
                 static fn (string $part): bool => trim($part) !== ''
             ));
+            $expectedParts = count($parts);
             $ids = WhatsAppInboundService::sendAutomatedReplyText($nomor, $reply, $logContext, $jid, $source);
             if ($ids === [] || ($expectedParts > 0 && count($ids) < $expectedParts)) {
                 error_log("AuthWaFollowupHelper: followup gagal table={$table} id={$id} to={$nomor} parts=" . count($ids) . "/{$expectedParts}");
                 self::releaseClaim($db, $table, $id, $claim);
+                if (count($ids) > 0 && $expectedParts > count($ids)) {
+                    $remain = array_slice($parts, count($ids));
+                    $remainText = implode("\n" . AiAssistantReplyStyleHelper::SPLIT_MARKER . "\n", $remain);
+                    $db->prepare("UPDATE `{$table}` SET pending_followup = ? WHERE id = ?")->execute([$remainText, $id]);
+                }
                 continue;
             }
+            $usedAtSql = $table === 'mybeddian_auth_wa_tokens' ? ', used_at = COALESCE(used_at, NOW())' : '';
             if ($useClaim) {
                 $db->prepare(
                     "UPDATE `{$table}`
-                     SET followup_sent_at = NOW(), pending_followup = NULL, followup_claim = NULL, followup_claimed_at = NULL
+                     SET followup_sent_at = NOW(), pending_followup = NULL, followup_claim = NULL, followup_claimed_at = NULL{$usedAtSql}
                      WHERE id = ? AND followup_claim = ?"
                 )->execute([$id, $claim]);
             } else {
                 $db->prepare(
-                    "UPDATE `{$table}` SET followup_sent_at = NOW(), pending_followup = NULL WHERE id = ?"
+                    "UPDATE `{$table}` SET followup_sent_at = NOW(), pending_followup = NULL{$usedAtSql} WHERE id = ?"
                 )->execute([$id]);
             }
             self::settleOtherRowsForNumber($db, $table, $nomor, $id);

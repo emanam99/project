@@ -62,7 +62,8 @@ function Tabungan() {
   }
   
   // Extract jamaah ID
-  const jamaahId = currentJamaah?.id || currentJamaah?.kode_jamaah || searchParams.get('id') || ''
+  const rawParamId = searchParams.get('id') || ''
+  const jamaahId = currentJamaah?.id || (/^\d+$/.test(rawParamId) ? rawParamId : '')
 
   return (
     <div className="p-2 sm:p-3 h-full overflow-hidden">

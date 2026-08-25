@@ -5941,7 +5941,7 @@ export const umrohTabunganAPI = {
   },
 
   getByJamaahId: async (jamaahId) => {
-    const response = await api.get(`/umroh/tabungan?id_jamaah=${jamaahId}`)
+    const response = await api.get(`/umroh/tabungan?id_jamaah=${jamaahId}&limit=500`)
     return response.data
   },
 

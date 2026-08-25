@@ -92,6 +92,15 @@ class UmrohTabunganController
             $tanggalSampai = $queryParams['tanggal_sampai'] ?? null;
             $page = isset($queryParams['page']) ? (int)$queryParams['page'] : 1;
             $limit = isset($queryParams['limit']) ? (int)$queryParams['limit'] : 20;
+            if ($page < 1) {
+                $page = 1;
+            }
+            if ($limit < 1) {
+                $limit = 20;
+            }
+            if ($limit > 500) {
+                $limit = 500;
+            }
             $offset = ($page - 1) * $limit;
 
             $whereClause = '';

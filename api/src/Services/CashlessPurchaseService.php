@@ -175,6 +175,18 @@ class CashlessPurchaseService
                 ];
             }
 
+            $pinCheckLocked = $this->verifyPinIfRequired($kartuId, $total, $pin);
+            if (!$pinCheckLocked['success']) {
+                $this->db->rollBack();
+                return $pinCheckLocked;
+            }
+
+            $batasLocked = $this->checkDailyLimit($santriId, $total);
+            if (!$batasLocked['success']) {
+                $this->db->rollBack();
+                return $batasLocked;
+            }
+
             $reference = 'PURCHASE-' . $pedagangId . '-' . $santriId . '-' . date('YmdHis') . '-' . bin2hex(random_bytes(2));
             $description = 'Belanja di ' . $tokoNama . ' — ' . $santriNama;
             $meta = [

@@ -393,6 +393,16 @@ function formatPhoneNumber(phone) {
   return n || null;
 }
 
+function looksLikeLidDigits(phone) {
+  let raw = String(phone || '').trim();
+  if (/@lid$/i.test(raw)) return true;
+  if (raw.includes('@')) raw = raw.replace(/@.*/, '');
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 10) return false;
+  if (digits.startsWith('62') || digits.startsWith('0')) return false;
+  return true;
+}
+
 export function phoneToJid(phone) {
   const n = formatPhoneNumber(phone);
   return n ? n + '@s.whatsapp.net' : null;
@@ -991,12 +1001,13 @@ export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase
     /** Balasan ke chat yang sama (mis. pengirim @lid) — jangan lewat onWhatsApp dengan digit LID sebagai “nomor HP”. */
     jids = [cid];
     reason = null;
-    const fallback = phoneToJid(phoneNumber);
-    const n = formatPhoneNumber(phoneNumber);
-    const phoneLooksMsisdn = !!(n && /^62\d{8,15}$/.test(n));
-    /** Jika ada nomor HP nyata, coba JID nomor dulu — kirim hanya ke @lid sering «Menunggu pesan ini» di sebagian HP. */
-    if (/@lid$/i.test(cid) && fallback && phoneLooksMsisdn && !jids.includes(fallback)) {
-      jids = [fallback, cid];
+    if (/@lid$/i.test(cid) && !looksLikeLidDigits(phoneNumber)) {
+      const fallback = phoneToJid(phoneNumber);
+      const n = formatPhoneNumber(phoneNumber);
+      const phoneLooksMsisdn = !!(n && /^62\d{8,15}$/.test(n));
+      if (fallback && phoneLooksMsisdn && !jids.includes(fallback)) {
+        jids = [fallback, cid];
+      }
     }
   } else {
     const r = await resolveSendJidsOrdered(sock, phoneNumber);

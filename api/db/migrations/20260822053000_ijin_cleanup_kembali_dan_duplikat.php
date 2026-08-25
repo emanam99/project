@@ -7,6 +7,10 @@ use Phinx\Migration\AbstractMigration;
 /**
  * Data ijin: catat kembali otomatis jika deadline Masehi lewat >30 hari;
  * hapus duplikat (id_santri + dari + sampai sama), sisakan id terkecil.
+ *
+ * ONE-WAY: sudah dijalankan di production. Jangan diulang, jangan di-revert.
+ * Auto tanggal_kembali tidak bisa dibedakan dari isian petugas; data tidak diubah lagi.
+ * down() sengaja kosong.
  */
 final class IjinCleanupKembaliDanDuplikat extends AbstractMigration
 {
@@ -47,6 +51,7 @@ final class IjinCleanupKembaliDanDuplikat extends AbstractMigration
 
     public function down(): void
     {
-        // Data cleanup tidak bisa di-rollback aman.
+        // Data cleanup tidak bisa di-rollback aman. Jangan mengembalikan tanggal_kembali
+        // atau baris duplikat yang sudah dihapus.
     }
 }

@@ -157,7 +157,10 @@ function Jamaah() {
                 <div className="flex flex-wrap gap-2">
                   <select
                     value={filters.status}
-                    onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                    onChange={(e) => {
+                      setFilters(prev => ({ ...prev, status: e.target.value }))
+                      setPagination(p => ({ ...p, page: 1 }))
+                    }}
                     className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                   >
                     <option value="">Status</option>
@@ -169,7 +172,10 @@ function Jamaah() {
 
                   <select
                     value={filters.status_keberangkatan}
-                    onChange={(e) => setFilters(prev => ({ ...prev, status_keberangkatan: e.target.value }))}
+                    onChange={(e) => {
+                      setFilters(prev => ({ ...prev, status_keberangkatan: e.target.value }))
+                      setPagination(p => ({ ...p, page: 1 }))
+                    }}
                     className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                   >
                     <option value="">Keberangkatan</option>
@@ -181,7 +187,10 @@ function Jamaah() {
 
                   <select
                     value={filters.status_pembayaran}
-                    onChange={(e) => setFilters(prev => ({ ...prev, status_pembayaran: e.target.value }))}
+                    onChange={(e) => {
+                      setFilters(prev => ({ ...prev, status_pembayaran: e.target.value }))
+                      setPagination(p => ({ ...p, page: 1 }))
+                    }}
                     className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                   >
                     <option value="">Pembayaran</option>
@@ -193,7 +202,10 @@ function Jamaah() {
                   <input
                     type="text"
                     value={filters.paket_umroh}
-                    onChange={(e) => setFilters(prev => ({ ...prev, paket_umroh: e.target.value }))}
+                    onChange={(e) => {
+                      setFilters(prev => ({ ...prev, paket_umroh: e.target.value }))
+                      setPagination(p => ({ ...p, page: 1 }))
+                    }}
                     placeholder="Paket Umroh"
                     className="border rounded p-1 h-7 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-1 focus:ring-teal-400"
                   />

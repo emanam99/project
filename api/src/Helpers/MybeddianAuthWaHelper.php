@@ -91,11 +91,11 @@ final class MybeddianAuthWaHelper
     private static function invalidateOpenTokens(\PDO $db, string $purpose, string $noWa62, array $payload): void
     {
         // Nonaktifkan token terbuka untuk nomor + purpose yang sama.
-        $upd = $db->prepare(
-            'UPDATE mybeddian_auth_wa_tokens
-             SET used_at = NOW()
-             WHERE purpose = ? AND no_wa = ? AND used_at IS NULL AND wa_verified_at IS NULL'
-        );
+            $upd = $db->prepare(
+                'UPDATE mybeddian_auth_wa_tokens
+                 SET used_at = NOW(), pending_followup = NULL
+                 WHERE purpose = ? AND no_wa = ? AND followup_sent_at IS NULL'
+            );
         $upd->execute([$purpose, $noWa62]);
 
         // Juga nonaktifkan token terbuka untuk entity/user yang sama (ganti HP di form).

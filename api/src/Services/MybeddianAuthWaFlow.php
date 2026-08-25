@@ -20,9 +20,28 @@ final class MybeddianAuthWaFlow
     /** Token handshake yang baru diverifikasi (untuk antrian follow-up di luar webhook). */
     private static ?int $lastHandledTokenId = null;
 
+    private static ?string $immediateNotice = null;
+
+    private static bool $consumed = false;
+
     public static function lastHandledTokenId(): ?int
     {
         return self::$lastHandledTokenId;
+    }
+
+    /** True jika pesan handshake sudah ditangani (termasuk sudah antri / sudah dikirim). */
+    public static function lastConsumed(): bool
+    {
+        return self::$consumed;
+    }
+
+    /** Pemberitahuan singkat yang dikirim segera (bukan antrian link). */
+    public static function takeImmediateNotice(): ?string
+    {
+        $notice = self::$immediateNotice;
+        self::$immediateNotice = null;
+
+        return $notice !== null && trim($notice) !== '' ? trim($notice) : null;
     }
 
     /** @return array{table: string, id: int}|null */
@@ -75,6 +94,8 @@ final class MybeddianAuthWaFlow
     {
         self::$pendingLinkBind = null;
         self::$lastHandledTokenId = null;
+        self::$immediateNotice = null;
+        self::$consumed = false;
         $fromJid = $fromJid !== null && $fromJid !== '' ? trim($fromJid) : null;
         $sender = self::normalizeIncomingNumber($nomor, $fromJid);
         if (strlen($sender) < 8) {
@@ -109,19 +130,26 @@ final class MybeddianAuthWaFlow
                 return 'Sistem token belum siap. Silakan coba lagi nanti atau hubungi admin.';
             }
 
+            $selectCols = 'id, purpose, mode, no_wa, payload_json, used_at, expires_at, wa_verified_at';
+            if (self::hasFollowupStatusColumns($db)) {
+                $selectCols .= ', pending_followup, followup_sent_at';
+            }
             $stmt = $db->prepare(
-                'SELECT id, purpose, mode, no_wa, payload_json, used_at, expires_at, wa_verified_at
+                "SELECT {$selectCols}
                  FROM mybeddian_auth_wa_tokens
                  WHERE token_hash = ?
-                 LIMIT 1'
+                 LIMIT 1"
             );
             $stmt->execute([$tokenHash]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
                 return 'Token tidak dikenali atau sudah tidak berlaku. Buka ulang aplikasi myBeddien dan buat tautan WhatsApp baru.';
             }
-            if (!empty($row['used_at'])) {
-                return 'Token ini sudah dipakai. Buat tautan WhatsApp baru dari aplikasi myBeddien.';
+            if (!empty($row['followup_sent_at'])) {
+                self::$consumed = true;
+                self::$immediateNotice = 'Link sudah dikirim. Cek pesan sebelumnya di chat ini.';
+
+                return null;
             }
             $expiresAt = strtotime((string) ($row['expires_at'] ?? ''));
             if ($expiresAt === false || $expiresAt < time()) {
@@ -152,13 +180,27 @@ final class MybeddianAuthWaFlow
                 return 'Data token rusak. Buat tautan baru dari aplikasi myBeddien.';
             }
 
+            if (!empty($row['wa_verified_at'])) {
+                if (!empty($row['followup_sent_at'])) {
+                    self::$consumed = true;
+                    self::$immediateNotice = 'Link sudah dikirim. Cek pesan sebelumnya di chat ini.';
+
+                    return null;
+                }
+                if (!empty($row['pending_followup'])) {
+                    self::$consumed = true;
+
+                    return null;
+                }
+            }
+
             $adminNotif = null;
             $db->beginTransaction();
             try {
                 $upd = $db->prepare(
                     'UPDATE mybeddian_auth_wa_tokens
-                     SET wa_verified_at = NOW(), sender_wa = ?, used_at = NOW()
-                     WHERE id = ? AND used_at IS NULL'
+                     SET wa_verified_at = NOW(), sender_wa = ?
+                     WHERE id = ? AND followup_sent_at IS NULL'
                 );
                 $upd->execute([$senderMsisdn, (int) $row['id']]);
                 if ($upd->rowCount() < 1) {
@@ -168,6 +210,7 @@ final class MybeddianAuthWaFlow
 
                 $replyBody = self::buildVerifiedReply($db, $purpose, $modeMsg, $payload, $claimedWa, $senderMsisdn, $adminNotif);
                 $db->commit();
+                self::$consumed = true;
                 self::$lastHandledTokenId = (int) $row['id'];
             } catch (\Throwable $e) {
                 if ($db->inTransaction()) {
@@ -503,5 +546,15 @@ final class MybeddianAuthWaFlow
             return $digits;
         }
         return WhatsAppService::formatPhoneNumber($nomor);
+    }
+
+    private static function hasFollowupStatusColumns(\PDO $db): bool
+    {
+        try {
+            return $db->query("SHOW COLUMNS FROM mybeddian_auth_wa_tokens LIKE 'pending_followup'")->rowCount() > 0
+                && $db->query("SHOW COLUMNS FROM mybeddian_auth_wa_tokens LIKE 'followup_sent_at'")->rowCount() > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }

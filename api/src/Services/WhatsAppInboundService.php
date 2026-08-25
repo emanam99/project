@@ -65,7 +65,12 @@ final class WhatsAppInboundService
         }
         if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {
             $reply = MybeddianAuthWaFlow::handle($nomorTujuan, $message, $jid);
-            if ($reply !== null && $reply !== '') {
+            $notice = MybeddianAuthWaFlow::takeImmediateNotice();
+            if ($notice !== null && $notice !== '') {
+                $immediateAck = $notice;
+                $skipOtherIncomingFlows = true;
+                $reply = null;
+            } elseif ($reply !== null && $reply !== '') {
                 $replySource = 'mybeddian_auth_wa';
                 $tokenId = MybeddianAuthWaFlow::lastHandledTokenId();
                 if ($tokenId !== null && $tokenId > 0) {
@@ -85,6 +90,8 @@ final class WhatsAppInboundService
                     $queuedAuthFollowup = true;
                     $skipOtherIncomingFlows = true;
                 }
+            } elseif (MybeddianAuthWaFlow::lastConsumed()) {
+                $skipOtherIncomingFlows = true;
             }
         }
         if (!$skipOtherIncomingFlows && ($reply === null || $reply === '')) {

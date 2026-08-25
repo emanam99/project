@@ -369,6 +369,9 @@ class UmrohPengeluaranController
             }
 
             if (!$id) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
                 return $this->jsonResponse($response, [
                     'success' => false,
                     'message' => 'ID pengeluaran wajib diisi'
@@ -398,26 +401,40 @@ class UmrohPengeluaranController
             $set = [];
             $params = [];
             foreach ($fields as $field) {
-                if (isset($data[$field])) {
+                if (array_key_exists($field, $data)) {
                     $set[] = "$field = ?";
-                    $params[] = $data[$field];
+                    $params[] = UmrohPayloadHelper::nullIfEmpty($data[$field]);
                 }
             }
 
             // Update details if provided
             if (isset($data['details']) && is_array($data['details'])) {
-                // Delete existing details
+                $nonEmptyItems = 0;
+                $totalNominal = 0;
+                foreach ($data['details'] as $detail) {
+                    if (!is_array($detail)) {
+                        continue;
+                    }
+                    $item = trim((string) ($detail['item'] ?? ''));
+                    $harga = floatval($detail['harga'] ?? 0);
+                    $jumlah = intval($detail['jumlah'] ?? 1);
+                    if ($item === '') {
+                        continue;
+                    }
+                    $nonEmptyItems++;
+                    $totalNominal += $harga * $jumlah;
+                }
+                if ($nonEmptyItems < 1 || $totalNominal <= 0) {
+                    $this->db->rollBack();
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Detail item tidak boleh kosong dan total harus lebih dari 0'
+                    ], 400);
+                }
+
                 $deleteDetail = "DELETE FROM umroh___pengeluaran___detail WHERE id_pengeluaran = ?";
                 $deleteStmt = $this->db->prepare($deleteDetail);
                 $deleteStmt->execute([$id]);
-
-                // Recalculate total
-                $totalNominal = 0;
-                foreach ($data['details'] as $detail) {
-                    $harga = floatval($detail['harga'] ?? 0);
-                    $jumlah = intval($detail['jumlah'] ?? 1);
-                    $totalNominal += $harga * $jumlah;
-                }
 
                 // Insert new details
                 $sqlDetail = "INSERT INTO umroh___pengeluaran___detail 
