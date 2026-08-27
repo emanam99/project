@@ -99,9 +99,12 @@ export function canAccessPathByFitur(pathname, fiturMenuCodes) {
     return false
   }
 
-  if (norm === '/bisyaroh' || norm.startsWith('/bisyaroh/')) {
-    if (codes.some((c) => String(c).startsWith('action.bisyaroh.'))) return true
-    if (codesMatchAnyMenuCandidate(p, codes)) return true
+  if (norm === '/kurikulum' || norm.startsWith('/kurikulum/') || norm === '/kitab' || norm === '/mapel') {
+    if (codes.includes('menu.kurikulum')) return true
+    if (codes.some((c) => String(c).startsWith('action.kurikulum.'))) return true
+    if (codes.includes('menu.kitab') || codes.includes('menu.mapel') || codes.includes('action.mapel.halaman')) {
+      return true
+    }
     return false
   }
 

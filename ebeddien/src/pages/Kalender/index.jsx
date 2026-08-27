@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import CalendarHijri from './components/CalendarHijri'
 import CalendarMasehi from './components/CalendarMasehi'
 import TambahHariPentingPribadiOffcanvas from './components/TambahHariPentingPribadiOffcanvas'
+import KalenderJamIstiwaBar from './KalenderJamIstiwaBar'
 import { kalenderAPI } from '../../services/api'
 import { useAuthStore } from '../../store/authStore'
 import { loadFontSettings, saveFontSettings, loadGridViewSettings, saveGridViewSettings, loadShowHariPentingMarkers, saveShowHariPentingMarkers, loadActiveTab, saveActiveTab } from './utils/kalenderStorage'
@@ -111,6 +112,7 @@ export default function KalenderPage() {
         onClose={() => setPersonalPayload(null)}
         onSaved={bumpHariPenting}
       />
+      <KalenderJamIstiwaBar />
       {/* Tab Hijriyah / Masehi – tetap di atas, tidak ikut scroll */}
       <div className="kalender-page__tabs flex-shrink-0">
         <button

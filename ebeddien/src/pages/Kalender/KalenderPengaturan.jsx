@@ -10,8 +10,10 @@ import './Kalender.css'
 import {
   KALENDER_PENGATURAN_MENU_CODE as FITUR_MENU_KAL_PENGATURAN,
   KALENDER_PENGATURAN_TAB_BULAN as FITUR_TAB_BULAN,
-  KALENDER_PENGATURAN_TAB_HARI_PENTING as FITUR_TAB_HARI_PENTING
+  KALENDER_PENGATURAN_TAB_HARI_PENTING as FITUR_TAB_HARI_PENTING,
+  KALENDER_PENGATURAN_TAB_ISTIWA as FITUR_TAB_ISTIWA
 } from '../../config/kalenderFiturCodes'
+import { useAbsenLokasi } from '../../contexts/AbsenLokasiContext'
 
 const TIPE_OPTIONS = [
   { value: 'per_hari', label: 'Per Hari' },
@@ -105,6 +107,15 @@ function KalenderPengaturan() {
     return fiturMenuCodes.includes(FITUR_TAB_HARI_PENTING) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
   }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
 
+  const canTabIstiwa = useMemo(() => {
+    if (!authUser) return false
+    if (authUser.is_real_super_admin) return true
+    if (!useFiturCodes) return legacyKalenderAdmin
+    return fiturMenuCodes.includes(FITUR_TAB_ISTIWA) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
+  }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
+
+  const tabAccessCount = [canTabBulan, canTabHariPenting, canTabIstiwa].filter(Boolean).length
+
   const canHpTargetGlobal = bypassHpTargetPolicy || fiturMenuCodes.includes(HP_TARGET_GLOBAL)
   const canHpTargetLembaga = bypassHpTargetPolicy || fiturMenuCodes.includes(HP_TARGET_LEMBAGA)
   const canHpTargetUserSelembaga = bypassHpTargetPolicy || fiturMenuCodes.includes(HP_TARGET_USER_SAMES)
@@ -121,14 +132,28 @@ function KalenderPengaturan() {
   const [tab, setTab] = useState('bulan')
 
   useEffect(() => {
-    if (!canTabBulan && tab === 'bulan' && canTabHariPenting) setTab('hari-penting')
-    if (!canTabHariPenting && tab === 'hari-penting' && canTabBulan) setTab('bulan')
-  }, [canTabBulan, canTabHariPenting, tab])
+    const allowed = {
+      bulan: canTabBulan,
+      'hari-penting': canTabHariPenting,
+      istiwa: canTabIstiwa
+    }
+    if (allowed[tab]) return
+    const next = ['bulan', 'hari-penting', 'istiwa'].find((t) => allowed[t])
+    if (next) setTab(next)
+  }, [canTabBulan, canTabHariPenting, canTabIstiwa, tab])
   const [tahunHijriyah, setTahunHijriyah] = useState('1446')
   const [kalenderRows, setKalenderRows] = useState([])
   const [loadingKalender, setLoadingKalender] = useState(false)
   const [savingKalender, setSavingKalender] = useState(false)
   const [messageKalender, setMessageKalender] = useState(null)
+
+  const { gpsEnabled, setGpsEnabled, coords, geoSupported } = useAbsenLokasi()
+  const [istiwaLat, setIstiwaLat] = useState('')
+  const [istiwaLng, setIstiwaLng] = useState('')
+  const [loadingIstiwa, setLoadingIstiwa] = useState(false)
+  const [savingIstiwa, setSavingIstiwa] = useState(false)
+  const [messageIstiwa, setMessageIstiwa] = useState(null)
+  const fillIstiwaFromGpsRef = useRef(false)
 
   const [showCariOffcanvas, setShowCariOffcanvas] = useState(false)
   const [cariOffcanvasEntered, setCariOffcanvasEntered] = useState(false)
@@ -494,6 +519,37 @@ function KalenderPengaturan() {
   }, [tab])
 
   useEffect(() => {
+    if (tab !== 'istiwa' || !canTabIstiwa) return undefined
+    let cancelled = false
+    setLoadingIstiwa(true)
+    setMessageIstiwa(null)
+    ;(async () => {
+      try {
+        const data = await kalenderAPI.get({ action: 'istiwa' })
+        if (cancelled) return
+        const lat = Number(data?.latitude)
+        const lng = Number(data?.longitude)
+        if (Number.isFinite(lat)) setIstiwaLat(String(lat))
+        if (Number.isFinite(lng)) setIstiwaLng(String(lng))
+      } catch (e) {
+        if (!cancelled) setMessageIstiwa(e.message || 'Gagal memuat koordinat Istiwa’')
+      } finally {
+        if (!cancelled) setLoadingIstiwa(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [tab, canTabIstiwa])
+
+  useEffect(() => {
+    if (!fillIstiwaFromGpsRef.current || !coords) return
+    fillIstiwaFromGpsRef.current = false
+    setIstiwaLat(Number(coords.lat).toFixed(6))
+    setIstiwaLng(Number(coords.lng).toFixed(6))
+  }, [coords])
+
+  useEffect(() => {
     if (!showForm) {
       setHpOffcanvasEntered(false)
       setHpOffcanvasExiting(false)
@@ -850,30 +906,73 @@ function KalenderPengaturan() {
     }
   }
 
+  const isiIstiwaDariPosisiSaya = () => {
+    if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
+      setIstiwaLat(Number(coords.lat).toFixed(6))
+      setIstiwaLng(Number(coords.lng).toFixed(6))
+      return
+    }
+    fillIstiwaFromGpsRef.current = true
+    setGpsEnabled(true)
+  }
+
+  const saveIstiwaLokasi = async () => {
+    const lat = parseFloat(String(istiwaLat).replace(',', '.'))
+    const lng = parseFloat(String(istiwaLng).replace(',', '.'))
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      setMessageIstiwa('Latitude dan longitude tidak valid')
+      return
+    }
+    setSavingIstiwa(true)
+    setMessageIstiwa(null)
+    try {
+      await kalenderAPI.putIstiwaLokasi({ latitude: lat, longitude: lng })
+      setMessageIstiwa('Koordinat Istiwa’ disimpan')
+      setIstiwaLat(String(lat))
+      setIstiwaLng(String(lng))
+    } catch (e) {
+      setMessageIstiwa(e.message || 'Gagal menyimpan')
+    } finally {
+      setSavingIstiwa(false)
+    }
+  }
+
   return (
     <div className="kalender-pengaturan-page h-full min-h-0 flex flex-col overflow-hidden p-4 max-w-4xl mx-auto pb-24 md:pb-4">
-      {!canTabBulan && !canTabHariPenting && (
+      {!canTabBulan && !canTabHariPenting && !canTabIstiwa && (
         <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
-          Akun Anda tidak memiliki aksi tab Pengaturan kalender (bulan / hari penting). Minta admin menambahkan di Pengaturan → Role &amp; akses.
+          Akun Anda tidak memiliki aksi tab Pengaturan kalender (bulan / hari penting / Istiwa’). Minta admin menambahkan di Pengaturan → Role &amp; akses.
         </p>
       )}
-      {/* Tab Bulan / Hari Penting — per tab bisa diatur lewat action fitur */}
-      {canTabBulan && canTabHariPenting && (
+      {tabAccessCount >= 2 && (
         <div className="kalender-page__tabs flex-shrink-0">
-          <button
-            type="button"
-            className={`kalender-page__tab ${tab === 'bulan' ? 'kalender-page__tab--active' : ''}`}
-            onClick={() => setTab('bulan')}
-          >
-            Bulan
-          </button>
-          <button
-            type="button"
-            className={`kalender-page__tab ${tab === 'hari-penting' ? 'kalender-page__tab--active' : ''}`}
-            onClick={() => setTab('hari-penting')}
-          >
-            Hari Penting
-          </button>
+          {canTabBulan && (
+            <button
+              type="button"
+              className={`kalender-page__tab ${tab === 'bulan' ? 'kalender-page__tab--active' : ''}`}
+              onClick={() => setTab('bulan')}
+            >
+              Bulan
+            </button>
+          )}
+          {canTabHariPenting && (
+            <button
+              type="button"
+              className={`kalender-page__tab ${tab === 'hari-penting' ? 'kalender-page__tab--active' : ''}`}
+              onClick={() => setTab('hari-penting')}
+            >
+              Hari Penting
+            </button>
+          )}
+          {canTabIstiwa && (
+            <button
+              type="button"
+              className={`kalender-page__tab ${tab === 'istiwa' ? 'kalender-page__tab--active' : ''}`}
+              onClick={() => setTab('istiwa')}
+            >
+              Istiwa’
+            </button>
+          )}
         </div>
       )}
 
@@ -1294,6 +1393,62 @@ function KalenderPengaturan() {
           )}
 
           {/* Form Hari Penting: offcanvas kanan via portal (seperti Data Ijin) */}
+        </div>
+      )}
+
+      {tab === 'istiwa' && canTabIstiwa && (
+        <div className="space-y-4 max-w-md">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Koordinat default jam Istiwa’ jika GPS pengguna mati. Nilai awal: Bondowoso.
+          </p>
+          {messageIstiwa && (
+            <div className="p-2 rounded bg-teal-50 dark:bg-teal-900/20 text-teal-800 dark:text-teal-200 text-sm">
+              {messageIstiwa}
+            </div>
+          )}
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Latitude
+            <input
+              type="text"
+              inputMode="decimal"
+              value={istiwaLat}
+              onChange={(e) => setIstiwaLat(e.target.value)}
+              disabled={loadingIstiwa}
+              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Longitude
+            <input
+              type="text"
+              inputMode="decimal"
+              value={istiwaLng}
+              onChange={(e) => setIstiwaLng(e.target.value)}
+              disabled={loadingIstiwa}
+              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={isiIstiwaDariPosisiSaya}
+              disabled={!geoSupported}
+              className="kalender-pengaturan__btn kalender-pengaturan__btn--primary disabled:opacity-50"
+            >
+              Isi dari posisi saya
+            </button>
+            <button
+              type="button"
+              onClick={saveIstiwaLokasi}
+              disabled={savingIstiwa || loadingIstiwa}
+              className="kalender-pengaturan__btn kalender-pengaturan__btn--primary disabled:opacity-50"
+            >
+              {savingIstiwa ? 'Menyimpan…' : 'Simpan'}
+            </button>
+          </div>
+          {gpsEnabled && !coords && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">Menunggu posisi GPS…</p>
+          )}
         </div>
       )}
       </div>

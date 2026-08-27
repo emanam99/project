@@ -7,6 +7,7 @@ export const LEMBAGA_HALAMAN_ACTION_BY_MENU_CODE = {
   'menu.rombel': 'action.rombel.halaman',
   'menu.manage_jabatan': 'action.manage_jabatan.halaman',
   'menu.mapel': 'action.mapel.halaman',
+  'menu.kurikulum': 'action.kurikulum.halaman',
   'menu.ujian': 'action.ujian.halaman',
   'menu.bisyaroh': 'action.bisyaroh.halaman'
 }
@@ -21,6 +22,14 @@ export function codesSetHasMenuOrHalamanAksi(menuCode, codesSet) {
   if (codesSet.has(mc)) return true
   const act = LEMBAGA_HALAMAN_ACTION_BY_MENU_CODE[mc]
   if (act && codesSet.has(act)) return true
+  if (mc === 'menu.kurikulum') {
+    if (codesSet.has('menu.kitab') || codesSet.has('menu.mapel') || codesSet.has('action.mapel.halaman')) {
+      return true
+    }
+    for (const c of codesSet) {
+      if (String(c).startsWith('action.kurikulum.')) return true
+    }
+  }
   // Alumni: cukup punya salah satu aksi staff agar menu ISBAD tampil di nav
   if (mc === 'menu.alumni') {
     for (const c of codesSet) {

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
 import { absenLokasiAPI } from '../../../services/api'
-import { AbsenLokasiProvider, useAbsenLokasi } from '../../../contexts/AbsenLokasiContext'
+import { useAbsenLokasi } from '../../../contexts/AbsenLokasiContext'
 import { useAbsenFiturAccess } from '../../../hooks/useAbsenFiturAccess'
 import { userHasSuperAdminAccess } from '../../../utils/roleAccess'
 import AbsenGpsToggleBar from '../../Lembaga/Absen/AbsenGpsToggleBar'
@@ -36,11 +36,7 @@ export default function BerandaAbsenSection() {
     return null
   }
 
-  return (
-    <AbsenLokasiProvider>
-      <BerandaAbsenSectionInner />
-    </AbsenLokasiProvider>
-  )
+  return <BerandaAbsenSectionInner />
 }
 
 function BerandaGpsOffHint() {

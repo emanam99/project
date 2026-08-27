@@ -4,7 +4,7 @@ import {
 } from '../config/kalenderFiturCodes'
 
 /**
- * Mengelompokkan aksi di bawah menu Pengaturan Kalender ke 2 accordion (tab Bulan / Hari penting).
+ * Mengelompokkan aksi di bawah menu Pengaturan Kalender ke accordion per tab.
  */
 export default function KalenderPengaturanFiturTabAccordions({
   children,

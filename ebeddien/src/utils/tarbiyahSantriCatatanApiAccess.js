@@ -11,6 +11,7 @@ const TARBIYAH_LEMBAGA_MENU_CODES = [
   'menu.manage_jabatan',
   'menu.kitab',
   'menu.mapel',
+  'menu.kurikulum',
   'menu.ujian',
   'menu.bisyaroh',
   'menu.domisili.daerah',

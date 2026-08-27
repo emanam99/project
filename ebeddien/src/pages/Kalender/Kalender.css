@@ -690,3 +690,145 @@
 .dark .kalender-pengaturan__btn--danger:hover:not(:disabled) {
   background: rgba(248, 113, 113, 0.15);
 }
+
+.kalender-istiwa-bar {
+  margin-bottom: 0.75rem;
+}
+
+.kalender-istiwa-bar__clocks {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kalender-istiwa-bar__clock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.kalender-istiwa-bar__clock--wib {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.kalender-istiwa-bar__clock--ist {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.kalender-istiwa-bar__selisih {
+  margin: 0;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #6b7280;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.dark .kalender-istiwa-bar__selisih {
+  color: #9ca3af;
+}
+
+.kalender-istiwa-bar__time {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.dark .kalender-istiwa-bar__time {
+  color: #f9fafb;
+}
+
+.kalender-istiwa-bar__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #0d9488;
+  margin-top: 0.1rem;
+}
+
+.dark .kalender-istiwa-bar__label {
+  color: #2dd4bf;
+}
+
+.kalender-istiwa-bar__gps {
+  display: block;
+  margin: 0.5rem auto 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0f766e;
+  background: #ccfbf1;
+  border: 1px solid #99f6e4;
+  border-radius: 9999px;
+  padding: 0.3rem 0.85rem;
+}
+
+.kalender-istiwa-bar__gps:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dark .kalender-istiwa-bar__gps {
+  color: #99f6e4;
+  background: rgba(13, 148, 136, 0.2);
+  border-color: #0f766e;
+}
+
+.kalender-istiwa-bar__hint {
+  margin: 0.35rem 0 0;
+  text-align: center;
+  font-size: 0.7rem;
+  color: #d97706;
+}
+
+.dark .kalender-istiwa-bar__hint {
+  color: #fbbf24;
+}
+
+.kalender-istiwa-marquee {
+  margin-top: 0.5rem;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+
+.kalender-istiwa-marquee__track {
+  display: inline-flex;
+  width: max-content;
+  animation: kalender-istiwa-marquee 28s linear infinite;
+}
+
+.kalender-istiwa-marquee__item {
+  padding-right: 3rem;
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
+.dark .kalender-istiwa-marquee__item {
+  color: #9ca3af;
+}
+
+.kalender-istiwa-marquee__placeholder {
+  display: block;
+  text-align: center;
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+
+@keyframes kalender-istiwa-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+

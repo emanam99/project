@@ -14,9 +14,13 @@ import {
   canManageData,
   canSetBniStatus,
   getStoredUser,
+  isSuperAdminRole,
   type BelanjaBniStatus,
   type BelanjaCairStatus,
 } from '../utils/auth'
+
+/** Biaya admin yang dikurangi dari total dicentang (hanya tampil super admin). */
+const ADMIN_FEE = 6500
 import { usePageTitle } from '../contexts/PageTitleContext'
 import { formatDateId, formatRp, todayYmd } from '../utils/format'
 
@@ -89,6 +93,7 @@ export default function BelanjaListPage() {
   const canManage = canManageData(role)
   const canStatus = canChangeBniStatus(role)
   const canCair = canChangeCairStatus(role)
+  const isSuper = isSuperAdminRole(role)
   const canExportBni = role === 'admin_maker' || role === 'super_admin'
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<BelanjaRow[]>([])
@@ -104,7 +109,7 @@ export default function BelanjaListPage() {
   const [exportingXlsx, setExportingXlsx] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [updatingCair, setUpdatingCair] = useState(false)
-  const [copyOk, setCopyOk] = useState(false)
+  const [copyOk, setCopyOk] = useState<'total' | 'net' | null>(null)
   const [error, setError] = useState('')
   const [ok, setOk] = useState('')
   const [todayTotal, setTodayTotal] = useState(0)
@@ -222,6 +227,7 @@ export default function BelanjaListPage() {
         .reduce((sum, r) => sum + Number(r.total || 0), 0),
     [visibleRows, selected],
   )
+  const selectedTotalAfterAdmin = selectedTotal - ADMIN_FEE
   const allVisibleSelected = visibleIds.length > 0 && selectedCount === visibleIds.length
 
   const toggleOne = (id: number) => {
@@ -346,12 +352,12 @@ export default function BelanjaListPage() {
     }
   }
 
-  const copySelectedTotal = async () => {
-    const raw = String(Math.round(Number(selectedTotal) || 0))
+  const copyAmount = async (amount: number, kind: 'total' | 'net') => {
+    const raw = String(Math.round(Number(amount) || 0))
     try {
       await navigator.clipboard.writeText(raw)
-      setCopyOk(true)
-      window.setTimeout(() => setCopyOk(false), 1500)
+      setCopyOk(kind)
+      window.setTimeout(() => setCopyOk(null), 1500)
     } catch {
       setError('Gagal menyalin total. Salin manual: ' + raw)
     }
@@ -558,10 +564,23 @@ export default function BelanjaListPage() {
                       type="button"
                       className="ui-btn-ghost !py-0.5 !px-1.5 text-[11px]"
                       title="Salin angka total (tanpa Rp / titik)"
-                      onClick={() => void copySelectedTotal()}
+                      onClick={() => void copyAmount(selectedTotal, 'total')}
                     >
-                      {copyOk ? 'Tersalin' : 'Salin'}
+                      {copyOk === 'total' ? 'Tersalin' : 'Salin'}
                     </button>
+                    {isSuper ? (
+                      <>
+                        <span>· − admin {formatRp(selectedTotalAfterAdmin)}</span>
+                        <button
+                          type="button"
+                          className="ui-btn-ghost !py-0.5 !px-1.5 text-[11px]"
+                          title="Salin total − admin 6.500 (tanpa Rp / titik)"
+                          onClick={() => void copyAmount(selectedTotalAfterAdmin, 'net')}
+                        >
+                          {copyOk === 'net' ? 'Tersalin' : 'Salin'}
+                        </button>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
               </span>

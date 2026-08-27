@@ -120,6 +120,7 @@ final class EbeddienFiturAccessDefinitions
             'menu.manage_jabatan',
             'menu.kitab',
             'menu.mapel',
+            'menu.kurikulum',
             'menu.ujian',
             'menu.bisyaroh',
             'menu.domisili.daerah',
@@ -392,7 +393,20 @@ final class EbeddienFiturAccessDefinitions
             self::psbMenus(),
             self::tarbiyahLembagaMenus(),
             self::superAdminMenus(),
-            ['action.mapel.halaman']
+            ['action.mapel.halaman'],
+            ['PREFIX:action.kurikulum.']
+        );
+    }
+
+    /** /api/kurikulum-jadwal */
+    public static function kurikulumJadwalCrudApiSelectors(): array
+    {
+        return self::merge(
+            self::psbMenus(),
+            self::tarbiyahLembagaMenus(),
+            self::superAdminMenus(),
+            ['menu.kurikulum'],
+            ['PREFIX:action.kurikulum.']
         );
     }
 
@@ -414,7 +428,8 @@ final class EbeddienFiturAccessDefinitions
             self::psbMenus(),
             self::tarbiyahLembagaMenus(),
             self::superAdminMenus(),
-            ['action.mapel.halaman']
+            ['action.mapel.halaman'],
+            ['PREFIX:action.kurikulum.']
         );
     }
 
@@ -601,6 +616,16 @@ final class EbeddienFiturAccessDefinitions
     {
         return self::merge(
             ['action.kalender.pengaturan.tab_hari_penting'],
+            ['menu.kalender.pengaturan']
+        );
+    }
+
+    /** Grup PUT /api/kalender/istiwa-lokasi. */
+    public static function kalenderPengaturanIstiwaSelectors(): array
+    {
+        return self::merge(
+            self::tarbiyahSuperSelectors(),
+            ['action.kalender.pengaturan.tab_istiwa'],
             ['menu.kalender.pengaturan']
         );
     }

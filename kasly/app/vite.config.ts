@@ -103,7 +103,7 @@ export default defineConfig(({ command, mode }) => {
           description: 'Kasly — catatan belanja rumah',
           theme_color: '#db2777',
           background_color: '#14080e',
-          display: 'standalone',
+          display: 'minimal-ui',
           scope: startUrl,
           start_url: startUrl,
           orientation: 'any',

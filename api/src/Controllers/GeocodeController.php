@@ -154,17 +154,12 @@ final class GeocodeController
     }
 
     /**
-     * GET /api/geocode/reverse?lat=&lng=
+     * Reverse geocode Nominatim → field Indonesia.
+     *
+     * @return array{ok: bool, status: int, message: string, data: ?array}
      */
-    public function reverse(Request $request, Response $response): Response
+    public static function lookupReverseIndonesia(float $lat, float $lng): array
     {
-        $params = $request->getQueryParams();
-        $lat = isset($params['lat']) ? (float) $params['lat'] : null;
-        $lng = isset($params['lng']) ? (float) $params['lng'] : null;
-        if ($lat === null || $lng === null || abs($lat) > 90 || abs($lng) > 180) {
-            return $this->json($response, ['success' => false, 'message' => 'Parameter lat dan lng wajib valid'], 400);
-        }
-
         $url = 'https://nominatim.openstreetmap.org/reverse?' . http_build_query([
             'lat' => $lat,
             'lon' => $lng,
@@ -176,33 +171,69 @@ final class GeocodeController
 
         $fetched = self::fetchNominatimJson($url);
         if (!$fetched['ok']) {
-            return $this->json($response, [
-                'success' => false,
+            return [
+                'ok' => false,
+                'status' => 503,
                 'message' => $fetched['error'] !== ''
                     ? $fetched['error']
                     : 'Layanan geocode tidak tersedia',
-            ], 503);
+                'data' => null,
+            ];
         }
-        $body = $fetched['body'];
-        $httpCode = $fetched['http_code'];
-
-        if ($httpCode !== 200) {
-            return $this->json($response, ['success' => false, 'message' => 'Gagal mengambil alamat dari peta'], 502);
+        if ((int) $fetched['http_code'] !== 200) {
+            return [
+                'ok' => false,
+                'status' => 502,
+                'message' => 'Gagal mengambil alamat dari peta',
+                'data' => null,
+            ];
         }
-
-        $data = json_decode($body, true);
+        $data = json_decode($fetched['body'], true);
         if (!is_array($data)) {
-            return $this->json($response, ['success' => false, 'message' => 'Respons geocode tidak valid'], 502);
+            return [
+                'ok' => false,
+                'status' => 502,
+                'message' => 'Respons geocode tidak valid',
+                'data' => null,
+            ];
         }
-
         $addr = isset($data['address']) && is_array($data['address']) ? $data['address'] : [];
         $mapped = self::mapIndonesiaFields($addr);
 
-        return $this->json($response, [
-            'success' => true,
+        return [
+            'ok' => true,
+            'status' => 200,
+            'message' => '',
             'data' => array_merge($mapped, [
                 'display_name' => isset($data['display_name']) ? (string) $data['display_name'] : '',
+                '_source' => 'nominatim',
             ]),
+        ];
+    }
+
+    /**
+     * GET /api/geocode/reverse?lat=&lng=
+     */
+    public function reverse(Request $request, Response $response): Response
+    {
+        $params = $request->getQueryParams();
+        $lat = isset($params['lat']) ? (float) $params['lat'] : null;
+        $lng = isset($params['lng']) ? (float) $params['lng'] : null;
+        if ($lat === null || $lng === null || abs($lat) > 90 || abs($lng) > 180) {
+            return $this->json($response, ['success' => false, 'message' => 'Parameter lat dan lng wajib valid'], 400);
+        }
+
+        $looked = self::lookupReverseIndonesia($lat, $lng);
+        if (!$looked['ok'] || !is_array($looked['data'])) {
+            return $this->json($response, [
+                'success' => false,
+                'message' => $looked['message'] !== '' ? $looked['message'] : 'Layanan geocode tidak tersedia',
+            ], $looked['status'] > 0 ? $looked['status'] : 503);
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => $looked['data'],
         ], 200);
     }
 }

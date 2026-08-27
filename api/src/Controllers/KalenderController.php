@@ -4,6 +4,8 @@ namespace App\Controllers;
 
 use App\Database;
 use App\Helpers\UserAktivitasLogger;
+use App\Support\AbsenLokasiGeo;
+use App\Support\KalenderIstiwa;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -27,7 +29,7 @@ class KalenderController
     }
 
     /**
-     * GET /api/kalender?action=all|year|today|convert|convert_range|to_masehi
+     * GET /api/kalender?action=all|year|today|convert|convert_range|to_masehi|istiwa|istiwa-alamat
      * Public - tidak perlu auth.
      * - convert: Masehi → Hijriyah (tanggal=Y-m-d Masehi, optional waktu untuk setelah Maghrib).
      * - convert_range: Masehi → Hijriyah untuk range (tanggal_awal, tanggal_akhir Y-m-d). Satu panggilan untuk banyak tanggal.
@@ -51,6 +53,12 @@ class KalenderController
         }
 
         try {
+            if ($action === 'istiwa') {
+                return $this->getIstiwaDefault($response);
+            }
+            if ($action === 'istiwa-alamat') {
+                return $this->getIstiwaAlamat($request, $response);
+            }
             if ($action === 'year' && isset($params['tahun'])) {
                 return $this->getByYear($response, (int) $params['tahun'], $params['waktu'] ?? null);
             }
@@ -264,6 +272,99 @@ class KalenderController
             error_log("Kalender postBulk error: " . $e->getMessage());
             return $this->json($response, ['error' => 'Terjadi kesalahan'], 500);
         }
+    }
+
+    /**
+     * GET /api/kalender?action=istiwa
+     */
+    private function getIstiwaDefault(Response $response): Response
+    {
+        try {
+            $coords = KalenderIstiwa::defaultCoords($this->getDb());
+        } catch (\Throwable $e) {
+            error_log('Kalender getIstiwaDefault: ' . $e->getMessage());
+            $coords = [
+                'latitude' => KalenderIstiwa::DEFAULT_LAT,
+                'longitude' => KalenderIstiwa::DEFAULT_LNG,
+            ];
+        }
+
+        return $this->json($response, $coords);
+    }
+
+    /**
+     * GET /api/kalender?action=istiwa-alamat&lat=&lng=&accuracy=
+     */
+    private function getIstiwaAlamat(Request $request, Response $response): Response
+    {
+        $params = $request->getQueryParams();
+        $lat = AbsenLokasiGeo::floatCoord($params['lat'] ?? $params['latitude'] ?? null);
+        $lng = AbsenLokasiGeo::floatCoord($params['lng'] ?? $params['longitude'] ?? null);
+        if ($lat === null || $lng === null || abs($lat) > 90 || abs($lng) > 180) {
+            return $this->json($response, ['success' => false, 'message' => 'Parameter lat dan lng wajib valid'], 400);
+        }
+        $acc = 0.0;
+        if (isset($params['accuracy'])) {
+            $a = (float) $params['accuracy'];
+            if ($a > 0 && is_finite($a)) {
+                $acc = $a;
+            }
+        }
+
+        try {
+            $master = KalenderIstiwa::matchAbsenAlamat($this->getDb(), $lat, $lng, $acc);
+        } catch (\Throwable $e) {
+            error_log('Kalender getIstiwaAlamat match: ' . $e->getMessage());
+            $master = null;
+        }
+        if (is_array($master) && $master !== []) {
+            return $this->json($response, [
+                'success' => true,
+                'source' => 'absen_alamat',
+                'data' => KalenderIstiwa::alamatToPreview($master, 'absen_alamat'),
+            ]);
+        }
+
+        $looked = GeocodeController::lookupReverseIndonesia($lat, $lng);
+        if (!$looked['ok'] || !is_array($looked['data'])) {
+            return $this->json($response, [
+                'success' => false,
+                'message' => $looked['message'] !== '' ? $looked['message'] : 'Alamat tidak tersedia',
+            ], $looked['status'] > 0 ? $looked['status'] : 502);
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'source' => 'nominatim',
+            'data' => $looked['data'],
+        ]);
+    }
+
+    /**
+     * PUT /api/kalender/istiwa-lokasi
+     */
+    public function putIstiwaLokasi(Request $request, Response $response): Response
+    {
+        $parsed = $request->getParsedBody();
+        $body = is_array($parsed) ? $parsed : [];
+        $lat = AbsenLokasiGeo::floatCoord($body['latitude'] ?? $body['lat'] ?? null);
+        $lng = AbsenLokasiGeo::floatCoord($body['longitude'] ?? $body['lng'] ?? null);
+        if ($lat === null || $lng === null || abs($lat) > 90 || abs($lng) > 180) {
+            return $this->json($response, ['success' => false, 'message' => 'Latitude dan longitude wajib valid'], 400);
+        }
+        try {
+            KalenderIstiwa::upsertCoords($this->getDb(), $lat, $lng);
+        } catch (\Throwable $e) {
+            error_log('Kalender putIstiwaLokasi: ' . $e->getMessage());
+
+            return $this->json($response, ['success' => false, 'message' => 'Gagal menyimpan koordinat'], 500);
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'latitude' => $lat,
+            'longitude' => $lng,
+        ]);
     }
 
     private function json(Response $response, $data, int $status = 200): Response

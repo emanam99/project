@@ -43,12 +43,19 @@ class AppFiturMenuSeed extends AbstractSeed
             $sort += 10;
         }
 
-        // Menu Umum: container aksi UI global — tidak tampil di sidebar/nav.
+        // Kitab & Mapel: tetap di app___fitur (API/legacy), tidak tampil di sidebar — pakai menu.kurikulum.
         $this->execute(
             'UPDATE `app___fitur`
-             SET `group_label` = \'Umum\', `path` = \'\', `label` = \'Umum\', `icon_key` = \'cube\',
-                 `meta_json` = \'{"hideFromNav":true}\', `sort_order` = 5
-             WHERE `id_app` = ' . self::ID_APP_EBEDDIEN . ' AND `code` = \'menu.umum\' AND `type` = \'menu\''
+             SET `meta_json` = \'{"hideFromNav":true}\', `group_label` = \'Lembaga\'
+             WHERE `id_app` = ' . self::ID_APP_EBEDDIEN . '
+               AND `type` = \'menu\'
+               AND `code` IN (\'menu.kitab\', \'menu.mapel\')'
+        );
+
+        $this->execute(
+            'UPDATE `app___fitur`
+             SET `label` = \'Kurikulum\', `path` = \'/kurikulum\', `icon_key` = \'mapel\', `group_label` = \'Lembaga\'
+             WHERE `id_app` = ' . self::ID_APP_EBEDDIEN . ' AND `code` = \'menu.kurikulum\' AND `type` = \'menu\''
         );
 
         // Menu Alumni: grup ISBAD (modul terpisah; menu lain akan ditambah berkala).
@@ -246,8 +253,7 @@ class AppFiturMenuSeed extends AbstractSeed
             ['path' => '/alumni', 'label' => 'Alumni', 'iconKey' => 'usersGroup', 'group' => 'ISBAD'],
             ['path' => '/rombel', 'label' => 'Rombel', 'iconKey' => 'users', 'group' => 'Lembaga'],
             ['path' => '/manage-jabatan', 'label' => 'Jabatan', 'iconKey' => 'briefcase', 'group' => 'Lembaga'],
-            ['path' => '/kitab', 'label' => 'Kitab', 'iconKey' => 'documentText', 'group' => 'Lembaga'],
-            ['path' => '/mapel', 'label' => 'Mapel', 'iconKey' => 'mapel', 'group' => 'Lembaga'],
+            ['path' => '/kurikulum', 'label' => 'Kurikulum', 'iconKey' => 'mapel', 'group' => 'Lembaga'],
             ['path' => '/ujian', 'label' => 'Ujian', 'iconKey' => 'academic', 'group' => 'Lembaga'],
             ['path' => '/bisyaroh', 'label' => 'Bisyaroh', 'iconKey' => 'documentText', 'group' => 'Lembaga'],
             ['path' => '/dashboard-umum', 'label' => 'Dashboard Umum', 'iconKey' => 'dashboard', 'group' => 'Pengaturan'],

@@ -161,6 +161,11 @@ final class EbeddienFiturAccess
         return EbeddienFiturSelectorRepository::codesForMethod('mapelCrudApiSelectors');
     }
 
+    public static function kurikulumJadwalCrudApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('kurikulumJadwalCrudApiSelectors');
+    }
+
     public static function ujianCrudApiSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('ujianCrudApiSelectors');
@@ -304,6 +309,11 @@ final class EbeddienFiturAccess
     public static function kalenderPengaturanHariPentingSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('kalenderPengaturanHariPentingSelectors');
+    }
+
+    public static function kalenderPengaturanIstiwaSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('kalenderPengaturanIstiwaSelectors');
     }
 
     public static function wiridMenus(): array

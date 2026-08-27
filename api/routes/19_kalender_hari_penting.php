@@ -19,6 +19,10 @@ return function (\Slim\App $app): void {
         $group->post('', [KalenderController::class, 'postBulk']);
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::kalenderPengaturanBulanSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::KALENDER_PENGATURAN_BULAN_SELECTORS)))->add(new AuthMiddleware());
 
+    $app->group('/api/kalender', function ($group) {
+        $group->put('/istiwa-lokasi', [KalenderController::class, 'putIstiwaLokasi']);
+    })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::kalenderPengaturanIstiwaSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::KALENDER_PENGATURAN_ISTIWA_SELECTORS)))->add(new AuthMiddleware());
+
     $app->group('/api/hari-penting', function ($group) {
         $group->get('/user-picker', [HariPentingController::class, 'getUserPicker']);
         $group->get('/lembaga-options', [HariPentingController::class, 'getLembagaOptions']);

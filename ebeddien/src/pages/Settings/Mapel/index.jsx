@@ -69,7 +69,7 @@ const MapelListItem = memo(({ row, index, onClick, onDelete, statusBadge }) => (
 ))
 MapelListItem.displayName = 'MapelListItem'
 
-function Mapel() {
+function Mapel({ embedded = false }) {
   const { showNotification } = useNotification()
   const lembagaAccess = useLembagaFilterAccess(LEMBAGA_FILTER_ACTION_CODES.mapelSemua)
   const [list, setList] = useState([])
@@ -215,7 +215,15 @@ function Mapel() {
 
   const onFormSuccess = (result) => {
     if (result?.mode === 'edit') {
-      showNotification('Mapel diperbarui', 'success')
+      if (result.created > 0) {
+        const msg =
+          result.failed > 0
+            ? `Mapel diperbarui dan ${result.created} rombel ditambah (${result.failed} gagal)`
+            : `Mapel diperbarui dan ditambah ke ${result.created} rombel`
+        showNotification(msg, result.failed > 0 ? 'warning' : 'success')
+      } else {
+        showNotification('Mapel diperbarui', 'success')
+      }
     } else if (result?.mode === 'create' && result.count > 1) {
       const msg =
         result.failed > 0
@@ -275,18 +283,16 @@ function Mapel() {
 
   if (loading && list.length === 0 && !error) {
     return (
-      <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-        <div className="h-full overflow-y-auto page-content-scroll flex items-center justify-center" style={{ minHeight: 0 }}>
+      <div className={`flex items-center justify-center ${embedded ? 'py-16' : 'h-full overflow-hidden'}`} style={embedded ? undefined : { minHeight: 0 }}>
+        <div className={embedded ? '' : 'h-full overflow-y-auto page-content-scroll flex items-center justify-center'} style={embedded ? undefined : { minHeight: 0 }}>
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
-        <div className="p-4 sm:p-6 lg:p-8">
+  const body = (
+    <>
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
             {error && (
               <div className="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
@@ -294,7 +300,7 @@ function Mapel() {
               </div>
             )}
 
-            <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
+            <div className={`${embedded ? '' : 'sticky top-0 z-10 '}bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4`}>
               <div className="relative pb-2 px-4 pt-3">
                 <input
                   type="text"
@@ -472,8 +478,6 @@ function Mapel() {
 
             <div className="h-20 sm:h-0" aria-hidden="true" />
           </motion.div>
-        </div>
-      </div>
 
       <MapelFormOffcanvas
         isOpen={formOpen}
@@ -534,6 +538,18 @@ function Mapel() {
           </div>
         </div>
       </Modal>
+    </>
+  )
+
+  if (embedded) {
+    return body
+  }
+
+  return (
+    <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
+      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
+        <div className="p-4 sm:p-6 lg:p-8">{body}</div>
+      </div>
     </div>
   )
 }

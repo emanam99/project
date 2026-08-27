@@ -28,7 +28,7 @@ function kitabMatchesSearch(row, query) {
   return hay.includes(query)
 }
 
-function Kitab() {
+function Kitab({ embedded = false }) {
   const { showNotification } = useNotification()
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
@@ -138,23 +138,21 @@ function Kitab() {
 
   if (loading && list.length === 0 && !error) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className={`flex items-center justify-center ${embedded ? 'py-16' : 'h-screen'}`}>
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600" />
       </div>
     )
   }
 
-  return (
-    <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
-      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
-        <div className="container mx-auto px-4 py-6 max-w-7xl">
+  const body = (
+    <>
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
               <p className="text-red-800 dark:text-red-200">{error}</p>
             </div>
           )}
 
-          <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
+          <div className={`${embedded ? '' : 'sticky top-0 z-10 '}bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4`}>
             <div className="relative pb-2 px-4 pt-3">
               <input
                 type="text"
@@ -265,8 +263,6 @@ function Kitab() {
           </div>
 
           <div className="h-20 sm:h-0" aria-hidden="true" />
-        </div>
-      </div>
 
       <KitabFormOffcanvas
         isOpen={formOpen}
@@ -274,6 +270,18 @@ function Kitab() {
         kitab={editingKitab}
         onSuccess={onFormSuccess}
       />
+    </>
+  )
+
+  if (embedded) {
+    return body
+  }
+
+  return (
+    <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
+      <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
+        <div className="container mx-auto px-4 py-6 max-w-7xl">{body}</div>
+      </div>
     </div>
   )
 }

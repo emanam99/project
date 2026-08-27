@@ -1373,12 +1373,19 @@ export const kalenderAPI = {
     if (params.tanggal_awal) q.set('tanggal_awal', params.tanggal_awal)
     if (params.tanggal_akhir) q.set('tanggal_akhir', params.tanggal_akhir)
     if (params.waktu) q.set('waktu', params.waktu)
+    if (params.lat != null) q.set('lat', params.lat)
+    if (params.lng != null) q.set('lng', params.lng)
+    if (params.accuracy != null && params.accuracy !== '') q.set('accuracy', params.accuracy)
     const url = q.toString() ? `/kalender?${q.toString()}` : '/kalender'
     const response = await api.get(url)
     return response.data
   },
   postBulk: async (data) => {
     const response = await api.post('/kalender', data)
+    return response.data
+  },
+  putIstiwaLokasi: async (data) => {
+    const response = await api.put('/kalender/istiwa-lokasi', data)
     return response.data
   }
 }
@@ -5359,6 +5366,46 @@ export const mapelAPI = {
 
   delete: async (id) => {
     const response = await api.delete(`/mapel/${id}`)
+    return response.data
+  }
+}
+
+/** Jadwal pelajaran (Kurikulum → tab Jadwal) */
+export const kurikulumJadwalAPI = {
+  getList: async (params = {}) => {
+    const q = new URLSearchParams()
+    if (params.search != null && params.search !== '') q.set('search', String(params.search))
+    if (params.lembaga_id != null && params.lembaga_id !== '') q.set('lembaga_id', String(params.lembaga_id))
+    if (params.lembaga_ids != null && params.lembaga_ids !== '') q.set('lembaga_ids', String(params.lembaga_ids))
+    if (params.id_rombel != null && params.id_rombel !== '') q.set('id_rombel', String(params.id_rombel))
+    if (params.id_lembaga_kitab != null && params.id_lembaga_kitab !== '') {
+      q.set('id_lembaga_kitab', String(params.id_lembaga_kitab))
+    }
+    if (params.status != null && params.status !== '') q.set('status', String(params.status))
+    if (params.page != null) q.set('page', String(params.page))
+    if (params.limit != null) q.set('limit', String(params.limit))
+    const url = q.toString() ? `/kurikulum-jadwal?${q.toString()}` : '/kurikulum-jadwal'
+    const response = await api.get(url)
+    return response.data
+  },
+
+  getById: async (id) => {
+    const response = await api.get(`/kurikulum-jadwal/${id}`)
+    return response.data
+  },
+
+  create: async (data) => {
+    const response = await api.post('/kurikulum-jadwal', data)
+    return response.data
+  },
+
+  update: async (id, data) => {
+    const response = await api.put(`/kurikulum-jadwal/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id) => {
+    const response = await api.delete(`/kurikulum-jadwal/${id}`)
     return response.data
   }
 }

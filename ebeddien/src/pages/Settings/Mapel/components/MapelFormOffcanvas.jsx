@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { mapelAPI } from '../../../../services/api'
+import CariKitabOffcanvas from '../../../../components/CariKitabOffcanvas'
 
 const inputClass =
   'w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-teal-500 dark:bg-gray-700 dark:text-gray-200'
@@ -20,12 +21,35 @@ function isRombelAktif(r) {
   return s === 'aktif' || s === 'active'
 }
 
+function kitabDariRecordAtauList(record, kitabList) {
+  if (!record?.id_kitab) return null
+  const fromList = Array.isArray(kitabList)
+    ? kitabList.find((k) => String(k.id) === String(record.id_kitab))
+    : null
+  if (fromList) return fromList
+  return {
+    id: record.id_kitab,
+    nama_indo: record.kitab_nama || '',
+    nama_arab: record.kitab_nama_arab || '',
+    fan: record.kitab_fan || '',
+  }
+}
+
+function kitabPickerLabel(k) {
+  if (!k) return ''
+  const arab = String(k.nama_arab ?? '').trim()
+  const indo = String(k.nama_indo ?? k.kitab_nama ?? '').trim()
+  return arab || indo || `Kitab #${k.id}`
+}
+
 function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, kitabList, onSuccess }) {
   const isEdit = Boolean(record?.id)
+  const originalRombelId = isEdit && record?.id_rombel != null ? String(record.id_rombel) : ''
   const [idLembaga, setIdLembaga] = useState('')
-  const [idRombel, setIdRombel] = useState('')
   const [selectedRombelIds, setSelectedRombelIds] = useState(() => new Set())
   const [idKitab, setIdKitab] = useState('')
+  const [selectedKitab, setSelectedKitab] = useState(null)
+  const [kitabPickerOpen, setKitabPickerOpen] = useState(false)
   const [dari, setDari] = useState('')
   const [sampai, setSampai] = useState('')
   const [keterangan, setKeterangan] = useState('')
@@ -41,43 +65,45 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
 
   /**
    * Rombel di lembaga terpilih: default hanya yang aktif.
-   * Rombel yang sedang dipilih (edit) tetap ditampilkan walau sudah nonaktif agar bisa disimpan ulang.
+   * Rombel yang sedang dicentang (atau rombel asli saat edit) tetap tampil walau nonaktif.
    */
   const rombelFiltered = useMemo(() => {
     if (!idLembaga) return []
     const arr = Array.isArray(rombelList) ? rombelList.filter((r) => String(r.lembaga_id) === String(idLembaga)) : []
     const filtered = arr.filter((r) => {
       if (isRombelAktif(r)) return true
-      if (isEdit && idRombel && String(r.id) === String(idRombel)) return true
+      const rid = String(r.id)
+      if (selectedRombelIds.has(rid)) return true
+      if (originalRombelId && rid === originalRombelId) return true
       return false
     })
     return [...filtered].sort((a, b) => rombelLabelDalamLembaga(a).localeCompare(rombelLabelDalamLembaga(b), 'id'))
-  }, [rombelList, idLembaga, idRombel, isEdit])
+  }, [rombelList, idLembaga, selectedRombelIds, originalRombelId])
 
   const selectedRombelCount = selectedRombelIds.size
 
-  const kitabSorted = useMemo(() => {
-    const arr = Array.isArray(kitabList) ? [...kitabList] : []
-    return arr.sort((a, b) => String(a.nama_indo || '').localeCompare(String(b.nama_indo || ''), 'id'))
-  }, [kitabList])
-
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      setKitabPickerOpen(false)
+      return
+    }
     setError('')
+    setKitabPickerOpen(false)
     if (record?.id) {
       const lid = record.lembaga_id != null && record.lembaga_id !== '' ? String(record.lembaga_id) : ''
       setIdLembaga(lid)
-      setIdRombel(record.id_rombel != null ? String(record.id_rombel) : '')
+      setSelectedRombelIds(record.id_rombel != null ? new Set([String(record.id_rombel)]) : new Set())
       setIdKitab(record.id_kitab != null ? String(record.id_kitab) : '')
+      setSelectedKitab(kitabDariRecordAtauList(record, kitabList))
       setDari(record.dari ?? '')
       setSampai(record.sampai ?? '')
       setKeterangan(record.keterangan ?? '')
       setStatus(record.status === 'nonaktif' ? 'nonaktif' : 'aktif')
     } else {
       setIdLembaga('')
-      setIdRombel('')
       setSelectedRombelIds(new Set())
       setIdKitab('')
+      setSelectedKitab(null)
       setDari('')
       setSampai('')
       setKeterangan('')
@@ -86,20 +112,14 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
     setSaveProgress({ current: 0, total: 0 })
   }, [isOpen, record])
 
-  /** Edit: jika rombel terpilih tidak termasuk lembaga saat ini, kosongkan rombel */
+  /** Buang centang rombel yang tidak lagi valid di lembaga terpilih */
   useEffect(() => {
-    if (!isOpen || !isEdit || !idLembaga || !idRombel) return
-    const ok = rombelFiltered.some((r) => String(r.id) === String(idRombel))
-    if (!ok) setIdRombel('')
-  }, [isOpen, isEdit, idLembaga, rombelFiltered, idRombel])
-
-  /** Tambah: buang centang rombel yang tidak lagi valid di lembaga terpilih */
-  useEffect(() => {
-    if (!isOpen || isEdit || !idLembaga || selectedRombelIds.size === 0) return
+    if (!isOpen || !idLembaga || selectedRombelIds.size === 0) return
+    if (rombelFiltered.length === 0) return
     const valid = new Set(rombelFiltered.map((r) => String(r.id)))
     const next = new Set([...selectedRombelIds].filter((id) => valid.has(id)))
     if (next.size !== selectedRombelIds.size) setSelectedRombelIds(next)
-  }, [isOpen, isEdit, idLembaga, rombelFiltered, selectedRombelIds])
+  }, [isOpen, idLembaga, rombelFiltered, selectedRombelIds])
 
   const toggleRombelSelection = (rombelId) => {
     const key = String(rombelId)
@@ -132,12 +152,10 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
       return
     }
 
-    const rombelIds = isEdit
-      ? [parseInt(idRombel, 10)].filter((id) => id > 0)
-      : [...selectedRombelIds].map((id) => parseInt(id, 10)).filter((id) => id > 0)
+    const rombelIds = [...selectedRombelIds].map((id) => parseInt(id, 10)).filter((id) => id > 0)
 
     if (!rombelIds.length) {
-      setError(isEdit ? 'Pilih rombel' : 'Centang minimal satu rombel')
+      setError('Centang minimal satu rombel')
       return
     }
 
@@ -149,25 +167,58 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
       status: status || 'aktif'
     }
 
+    const originalId = parseInt(originalRombelId, 10)
+    const keepOriginal = isEdit && originalId > 0 && rombelIds.includes(originalId)
+    const updateTargetId = isEdit ? (keepOriginal ? originalId : rombelIds[0]) : 0
+    const extraIds = isEdit ? rombelIds.filter((id) => id !== updateTargetId) : rombelIds
+    const totalOps = isEdit ? 1 + extraIds.length : extraIds.length
+
     setLoading(true)
-    setSaveProgress({ current: 0, total: isEdit ? 1 : rombelIds.length })
+    setSaveProgress({ current: 0, total: totalOps })
     try {
       if (isEdit) {
-        const res = await mapelAPI.update(record.id, { ...basePayload, id_rombel: rombelIds[0] })
-        if (res?.success) {
-          onSuccess?.({ mode: 'edit', count: 1, data: res.data })
-          onClose()
-        } else {
+        setSaveProgress({ current: 1, total: totalOps })
+        const res = await mapelAPI.update(record.id, { ...basePayload, id_rombel: updateTargetId })
+        if (!res?.success) {
           setError(res?.message || 'Gagal menyimpan')
+          return
         }
+
+        let createdCount = 0
+        const failures = []
+        for (let i = 0; i < extraIds.length; i++) {
+          const rid = extraIds[i]
+          setSaveProgress({ current: 2 + i, total: totalOps })
+          try {
+            const createRes = await mapelAPI.create({ ...basePayload, id_rombel: rid })
+            if (createRes?.success) createdCount += 1
+            else failures.push(createRes?.message || `Rombel #${rid}`)
+          } catch (err) {
+            failures.push(err.response?.data?.message || err.message || `Rombel #${rid}`)
+          }
+        }
+
+        onSuccess?.({
+          mode: 'edit',
+          count: 1 + createdCount,
+          created: createdCount,
+          failed: failures.length,
+          data: res.data
+        })
+        if (failures.length > 0) {
+          setError(
+            `Mapel diperbarui, ${createdCount} rombel ditambah, ${failures.length} gagal: ${failures.slice(0, 2).join('; ')}${failures.length > 2 ? '…' : ''}`
+          )
+        }
+        onClose()
         return
       }
 
       let successCount = 0
       const failures = []
-      for (let i = 0; i < rombelIds.length; i++) {
-        const rid = rombelIds[i]
-        setSaveProgress({ current: i + 1, total: rombelIds.length })
+      for (let i = 0; i < extraIds.length; i++) {
+        const rid = extraIds[i]
+        setSaveProgress({ current: i + 1, total: extraIds.length })
         try {
           const res = await mapelAPI.create({ ...basePayload, id_rombel: rid })
           if (res?.success) successCount += 1
@@ -198,6 +249,7 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
 
   const handleClose = () => {
     if (loading) return
+    setKitabPickerOpen(false)
     setError('')
     onClose()
   }
@@ -260,9 +312,13 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
                     id="mapel-lembaga"
                     value={idLembaga}
                     onChange={(e) => {
-                      setIdLembaga(e.target.value)
-                      setIdRombel('')
-                      setSelectedRombelIds(new Set())
+                      const next = e.target.value
+                      setIdLembaga(next)
+                      if (isEdit && String(record?.lembaga_id ?? '') === String(next) && record?.id_rombel != null) {
+                        setSelectedRombelIds(new Set([String(record.id_rombel)]))
+                      } else {
+                        setSelectedRombelIds(new Set())
+                      }
                     }}
                     className={selectClass}
                     required
@@ -284,7 +340,7 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
                     <label className={labelClass + ' mb-0'}>
                       Rombel <span className="text-red-500">*</span>
                     </label>
-                    {!isEdit && idLembaga && rombelFiltered.length > 0 && (
+                    {idLembaga && rombelFiltered.length > 0 && (
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
@@ -306,64 +362,43 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
                     )}
                   </div>
 
-                  {isEdit ? (
-                    <select
-                      id="mapel-rombel"
-                      value={idRombel}
-                      onChange={(e) => setIdRombel(e.target.value)}
-                      className={selectClass}
-                      required
-                      disabled={!idLembaga}
-                      style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`
-                      }}
-                    >
-                      <option value="">{idLembaga ? '— Pilih rombel —' : '— Pilih lembaga terlebih dahulu —'}</option>
-                      {rombelFiltered.map((r) => (
-                        <option key={r.id} value={String(r.id)}>
-                          {rombelLabelDalamLembaga(r)}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div
-                      className={`rounded-xl border border-gray-300 dark:border-gray-600 overflow-hidden ${
-                        !idLembaga ? 'opacity-60' : ''
-                      }`}
-                    >
-                      {!idLembaga ? (
-                        <p className="px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">Pilih lembaga terlebih dahulu</p>
-                      ) : rombelFiltered.length === 0 ? (
-                        <p className="px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">Tidak ada rombel aktif di lembaga ini</p>
-                      ) : (
-                        <ul className="max-h-48 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700">
-                          {rombelFiltered.map((r) => {
-                            const rid = String(r.id)
-                            const checked = selectedRombelIds.has(rid)
-                            return (
-                              <li key={r.id}>
-                                <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={loading || !idLembaga}
-                                    onChange={() => toggleRombelSelection(rid)}
-                                    className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 shrink-0"
-                                  />
-                                  <span className="text-sm text-gray-800 dark:text-gray-100">{rombelLabelDalamLembaga(r)}</span>
-                                </label>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                  )}
+                  <div
+                    className={`rounded-xl border border-gray-300 dark:border-gray-600 overflow-hidden ${
+                      !idLembaga ? 'opacity-60' : ''
+                    }`}
+                  >
+                    {!idLembaga ? (
+                      <p className="px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">Pilih lembaga terlebih dahulu</p>
+                    ) : rombelFiltered.length === 0 ? (
+                      <p className="px-3 py-2.5 text-sm text-gray-500 dark:text-gray-400">Tidak ada rombel aktif di lembaga ini</p>
+                    ) : (
+                      <ul className="max-h-48 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-700">
+                        {rombelFiltered.map((r) => {
+                          const rid = String(r.id)
+                          const checked = selectedRombelIds.has(rid)
+                          return (
+                            <li key={r.id}>
+                              <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={loading || !idLembaga}
+                                  onChange={() => toggleRombelSelection(rid)}
+                                  className="rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 shrink-0"
+                                />
+                                <span className="text-sm text-gray-800 dark:text-gray-100">{rombelLabelDalamLembaga(r)}</span>
+                              </label>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </div>
 
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Daftar rombel: <span className="font-medium">aktif saja</span>
-                    {isEdit ? '; rombel yang dipilih tetap tampil jika sudah nonaktif.' : '; centang beberapa rombel untuk menambahkan mapel sekaligus.'}
-                    {!isEdit && selectedRombelCount > 0 && (
+                    ; rombel yang dicentang tetap tampil jika sudah nonaktif. Centang beberapa rombel untuk menyimpan ke banyak rombel sekaligus.
+                    {selectedRombelCount > 0 && (
                       <>
                         {' '}
                         Terpilih: <span className="font-medium">{selectedRombelCount}</span> rombel.
@@ -373,26 +408,54 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
                 </div>
 
                 <div>
-                  <label htmlFor="mapel-kitab" className={labelClass}>
+                  <label className={labelClass}>
                     Kitab <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    id="mapel-kitab"
-                    value={idKitab}
-                    onChange={(e) => setIdKitab(e.target.value)}
-                    className={selectClass}
-                    required
-                    style={{
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`
-                    }}
-                  >
-                    <option value="">— Pilih kitab —</option>
-                    {kitabSorted.map((k) => (
-                      <option key={k.id} value={String(k.id)}>
-                        {k.fan ? `${k.nama_indo} (${k.fan})` : k.nama_indo}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex flex-wrap items-stretch gap-2">
+                    <div className="min-h-[42px] min-w-0 flex-1 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm">
+                      {idKitab && selectedKitab ? (
+                        <div>
+                          <p
+                            className="text-gray-900 dark:text-gray-100 truncate font-medium"
+                            dir={String(selectedKitab.nama_arab || '').trim() ? 'rtl' : 'ltr'}
+                          >
+                            {kitabPickerLabel(selectedKitab)}
+                          </p>
+                          {(selectedKitab.fan || selectedKitab.nama_indo) && String(selectedKitab.nama_arab || '').trim() ? (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate" dir="ltr">
+                              {[selectedKitab.nama_indo, selectedKitab.fan].filter(Boolean).join(' · ')}
+                            </p>
+                          ) : selectedKitab.fan ? (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{selectedKitab.fan}</p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 dark:text-gray-500">Belum dipilih — buka Cari kitab</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setKitabPickerOpen(true)}
+                      disabled={loading}
+                      className="shrink-0 rounded-xl border border-teal-600 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-100 dark:border-teal-500 dark:bg-teal-900/30 dark:text-teal-200 dark:hover:bg-teal-900/50 disabled:opacity-50"
+                    >
+                      Cari kitab
+                    </button>
+                    {idKitab ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIdKitab('')
+                          setSelectedKitab(null)
+                        }}
+                        disabled={loading}
+                        className="shrink-0 rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50"
+                        title="Hapus pilihan"
+                      >
+                        Hapus
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -475,8 +538,6 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
                         ? `Menyimpan ${saveProgress.current}/${saveProgress.total}…`
                         : 'Menyimpan...'}
                     </>
-                  ) : isEdit ? (
-                    'Simpan'
                   ) : selectedRombelCount > 1 ? (
                     `Simpan ke ${selectedRombelCount} rombel`
                   ) : (
@@ -491,7 +552,21 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
     </AnimatePresence>
   )
 
-  return createPortal(panel, document.body)
+  return (
+    <>
+      {createPortal(panel, document.body)}
+      <CariKitabOffcanvas
+        isOpen={kitabPickerOpen}
+        onClose={() => setKitabPickerOpen(false)}
+        onSelect={(row) => {
+          if (!row?.id) return
+          setIdKitab(String(row.id))
+          setSelectedKitab(row)
+        }}
+        initialList={kitabList}
+      />
+    </>
+  )
 }
 
 export default MapelFormOffcanvas

@@ -7,6 +7,10 @@
 #   -Target: staging|production|1|2
 #   -Scope: frontend|api|both|1|2|3
 #   -Frontend: ebeddien|daftar|mybeddien|nailul|all|1|2|3|4|5  (hanya jika -Scope frontend/both)
+#   -UploadMode: full|changed|api-code|1|2|3
+#       full     = tar seluruh paket (default CI / aman)
+#       changed  = hanya file berbeda (rsync jika ada; else delta hash+tar)
+#       api-code = API tanpa vendor (frontend ikut mode changed jika ikut di-deploy)
 #   -Migrate / -Seed: jalankan phinx di server setelah upload API
 
 param(
@@ -16,13 +20,15 @@ param(
     [string]$Scope = '',
     [ValidateSet('1', '2', '3', '4', '5', 'ebeddien', 'daftar', 'mybeddien', 'nailul', 'all', '')]
     [string]$Frontend = '',
+    [ValidateSet('1', '2', '3', 'full', 'changed', 'api-code', '')]
+    [string]$UploadMode = '',
     [switch]$Migrate,
     [switch]$Seed
 )
 
 $ErrorActionPreference = "Stop"
 
-$script:NonInteractiveDeploy = ($Target -ne '') -or ($Scope -ne '') -or ($Frontend -ne '') -or $Migrate.IsPresent -or $Seed.IsPresent
+$script:NonInteractiveDeploy = ($Target -ne '') -or ($Scope -ne '') -or ($Frontend -ne '') -or ($UploadMode -ne '') -or $Migrate.IsPresent -or $Seed.IsPresent
 
 function Resolve-DeployChoice {
     param(
@@ -44,6 +50,9 @@ function Resolve-DeployChoice {
             'mybeddien' { return '3' }
             'nailul' { return '4' }
             'all' { return '5' }
+            'full' { return '1' }
+            'changed' { return '2' }
+            'api-code' { return '3' }
             default {
                 if ($Valid -contains $p) { return $p }
                 throw "Pilihan tidak valid untuk $Prompt : '$Provided'. Valid: $($Valid -join ', ')"
@@ -149,6 +158,25 @@ if ($doFrontend) {
     $doNailul    = $front -eq "4" -or $front -eq "5"
 }
 
+# --- Mode upload: full / changed / API tanpa vendor ---
+Write-Host ""
+Write-Host "  Mode upload:" -ForegroundColor White
+Write-Host '    1) Full        - tar seluruh paket (aman, seperti sebelumnya)' -ForegroundColor Cyan
+Write-Host '    2) Changed    - hanya file berbeda (lebih cepat; rsync atau delta)' -ForegroundColor Yellow
+Write-Host '    3) API code   - API tanpa vendor (frontend ikut Changed jika ikut deploy)' -ForegroundColor Magenta
+Write-Host ""
+$uploadChoice = Resolve-DeployChoice -Prompt '  Masukkan pilihan (1, 2, atau 3)' -Valid @('1', '2', '3') -Provided $UploadMode -Default '1'
+if ($uploadChoice -notmatch '^[123]$') {
+    Write-Error 'Pilihan mode upload tidak valid. Gunakan 1, 2, atau 3.'
+}
+$uploadModeName = switch ($uploadChoice) {
+    '1' { 'full' }
+    '2' { 'changed' }
+    '3' { 'api-code' }
+}
+$includeApiVendor = $uploadModeName -ne 'api-code'
+$useDeltaUpload = $uploadModeName -eq 'changed' -or $uploadModeName -eq 'api-code'
+
 # --- Jika API: tanya migrasi & seed sekali di depan (supaya tidak interupsi di tengah proses) ---
 $runMigrations = 'n'
 $runSeeds = 'n'
@@ -173,6 +201,7 @@ if ($doApi) {
 
 Write-Host ""
 Write-Host "  Target: $envLabel | ebeddien: $doEbeddien | daftar: $doDaftar | mybeddien: $doMybeddien | nailul-murod: $doNailul | API: $doApi" -ForegroundColor Cyan
+Write-Host "  Upload: $uploadModeName$(if (-not $includeApiVendor) { ' (API tanpa vendor)' })$(if ($useDeltaUpload) { ' / delta' } else { ' / full tar' })" -ForegroundColor Cyan
 if ($doApi) {
     Write-Host "  Migrasi: $(if ($runMigrations -eq 'y' -or $runMigrations -eq 'Y') { 'ya' } else { 'tidak' }) | Seed: $(if ($runSeeds -eq 'y' -or $runSeeds -eq 'Y') { 'ya' } else { 'tidak' })" -ForegroundColor Cyan
 }
@@ -243,6 +272,247 @@ function Invoke-RemoteTarExtractAndVerify {
         throw "Deploy tidak lengkap di server (bundle $assetPath tidak ada). Ulangi deploy frontend."
     }
     Write-Host "  Verifikasi server: $assetPath OK" -ForegroundColor Green
+}
+
+function Get-RsyncExecutable {
+    $cmd = Get-Command rsync -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) { return $cmd.Source }
+    foreach ($candidate in @(
+            'C:\Program Files\Git\usr\bin\rsync.exe',
+            'C:\Program Files\Git\mingw64\bin\rsync.exe',
+            "$env:LOCALAPPDATA\Programs\Git\usr\bin\rsync.exe"
+        )) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+    return $null
+}
+
+function Get-LocalSha256Manifest {
+    param([Parameter(Mandatory = $true)][string]$RootDir)
+    $map = @{}
+    $rootFull = (Resolve-Path $RootDir).Path
+    Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force | ForEach-Object {
+        $rel = $_.FullName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/')
+        if ($rel -eq '') { return }
+        $map[$rel] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    return $map
+}
+
+function Get-RemoteSha256Manifest {
+    param(
+        [Parameter(Mandatory = $true)][string]$RemotePath,
+        [Parameter(Mandatory = $true)][string[]]$Roots
+    )
+    $rootsSafe = @($Roots | ForEach-Object { ($_ -replace '[^a-zA-Z0-9._/-]', '').Trim('/') } | Where-Object { $_ -ne '' })
+    if ($rootsSafe.Count -eq 0) { return @{ Ok = $false; Map = @{} } }
+    $rootsJoined = $rootsSafe -join ' '
+    # Satu perintah find; sha256sum di server Linux Hostinger.
+    $remoteCmd = "cd $RemotePath && if command -v sha256sum >/dev/null 2>&1; then find $rootsJoined -type f 2>/dev/null | xargs -r sha256sum; else echo NO_SHA256SUM; fi"
+    $raw = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $remoteCmd 2>&1
+    $text = ($raw | Out-String)
+    if ($text -match 'NO_SHA256SUM') {
+        return @{ Ok = $false; Map = @{} }
+    }
+    $map = @{}
+    foreach ($line in ($raw | ForEach-Object { "$_" })) {
+        if ($line -match '^\s*([a-fA-F0-9]{64})\s+(\./)?(.+)$') {
+            $hash = $Matches[1].ToLowerInvariant()
+            $path = $Matches[3].Trim().TrimStart('./')
+            if ($path) { $map[$path] = $hash }
+        }
+    }
+    return @{ Ok = $true; Map = $map }
+}
+
+function Invoke-RsyncDirUpload {
+    param(
+        [Parameter(Mandatory = $true)][string]$RsyncExe,
+        [Parameter(Mandatory = $true)][string]$LocalDir,
+        [Parameter(Mandatory = $true)][string]$RemotePath,
+        [string[]]$Exclude = @()
+    )
+    $local = $LocalDir.TrimEnd('\', '/') + '/'
+    $sshCmd = "ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes"
+    $args = @('-avz', '--delete', '-e', $sshCmd)
+    foreach ($ex in $Exclude) {
+        $args += @('--exclude', $ex)
+    }
+    $args += @($local, "${SSH_USER}@${SSH_HOST}:${RemotePath}/")
+    Write-Host "  rsync → ${RemotePath}/ ..." -ForegroundColor Gray
+    & $RsyncExe @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "rsync gagal (exit $LASTEXITCODE)."
+    }
+}
+
+function Invoke-DeltaTarUpload {
+    param(
+        [Parameter(Mandatory = $true)][string]$LocalDir,
+        [Parameter(Mandatory = $true)][string]$RemotePath,
+        [Parameter(Mandatory = $true)][string]$TarFileName,
+        [Parameter(Mandatory = $true)][string[]]$CompareRoots,
+        [string]$Label = 'delta',
+        [string]$VerifyRelativeFile = ''
+    )
+    $localMap = Get-LocalSha256Manifest -RootDir $LocalDir
+    $remoteInfo = Get-RemoteSha256Manifest -RemotePath $RemotePath -Roots $CompareRoots
+    if (-not $remoteInfo.Ok) {
+        Write-Host "  [$Label] Remote tidak punya sha256sum / gagal baca — fallback full tar." -ForegroundColor Yellow
+        return $false
+    }
+    $remoteMap = $remoteInfo.Map
+    $toUpload = @()
+    foreach ($rel in $localMap.Keys) {
+        if (-not $remoteMap.ContainsKey($rel) -or $remoteMap[$rel] -ne $localMap[$rel]) {
+            $toUpload += $rel
+        }
+    }
+    $toDelete = @()
+    foreach ($rel in $remoteMap.Keys) {
+        $underRoot = $false
+        foreach ($root in $CompareRoots) {
+            if ($rel -eq $root -or $rel.StartsWith("$root/")) { $underRoot = $true; break }
+        }
+        if ($underRoot -and -not $localMap.ContainsKey($rel)) {
+            $toDelete += $rel
+        }
+    }
+
+    Write-Host "  [$Label] Berubah: $($toUpload.Count) | Hapus remote: $($toDelete.Count) | Lokal: $($localMap.Count) file" -ForegroundColor Gray
+
+    if ($toUpload.Count -eq 0 -and $toDelete.Count -eq 0) {
+        Write-Host "  [$Label] Tidak ada perubahan — lewati upload." -ForegroundColor Green
+        if ($VerifyRelativeFile) {
+            $vCmd = "cd $RemotePath && test -f $VerifyRelativeFile && echo VERIFY_OK || echo VERIFY_FAIL"
+            $vOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $vCmd 2>&1
+            if ((($vOut | Out-String).Trim()) -notmatch 'VERIFY_OK') {
+                throw "[$Label] Verifikasi gagal: $VerifyRelativeFile tidak ada di server."
+            }
+        }
+        return $true
+    }
+
+    if ($toUpload.Count -gt 0) {
+        $deltaRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("deploy-delta-" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $deltaRoot | Out-Null
+        try {
+            foreach ($rel in $toUpload) {
+                $src = Join-Path $LocalDir ($rel.Replace('/', [IO.Path]::DirectorySeparatorChar))
+                $dst = Join-Path $deltaRoot ($rel.Replace('/', [IO.Path]::DirectorySeparatorChar))
+                $dstDir = Split-Path $dst -Parent
+                if (-not (Test-Path $dstDir)) {
+                    New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $src -Destination $dst -Force
+            }
+            $tarPath = Join-Path $scriptDir $TarFileName
+            if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
+            tar -cf $tarPath -C $deltaRoot .
+            Invoke-ScpWithRetry -LocalPath $tarPath -RemoteSpec "${SSH_USER}@${SSH_HOST}:${RemotePath}/"
+            $extractCmd = "cd $RemotePath && tar --warning=none -xf $TarFileName && rm -f $TarFileName && echo DELTA_OK"
+            $extractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
+            if ((($extractOut | Out-String).Trim()) -notmatch 'DELTA_OK') {
+                throw "[$Label] Ekstraksi delta gagal: $(($extractOut | Out-String).Trim())"
+            }
+            Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
+        } finally {
+            Remove-Item $deltaRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if ($toDelete.Count -gt 0) {
+        # Hapus batch aman (path relatif tanpa ..)
+        $safeDeletes = @($toDelete | Where-Object { $_ -notmatch '\.\.' -and $_ -notmatch '^\s*$' -and $_ -notmatch "'" })
+        $batchSize = 40
+        for ($i = 0; $i -lt $safeDeletes.Count; $i += $batchSize) {
+            $chunk = $safeDeletes[$i..([Math]::Min($i + $batchSize - 1, $safeDeletes.Count - 1))]
+            $quoted = ($chunk | ForEach-Object { "'$_'" }) -join ' '
+            $rmCmd = "cd $RemotePath && rm -f $quoted && echo RM_OK"
+            $rmOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $rmCmd 2>&1
+            if ((($rmOut | Out-String).Trim()) -notmatch 'RM_OK') {
+                Write-Warning "[$Label] Sebagian hapus remote mungkin gagal: $(($rmOut | Out-String).Trim())"
+            }
+        }
+    }
+
+    if ($VerifyRelativeFile) {
+        $vCmd = "cd $RemotePath && test -f $VerifyRelativeFile && echo VERIFY_OK || echo VERIFY_FAIL"
+        $vOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $vCmd 2>&1
+        if ((($vOut | Out-String).Trim()) -notmatch 'VERIFY_OK') {
+            throw "[$Label] Verifikasi gagal: $VerifyRelativeFile tidak ada di server."
+        }
+        Write-Host "  Verifikasi server: $VerifyRelativeFile OK" -ForegroundColor Green
+    }
+    return $true
+}
+
+function Invoke-ContentDirUpload {
+    param(
+        [Parameter(Mandatory = $true)][string]$LocalDir,
+        [Parameter(Mandatory = $true)][string]$RemotePath,
+        [Parameter(Mandatory = $true)][string]$TarFileName,
+        [Parameter(Mandatory = $true)][bool]$UseDelta,
+        [string]$Label = 'upload',
+        [string]$VerifyRelativeFile = '',
+        [string[]]$CompareRoots = @('.'),
+        [string[]]$RsyncExclude = @()
+    )
+    if (-not $UseDelta) {
+        Write-Host "  [$Label] Full tar..." -ForegroundColor Cyan
+        $tarPath = Join-Path $scriptDir $TarFileName
+        # Tar name may live next to app; prefer scriptDir for API, caller may pass path via TarFileName only as basename
+        if ([IO.Path]::IsPathRooted($TarFileName)) {
+            $tarPath = $TarFileName
+            $TarFileName = [IO.Path]::GetFileName($TarFileName)
+        } else {
+            $tarPath = Join-Path $scriptDir $TarFileName
+        }
+        if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
+        tar -cf $tarPath -C $LocalDir .
+        Invoke-ScpWithRetry -LocalPath $tarPath -RemoteSpec "${SSH_USER}@${SSH_HOST}:${RemotePath}/"
+        if ($VerifyRelativeFile) {
+            $extractCmd = "cd $RemotePath && tar --warning=none -xf $TarFileName && rm -f $TarFileName && test -f $VerifyRelativeFile && echo VERIFY_OK || echo VERIFY_FAIL"
+            $result = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
+            if ((($result | Out-String).Trim()) -notmatch 'VERIFY_OK') {
+                throw "[$Label] Full extract/verify gagal."
+            }
+            Write-Host "  Verifikasi server: $VerifyRelativeFile OK" -ForegroundColor Green
+        } else {
+            $extractCmd = "cd $RemotePath && tar --warning=none -xf $TarFileName && rm -f $TarFileName && echo EXTRACT_OK"
+            $result = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
+            if ((($result | Out-String).Trim()) -notmatch 'EXTRACT_OK') {
+                throw "[$Label] Full extract gagal: $(($result | Out-String).Trim())"
+            }
+            Write-Host "  Ekstraksi OK" -ForegroundColor Green
+        }
+        Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
+        return
+    }
+
+    $rsyncExe = Get-RsyncExecutable
+    if ($rsyncExe) {
+        Write-Host "  [$Label] Changed via rsync..." -ForegroundColor Cyan
+        Invoke-RsyncDirUpload -RsyncExe $rsyncExe -LocalDir $LocalDir -RemotePath $RemotePath -Exclude $RsyncExclude
+        if ($VerifyRelativeFile) {
+            $vCmd = "cd $RemotePath && test -f $VerifyRelativeFile && echo VERIFY_OK || echo VERIFY_FAIL"
+            $vOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $vCmd 2>&1
+            if ((($vOut | Out-String).Trim()) -notmatch 'VERIFY_OK') {
+                throw "[$Label] Verifikasi setelah rsync gagal: $VerifyRelativeFile"
+            }
+            Write-Host "  Verifikasi server: $VerifyRelativeFile OK" -ForegroundColor Green
+        }
+        return
+    }
+
+    Write-Host "  [$Label] Changed via delta hash (rsync tidak ditemukan)..." -ForegroundColor Cyan
+    $ok = Invoke-DeltaTarUpload -LocalDir $LocalDir -RemotePath $RemotePath -TarFileName $TarFileName `
+        -CompareRoots $CompareRoots -Label $Label -VerifyRelativeFile $VerifyRelativeFile
+    if (-not $ok) {
+        Write-Host "  [$Label] Fallback ke full tar..." -ForegroundColor Yellow
+        Invoke-ContentDirUpload -LocalDir $LocalDir -RemotePath $RemotePath -TarFileName $TarFileName `
+            -UseDelta:$false -Label $Label -VerifyRelativeFile $VerifyRelativeFile
+    }
 }
 
 # Vite mode=production memuat .env.production (lebih tinggi dari .env).
@@ -433,17 +703,13 @@ if ($doEbeddien) {
     $mainBundle = Get-ViteMainBundleFromDist -DistDir (Join-Path $ebeddienDir "dist")
     Write-Host "[Frontend ebeddien] Entry bundle: assets/$mainBundle" -ForegroundColor Gray
 
-    Write-Host "[Frontend ebeddien] Buat arsip tar..." -ForegroundColor Cyan
-    $tarPath = Join-Path $ebeddienDir $TAR_FILE
-    if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
-    tar -cf $tarPath -C dist .
-    Assert-TarContainsAsset -TarPath $tarPath -AssetRelativePath "assets/$mainBundle"
-
-    Write-Host "[Frontend ebeddien] Upload + ekstrak di server..." -ForegroundColor Cyan
-    Invoke-ScpWithRetry -LocalPath $tarPath -RemoteSpec "${SSH_USER}@${SSH_HOST}:${REMOTE_PATH}/"
-    Invoke-RemoteTarExtractAndVerify -RemotePath $REMOTE_PATH -TarFile $TAR_FILE -MainBundle $mainBundle
-
-    Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
+    Write-Host "[Frontend ebeddien] Upload ($uploadModeName)..." -ForegroundColor Cyan
+    $distAbs = Join-Path $ebeddienDir "dist"
+    $ebRoots = @(Get-ChildItem -LiteralPath $distAbs -Force | ForEach-Object { $_.Name })
+    if ($ebRoots.Count -eq 0) { $ebRoots = @('.') }
+    Invoke-ContentDirUpload -LocalDir $distAbs -RemotePath $REMOTE_PATH -TarFileName $TAR_FILE `
+        -UseDelta:$useDeltaUpload -Label 'ebeddien' -VerifyRelativeFile "assets/$mainBundle" `
+        -CompareRoots $ebRoots
 
     # --- Kembalikan .env ke local ---
     $envContent = Get-Content $envPath -Raw -Encoding UTF8
@@ -498,18 +764,12 @@ if ($doDaftar) {
         Write-Error "Folder dist tidak ada setelah build daftar."
     }
 
-    Write-Host "[Frontend daftar] Buat arsip tar..." -ForegroundColor Cyan
-    $tarPath = Join-Path $daftarDir $DAFTAR_TAR
-    if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
-    tar -cf $tarPath -C dist .
-
-    Write-Host "[Frontend daftar] Upload + ekstrak di server..." -ForegroundColor Cyan
-    scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_DAFTAR_PATH}/"
-    $extractCmd = 'cd ' + $REMOTE_DAFTAR_PATH + ' && tar --warning=none -xf ' + $DAFTAR_TAR + ' && rm -f ' + $DAFTAR_TAR + ' && echo EXTRACT_OK'
-    $extractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
-    if ((($extractOut | Out-String).Trim()) -notmatch 'EXTRACT_OK') { throw "Ekstraksi di server gagal. Output: $(($extractOut | Out-String).Trim())" }
-
-    Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
+    Write-Host "[Frontend daftar] Upload ($uploadModeName)..." -ForegroundColor Cyan
+    $daftarDist = Join-Path $daftarDir "dist"
+    $daftarRoots = @(Get-ChildItem -LiteralPath $daftarDist -Force | ForEach-Object { $_.Name })
+    if ($daftarRoots.Count -eq 0) { $daftarRoots = @('.') }
+    Invoke-ContentDirUpload -LocalDir $daftarDist -RemotePath $REMOTE_DAFTAR_PATH -TarFileName $DAFTAR_TAR `
+        -UseDelta:$useDeltaUpload -Label 'daftar' -CompareRoots $daftarRoots
 
     $envContent = Get-Content $envPath -Raw -Encoding UTF8
     $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=http://localhost/api/public/api"
@@ -562,18 +822,12 @@ if ($doMybeddien) {
         Write-Error "Folder dist tidak ada setelah build mybeddien."
     }
 
-    Write-Host "[Frontend mybeddien] Buat arsip tar..." -ForegroundColor Cyan
-    $tarPath = Join-Path $mybeddienDir $MYBEDDIEN_TAR
-    if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
-    tar -cf $tarPath -C dist .
-
-    Write-Host "[Frontend mybeddien] Upload + ekstrak di server..." -ForegroundColor Cyan
-    scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_MYBEDDIEN_PATH}/"
-    $extractCmd = 'cd ' + $REMOTE_MYBEDDIEN_PATH + ' && tar --warning=none -xf ' + $MYBEDDIEN_TAR + ' && rm -f ' + $MYBEDDIEN_TAR + ' && echo EXTRACT_OK'
-    $extractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
-    if ((($extractOut | Out-String).Trim()) -notmatch 'EXTRACT_OK') { throw "Ekstraksi di server gagal. Output: $(($extractOut | Out-String).Trim())" }
-
-    Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
+    Write-Host "[Frontend mybeddien] Upload ($uploadModeName)..." -ForegroundColor Cyan
+    $myDist = Join-Path $mybeddienDir "dist"
+    $myRoots = @(Get-ChildItem -LiteralPath $myDist -Force | ForEach-Object { $_.Name })
+    if ($myRoots.Count -eq 0) { $myRoots = @('.') }
+    Invoke-ContentDirUpload -LocalDir $myDist -RemotePath $REMOTE_MYBEDDIEN_PATH -TarFileName $MYBEDDIEN_TAR `
+        -UseDelta:$useDeltaUpload -Label 'mybeddien' -CompareRoots $myRoots
 
     $envContent = Get-Content $envPath -Raw -Encoding UTF8
     $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=http://localhost/api/public/api"
@@ -626,18 +880,12 @@ if ($doNailul) {
         Write-Error "Folder dist tidak ada setelah build nailul-murod."
     }
 
-    Write-Host "[Frontend nailul-murod] Buat arsip tar..." -ForegroundColor Cyan
-    $tarPath = Join-Path $nailulDir $NAILUL_TAR
-    if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
-    tar -cf $tarPath -C dist .
-
-    Write-Host "[Frontend nailul-murod] Upload + ekstrak di server..." -ForegroundColor Cyan
-    scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $tarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_NAILUL_PATH}/"
-    $extractCmd = 'cd ' + $REMOTE_NAILUL_PATH + ' && tar --warning=none -xf ' + $NAILUL_TAR + ' && rm -f ' + $NAILUL_TAR + ' && echo EXTRACT_OK'
-    $extractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $extractCmd 2>&1
-    if ((($extractOut | Out-String).Trim()) -notmatch 'EXTRACT_OK') { throw "Ekstraksi di server gagal. Output: $(($extractOut | Out-String).Trim())" }
-
-    Remove-Item $tarPath -Force -ErrorAction SilentlyContinue
+    Write-Host "[Frontend nailul-murod] Upload ($uploadModeName)..." -ForegroundColor Cyan
+    $nailulDist = Join-Path $nailulDir "dist"
+    $nailulRoots = @(Get-ChildItem -LiteralPath $nailulDist -Force | ForEach-Object { $_.Name })
+    if ($nailulRoots.Count -eq 0) { $nailulRoots = @('.') }
+    Invoke-ContentDirUpload -LocalDir $nailulDist -RemotePath $REMOTE_NAILUL_PATH -TarFileName $NAILUL_TAR `
+        -UseDelta:$useDeltaUpload -Label 'nailul-murod' -CompareRoots $nailulRoots
 
     if ($hasEnvFile) {
         $envContent = Get-Content $envPath -Raw -Encoding UTF8
@@ -662,7 +910,7 @@ if ($doNailul) {
 #   - public/             (index.php, .htaccess - entry point API)
 #   - routes/             (01_test_auth.php ... 21_ijin_boyong.php - definisi route API v2)
 #   - src/                (Controllers, Middleware, Services, Helpers, Database, dll.)
-#   - vendor/             (dependensi Composer; jika belum ada: composer install --no-dev)
+#   - vendor/             (dependensi Composer; dilewati jika UploadMode=api-code)
 #
 # Yang TIDAK di-upload:
 #   - migrations/, migrations-v2/  (tidak dipakai; schema + changelog sudah di db/migrations + seeds)
@@ -680,13 +928,13 @@ if ($doApi) {
     }
 
     $apiTemp    = Join-Path $scriptDir "api-deploy-temp"
-    $apiTarPath = Join-Path $scriptDir $API_TAR
     if (Test-Path $apiTemp) {
         Remove-Item $apiTemp -Recurse -Force
     }
     New-Item -ItemType Directory -Path $apiTemp | Out-Null
 
-    Write-Host '[API] Siapkan file production (config, public, src, vendor)...' -ForegroundColor Cyan
+    $vendorNote = if ($includeApiVendor) { 'termasuk vendor' } else { 'TANPA vendor' }
+    Write-Host "[API] Siapkan file production (config, public, src, db — $vendorNote)..." -ForegroundColor Cyan
 
     $configFile = Join-Path $apiPath "config.php"
     if (Test-Path $configFile) {
@@ -709,41 +957,44 @@ if ($doApi) {
         Copy-Item $phinxConfig -Destination (Join-Path $apiTemp "phinx.php") -Force
     }
 
-    $vendorSrc = Join-Path $apiPath "vendor"
-    if (Test-Path $vendorSrc) {
-        Copy-Item $vendorSrc -Destination (Join-Path $apiTemp "vendor") -Recurse -Force
-    } else {
-        Write-Host "[API] Folder vendor tidak ada. Menjalankan composer install --no-dev di api..." -ForegroundColor Yellow
-        Push-Location $apiPath
-        try {
-            composer install --no-dev --no-interaction 2>&1 | Out-Null
-            if (Test-Path $vendorSrc) {
-                Copy-Item $vendorSrc -Destination (Join-Path $apiTemp "vendor") -Recurse -Force
+    if ($includeApiVendor) {
+        $vendorSrc = Join-Path $apiPath "vendor"
+        if (Test-Path $vendorSrc) {
+            Copy-Item $vendorSrc -Destination (Join-Path $apiTemp "vendor") -Recurse -Force
+        } else {
+            Write-Host "[API] Folder vendor tidak ada. Menjalankan composer install --no-dev di api..." -ForegroundColor Yellow
+            Push-Location $apiPath
+            try {
+                composer install --no-dev --no-interaction 2>&1 | Out-Null
+                if (Test-Path $vendorSrc) {
+                    Copy-Item $vendorSrc -Destination (Join-Path $apiTemp "vendor") -Recurse -Force
+                }
+            } finally {
+                Pop-Location
             }
-        } finally {
-            Pop-Location
+            if (-not (Test-Path (Join-Path $apiTemp "vendor"))) {
+                Write-Error "Folder api/vendor tetap tidak ada. Jalankan 'composer install' di folder api lalu coba lagi."
+            }
         }
-        if (-not (Test-Path (Join-Path $apiTemp "vendor"))) {
-            Write-Error "Folder api/vendor tetap tidak ada. Jalankan 'composer install' di folder api lalu coba lagi."
-        }
+    } else {
+        Write-Host "[API] Mode api-code: vendor di server tidak diubah." -ForegroundColor Yellow
     }
 
-    Write-Host "[API] Buat arsip tar..." -ForegroundColor Cyan
-    if (Test-Path $apiTarPath) { Remove-Item $apiTarPath -Force }
-    tar -cf $apiTarPath -C $apiTemp .
+    $apiCompareRoots = @('config.php', 'phinx.php', 'public', 'routes', 'src', 'db')
+    if ($includeApiVendor) { $apiCompareRoots += 'vendor' }
 
-    Write-Host ('[API] Upload + ekstrak di server (' + $REMOTE_API_PATH + ')...') -ForegroundColor Cyan
-    scp -P $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 $apiTarPath "${SSH_USER}@${SSH_HOST}:${REMOTE_API_PATH}/"
-    # Warning tar di stderr tidak boleh menghentikan ssh (ErrorActionPreference=Stop), jadi output digabung lalu diperiksa penanda.
-    $apiExtractCmd = 'cd ' + $REMOTE_API_PATH + ' && tar --warning=none -xf ' + $API_TAR + ' && rm -f ' + $API_TAR + ' && echo API_EXTRACT_OK'
-    $apiExtractOut = ssh -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "${SSH_USER}@${SSH_HOST}" $apiExtractCmd 2>&1
-    if ((($apiExtractOut | Out-String).Trim()) -notmatch 'API_EXTRACT_OK') {
-        throw "[API] Ekstraksi di server gagal. Output: $(($apiExtractOut | Out-String).Trim())"
+    $apiRsyncExclude = @('.env', '.env.*', 'uploads/', '.git/', '*.log')
+    if (-not $includeApiVendor) {
+        # Wajib: tanpa ini, rsync --delete akan menghapus vendor di server.
+        $apiRsyncExclude += 'vendor/'
     }
-    Write-Host '  Ekstraksi API di server OK' -ForegroundColor Green
+
+    Write-Host "[API] Upload ($uploadModeName) → $REMOTE_API_PATH ..." -ForegroundColor Cyan
+    Invoke-ContentDirUpload -LocalDir $apiTemp -RemotePath $REMOTE_API_PATH -TarFileName $API_TAR `
+        -UseDelta:$useDeltaUpload -Label 'api' -CompareRoots $apiCompareRoots `
+        -RsyncExclude $apiRsyncExclude
 
     Remove-Item $apiTemp -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item $apiTarPath -Force -ErrorAction SilentlyContinue
 
     # --- Migrasi & seed Phinx di server (opsi sudah ditanya di awal) ---
     $phinxEnv = if ($isStaging) { 'development' } else { 'production' }
@@ -778,6 +1029,7 @@ if ($doApi) {
 
 # --- Ringkasan ---
 Write-Host ""
+Write-Host "Mode upload: $uploadModeName" -ForegroundColor Cyan
 if ($doEbeddien) {
     $url = if ($isStaging) { "https://ebeddien.alutsmani.my.id" } else { "https://ebeddien.alutsmani.id" }
     Write-Host "Frontend ebeddien:  $url" -ForegroundColor Green

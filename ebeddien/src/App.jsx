@@ -17,6 +17,7 @@ import DatabaseMenuOutlet from './components/Auth/DatabaseMenuOutlet'
 import ChatAiSubRouteGuard from './components/Auth/ChatAiSubRouteGuard'
 import PendaftaranAdminSubRouteGuard from './components/Auth/PendaftaranAdminSubRouteGuard'
 import { NotificationProvider } from './contexts/NotificationContext'
+import { AbsenLokasiProvider } from './contexts/AbsenLokasiContext'
 import { GlobalSyncOutboxProvider } from './contexts/GlobalSyncOutboxContext'
 import LiveSocketSync from './components/LiveSocket/LiveSocketSync'
 import GlobalSyncOutboxBridge from './services/ijinOutbox/GlobalSyncOutboxBridge'
@@ -101,10 +102,9 @@ const WebsiteHalaman = lazy(() => import('./pages/Website/Halaman'))
 const WebsiteGaleri = lazy(() => import('./pages/Website/Galeri'))
 const WebsiteKategoriGaleri = lazy(() => import('./pages/Website/KategoriGaleri'))
 const WebsiteSeo = lazy(() => import('./pages/Website/Seo'))
-const Kitab = lazy(() => import('./pages/Settings/Kitab'))
+const Kurikulum = lazy(() => import('./pages/Settings/Kurikulum'))
 const NailulMurod = lazy(() => import('./pages/Wirid/NailulMurod'))
 const NailulMurodForm = lazy(() => import('./pages/Wirid/NailulMurodForm'))
-const Mapel = lazy(() => import('./pages/Settings/Mapel'))
 const Ujian = lazy(() => import('./pages/Settings/Ujian'))
 const Rombel = lazy(() => import('./pages/Settings/Rombel'))
 const ManageJabatan = lazy(() => import('./pages/Settings/ManageJabatan'))
@@ -694,6 +694,7 @@ function App() {
 
   return (
     <NotificationProvider>
+      <AbsenLokasiProvider>
       <GlobalSyncOutboxProvider>
       <LiveSocketProvider>
         <ChatOffcanvasProvider>
@@ -1467,11 +1468,12 @@ function App() {
                 </Suspense>
               }
             />
+            <Route path="/kitab" element={<Navigate to="/kurikulum?tab=kitab" replace />} />
             <Route
-              path="/kitab"
+              path="/kurikulum"
               element={
                 <Suspense fallback={<PageLoader />}>
-                  <Kitab />
+                  <Kurikulum />
                 </Suspense>
               }
             />
@@ -1499,14 +1501,7 @@ function App() {
                 </Suspense>
               }
             />
-            <Route
-              path="/mapel"
-              element={
-                <Suspense fallback={<PageLoader />}>
-                  <Mapel />
-                </Suspense>
-              }
-            />
+            <Route path="/mapel" element={<Navigate to="/kurikulum?tab=mapel" replace />} />
             <Route
               path="/ujian"
               element={
@@ -1982,6 +1977,7 @@ function App() {
         </ChatOffcanvasProvider>
       </LiveSocketProvider>
       </GlobalSyncOutboxProvider>
+      </AbsenLokasiProvider>
     </NotificationProvider>
   )
 }

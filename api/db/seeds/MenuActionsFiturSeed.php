@@ -140,6 +140,7 @@ class MenuActionsFiturSeed extends AbstractSeed
         $actions = [
             ['action.kalender.pengaturan.tab_bulan', 'Pengaturan kalender · Tab bulan (matriks)', 10],
             ['action.kalender.pengaturan.tab_hari_penting', 'Pengaturan kalender · Tab hari penting', 20],
+            ['action.kalender.pengaturan.tab_istiwa', 'Pengaturan kalender · Tab Istiwa’', 25],
             ['action.hari_penting.target.global', 'Hari penting · Target audiens global', 30],
             ['action.hari_penting.target.lembaga', 'Hari penting · Target lembaga (sesuai jabatan)', 40],
             ['action.hari_penting.target.user_selembaga', 'Hari penting · Target pengguna selembaga', 50],
@@ -322,6 +323,10 @@ class MenuActionsFiturSeed extends AbstractSeed
             ['menu.manage_jabatan', 'action.manage_jabatan.filter.lembaga_semua', 'Jabatan · Filter semua lembaga', 8],
             ['menu.mapel', 'action.mapel.halaman', 'Mapel · Akses halaman', 5],
             ['menu.mapel', 'action.mapel.filter.lembaga_semua', 'Mapel · Filter semua lembaga', 8],
+            ['menu.kurikulum', 'action.kurikulum.halaman', 'Kurikulum · Akses halaman', 5],
+            ['menu.kurikulum', 'action.kurikulum.tab.kitab', 'Kurikulum · Tab Kitab', 10],
+            ['menu.kurikulum', 'action.kurikulum.tab.mapel', 'Kurikulum · Tab Mapel', 20],
+            ['menu.kurikulum', 'action.kurikulum.tab.jadwal', 'Kurikulum · Tab Jadwal', 30],
             ['menu.ujian', 'action.ujian.halaman', 'Ujian · Akses halaman', 5],
         ];
         foreach ($rows as $r) {

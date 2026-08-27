@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { AbsenLokasiProvider } from '../../../contexts/AbsenLokasiContext'
 import { useAbsenFiturAccess } from '../../../hooks/useAbsenFiturAccess'
 import AbsenRiwayatTab from './AbsenRiwayatTab'
 import AbsenAbsenLokasiTab from './AbsenAbsenLokasiTab'
@@ -93,7 +92,6 @@ export default function AbsenPage() {
   }
 
   return (
-    <AbsenLokasiProvider>
       <div className="h-full overflow-hidden bg-gray-50 dark:bg-gray-900" style={{ minHeight: 0 }}>
         <div className="h-full overflow-y-auto page-content-scroll" style={{ minHeight: 0 }}>
           <div className="p-4 sm:p-6 lg:p-8 pb-24 sm:pb-6 lg:pb-8">
@@ -194,6 +192,5 @@ export default function AbsenPage() {
           </div>
         </div>
       </div>
-    </AbsenLokasiProvider>
   )
 }
