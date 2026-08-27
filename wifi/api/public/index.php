@@ -74,6 +74,7 @@ $app->group('', function (RouteCollectorProxy $group) use ($auth, $users, $pelan
     $group->delete('/users/{id}', [$users, 'delete']);
 
     $group->get('/pelanggan', [$pelanggan, 'index']);
+    $group->post('/pelanggan/import', [$pelanggan, 'import']);
     $group->get('/pelanggan/{id}', [$pelanggan, 'show']);
     $group->post('/pelanggan', [$pelanggan, 'create']);
     $group->put('/pelanggan/{id}', [$pelanggan, 'update']);

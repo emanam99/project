@@ -81,8 +81,9 @@ export default function CalendarHijri({
       const gregYear = dayDate.getFullYear()
 
       for (const item of hariPentingList) {
-        const color = item.warna_label || '#0d9488'
+        const color = item.warna_label
         if (
+          color &&
           matchesHariPentingHijriCalendar(day, hijriBulan, hijriYear, gregDay, gregMonth, gregYear, item)
         ) {
           if (!map[day]) map[day] = []

@@ -10,6 +10,7 @@ const KEY_SHOW_HIJRIYAH = 'uwaba_kalender_showHijriyah'
 const KEY_SHOW_PASARAN = 'uwaba_kalender_showPasaran'
 const KEY_SHOW_HARI_PENTING_MARKERS = 'uwaba_kalender_showHariPentingMarkers'
 const KEY_ACTIVE_TAB = 'uwaba_kalender_activeTab'
+const KEY_HOUR_CYCLE = 'uwaba_kalender_hourCycle'
 
 const DEFAULT_GRID_VIEW = {
   showDateBox: true,
@@ -124,4 +125,13 @@ export function loadActiveTab() {
 
 export function saveActiveTab(tab) {
   set(KEY_ACTIVE_TAB, tab === 'masehi' ? 'masehi' : 'hijri')
+}
+
+/** Format jam digital bar: 12 atau 24. Default 12. */
+export function loadHourCycle() {
+  return get(KEY_HOUR_CYCLE, '12') === '24' ? 24 : 12
+}
+
+export function saveHourCycle(cycle) {
+  set(KEY_HOUR_CYCLE, cycle === 24 ? '24' : '12')
 }

@@ -139,7 +139,8 @@ class MenuActionsFiturSeed extends AbstractSeed
         }
         $actions = [
             ['action.kalender.pengaturan.tab_bulan', 'Pengaturan kalender · Tab bulan (matriks)', 10],
-            ['action.kalender.pengaturan.tab_hari_penting', 'Pengaturan kalender · Tab hari penting', 20],
+            ['action.kalender.pengaturan.tab_hari_penting', 'Pengaturan kalender · Tab Jadwal', 20],
+            ['action.kalender.pengaturan.tab_lokasi', 'Pengaturan kalender · Tab Lokasi (daftar alamat)', 22],
             ['action.kalender.pengaturan.tab_istiwa', 'Pengaturan kalender · Tab Istiwa’', 25],
             ['action.hari_penting.target.global', 'Hari penting · Target audiens global', 30],
             ['action.hari_penting.target.lembaga', 'Hari penting · Target lembaga (sesuai jabatan)', 40],
@@ -149,6 +150,9 @@ class MenuActionsFiturSeed extends AbstractSeed
         foreach ($actions as $a) {
             $ins->execute([$parentId, $a[0], $a[1], $a[2], 'Kalender']);
         }
+        $conn->exec(
+            "UPDATE `app___fitur` SET `label` = 'Pengaturan kalender · Tab Jadwal' WHERE `id_app` = 1 AND `code` = 'action.kalender.pengaturan.tab_hari_penting'"
+        );
     }
 
     private function parentId(\PDO $conn, \PDOStatement $pidStmt, string $code): ?int

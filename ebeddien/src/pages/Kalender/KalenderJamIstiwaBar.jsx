@@ -10,6 +10,7 @@ import {
   istiwaOffsetMs,
   istiwaSolarOffsetMs
 } from './utils/jamIstiwa'
+import { loadHourCycle, saveHourCycle } from './utils/kalenderStorage'
 
 const FETCH_ALAMAT_MOVE_THRESHOLD_M = 42
 
@@ -31,6 +32,7 @@ export default function KalenderJamIstiwaBar() {
     lng: ISTIWA_DEFAULT_LNG
   })
   const [alamatText, setAlamatText] = useState('')
+  const [hourCycle, setHourCycle] = useState(loadHourCycle)
   const lastResolvedPosRef = useRef(null)
   const seqRef = useRef(0)
 
@@ -62,10 +64,14 @@ export default function KalenderJamIstiwaBar() {
   const effLng = useGps ? coords.lng : defaultCoords.lng
   const effAcc = useGps && Number.isFinite(coords.accuracy) ? coords.accuracy : 0
 
+  useEffect(() => {
+    saveHourCycle(hourCycle)
+  }, [hourCycle])
+
   const solarOffsetMs = useMemo(() => istiwaSolarOffsetMs(now, effLat, effLng), [now, effLat, effLng])
   const offsetMs = useMemo(() => istiwaOffsetMs(now, effLat, effLng), [now, effLat, effLng])
-  const wibText = formatHmsJakarta(now)
-  const istiwaText = formatHmsJakarta(new Date(now.getTime() + offsetMs))
+  const wibText = formatHmsJakarta(now, hourCycle)
+  const istiwaText = formatHmsJakarta(new Date(now.getTime() + offsetMs), hourCycle)
   const selisihText = formatWibKeIstSelisih(solarOffsetMs)
 
   const showGpsBtn = !gpsEnabled || (!!geoError && !coords)
@@ -108,21 +114,29 @@ export default function KalenderJamIstiwaBar() {
   return (
     <div className="kalender-istiwa-bar flex-shrink-0">
       <div className="kalender-istiwa-bar__clocks">
-        <div className="kalender-istiwa-bar__clock kalender-istiwa-bar__clock--wib">
-          <span className="kalender-istiwa-bar__time" aria-live="off">
-            {wibText}
-          </span>
-          <span className="kalender-istiwa-bar__label">WIB</span>
-        </div>
+        <span className="kalender-istiwa-bar__time kalender-istiwa-bar__time--wib" aria-live="off">
+          {wibText}
+        </span>
+        <button
+          type="button"
+          className="kalender-istiwa-bar__hour-cycle"
+          onClick={() => setHourCycle((v) => (v === 12 ? 24 : 12))}
+          aria-pressed={hourCycle === 24}
+          aria-label={
+            hourCycle === 12 ? 'Format 12 jam, klik untuk 24 jam' : 'Format 24 jam, klik untuk 12 jam'
+          }
+          title={hourCycle === 12 ? 'Format 12 jam — klik untuk 24 jam' : 'Format 24 jam — klik untuk 12 jam'}
+        >
+          {hourCycle}
+        </button>
+        <span className="kalender-istiwa-bar__time kalender-istiwa-bar__time--ist" aria-live="off">
+          {istiwaText}
+        </span>
+        <span className="kalender-istiwa-bar__label kalender-istiwa-bar__label--wib">WIB</span>
         <p className="kalender-istiwa-bar__selisih" title="Selisih menit Istiwa’ terhadap WIB">
           {selisihText}
         </p>
-        <div className="kalender-istiwa-bar__clock kalender-istiwa-bar__clock--ist">
-          <span className="kalender-istiwa-bar__time" aria-live="off">
-            {istiwaText}
-          </span>
-          <span className="kalender-istiwa-bar__label">Istiwa’</span>
-        </div>
+        <span className="kalender-istiwa-bar__label kalender-istiwa-bar__label--ist">Istiwa’</span>
       </div>
       {showGpsBtn && (
         <button

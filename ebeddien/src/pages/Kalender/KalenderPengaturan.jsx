@@ -1,19 +1,28 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import { kalenderAPI, hariPentingAPI } from '../../services/api'
 import { useAuthStore } from '../../store/authStore'
 import PickDateHijri, { formatHijriDateDisplay } from '../../components/PickDateHijri/PickDateHijri'
 import { getBulanName } from './utils/bulanHijri'
 import { INDONESIAN_MONTHS } from './utils/dateRange'
-import { apiTimeToTimeInput, formatJamRangeLabel } from './utils/hariPentingJam'
+import { apiTimeToTimeInput, formatJamRangeLabel, normalizeJamJenis } from './utils/hariPentingJam'
+import { parseHariPekan, serializeHariPekan, labelHariPekan } from './utils/hariPekan'
+import { parseTanggalBulan, serializeTanggalBulan, labelTanggalBulan } from './utils/tanggalBulan'
+import HariPekanChecklistSelect from './components/HariPekanChecklistSelect'
+import TanggalBulanChecklistSelect from './components/TanggalBulanChecklistSelect'
+import JamJenisToggle from './components/JamJenisToggle'
+import KalenderLokasiAlamatTab from './components/KalenderLokasiAlamatTab'
 import './Kalender.css'
 import {
   KALENDER_PENGATURAN_MENU_CODE as FITUR_MENU_KAL_PENGATURAN,
   KALENDER_PENGATURAN_TAB_BULAN as FITUR_TAB_BULAN,
   KALENDER_PENGATURAN_TAB_HARI_PENTING as FITUR_TAB_HARI_PENTING,
+  KALENDER_PENGATURAN_TAB_LOKASI as FITUR_TAB_LOKASI,
   KALENDER_PENGATURAN_TAB_ISTIWA as FITUR_TAB_ISTIWA
 } from '../../config/kalenderFiturCodes'
 import { useAbsenLokasi } from '../../contexts/AbsenLokasiContext'
+import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 
 const TIPE_OPTIONS = [
   { value: 'per_hari', label: 'Per Hari' },
@@ -70,6 +79,63 @@ const HP_TARGET_LEMBAGA = 'action.hari_penting.target.lembaga'
 const HP_TARGET_USER_SAMES = 'action.hari_penting.target.user_selembaga'
 const HP_TARGET_SELF = 'action.hari_penting.target.self'
 
+/** State history stabil untuk useOffcanvasBackClose (hindari pushState berulang). */
+const HP_FORM_OFFCANVAS_STATE = Object.freeze({ hariPentingForm: true })
+const HP_TARGET_OFFCANVAS_STATE = Object.freeze({ hariPentingTarget: true })
+const PENGATURAN_TAB_ORDER = ['bulan', 'hari-penting', 'lokasi', 'istiwa']
+
+const KalenderPengaturanTabStrip = memo(function KalenderPengaturanTabStrip({
+  tab,
+  onTab,
+  canTabBulan,
+  canTabHariPenting,
+  canTabLokasi,
+  canTabIstiwa
+}) {
+  const count = [canTabBulan, canTabHariPenting, canTabLokasi, canTabIstiwa].filter(Boolean).length
+  if (count < 2) return null
+  return (
+    <div className="kalender-page__tabs flex-shrink-0">
+      {canTabBulan && (
+        <button
+          type="button"
+          className={`kalender-page__tab ${tab === 'bulan' ? 'kalender-page__tab--active' : ''}`}
+          onClick={() => onTab('bulan')}
+        >
+          Bulan
+        </button>
+      )}
+      {canTabHariPenting && (
+        <button
+          type="button"
+          className={`kalender-page__tab ${tab === 'hari-penting' ? 'kalender-page__tab--active' : ''}`}
+          onClick={() => onTab('hari-penting')}
+        >
+          Jadwal
+        </button>
+      )}
+      {canTabLokasi && (
+        <button
+          type="button"
+          className={`kalender-page__tab ${tab === 'lokasi' ? 'kalender-page__tab--active' : ''}`}
+          onClick={() => onTab('lokasi')}
+        >
+          Lokasi
+        </button>
+      )}
+      {canTabIstiwa && (
+        <button
+          type="button"
+          className={`kalender-page__tab ${tab === 'istiwa' ? 'kalender-page__tab--active' : ''}`}
+          onClick={() => onTab('istiwa')}
+        >
+          Istiwa’
+        </button>
+      )}
+    </div>
+  )
+})
+
 function KalenderPengaturan() {
   const authUser = useAuthStore((s) => s.user)
   const fiturMenuCodes = useAuthStore((s) => s.fiturMenuCodes)
@@ -114,7 +180,12 @@ function KalenderPengaturan() {
     return fiturMenuCodes.includes(FITUR_TAB_ISTIWA) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
   }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
 
-  const tabAccessCount = [canTabBulan, canTabHariPenting, canTabIstiwa].filter(Boolean).length
+  const canTabLokasi = useMemo(() => {
+    if (!authUser) return false
+    if (authUser.is_real_super_admin) return true
+    if (!useFiturCodes) return legacyKalenderAdmin
+    return fiturMenuCodes.includes(FITUR_TAB_LOKASI) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
+  }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
 
   const canHpTargetGlobal = bypassHpTargetPolicy || fiturMenuCodes.includes(HP_TARGET_GLOBAL)
   const canHpTargetLembaga = bypassHpTargetPolicy || fiturMenuCodes.includes(HP_TARGET_LEMBAGA)
@@ -129,18 +200,47 @@ function KalenderPengaturan() {
       canHpTargetUserSelembaga ||
       canHpTargetSelf)
 
-  const [tab, setTab] = useState('bulan')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab')
+  const [tab, setTab] = useState(() =>
+    tabFromUrl && PENGATURAN_TAB_ORDER.includes(tabFromUrl) ? tabFromUrl : 'bulan'
+  )
+
+  const tabAllowed = useCallback(
+    (t) => {
+      const allowed = {
+        bulan: canTabBulan,
+        'hari-penting': canTabHariPenting,
+        lokasi: canTabLokasi,
+        istiwa: canTabIstiwa
+      }
+      return !!allowed[t]
+    },
+    [canTabBulan, canTabHariPenting, canTabLokasi, canTabIstiwa]
+  )
 
   useEffect(() => {
-    const allowed = {
-      bulan: canTabBulan,
-      'hari-penting': canTabHariPenting,
-      istiwa: canTabIstiwa
-    }
-    if (allowed[tab]) return
-    const next = ['bulan', 'hari-penting', 'istiwa'].find((t) => allowed[t])
+    if (tabAllowed(tab)) return
+    const next = PENGATURAN_TAB_ORDER.find((t) => tabAllowed(t))
     if (next) setTab(next)
-  }, [canTabBulan, canTabHariPenting, canTabIstiwa, tab])
+  }, [tabAllowed, tab])
+
+  useEffect(() => {
+    if (tabFromUrl && tabAllowed(tabFromUrl)) {
+      setTab(tabFromUrl)
+    }
+  }, [tabFromUrl, tabAllowed])
+
+  const goToTab = useCallback(
+    (nextTab) => {
+      if (!tabAllowed(nextTab)) return
+      setTab(nextTab)
+      const next = new URLSearchParams(searchParams)
+      next.set('tab', nextTab)
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams, tabAllowed]
+  )
   const [tahunHijriyah, setTahunHijriyah] = useState('1446')
   const [kalenderRows, setKalenderRows] = useState([])
   const [loadingKalender, setLoadingKalender] = useState(false)
@@ -154,6 +254,10 @@ function KalenderPengaturan() {
   const [savingIstiwa, setSavingIstiwa] = useState(false)
   const [messageIstiwa, setMessageIstiwa] = useState(null)
   const fillIstiwaFromGpsRef = useRef(false)
+  const [istiwaAlamat, setIstiwaAlamat] = useState(null)
+  const [loadingIstiwaAlamat, setLoadingIstiwaAlamat] = useState(false)
+  const [istiwaAlamatError, setIstiwaAlamatError] = useState('')
+  const istiwaAlamatSeqRef = useRef(0)
 
   const [showCariOffcanvas, setShowCariOffcanvas] = useState(false)
   const [cariOffcanvasEntered, setCariOffcanvasEntered] = useState(false)
@@ -168,8 +272,9 @@ function KalenderPengaturan() {
     nama_event: '',
     kategori: 'hijriyah',
     tipe: 'per_tahun',
-    hari_pekan: '',
+    hari_pekan: [],
     tanggal: '',
+    tanggal_bulan: [],
     bulan: '',
     tahun: '',
     tanggal_dari: '',
@@ -178,9 +283,11 @@ function KalenderPengaturan() {
     target_self: false,
     target_lembaga_ids: [],
     target_user_ids: [],
+    pakai_penanda: true,
     warna_label: '#3b82f6',
     keterangan: '',
     ada_jam: false,
+    jam_jenis: 'wib',
     jam_mulai: '',
     jam_selesai: '',
     aktif: 1
@@ -511,15 +618,15 @@ function KalenderPengaturan() {
   ])
 
   useEffect(() => {
-    if (tab === 'bulan' && tahunHijriyah) loadKalenderByTahun()
-  }, [tab, tahunHijriyah])
+    if (canTabBulan && tahunHijriyah) loadKalenderByTahun()
+  }, [canTabBulan, tahunHijriyah])
 
   useEffect(() => {
-    if (tab === 'hari-penting') loadHariPenting()
-  }, [tab])
+    if (canTabHariPenting) loadHariPenting()
+  }, [canTabHariPenting])
 
   useEffect(() => {
-    if (tab !== 'istiwa' || !canTabIstiwa) return undefined
+    if (!canTabIstiwa) return undefined
     let cancelled = false
     setLoadingIstiwa(true)
     setMessageIstiwa(null)
@@ -540,7 +647,7 @@ function KalenderPengaturan() {
     return () => {
       cancelled = true
     }
-  }, [tab, canTabIstiwa])
+  }, [canTabIstiwa])
 
   useEffect(() => {
     if (!fillIstiwaFromGpsRef.current || !coords) return
@@ -548,6 +655,54 @@ function KalenderPengaturan() {
     setIstiwaLat(Number(coords.lat).toFixed(6))
     setIstiwaLng(Number(coords.lng).toFixed(6))
   }, [coords])
+
+  useEffect(() => {
+    if (!canTabIstiwa) return undefined
+    const lat = parseFloat(String(istiwaLat).replace(',', '.'))
+    const lng = parseFloat(String(istiwaLng).replace(',', '.'))
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      setIstiwaAlamat(null)
+      setIstiwaAlamatError('')
+      setLoadingIstiwaAlamat(false)
+      return undefined
+    }
+    const seq = ++istiwaAlamatSeqRef.current
+    setLoadingIstiwaAlamat(true)
+    setIstiwaAlamatError('')
+    const t = setTimeout(async () => {
+      try {
+        const res = await kalenderAPI.get({
+          action: 'istiwa-alamat',
+          lat: String(lat),
+          lng: String(lng)
+        })
+        if (seq !== istiwaAlamatSeqRef.current) return
+        const data = res?.data && typeof res.data === 'object' ? res.data : null
+        if (!data) {
+          setIstiwaAlamat(null)
+          setIstiwaAlamatError(res?.message || 'Alamat tidak tersedia')
+          return
+        }
+        const src = res?.source || data._source || ''
+        setIstiwaAlamat({
+          ...data,
+          kota: data.kota || data.kabupaten || null,
+          kabupaten: data.kabupaten || data.kota || null,
+          _source: src
+        })
+        setIstiwaAlamatError('')
+      } catch (e) {
+        if (seq !== istiwaAlamatSeqRef.current) return
+        setIstiwaAlamat(null)
+        setIstiwaAlamatError(e?.response?.data?.message || e?.message || 'Gagal memuat alamat')
+      } finally {
+        if (seq === istiwaAlamatSeqRef.current) setLoadingIstiwaAlamat(false)
+      }
+    }, 380)
+    return () => {
+      clearTimeout(t)
+    }
+  }, [canTabIstiwa, istiwaLat, istiwaLng])
 
   useEffect(() => {
     if (!showForm) {
@@ -592,7 +747,16 @@ function KalenderPengaturan() {
     return () => cancelAnimationFrame(id)
   }, [hpTargetPanel])
 
-  const tutupHpTargetPanel = () => setHpTargetPanelExiting(true)
+  const tutupHpTargetPanel = useOffcanvasBackClose(
+    Boolean(hpTargetPanel),
+    () => setHpTargetPanelExiting(true),
+    {
+      state: HP_TARGET_OFFCANVAS_STATE,
+      useDomisiliPopstateStack: true,
+      domisiliStackId: 'kalender-hp-target',
+      domisiliStackPriority: 25
+    }
+  )
 
   const handleHpTargetPanelTransitionEnd = (e) => {
     if (e.target !== e.currentTarget) return
@@ -776,8 +940,9 @@ function KalenderPengaturan() {
         nama_event: item.nama_event || '',
         kategori: item.kategori || 'hijriyah',
         tipe: item.tipe || 'per_tahun',
-        hari_pekan: item.hari_pekan ?? '',
-        tanggal: item.tanggal ?? '',
+        hari_pekan: parseHariPekan(item.hari_pekan),
+        tanggal: item.tipe === 'per_bulan' ? '' : (item.tanggal ?? ''),
+        tanggal_bulan: item.tipe === 'per_bulan' ? parseTanggalBulan(item.tanggal) : [],
         bulan: item.bulan ?? '',
         tahun: item.tahun ?? '',
         tanggal_dari: item.tanggal_dari ?? '',
@@ -786,9 +951,11 @@ function KalenderPengaturan() {
         target_self: parsed.target_self,
         target_lembaga_ids: parsed.target_lembaga_ids,
         target_user_ids: parsed.target_user_ids,
+        pakai_penanda: !!(item.warna_label && String(item.warna_label).trim()),
         warna_label: item.warna_label || '#3b82f6',
         keterangan: item.keterangan || '',
         ada_jam: !!(item.jam_mulai || item.jam_selesai),
+        jam_jenis: normalizeJamJenis(item.jam_jenis),
         jam_mulai: apiTimeToTimeInput(item.jam_mulai),
         jam_selesai: apiTimeToTimeInput(item.jam_selesai),
         aktif: item.aktif ?? 1
@@ -818,8 +985,9 @@ function KalenderPengaturan() {
         nama_event: '',
         kategori: 'hijriyah',
         tipe: 'per_tahun',
-        hari_pekan: '',
+        hari_pekan: [],
         tanggal: '',
+        tanggal_bulan: [],
         bulan: '',
         tahun: '',
         tanggal_dari: '',
@@ -828,9 +996,11 @@ function KalenderPengaturan() {
         target_self,
         target_lembaga_ids: [],
         target_user_ids,
+        pakai_penanda: true,
         warna_label: '#3b82f6',
         keterangan: '',
         ada_jam: false,
+        jam_jenis: 'wib',
         jam_mulai: '',
         jam_selesai: '',
         aktif: 1
@@ -841,9 +1011,19 @@ function KalenderPengaturan() {
     setMessageHariPenting(null)
   }
 
-  const tutupHariPentingOffcanvas = () => {
+  const mulaiTutupFormHariPenting = useCallback(() => {
+    setHpTargetPanel(null)
+    setHpTargetPanelExiting(false)
+    setHpTargetPanelEntered(false)
     setHpOffcanvasExiting(true)
-  }
+  }, [])
+
+  const tutupHariPentingOffcanvas = useOffcanvasBackClose(showForm, mulaiTutupFormHariPenting, {
+    state: HP_FORM_OFFCANVAS_STATE,
+    useDomisiliPopstateStack: true,
+    domisiliStackId: 'kalender-hp-form',
+    domisiliStackPriority: 20
+  })
 
   const handleHariPentingOffcanvasTransitionEnd = (e) => {
     if (e.target !== e.currentTarget) return
@@ -856,26 +1036,42 @@ function KalenderPengaturan() {
 
   const saveHariPenting = async () => {
     const isRange = formHariPenting.tipe === 'dari_sampai'
+    const isPekan = formHariPenting.tipe === 'per_pekan'
+    const isBulan = formHariPenting.tipe === 'per_bulan'
+    const hariPekanCsv = isPekan ? serializeHariPekan(formHariPenting.hari_pekan) : null
+    const tanggalBulanCsv = isBulan ? serializeTanggalBulan(formHariPenting.tanggal_bulan) : null
+    if (isPekan && !hariPekanCsv) {
+      setMessageHariPenting('Pilih minimal satu hari')
+      return
+    }
+    if (isBulan && !tanggalBulanCsv) {
+      setMessageHariPenting('Pilih minimal satu tanggal')
+      return
+    }
     const useSelf =
       !formHariPenting.target_global && !!formHariPenting.target_self && myUsersId != null
     const payload = {
       ...formHariPenting,
-      hari_pekan: isRange ? null : (formHariPenting.hari_pekan === '' ? null : parseInt(formHariPenting.hari_pekan, 10)),
-      tanggal: isRange ? null : (formHariPenting.tanggal === '' ? null : parseInt(formHariPenting.tanggal, 10)),
-      bulan: isRange ? null : (formHariPenting.bulan === '' ? null : parseInt(formHariPenting.bulan, 10)),
-      tahun: isRange ? null : (formHariPenting.tahun === '' ? null : parseInt(formHariPenting.tahun, 10)),
+      hari_pekan: hariPekanCsv,
+      tanggal: isRange || isPekan ? null : (isBulan ? tanggalBulanCsv : (formHariPenting.tanggal === '' ? null : parseInt(formHariPenting.tanggal, 10))),
+      bulan: isRange || isPekan || isBulan ? null : (formHariPenting.bulan === '' ? null : parseInt(formHariPenting.bulan, 10)),
+      tahun: isRange || isPekan || isBulan ? null : (formHariPenting.tahun === '' ? null : parseInt(formHariPenting.tahun, 10)),
       tanggal_dari: isRange ? (formHariPenting.tanggal_dari || null) : null,
       tanggal_sampai: isRange ? (formHariPenting.tanggal_sampai || null) : null,
+      warna_label: formHariPenting.pakai_penanda ? (formHariPenting.warna_label || '#3b82f6') : null,
       aktif: formHariPenting.aktif ? 1 : 0,
       target_global: !!formHariPenting.target_global,
       target_lembaga_ids: formHariPenting.target_global || useSelf ? [] : [...(formHariPenting.target_lembaga_ids || [])],
       target_user_ids:
         formHariPenting.target_global ? [] : useSelf ? [myUsersId] : [...(formHariPenting.target_user_ids || [])],
       jam_mulai: formHariPenting.ada_jam ? (formHariPenting.jam_mulai || '').trim() : '',
-      jam_selesai: formHariPenting.ada_jam ? (formHariPenting.jam_selesai || '').trim() : ''
+      jam_selesai: formHariPenting.ada_jam ? (formHariPenting.jam_selesai || '').trim() : '',
+      jam_jenis: formHariPenting.ada_jam ? normalizeJamJenis(formHariPenting.jam_jenis) : null
     }
     delete payload.target_self
     delete payload.ada_jam
+    delete payload.pakai_penanda
+    delete payload.tanggal_bulan
     if (payload.id) {
       payload.id = parseInt(payload.id, 10)
     } else {
@@ -886,8 +1082,7 @@ function KalenderPengaturan() {
     try {
       await hariPentingAPI.post(payload)
       setMessageHariPenting('Data berhasil disimpan')
-      setShowForm(false)
-      setHpOffcanvasEntered(false)
+      tutupHariPentingOffcanvas()
       loadHariPenting()
     } catch (e) {
       setMessageHariPenting(e.message || 'Gagal menyimpan')
@@ -938,48 +1133,25 @@ function KalenderPengaturan() {
   }
 
   return (
-    <div className="kalender-pengaturan-page h-full min-h-0 flex flex-col overflow-hidden p-4 max-w-4xl mx-auto pb-24 md:pb-4">
-      {!canTabBulan && !canTabHariPenting && !canTabIstiwa && (
+    <div className="kalender-pengaturan-page h-full min-h-0 flex flex-col overflow-hidden p-4 max-w-4xl w-full min-w-0 mx-auto pb-24 md:pb-4">
+      {!canTabBulan && !canTabHariPenting && !canTabLokasi && !canTabIstiwa && (
         <p className="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
-          Akun Anda tidak memiliki aksi tab Pengaturan kalender (bulan / hari penting / Istiwa’). Minta admin menambahkan di Pengaturan → Role &amp; akses.
+          Akun Anda tidak memiliki aksi tab Pengaturan kalender (bulan / jadwal / lokasi / Istiwa’). Minta admin menambahkan di Pengaturan → Role &amp; akses.
         </p>
       )}
-      {tabAccessCount >= 2 && (
-        <div className="kalender-page__tabs flex-shrink-0">
-          {canTabBulan && (
-            <button
-              type="button"
-              className={`kalender-page__tab ${tab === 'bulan' ? 'kalender-page__tab--active' : ''}`}
-              onClick={() => setTab('bulan')}
-            >
-              Bulan
-            </button>
-          )}
-          {canTabHariPenting && (
-            <button
-              type="button"
-              className={`kalender-page__tab ${tab === 'hari-penting' ? 'kalender-page__tab--active' : ''}`}
-              onClick={() => setTab('hari-penting')}
-            >
-              Hari Penting
-            </button>
-          )}
-          {canTabIstiwa && (
-            <button
-              type="button"
-              className={`kalender-page__tab ${tab === 'istiwa' ? 'kalender-page__tab--active' : ''}`}
-              onClick={() => setTab('istiwa')}
-            >
-              Istiwa’
-            </button>
-          )}
-        </div>
-      )}
+      <KalenderPengaturanTabStrip
+        tab={tab}
+        onTab={goToTab}
+        canTabBulan={canTabBulan}
+        canTabHariPenting={canTabHariPenting}
+        canTabLokasi={canTabLokasi}
+        canTabIstiwa={canTabIstiwa}
+      />
 
       {/* Area konten di bawah tab – hanya bagian ini yang scroll */}
-      <div className="kalender-pengaturan-scroll flex-1 min-h-0 overflow-y-auto">
-      {tab === 'bulan' && canTabBulan && (
-        <div>
+      <div className="kalender-pengaturan-scroll flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
+      {canTabBulan && (
+        <div hidden={tab !== 'bulan'}>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <input
               type="number"
@@ -1102,10 +1274,10 @@ function KalenderPengaturan() {
         </div>
       )}
 
-      {tab === 'hari-penting' && canTabHariPenting && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-sm text-gray-600 dark:text-gray-400">
+      {canTabHariPenting && (
+        <div hidden={tab !== 'hari-penting'} className="min-w-0 w-full max-w-full overflow-x-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4 min-w-0">
+            <span className="text-sm text-gray-600 dark:text-gray-400 min-w-0">
               {filteredHariPentingList.length} hari penting
               {filteredHariPentingList.length !== hariPentingList.length && (
                 <span className="text-gray-400 dark:text-gray-500"> dari {hariPentingList.length}</span>
@@ -1116,9 +1288,10 @@ function KalenderPengaturan() {
               onClick={() => openFormHariPenting()}
               disabled={!canTambahHariPenting}
               title={!canTambahHariPenting ? 'Tidak ada izin target hari penting — atur di Role & akses' : undefined}
-              className="kalender-pengaturan__btn kalender-pengaturan__btn--primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="kalender-pengaturan__btn kalender-pengaturan__btn--primary disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             >
-              Tambah Hari Penting
+              <span className="sm:hidden">Tambah</span>
+              <span className="hidden sm:inline">Tambah Hari Penting</span>
             </button>
           </div>
           {messageHariPenting && (
@@ -1128,7 +1301,7 @@ function KalenderPengaturan() {
           )}
 
           {/* Cari & Filter – style seperti Data Ijin */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 mb-4 min-w-0 overflow-hidden">
             <div className="relative pb-2 px-4 pt-3">
               <div className="relative">
                 <input
@@ -1182,11 +1355,11 @@ function KalenderPengaturan() {
                 isFilterHariPentingOpen ? 'max-h-[28rem] opacity-100' : 'max-h-0 opacity-0 border-t-0'
               }`}
             >
-              <div className="px-4 py-2 flex flex-wrap gap-2 bg-gray-50 dark:bg-gray-700/50 max-h-72 overflow-y-auto">
+              <div className="px-4 py-2 grid grid-cols-2 sm:flex sm:flex-wrap gap-2 bg-gray-50 dark:bg-gray-700/50 max-h-72 overflow-y-auto overflow-x-hidden">
                 <select
                   value={filterKategoriHariPenting}
                   onChange={(e) => setFilterKategoriHariPenting(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
+                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-full min-w-0 max-w-full text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
                 >
                   <option value="">Kategori</option>
                   {KATEGORI_OPTIONS.map((o) => (
@@ -1196,7 +1369,7 @@ function KalenderPengaturan() {
                 <select
                   value={filterTipeHariPenting}
                   onChange={(e) => setFilterTipeHariPenting(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
+                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-full min-w-0 max-w-full text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
                 >
                   <option value="">Tipe</option>
                   {TIPE_OPTIONS.map((o) => (
@@ -1208,14 +1381,14 @@ function KalenderPengaturan() {
                   value={filterTahunHariPenting}
                   onChange={(e) => setFilterTahunHariPenting(e.target.value)}
                   placeholder="Tahun"
-                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-20 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
+                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-full min-w-0 max-w-full text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
                   title="Filter Tahun"
                   aria-label="Filter tahun"
                 />
                 <select
                   value={filterBulanHariPenting}
                   onChange={(e) => setFilterBulanHariPenting(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
+                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-full min-w-0 max-w-full text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
                   title="Filter Bulan"
                 >
                   <option value="">Bulan</option>
@@ -1226,7 +1399,7 @@ function KalenderPengaturan() {
                 <select
                   value={filterTanggalHariPenting}
                   onChange={(e) => setFilterTanggalHariPenting(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 min-w-0 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
+                  className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-full min-w-0 max-w-full text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
                   title="Filter Tanggal"
                 >
                   <option value="">Tanggal</option>
@@ -1234,11 +1407,11 @@ function KalenderPengaturan() {
                     <option key={n} value={String(n)}>{n}</option>
                   ))}
                 </select>
-                <div className="w-full border-t border-gray-200 dark:border-gray-600 pt-2 mt-1 flex flex-col gap-2">
+                <div className="col-span-2 w-full border-t border-gray-200 dark:border-gray-600 pt-2 mt-1 flex flex-col gap-2 min-w-0">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Target audiens
                   </span>
-                  <div className="flex flex-wrap gap-2 items-start">
+                  <div className="flex flex-wrap gap-2 items-start min-w-0">
                     <select
                       value={filterTargetJenisHariPenting}
                       onChange={(e) => {
@@ -1250,7 +1423,7 @@ function KalenderPengaturan() {
                         setFilterHpUserQuery('')
                         setFilterHpUserHits([])
                       }}
-                      className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 min-w-[10rem] text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
+                      className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-full min-w-0 max-w-full sm:w-auto text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
                       title="Filter target"
                     >
                       <option value="">Semua target</option>
@@ -1262,7 +1435,7 @@ function KalenderPengaturan() {
                       <select
                         value={filterHpLembagaId}
                         onChange={(e) => setFilterHpLembagaId(e.target.value)}
-                        className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 min-w-[12rem] max-w-full flex-1 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
+                        className="border border-gray-300 dark:border-gray-600 rounded p-1.5 h-8 w-full min-w-0 max-w-full text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:ring-1 focus:ring-teal-400"
                         title="Pilih lembaga"
                       >
                         <option value="">— Pilih lembaga —</option>
@@ -1350,10 +1523,15 @@ function KalenderPengaturan() {
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-teal-600 border-t-transparent" />
             </div>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-2 min-w-0 w-full">
               {filteredHariPentingList.map((item) => {
                 let dateInfo = null
-                if (item.tipe === 'dari_sampai' && item.tanggal_dari && item.tanggal_sampai) {
+                if (item.tipe === 'per_pekan') {
+                  dateInfo = labelHariPekan(item.hari_pekan)
+                } else if (item.tipe === 'per_bulan') {
+                  const tgl = labelTanggalBulan(item.tanggal)
+                  dateInfo = tgl ? `Tgl ${tgl}` : null
+                } else if (item.tipe === 'dari_sampai' && item.tanggal_dari && item.tanggal_sampai) {
                   dateInfo =
                     item.kategori === 'hijriyah'
                       ? `${formatHijriDateDisplay(item.tanggal_dari)} – ${formatHijriDateDisplay(item.tanggal_sampai)}`
@@ -1372,17 +1550,17 @@ function KalenderPengaturan() {
                     tabIndex={0}
                     onClick={() => openFormHariPenting(item)}
                     onKeyDown={(e) => e.key === 'Enter' && openFormHariPenting(item)}
-                    className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/80 transition-colors"
+                    className="flex items-start gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/80 transition-colors min-w-0 w-full max-w-full overflow-hidden"
                   >
                     {item.warna_label && (
                       <span
-                        className="w-4 h-4 rounded-full shrink-0"
+                        className="w-4 h-4 rounded-full shrink-0 mt-0.5"
                         style={{ backgroundColor: item.warna_label }}
                       />
                     )}
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 overflow-hidden">
                       <span className="font-medium block truncate">{item.nama_event}</span>
-                      <span className="text-xs text-gray-500 block truncate">
+                      <span className="text-xs text-gray-500 block break-words [overflow-wrap:anywhere]">
                         {[dateInfo, formatJamRangeLabel(item), item.tipe, formatTargetRingkas(item, myUsersId)].filter(Boolean).join(' · ')}
                       </span>
                     </div>
@@ -1396,8 +1574,14 @@ function KalenderPengaturan() {
         </div>
       )}
 
-      {tab === 'istiwa' && canTabIstiwa && (
-        <div className="space-y-4 max-w-md">
+      {canTabLokasi && (
+        <div hidden={tab !== 'lokasi'}>
+          <KalenderLokasiAlamatTab />
+        </div>
+      )}
+
+      {canTabIstiwa && (
+        <div className="space-y-4 max-w-md" hidden={tab !== 'istiwa'}>
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Koordinat default jam Istiwa’ jika GPS pengguna mati. Nilai awal: Bondowoso.
           </p>
@@ -1428,6 +1612,85 @@ function KalenderPengaturan() {
               className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
             />
           </label>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-3 py-2.5">
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-1.5">Alamat dari koordinat</p>
+            {loadingIstiwaAlamat && !istiwaAlamat && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">Memuat alamat…</p>
+            )}
+            {istiwaAlamatError && !istiwaAlamat && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">{istiwaAlamatError}</p>
+            )}
+            {istiwaAlamat && (
+              <dl className="grid gap-x-3 gap-y-0.5 text-xs text-gray-700 dark:text-gray-200 sm:grid-cols-2">
+                {(istiwaAlamat._source === 'absen_alamat' ||
+                  istiwaAlamat._source === 'lokasi_manual' ||
+                  istiwaAlamat._source === 'lokasi_umum') && (
+                  <div className="sm:col-span-2 text-[11px] text-teal-700 dark:text-teal-400 mb-0.5">
+                    Alamat dari daftar alamat (Pengaturan Kalender · Lokasi)
+                  </div>
+                )}
+                {istiwaAlamat._source === 'nominatim' && (
+                  <div className="sm:col-span-2 text-[11px] text-gray-500 dark:text-gray-400 mb-0.5">
+                    Alamat dari peta (bukan daftar alamat)
+                  </div>
+                )}
+                {istiwaAlamat.dusun ? (
+                  <>
+                    <dt className="text-gray-500 dark:text-gray-400">Dusun</dt>
+                    <dd className="font-medium">{istiwaAlamat.dusun}</dd>
+                  </>
+                ) : null}
+                {(istiwaAlamat.rt || istiwaAlamat.rw) ? (
+                  <>
+                    <dt className="text-gray-500 dark:text-gray-400">RT / RW</dt>
+                    <dd className="font-medium">
+                      {[istiwaAlamat.rt ? `RT ${istiwaAlamat.rt}` : '', istiwaAlamat.rw ? `RW ${istiwaAlamat.rw}` : '']
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </dd>
+                  </>
+                ) : null}
+                {istiwaAlamat.desa ? (
+                  <>
+                    <dt className="text-gray-500 dark:text-gray-400">Desa/kelurahan</dt>
+                    <dd className="font-medium">{istiwaAlamat.desa}</dd>
+                  </>
+                ) : null}
+                {istiwaAlamat.kecamatan ? (
+                  <>
+                    <dt className="text-gray-500 dark:text-gray-400">Kecamatan</dt>
+                    <dd className="font-medium">{istiwaAlamat.kecamatan}</dd>
+                  </>
+                ) : null}
+                {(istiwaAlamat.kota || istiwaAlamat.kabupaten) ? (
+                  <>
+                    <dt className="text-gray-500 dark:text-gray-400">Kota/kabupaten</dt>
+                    <dd className="font-medium">{istiwaAlamat.kota || istiwaAlamat.kabupaten}</dd>
+                  </>
+                ) : null}
+                {istiwaAlamat.provinsi ? (
+                  <>
+                    <dt className="text-gray-500 dark:text-gray-400">Provinsi</dt>
+                    <dd className="font-medium">{istiwaAlamat.provinsi}</dd>
+                  </>
+                ) : null}
+                {!istiwaAlamat.dusun &&
+                  !(istiwaAlamat.rt || istiwaAlamat.rw) &&
+                  !istiwaAlamat.desa &&
+                  !istiwaAlamat.kecamatan &&
+                  !istiwaAlamat.kota &&
+                  !istiwaAlamat.kabupaten &&
+                  !istiwaAlamat.provinsi &&
+                  typeof istiwaAlamat.display_name === 'string' &&
+                  istiwaAlamat.display_name.trim() !== '' && (
+                    <>
+                      <dt className="text-gray-500 dark:text-gray-400">Alamat</dt>
+                      <dd className="font-medium leading-snug sm:col-span-1">{istiwaAlamat.display_name}</dd>
+                    </>
+                  )}
+              </dl>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -1530,10 +1793,17 @@ function KalenderPengaturan() {
                         ...p,
                         tipe,
                         ...(tipe === 'dari_sampai'
-                          ? { tanggal: '', bulan: '', tahun: '', hari_pekan: '' }
+                          ? { tanggal: '', tanggal_bulan: [], bulan: '', tahun: '', hari_pekan: [] }
                           : { tanggal_dari: '', tanggal_sampai: '' }),
+                        ...(tipe === 'per_pekan' ? { tanggal: '', tanggal_bulan: [], bulan: '', tahun: '' } : {}),
                         ...(tipe === 'per_tahun' ? { tahun: '' } : {}),
-                        ...(tipe === 'per_bulan' ? { bulan: '' } : {})
+                        ...(tipe === 'per_bulan'
+                          ? {
+                              bulan: '',
+                              tahun: '',
+                              tanggal_bulan: parseTanggalBulan(p.tanggal_bulan?.length ? p.tanggal_bulan : p.tanggal)
+                            }
+                          : {})
                       }))
                     }}
                     className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2"
@@ -1543,9 +1813,37 @@ function KalenderPengaturan() {
                     ))}
                   </select>
                 </div>
+                {formHariPenting.tipe === 'per_pekan' && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Hari</label>
+                    <HariPekanChecklistSelect
+                      value={parseHariPekan(formHariPenting.hari_pekan)}
+                      onChange={(next) => setFormHariPenting((p) => ({ ...p, hari_pekan: next }))}
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Penanda tampil setiap hari yang dipilih, setiap pekan.
+                    </p>
+                  </div>
+                )}
+                {formHariPenting.tipe === 'per_bulan' && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Tanggal</label>
+                    <TanggalBulanChecklistSelect
+                      value={parseTanggalBulan(formHariPenting.tanggal_bulan)}
+                      onChange={(next) => setFormHariPenting((p) => ({ ...p, tanggal_bulan: next }))}
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Penanda tampil setiap tanggal yang dipilih, setiap bulan. Tidak memakai tahun.
+                    </p>
+                  </div>
+                )}
                 <div
                   className={`overflow-hidden transition-all duration-300 ease-out ${
-                    formHariPenting.tipe === 'dari_sampai' ? 'max-h-0 opacity-0' : 'max-h-[12rem] opacity-100'
+                    formHariPenting.tipe === 'dari_sampai' ||
+                    formHariPenting.tipe === 'per_pekan' ||
+                    formHariPenting.tipe === 'per_bulan'
+                      ? 'max-h-0 opacity-0'
+                      : 'max-h-[12rem] opacity-100'
                   }`}
                 >
                   <div className="grid grid-cols-3 gap-2">
@@ -1649,6 +1947,28 @@ function KalenderPengaturan() {
                     )}
                   </div>
                 )}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Pakai penanda</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Titik warna di grid kalender</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!formHariPenting.pakai_penanda}
+                    onClick={() => setFormHariPenting((p) => ({ ...p, pakai_penanda: !p.pakai_penanda }))}
+                    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                      formHariPenting.pakai_penanda ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        formHariPenting.pakai_penanda ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+                {formHariPenting.pakai_penanda && (
                 <div>
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Warna Label</label>
                   <div className="flex flex-wrap gap-2 items-center">
@@ -1694,6 +2014,7 @@ function KalenderPengaturan() {
                     </button>
                   </div>
                 </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Keterangan</label>
                   <textarea
@@ -1712,7 +2033,7 @@ function KalenderPengaturan() {
                         setFormHariPenting((p) => ({
                           ...p,
                           ada_jam: e.target.checked,
-                          ...(!e.target.checked ? { jam_mulai: '', jam_selesai: '' } : {})
+                          ...(!e.target.checked ? { jam_mulai: '', jam_selesai: '', jam_jenis: 'wib' } : {})
                         }))
                       }
                       className="mt-0.5"
@@ -1720,14 +2041,21 @@ function KalenderPengaturan() {
                     <span className="text-sm text-gray-700 dark:text-gray-300">
                       Cantumkan jam acara
                       <span className="block text-xs text-gray-500 dark:text-gray-400 font-normal mt-0.5">
-                        Tampil di kalender sebagai jam mulai–selesai (opsional).
+                        Tampil di kalender sebagai jam mulai–selesai, WIB atau Istiwa’ (opsional).
                       </span>
                     </span>
                   </label>
                   {formHariPenting.ada_jam && (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-3">
+                      <JamJenisToggle
+                        value={normalizeJamJenis(formHariPenting.jam_jenis)}
+                        onChange={(jam_jenis) => setFormHariPenting((p) => ({ ...p, jam_jenis }))}
+                      />
+                      <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Jam mulai</label>
+                        <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
+                          Jam mulai ({normalizeJamJenis(formHariPenting.jam_jenis) === 'istiwa' ? 'Istiwa’' : 'WIB'})
+                        </label>
                         <input
                           type="time"
                           value={formHariPenting.jam_mulai || ''}
@@ -1736,13 +2064,16 @@ function KalenderPengaturan() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Jam selesai</label>
+                        <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
+                          Jam selesai ({normalizeJamJenis(formHariPenting.jam_jenis) === 'istiwa' ? 'Istiwa’' : 'WIB'})
+                        </label>
                         <input
                           type="time"
                           value={formHariPenting.jam_selesai || ''}
                           onChange={(e) => setFormHariPenting((p) => ({ ...p, jam_selesai: e.target.value }))}
                           className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
                         />
+                      </div>
                       </div>
                     </div>
                   )}
@@ -1932,6 +2263,10 @@ function KalenderPengaturan() {
                     !formHariPenting.nama_event.trim() ||
                     (formHariPenting.tipe === 'dari_sampai' &&
                       (!formHariPenting.tanggal_dari || !formHariPenting.tanggal_sampai)) ||
+                    (formHariPenting.tipe === 'per_pekan' &&
+                      parseHariPekan(formHariPenting.hari_pekan).length === 0) ||
+                    (formHariPenting.tipe === 'per_bulan' &&
+                      parseTanggalBulan(formHariPenting.tanggal_bulan).length === 0) ||
                     (!formHariPenting.target_global &&
                       !(
                         (formHariPenting.target_self && myUsersId != null) ||
@@ -1964,8 +2299,7 @@ function KalenderPengaturan() {
                     onClick={() => {
                       if (window.confirm('Yakin hapus hari penting ini?')) {
                         deleteHariPenting(formHariPenting.id)
-                        setShowForm(false)
-                        setHpOffcanvasEntered(false)
+                        tutupHariPentingOffcanvas()
                       }
                     }}
                     className="kalender-pengaturan__btn kalender-pengaturan__btn--danger"

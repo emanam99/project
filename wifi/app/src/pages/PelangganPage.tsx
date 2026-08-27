@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { listPelanggan, type Pelanggan } from '../api/apiClient'
 import OffcanvasPelangganForm from '../components/OffcanvasPelangganForm'
 import { usePageTitle } from '../contexts/PageTitleContext'
+import { downloadPelangganTemplate } from '../utils/pelangganImportXlsx'
 
 function initials(nama: string): string {
   const parts = nama.trim().split(/\s+/).filter(Boolean)
@@ -24,6 +26,7 @@ function avatarTone(id: number): string {
 
 export default function PelangganPage() {
   usePageTitle('Pelanggan')
+  const navigate = useNavigate()
   const [rows, setRows] = useState<Pelanggan[]>([])
   const [q, setQ] = useState('')
   const [filterAktif, setFilterAktif] = useState<'all' | '1' | '0'>('all')
@@ -85,16 +88,33 @@ export default function PelangganPage() {
               Ketuk kartu untuk edit · hubungkan email agar bisa login
             </p>
           </div>
-          <button
-            type="button"
-            className="ui-btn-primary shrink-0 text-[12px] px-2.5 py-1.5"
-            onClick={openCreate}
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
-              <path strokeLinecap="round" d="M12 5v14M5 12h14" />
-            </svg>
-            Tambah
-          </button>
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0 justify-end">
+            <button
+              type="button"
+              className="ui-btn-ghost text-[12px] px-2.5 py-1.5"
+              onClick={() => void downloadPelangganTemplate()}
+              title="Unduh template Excel"
+            >
+              Template
+            </button>
+            <button
+              type="button"
+              className="ui-btn-ghost text-[12px] px-2.5 py-1.5"
+              onClick={() => navigate('/pelanggan/import')}
+            >
+              Import
+            </button>
+            <button
+              type="button"
+              className="ui-btn-primary text-[12px] px-2.5 py-1.5"
+              onClick={openCreate}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+              Tambah
+            </button>
+          </div>
         </div>
 
         <div className="relative">

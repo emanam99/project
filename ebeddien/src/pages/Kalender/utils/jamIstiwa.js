@@ -54,14 +54,16 @@ export function formatWibKeIstSelisih(solarOffsetMs) {
   return `WIB ke Ist (${sign} ${hh}.${mm})`
 }
 
-export function formatHmsJakarta(d) {
+/** @param {Date} d @param {12|24} [hourCycle] 12 = jam 01–12, 24 = jam 00–23 */
+export function formatHmsJakarta(d, hourCycle = 24) {
+  const use12 = hourCycle === 12
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Jakarta',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
-    hourCycle: 'h23'
+    hour12: use12,
+    hourCycle: use12 ? 'h12' : 'h23'
   }).formatToParts(d)
   const get = (t) => parts.find((p) => p.type === t)?.value || '00'
   return `${get('hour')}:${get('minute')}:${get('second')}`

@@ -77,13 +77,13 @@ return function (\Slim\App $app): void {
     $app->get('/api/absen-lokasi/pratinjau-alamat', [AbsenLokasiController::class, 'getPratinjauAlamat'])
         ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenGeocodeReverseSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
     $app->get('/api/absen-alamat', [AbsenAlamatController::class, 'getList'])
-        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenAlamatCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::ABSEN_ALAMAT_CRUD_API_SELECTORS)))->add(new AuthMiddleware());
     $app->post('/api/absen-alamat', [AbsenAlamatController::class, 'create'])
-        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenAlamatCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::ABSEN_ALAMAT_CRUD_API_SELECTORS)))->add(new AuthMiddleware());
     $app->put('/api/absen-alamat/{id}', [AbsenAlamatController::class, 'update'])
-        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenAlamatCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::ABSEN_ALAMAT_CRUD_API_SELECTORS)))->add(new AuthMiddleware());
     $app->delete('/api/absen-alamat/{id}', [AbsenAlamatController::class, 'delete'])
-        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
+        ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenAlamatCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::ABSEN_ALAMAT_CRUD_API_SELECTORS)))->add(new AuthMiddleware());
     $app->post('/api/absen-lokasi', [AbsenLokasiController::class, 'create'])
         ->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::absenLokasiCrudApiSelectors(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::TARBIYAH_SUPER_SELECTORS)))->add(new AuthMiddleware());
     $app->put('/api/absen-lokasi/{id}', [AbsenLokasiController::class, 'update'])

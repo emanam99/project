@@ -1030,7 +1030,7 @@ function Header() {
               </AnimatePresence>
             </div>
           )
-        ) : (
+        ) : isKalenderGroup || isExcelEditorRoute ? null : (
           <div 
             className="md:hidden flex items-center gap-2 mt-2 cursor-pointer hover:opacity-80 transition-opacity relative"
             onClick={() => setShowPaymentDropdown(!showPaymentDropdown)}
@@ -1266,7 +1266,7 @@ function Header() {
               </AnimatePresence>
             </div>
           )
-        ) : (
+        ) : isKalenderGroup ? null : (
           <div 
             className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
             onClick={() => setShowPaymentDropdown(!showPaymentDropdown)}

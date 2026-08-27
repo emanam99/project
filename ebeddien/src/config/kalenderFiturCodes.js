@@ -2,16 +2,20 @@
 
 export const KALENDER_PENGATURAN_TAB_BULAN = 'action.kalender.pengaturan.tab_bulan'
 export const KALENDER_PENGATURAN_TAB_HARI_PENTING = 'action.kalender.pengaturan.tab_hari_penting'
+export const KALENDER_PENGATURAN_TAB_LOKASI = 'action.kalender.pengaturan.tab_lokasi'
 export const KALENDER_PENGATURAN_TAB_ISTIWA = 'action.kalender.pengaturan.tab_istiwa'
 
 /** Menu halaman Pengaturan Kalender (path /kalender/pengaturan). */
 export const KALENDER_PENGATURAN_MENU_CODE = 'menu.kalender.pengaturan'
 
 /**
- * @returns {'bulan'|'hari_penting'|'istiwa'|null}
+ * @returns {'bulan'|'hari_penting'|'lokasi'|'istiwa'|null}
  */
 export function kalenderPengaturanActionTabKey(code) {
   const c = String(code || '')
+  if (c === KALENDER_PENGATURAN_TAB_LOKASI) {
+    return 'lokasi'
+  }
   if (c === KALENDER_PENGATURAN_TAB_ISTIWA) {
     return 'istiwa'
   }
@@ -32,8 +36,13 @@ export const KALENDER_PENGATURAN_TAB_ACCORDIONS = [
   },
   {
     key: 'hari_penting',
-    title: 'Tab Hari penting',
-    subtitle: 'Akses tab dan kebijakan target audiens hari penting'
+    title: 'Tab Jadwal',
+    subtitle: 'Akses tab Jadwal dan kebijakan target audiens'
+  },
+  {
+    key: 'lokasi',
+    title: 'Tab Lokasi (daftar alamat)',
+    subtitle: 'Nama alamat untuk koordinat GPS (bukan titik absen)'
   },
   {
     key: 'istiwa',
@@ -44,10 +53,10 @@ export const KALENDER_PENGATURAN_TAB_ACCORDIONS = [
 
 /**
  * @param {Array<{ code?: string }>} children
- * @returns {{ bulan: any[], hari_penting: any[], istiwa: any[], other: any[] }}
+ * @returns {{ bulan: any[], hari_penting: any[], lokasi: any[], istiwa: any[], other: any[] }}
  */
 export function groupKalenderPengaturanFiturChildren(children) {
-  const buckets = { bulan: [], hari_penting: [], istiwa: [], other: [] }
+  const buckets = { bulan: [], hari_penting: [], lokasi: [], istiwa: [], other: [] }
   for (const ch of children || []) {
     const k = kalenderPengaturanActionTabKey(ch.code)
     if (k) buckets[k].push(ch)

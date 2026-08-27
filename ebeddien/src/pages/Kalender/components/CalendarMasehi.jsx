@@ -146,8 +146,8 @@ export default function CalendarMasehi({
       const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       const hijriStr = hijriMap[iso]
       for (const item of hariPentingList) {
-        const color = item.warna_label || '#0d9488'
-        if (matchesHariPentingMasehiCalendar(iso, hijriStr, day, month, year, item)) {
+        const color = item.warna_label
+        if (color && matchesHariPentingMasehiCalendar(iso, hijriStr, day, month, year, item)) {
           if (!map[day]) map[day] = []
           if (!map[day].includes(color)) map[day].push(color)
         }
@@ -403,7 +403,7 @@ export default function CalendarMasehi({
                     onClick={closePopup}
                     aria-label="Tutup"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
@@ -427,7 +427,7 @@ export default function CalendarMasehi({
                           <div className="kalender-grid__day-popup-item-body">
                             <div className="kalender-grid__day-popup-item-name">{item.nama_event}</div>
                             {jamStr && (
-                              <div className="kalender-grid__day-popup-item-ket text-xs font-medium text-gray-600 dark:text-gray-300">
+                              <div className="kalender-grid__day-popup-item-ket kalender-grid__day-popup-item-jam">
                                 {jamStr}
                               </div>
                             )}
@@ -470,7 +470,7 @@ export default function CalendarMasehi({
                       closePopup()
                     }}
                   >
-                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                     </svg>
                     Tambah jadwal saya

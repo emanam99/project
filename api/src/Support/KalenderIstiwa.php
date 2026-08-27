@@ -59,12 +59,18 @@ final class KalenderIstiwa
     }
 
     /**
-     * Alamat master absen jika posisi masuk radius titik yang sudah dilengkapi.
+     * Alamat jika posisi masuk radius: utamakan daftar absen___alamat (zona GPS),
+     * lalu fallback titik absen___lokasi yang sudah dilengkapi alamat.
      *
      * @return array<string, string>|null
      */
     public static function matchAbsenAlamat(PDO $db, float $lat, float $lng, float $accuracySlack = 0.0): ?array
     {
+        $fromList = self::matchAlamatMasterGps($db, $lat, $lng, $accuracySlack);
+        if ($fromList !== null) {
+            return $fromList;
+        }
+
         if (!self::tableExists($db, 'absen___lokasi')) {
             return null;
         }
@@ -106,6 +112,63 @@ final class KalenderIstiwa
                 continue;
             }
             [$plat, $plng, $radBase] = $eff;
+            $dist = AbsenLokasiGeo::haversineMeters($lat, $lng, $plat, $plng);
+            $rad = $radBase + $accSlack;
+            if ($dist > $rad) {
+                continue;
+            }
+            if ($bestDist === null || $dist < $bestDist) {
+                $bestDist = $dist;
+                $best = $alamat;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Cocokkan ke baris absen___alamat yang punya latitude/longitude.
+     *
+     * @return array<string, string>|null
+     */
+    private static function matchAlamatMasterGps(PDO $db, float $lat, float $lng, float $accuracySlack = 0.0): ?array
+    {
+        if (!self::tableExists($db, 'absen___alamat')) {
+            return null;
+        }
+        if (!self::columnExists($db, 'absen___alamat', 'latitude')) {
+            return null;
+        }
+        try {
+            $st = $db->query(
+                'SELECT dusun, rt, rw, desa, kecamatan, kabupaten, provinsi, latitude, longitude, radius_meter
+                FROM absen___alamat
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL'
+            );
+            $rows = $st !== false ? $st->fetchAll(PDO::FETCH_ASSOC) : [];
+        } catch (\Throwable $e) {
+            error_log('KalenderIstiwa::matchAlamatMasterGps: ' . $e->getMessage());
+
+            return null;
+        }
+        $accSlack = $accuracySlack > 0 && is_finite($accuracySlack) ? min($accuracySlack, 120.0) : 0.0;
+        $best = null;
+        $bestDist = null;
+        foreach ($rows as $row) {
+            $alamat = self::alamatFieldsFromRow($row);
+            if ($alamat === []) {
+                continue;
+            }
+            $plat = AbsenLokasiGeo::floatCoord($row['latitude'] ?? null);
+            $plng = AbsenLokasiGeo::floatCoord($row['longitude'] ?? null);
+            if ($plat === null || $plng === null || abs($plat) > 90.0 || abs($plng) > 180.0) {
+                continue;
+            }
+            $radBase = (int) ($row['radius_meter'] ?? 0);
+            if ($radBase < 1) {
+                $radBase = 100;
+            }
+            $radBase = min(25000, max(10, $radBase));
             $dist = AbsenLokasiGeo::haversineMeters($lat, $lng, $plat, $plng);
             $rad = $radBase + $accSlack;
             if ($dist > $rad) {

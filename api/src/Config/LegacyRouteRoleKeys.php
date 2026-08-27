@@ -40,6 +40,10 @@ final class LegacyRouteRoleKeys
 
     public const KALENDER_PENGATURAN_ISTIWA_SELECTORS = 'kalenderPengaturanIstiwaSelectors';
 
+    public const KALENDER_PENGATURAN_LOKASI_SELECTORS = 'kalenderPengaturanLokasiSelectors';
+
+    public const ABSEN_ALAMAT_CRUD_API_SELECTORS = 'absenAlamatCrudApiSelectors';
+
     public const UMROH_MODULE_SELECTORS = 'umrohModuleSelectors';
 
     public const UWABA_STAFF_SUPER_SELECTORS = 'uwabaStaffSuperSelectors';

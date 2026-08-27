@@ -20,6 +20,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const MenungguAksesPage = lazy(() => import('./pages/MenungguAksesPage'))
 const PelangganPage = lazy(() => import('./pages/PelangganPage'))
+const PelangganImportPage = lazy(() => import('./pages/PelangganImportPage'))
 const RekapPage = lazy(() => import('./pages/RekapPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const TagihanPage = lazy(() => import('./pages/TagihanPage'))
@@ -132,6 +133,14 @@ export default function App() {
                 element={withSuspense(
                   <AdminOnly>
                     <PelangganPage />
+                  </AdminOnly>,
+                )}
+              />
+              <Route
+                path="/pelanggan/import"
+                element={withSuspense(
+                  <AdminOnly>
+                    <PelangganImportPage />
                   </AdminOnly>,
                 )}
               />

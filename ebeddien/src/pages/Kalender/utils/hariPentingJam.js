@@ -11,12 +11,18 @@ export function apiTimeToTimeInput(v) {
   return `${h}:${min}`
 }
 
-/** Label singkat untuk daftar / popup, mis. "08:00–10:00" */
+/** @returns {'wib'|'istiwa'} */
+export function normalizeJamJenis(v) {
+  return v === 'istiwa' ? 'istiwa' : 'wib'
+}
+
+/** Label singkat untuk daftar / popup, mis. "08:00–10:00 WIB" */
 export function formatJamRangeLabel(item) {
   if (!item) return ''
   const a = apiTimeToTimeInput(item.jam_mulai)
   const b = apiTimeToTimeInput(item.jam_selesai)
   if (!a && !b) return ''
-  if (a && b) return `${a}–${b}`
-  return a || b
+  const range = a && b ? `${a}–${b}` : (a || b)
+  const suffix = normalizeJamJenis(item.jam_jenis) === 'istiwa' ? ' Ist' : ' WIB'
+  return `${range}${suffix}`
 }

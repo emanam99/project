@@ -211,6 +211,34 @@ export async function deletePelanggan(id: number) {
   return request(`/pelanggan/${id}`, { method: 'DELETE' })
 }
 
+export type PelangganImportItem = {
+  nama: string
+  email?: string | null
+  no_hp?: string | null
+  alamat?: string | null
+  paket?: string | null
+  keterangan?: string | null
+  aktif?: boolean
+}
+
+export type PelangganImportResult = {
+  created: number
+  failed: { index: number; message: string }[]
+  data?: Pelanggan[]
+}
+
+export async function importPelangganBatch(items: PelangganImportItem[]) {
+  return request<Pelanggan[]>('/pelanggan/import', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  }) as Promise<
+    ApiResult<Pelanggan[]> & {
+      created?: number
+      failed?: { index: number; message: string }[]
+    }
+  >
+}
+
 export type TagihanBayar = {
   id: number
   tagihan_id: number

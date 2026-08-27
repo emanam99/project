@@ -2,7 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import PickDateHijri from '../../../components/PickDateHijri/PickDateHijri'
 import { kalenderAPI, hariPentingAPI } from '../../../services/api'
+import { parseHariPekan, serializeHariPekan, weekdayFromGregorian } from '../utils/hariPekan'
+import { parseTanggalBulan, serializeTanggalBulan } from '../utils/tanggalBulan'
+import { normalizeJamJenis } from '../utils/hariPentingJam'
+import HariPekanChecklistSelect from './HariPekanChecklistSelect'
+import TanggalBulanChecklistSelect from './TanggalBulanChecklistSelect'
+import JamJenisToggle from './JamJenisToggle'
+import { useOffcanvasBackClose } from '../../../hooks/useOffcanvasBackClose'
 import '../Kalender.css'
+
+const HP_PRIBADI_OFFCANVAS_STATE = Object.freeze({ hariPentingPribadi: true })
 
 /** Selaras KalenderPengaturan.jsx */
 const TIPE_OPTIONS = [
@@ -45,14 +54,18 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
   const [nama_event, setNamaEvent] = useState('')
   const [kategori, setKategori] = useState('hijriyah')
   const [tipe, setTipe] = useState('sekali')
+  const [hari_pekan, setHariPekan] = useState([])
   const [tanggal, setTanggal] = useState('')
+  const [tanggal_bulan, setTanggalBulan] = useState([])
   const [bulan, setBulan] = useState('')
   const [tahun, setTahun] = useState('')
   const [tanggal_dari, setTanggalDari] = useState('')
   const [tanggal_sampai, setTanggalSampai] = useState('')
+  const [pakai_penanda, setPakaiPenanda] = useState(true)
   const [warna_label, setWarnaLabel] = useState('#3b82f6')
   const [keterangan, setKeterangan] = useState('')
   const [ada_jam, setAdaJam] = useState(false)
+  const [jam_jenis, setJamJenis] = useState('wib')
   const [jam_mulai, setJamMulai] = useState('')
   const [jam_selesai, setJamSelesai] = useState('')
   const [aktif, setAktif] = useState(true)
@@ -123,13 +136,23 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
     setNamaEvent('')
     setKeterangan('')
     setAdaJam(false)
+    setJamJenis('wib')
     setJamMulai('')
     setJamSelesai('')
     setWarnaLabel('#3b82f6')
+    setPakaiPenanda(true)
     setAktif(true)
     setTipe('sekali')
     setTanggalDari('')
     setTanggalSampai('')
+    const wd = snapGreg
+      ? weekdayFromGregorian(snapGreg.year, snapGreg.month, snapGreg.day)
+      : null
+    setHariPekan(wd != null ? [wd] : [])
+    const dayPrefill = snapGreg
+      ? (payload?.defaultKategori === 'masehi' ? snapGreg.day : (payload?.hijri?.day ?? snapGreg.day))
+      : (payload?.hijri?.day ?? null)
+    setTanggalBulan(dayPrefill != null ? parseTanggalBulan(dayPrefill) : [])
     const kat = payload?.defaultKategori === 'masehi' ? 'masehi' : 'hijriyah'
     setKategori(kat)
     void applyTripleForKategori(kat)
@@ -150,9 +173,13 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
     }
   }, [open])
 
-  const tutup = () => {
+  const mulaiTutup = useCallback(() => {
     setExiting(true)
-  }
+  }, [])
+
+  const tutup = useOffcanvasBackClose(open, mulaiTutup, {
+    state: HP_PRIBADI_OFFCANVAS_STATE
+  })
 
   const handlePanelTransitionEnd = (e) => {
     if (e.target !== e.currentTarget) return
@@ -169,7 +196,7 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
     if (tipe === 'dari_sampai') {
       setTanggalDari('')
       setTanggalSampai('')
-    } else {
+    } else if (tipe !== 'per_pekan' && tipe !== 'per_bulan') {
       void applyTripleForKategori(v)
     }
   }
@@ -181,20 +208,47 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
       setTanggal('')
       setBulan('')
       setTahun('')
+      setHariPekan([])
+      setTanggalBulan([])
     } else {
       setTanggalDari('')
       setTanggalSampai('')
       if (tipeBaru === 'per_tahun') setTahun('')
-      if (tipeBaru === 'per_bulan') setBulan('')
-      void applyTripleForKategori(kategori)
+      if (tipeBaru === 'per_pekan') {
+        setTanggal('')
+        setBulan('')
+        setTahun('')
+        if (parseHariPekan(hari_pekan).length === 0 && snapGreg) {
+          setHariPekan([weekdayFromGregorian(snapGreg.year, snapGreg.month, snapGreg.day)])
+        }
+      } else if (tipeBaru === 'per_bulan') {
+        setBulan('')
+        setTahun('')
+        if (parseTanggalBulan(tanggal_bulan).length === 0) {
+          const fromField = parseTanggalBulan(tanggal)
+          if (fromField.length) {
+            setTanggalBulan(fromField)
+          } else if (kategori === 'masehi' && snapGreg) {
+            setTanggalBulan([snapGreg.day])
+          } else if (snapHijri?.day != null) {
+            setTanggalBulan([snapHijri.day])
+          }
+        }
+      } else {
+        void applyTripleForKategori(kategori)
+      }
     }
   }
 
   const isRange = tipe === 'dari_sampai'
+  const isPekan = tipe === 'per_pekan'
+  const isBulan = tipe === 'per_bulan'
   const saveDisabled =
     saving ||
     !nama_event.trim() ||
     (isRange && (!tanggal_dari || !tanggal_sampai)) ||
+    (isPekan && parseHariPekan(hari_pekan).length === 0) ||
+    (isBulan && parseTanggalBulan(tanggal_bulan).length === 0) ||
     (!!ada_jam && (!jam_mulai?.trim() || !jam_selesai?.trim()))
 
   const handleSubmit = async (e) => {
@@ -209,9 +263,14 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
         tipe,
         aktif: aktif ? 1 : 0
       }
-      if (warna_label) body.warna_label = warna_label
+      if (pakai_penanda) body.warna_label = warna_label || '#3b82f6'
+      else body.warna_label = null
       if (keterangan.trim()) body.keterangan = keterangan.trim()
-      if (!isRange) {
+      if (isPekan) {
+        body.hari_pekan = serializeHariPekan(hari_pekan)
+      } else if (isBulan) {
+        body.tanggal = serializeTanggalBulan(tanggal_bulan)
+      } else if (!isRange) {
         if (tanggal !== '') body.tanggal = parseInt(tanggal, 10)
         if (bulan !== '') body.bulan = parseInt(bulan, 10)
         if (tahun !== '') body.tahun = parseInt(tahun, 10)
@@ -222,6 +281,7 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
       if (ada_jam) {
         body.jam_mulai = jam_mulai.trim()
         body.jam_selesai = jam_selesai.trim()
+        body.jam_jenis = normalizeJamJenis(jam_jenis)
       }
       const res = await hariPentingAPI.createPersonalSelf(body)
       if (res?.error) {
@@ -229,7 +289,7 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
         return
       }
       onSaved?.()
-      onClose?.()
+      tutup()
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Gagal menyimpan')
     } finally {
@@ -321,9 +381,35 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
               </select>
             </div>
 
+            {isPekan && (
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Hari</label>
+                <HariPekanChecklistSelect
+                  value={parseHariPekan(hari_pekan)}
+                  onChange={setHariPekan}
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Penanda tampil setiap hari yang dipilih, setiap pekan.
+                </p>
+              </div>
+            )}
+
+            {isBulan && (
+              <div>
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Tanggal</label>
+                <TanggalBulanChecklistSelect
+                  value={parseTanggalBulan(tanggal_bulan)}
+                  onChange={setTanggalBulan}
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Penanda tampil setiap tanggal yang dipilih, setiap bulan. Tidak memakai tahun.
+                </p>
+              </div>
+            )}
+
             <div
               className={`overflow-hidden transition-all duration-300 ease-out ${
-                isRange ? 'max-h-0 opacity-0' : 'max-h-[12rem] opacity-100'
+                isRange || isPekan || isBulan ? 'max-h-0 opacity-0' : 'max-h-[12rem] opacity-100'
               }`}
             >
               <div className="grid grid-cols-3 gap-2">
@@ -425,6 +511,28 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
               </div>
             )}
 
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Pakai penanda</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Titik warna di grid kalender</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={!!pakai_penanda}
+                onClick={() => setPakaiPenanda((v) => !v)}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${
+                  pakai_penanda ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    pakai_penanda ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </div>
+            {pakai_penanda && (
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Warna Label</label>
               <div className="flex flex-wrap gap-2 items-center">
@@ -468,6 +576,7 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
                 </button>
               </div>
             </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Keterangan</label>
@@ -490,6 +599,7 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
                     if (!on) {
                       setJamMulai('')
                       setJamSelesai('')
+                      setJamJenis('wib')
                     }
                   }}
                   className="mt-0.5"
@@ -497,14 +607,18 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
                 <span className="text-sm text-gray-700 dark:text-gray-300">
                   Cantumkan jam acara
                   <span className="block text-xs text-gray-500 dark:text-gray-400 font-normal mt-0.5">
-                    Tampil di kalender sebagai jam mulai–selesai (opsional).
+                    Tampil di kalender sebagai jam mulai–selesai, WIB atau Istiwa’ (opsional).
                   </span>
                 </span>
               </label>
               {ada_jam && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-3">
+                  <JamJenisToggle value={normalizeJamJenis(jam_jenis)} onChange={setJamJenis} />
+                  <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Jam mulai</label>
+                    <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
+                      Jam mulai ({normalizeJamJenis(jam_jenis) === 'istiwa' ? 'Istiwa’' : 'WIB'})
+                    </label>
                     <input
                       type="time"
                       value={jam_mulai || ''}
@@ -513,13 +627,16 @@ export default function TambahHariPentingPribadiOffcanvas({ open, payload, onClo
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">Jam selesai</label>
+                    <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
+                      Jam selesai ({normalizeJamJenis(jam_jenis) === 'istiwa' ? 'Istiwa’' : 'WIB'})
+                    </label>
                     <input
                       type="time"
                       value={jam_selesai || ''}
                       onChange={(e) => setJamSelesai(e.target.value)}
                       className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
                     />
+                  </div>
                   </div>
                 </div>
               )}

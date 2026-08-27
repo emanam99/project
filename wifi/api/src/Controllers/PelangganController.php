@@ -218,6 +218,121 @@ class PelangganController
         ], 201);
     }
 
+    /**
+     * POST /pelanggan/import
+     * Body: { items: [{ nama, email?, no_hp?, alamat?, paket?, keterangan?, aktif? }] }
+     */
+    public function import(Request $request, Response $response): Response
+    {
+        if ($denied = $this->denyUnlessManage($request, $response)) {
+            return $denied;
+        }
+        $body = $this->parseBody($request);
+        $items = $body['items'] ?? null;
+        if (!is_array($items) || count($items) === 0) {
+            return $this->json($response, ['success' => false, 'message' => 'Tidak ada data untuk diimpor'], 422);
+        }
+        if (count($items) > 500) {
+            return $this->json($response, ['success' => false, 'message' => 'Maksimal 500 baris per impor'], 422);
+        }
+
+        $created = [];
+        $failed = [];
+        $seenEmails = [];
+
+        $emailLinked = $this->db->prepare(
+            'SELECT id, pelanggan_id FROM users WHERE email = ? LIMIT 1'
+        );
+        $ins = $this->db->prepare(
+            'INSERT INTO pelanggan (nama, no_hp, alamat, paket, aktif, keterangan)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+
+        $this->db->beginTransaction();
+        try {
+            foreach ($items as $index => $raw) {
+                if (!is_array($raw)) {
+                    $failed[] = ['index' => (int) $index, 'message' => 'Baris tidak valid'];
+                    continue;
+                }
+                $nama = trim((string) ($raw['nama'] ?? ''));
+                if ($nama === '') {
+                    $failed[] = ['index' => (int) $index, 'message' => 'Nama wajib diisi'];
+                    continue;
+                }
+
+                $email = strtolower(trim((string) ($raw['email'] ?? '')));
+                if ($email !== '') {
+                    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        $failed[] = ['index' => (int) $index, 'message' => 'Email tidak valid'];
+                        continue;
+                    }
+                    if (isset($seenEmails[$email])) {
+                        $failed[] = [
+                            'index' => (int) $index,
+                            'message' => 'Email duplikat dalam file (baris sebelumnya)',
+                        ];
+                        continue;
+                    }
+                    $emailLinked->execute([$email]);
+                    $u = $emailLinked->fetch();
+                    if ($u && $u['pelanggan_id'] !== null && (int) $u['pelanggan_id'] > 0) {
+                        $failed[] = [
+                            'index' => (int) $index,
+                            'message' => 'Email sudah terhubung ke pelanggan lain',
+                        ];
+                        continue;
+                    }
+                    $seenEmails[$email] = true;
+                }
+
+                try {
+                    $this->db->exec('SAVEPOINT sp_import_row');
+                    $ins->execute([
+                        $nama,
+                        trim((string) ($raw['no_hp'] ?? '')) ?: null,
+                        trim((string) ($raw['alamat'] ?? '')) ?: null,
+                        trim((string) ($raw['paket'] ?? '')) ?: null,
+                        !empty($raw['aktif']) || !array_key_exists('aktif', $raw) ? 1 : 0,
+                        trim((string) ($raw['keterangan'] ?? '')) ?: null,
+                    ]);
+                    $id = (int) $this->db->lastInsertId();
+                    $syncErr = $this->syncLinkedUser($id, $nama, $email);
+                    if ($syncErr !== null) {
+                        throw new \RuntimeException($syncErr);
+                    }
+                    $this->db->exec('RELEASE SAVEPOINT sp_import_row');
+                    $row = $this->fetchPublicById($id);
+                    if ($row) {
+                        $created[] = $row;
+                    }
+                } catch (\Throwable $e) {
+                    try {
+                        $this->db->exec('ROLLBACK TO SAVEPOINT sp_import_row');
+                    } catch (\Throwable $ignored) {
+                    }
+                    $failed[] = ['index' => (int) $index, 'message' => $e->getMessage()];
+                }
+            }
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return $this->json($response, [
+            'success' => count($failed) === 0,
+            'created' => count($created),
+            'failed' => $failed,
+            'data' => $created,
+            'message' => sprintf(
+                '%d berhasil%s',
+                count($created),
+                count($failed) > 0 ? ', ' . count($failed) . ' gagal' : ''
+            ),
+        ], count($created) > 0 ? 201 : 422);
+    }
+
     /** PUT /pelanggan/{id} */
     public function update(Request $request, Response $response, array $args): Response
     {

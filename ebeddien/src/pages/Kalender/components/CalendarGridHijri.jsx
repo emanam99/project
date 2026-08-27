@@ -187,7 +187,7 @@ export default function CalendarGridHijri({
             onClick={closePopup}
             aria-label="Tutup"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -211,7 +211,7 @@ export default function CalendarGridHijri({
                   <div className="kalender-grid__day-popup-item-body">
                     <div className="kalender-grid__day-popup-item-name">{item.nama_event}</div>
                     {jamStr && (
-                      <div className="kalender-grid__day-popup-item-ket text-xs font-medium text-gray-600 dark:text-gray-300">
+                      <div className="kalender-grid__day-popup-item-ket kalender-grid__day-popup-item-jam">
                         {jamStr}
                       </div>
                     )}
@@ -258,7 +258,7 @@ export default function CalendarGridHijri({
               closePopup()
             }}
           >
-            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
             </svg>
             Tambah jadwal saya

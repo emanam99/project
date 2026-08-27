@@ -453,7 +453,7 @@ final class EbeddienFiturAccessDefinitions
         );
     }
 
-    /** GET/POST/PUT/DELETE /api/absen-lokasi dan /api/absen-alamat (master alamat titik) */
+    /** GET/POST/PUT/DELETE /api/absen-lokasi (titik GPS absen). */
     public static function absenLokasiCrudApiSelectors(): array
     {
         return self::merge(
@@ -467,6 +467,16 @@ final class EbeddienFiturAccessDefinitions
                 'action.absen.lokasi.hapus',
                 'action.absen.tab.pengaturan',
             ]
+        );
+    }
+
+    /** GET/POST/PUT/DELETE /api/absen-alamat — daftar alamat umum (tab Lokasi kalender + absen). */
+    public static function absenAlamatCrudApiSelectors(): array
+    {
+        return self::merge(
+            self::absenLokasiCrudApiSelectors(),
+            ['action.kalender.pengaturan.tab_lokasi'],
+            ['menu.kalender.pengaturan']
         );
     }
 
@@ -626,6 +636,16 @@ final class EbeddienFiturAccessDefinitions
         return self::merge(
             self::tarbiyahSuperSelectors(),
             ['action.kalender.pengaturan.tab_istiwa'],
+            ['menu.kalender.pengaturan']
+        );
+    }
+
+    /** Tab Lokasi (daftar alamat GPS) di Pengaturan Kalender. */
+    public static function kalenderPengaturanLokasiSelectors(): array
+    {
+        return self::merge(
+            self::tarbiyahSuperSelectors(),
+            ['action.kalender.pengaturan.tab_lokasi'],
             ['menu.kalender.pengaturan']
         );
     }

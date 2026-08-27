@@ -30,6 +30,8 @@ final class LegacyRouteRoleDefinitions
             LegacyRouteRoleKeys::KALENDER_PENGATURAN_BULAN_SELECTORS => ['admin_kalender', 'super_admin'],
             LegacyRouteRoleKeys::KALENDER_PENGATURAN_HARI_PENTING_SELECTORS => ['admin_kalender', 'super_admin'],
             LegacyRouteRoleKeys::KALENDER_PENGATURAN_ISTIWA_SELECTORS => ['admin_kalender', 'super_admin', 'tarbiyah', 'admin_daerah', 'admin_domisili', 'kapdar', 'wakapdar'],
+            LegacyRouteRoleKeys::KALENDER_PENGATURAN_LOKASI_SELECTORS => ['admin_kalender', 'super_admin', 'tarbiyah', 'admin_daerah', 'admin_domisili', 'kapdar', 'wakapdar'],
+            LegacyRouteRoleKeys::ABSEN_ALAMAT_CRUD_API_SELECTORS => ['admin_kalender', 'super_admin', 'tarbiyah', 'admin_daerah', 'admin_domisili', 'kapdar', 'wakapdar'],
             LegacyRouteRoleKeys::UMROH_MODULE_SELECTORS => ['admin_uwaba', 'petugas_uwaba', 'admin_umroh', 'petugas_umroh', 'super_admin'],
             LegacyRouteRoleKeys::UWABA_STAFF_SUPER_SELECTORS => ['petugas_uwaba', 'admin_uwaba', 'super_admin'],
             LegacyRouteRoleKeys::AKTIVITAS_PEMASUKAN_ADMIN_SELECTORS => ['admin_uwaba', 'petugas_keuangan', 'super_admin'],

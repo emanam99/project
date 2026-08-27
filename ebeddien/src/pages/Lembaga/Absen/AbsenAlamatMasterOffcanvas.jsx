@@ -195,11 +195,10 @@ export default function AbsenAlamatMasterOffcanvas({
                 </div>
               </div>
               <div className="rounded-lg border border-dashed border-teal-300/70 dark:border-teal-800/60 bg-teal-50/50 dark:bg-teal-950/25 p-3 space-y-2">
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-200">Zona GPS bersama (opsional)</p>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-200">Koordinat (wajib)</p>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
-                  Bila latitude dan longitude diisi, absen mandiri dan pratinjau alamat memakai pusat dan jangkauan di
-                  sini (sampai 25 km). Kosongkan ketiganya bila cukup teks alamat saja — titik lokasi tetap punya
-                  koordinat sendiri.
+                  Nama alamat ini berlaku untuk titik latitude/longitude dan jangkauan zona (sampai 25 km). Semua
+                  pengguna eBeddien yang GPS-nya masuk zona melihat alamat yang sama.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button

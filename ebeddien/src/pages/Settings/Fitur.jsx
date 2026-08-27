@@ -368,7 +368,7 @@ export default function Fitur() {
     () => new Set(['rencana', 'pengeluaran', 'draft'])
   )
   const [kalenderPengaturanAccordionOpen, setKalenderPengaturanAccordionOpen] = useState(
-    () => new Set(['bulan', 'hari_penting'])
+    () => new Set(['bulan', 'hari_penting', 'lokasi'])
   )
   const [absenAccordionOpen, setAbsenAccordionOpen] = useState(
     () => new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen'])
@@ -558,7 +558,7 @@ export default function Fitur() {
                 boleh akses — misalnya semua aksi di bawah menu Chat AI. Menu yang punya sub-fitur bisa dibentangkan lewat
                 tombol di kiri jumlah role. Untuk menu Lembaga (Santri, Rombel, Jabatan, Mapel, Ujian, Bisyaroh), baris aksi «Akses
                 halaman» tidak ditampilkan terpisah — centang role pada menu induk sudah mengatur akses halaman. Untuk
-                Pengeluaran tiga accordion (Rencana, Pengeluaran, Draft); Kalender dua accordion (Bulan, Hari penting);
+                Pengeluaran tiga accordion (Rencana, Pengeluaran, Draft); Kalender accordion per tab (Bulan, Jadwal, Lokasi, Istiwa’);
                 Pengurus dua accordion (aksi halaman, matriks penugasan role).
               </p>
             </div>

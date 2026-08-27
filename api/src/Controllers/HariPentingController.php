@@ -64,6 +64,115 @@ class HariPentingController
         return sprintf('%02d:%02d:%02d', $h, $i, $sec);
     }
 
+    /**
+     * wib | istiwa. Null jika tidak ada jam.
+     */
+    private static function normalizeJamJenis(mixed $v, ?string $jamMulai, ?string $jamSelesai): ?string
+    {
+        if ($jamMulai === null && $jamSelesai === null) {
+            return null;
+        }
+        $s = strtolower(trim((string) $v));
+
+        return $s === 'istiwa' ? 'istiwa' : 'wib';
+    }
+
+    /**
+     * Normalisasi hari dalam pekan: int, CSV, atau array → "1,3,5" (0=Minggu … 6=Sabtu).
+     */
+    private static function normalizeHariPekan(mixed $v): ?string
+    {
+        $days = [];
+        if (is_array($v)) {
+            foreach ($v as $x) {
+                if (is_int($x) || (is_string($x) && is_numeric(trim($x)))) {
+                    $days[] = (int) $x;
+                }
+            }
+        } elseif (is_int($v) || is_float($v)) {
+            $days[] = (int) $v;
+        } elseif (is_string($v)) {
+            $s = trim($v);
+            if ($s !== '') {
+                foreach (preg_split('/[,;\s]+/', $s) ?: [] as $p) {
+                    if ($p === '' || !is_numeric($p)) {
+                        continue;
+                    }
+                    $days[] = (int) $p;
+                }
+            }
+        }
+        $uniq = [];
+        foreach ($days as $d) {
+            if ($d >= 0 && $d <= 6) {
+                $uniq[$d] = true;
+            }
+        }
+        $list = array_keys($uniq);
+        usort($list, static function ($a, $b) {
+            $oa = $a === 0 ? 7 : $a;
+            $ob = $b === 0 ? 7 : $b;
+
+            return $oa <=> $ob;
+        });
+        if ($list === []) {
+            return null;
+        }
+
+        return implode(',', $list);
+    }
+
+    /**
+     * Tanggal 1–31: int, CSV, atau array → "1,15,31".
+     */
+    private static function normalizeTanggalCsv(mixed $v): ?string
+    {
+        $days = [];
+        if (is_array($v)) {
+            foreach ($v as $x) {
+                if (is_int($x) || (is_string($x) && is_numeric(trim($x)))) {
+                    $days[] = (int) $x;
+                }
+            }
+        } elseif (is_int($v) || is_float($v)) {
+            $days[] = (int) $v;
+        } elseif (is_string($v)) {
+            $s = trim($v);
+            if ($s !== '') {
+                foreach (preg_split('/[,;\s]+/', $s) ?: [] as $p) {
+                    if ($p === '' || !is_numeric($p)) {
+                        continue;
+                    }
+                    $days[] = (int) $p;
+                }
+            }
+        }
+        $uniq = [];
+        foreach ($days as $d) {
+            if ($d >= 1 && $d <= 31) {
+                $uniq[$d] = true;
+            }
+        }
+        $list = array_keys($uniq);
+        sort($list, SORT_NUMERIC);
+        if ($list === []) {
+            return null;
+        }
+
+        return implode(',', $list);
+    }
+
+    private static function normalizeTanggalSingle(mixed $v): ?int
+    {
+        $csv = self::normalizeTanggalCsv($v);
+        if ($csv === null) {
+            return null;
+        }
+        $parts = explode(',', $csv);
+
+        return (int) $parts[0];
+    }
+
     private function skipTargetFilter(?array $user): bool
     {
         if ($user === null) {
@@ -288,10 +397,14 @@ class HariPentingController
                 $monthEnd = sprintf('%04d-%02d-%02d', $tahun, $bulan, $lastDay);
                 $hijriStart = sprintf('%04d-%02d-01', $tahun, $bulan);
                 $hijriEnd = sprintf('%04d-%02d-30', $tahun, $bulan);
-                $filters[] = '(((hp.tipe IS NULL OR hp.tipe <> ?) AND hp.bulan = ? AND (hp.tahun = ? OR hp.tahun IS NULL)) OR (hp.tipe = ? AND hp.kategori = ? AND hp.tanggal_dari IS NOT NULL AND hp.tanggal_sampai IS NOT NULL AND hp.tanggal_dari <= ? AND hp.tanggal_sampai >= ?) OR (hp.tipe = ? AND hp.kategori = ? AND hp.tanggal_dari IS NOT NULL AND hp.tanggal_sampai IS NOT NULL AND hp.tanggal_dari <= ? AND hp.tanggal_sampai >= ?))';
+                $filters[] = '(((hp.tipe IS NULL OR hp.tipe NOT IN (?, ?, ?)) AND hp.bulan = ? AND (hp.tahun = ? OR hp.tahun IS NULL)) OR hp.tipe = ? OR hp.tipe = ? OR (hp.tipe = ? AND hp.kategori = ? AND hp.tanggal_dari IS NOT NULL AND hp.tanggal_sampai IS NOT NULL AND hp.tanggal_dari <= ? AND hp.tanggal_sampai >= ?) OR (hp.tipe = ? AND hp.kategori = ? AND hp.tanggal_dari IS NOT NULL AND hp.tanggal_sampai IS NOT NULL AND hp.tanggal_dari <= ? AND hp.tanggal_sampai >= ?))';
                 $bind[] = 'dari_sampai';
+                $bind[] = 'per_pekan';
+                $bind[] = 'per_bulan';
                 $bind[] = $bulan;
                 $bind[] = $tahun;
+                $bind[] = 'per_pekan';
+                $bind[] = 'per_bulan';
                 $bind[] = 'dari_sampai';
                 $bind[] = 'masehi';
                 $bind[] = $monthEnd;
@@ -311,12 +424,16 @@ class HariPentingController
                 }
             }
             if (isset($params['tanggal'])) {
-                $filters[] = 'hp.tanggal = ?';
-                $bind[] = $params['tanggal'];
+                $d = (int) $params['tanggal'];
+                $filters[] = '(hp.tanggal = ? OR FIND_IN_SET(?, hp.tanggal))';
+                $bind[] = (string) $d;
+                $bind[] = $d;
             }
             if (isset($params['hari_pekan'])) {
-                $filters[] = 'hp.hari_pekan = ?';
-                $bind[] = $params['hari_pekan'];
+                $d = (int) $params['hari_pekan'];
+                $filters[] = '(hp.hari_pekan = ? OR FIND_IN_SET(?, hp.hari_pekan))';
+                $bind[] = (string) $d;
+                $bind[] = $d;
             }
 
             $wantTargets = isset($params['include_targets']) && ($params['include_targets'] === '1' || $params['include_targets'] === 'true');
@@ -581,8 +698,7 @@ class HariPentingController
             $nama_event = TextSanitizer::cleanText($data['nama_event'] ?? '');
             $kategori = $data['kategori'] ?? 'hijriyah';
             $tipe = $data['tipe'] ?? 'per_tahun';
-            $hari_pekan = isset($data['hari_pekan']) ? (int) $data['hari_pekan'] : null;
-            $tanggal = isset($data['tanggal']) ? (int) $data['tanggal'] : null;
+            $hari_pekan = self::normalizeHariPekan($data['hari_pekan'] ?? null);
             $bulan = isset($data['bulan']) ? (int) $data['bulan'] : null;
             $tahun = isset($data['tahun']) ? (int) $data['tahun'] : null;
             $tanggal_dari = isset($data['tanggal_dari']) ? trim((string) $data['tanggal_dari']) : null;
@@ -604,7 +720,28 @@ class HariPentingController
                 $tanggal = null;
                 $bulan = null;
                 $tahun = null;
+            } elseif ($tipe === 'per_pekan') {
+                if ($hari_pekan === null) {
+                    return $this->json($response, ['error' => 'Tipe per pekan wajib memilih minimal satu hari'], 400);
+                }
+                $tanggal = null;
+                $bulan = null;
+                $tahun = null;
+                $tanggal_dari = null;
+                $tanggal_sampai = null;
+            } elseif ($tipe === 'per_bulan') {
+                $tanggal = self::normalizeTanggalCsv($data['tanggal'] ?? null);
+                if ($tanggal === null) {
+                    return $this->json($response, ['error' => 'Tipe per bulan wajib memilih minimal satu tanggal'], 400);
+                }
+                $hari_pekan = null;
+                $bulan = null;
+                $tahun = null;
+                $tanggal_dari = null;
+                $tanggal_sampai = null;
             } else {
+                $hari_pekan = null;
+                $tanggal = self::normalizeTanggalSingle($data['tanggal'] ?? null);
                 $tanggal_dari = null;
                 $tanggal_sampai = null;
             }
@@ -620,6 +757,7 @@ class HariPentingController
             if ($jamMulai !== null && $jamSelesai !== null && strcmp($jamMulai, $jamSelesai) > 0) {
                 return $this->json($response, ['error' => 'jam_mulai tidak boleh setelah jam_selesai'], 400);
             }
+            $jamJenis = self::normalizeJamJenis($data['jam_jenis'] ?? null, $jamMulai, $jamSelesai);
 
             $tlRaw = $data['target_lembaga_ids'] ?? [];
             $tuRaw = $data['target_user_ids'] ?? [];
@@ -667,8 +805,8 @@ class HariPentingController
                 $oldStmt = $this->db->prepare('SELECT * FROM psa___hari_penting WHERE id = ?');
                 $oldStmt->execute([$data['id']]);
                 $oldRow = $oldStmt->fetch(\PDO::FETCH_ASSOC);
-                $stmt = $this->db->prepare('UPDATE psa___hari_penting SET nama_event=?, kategori=?, tipe=?, hari_pekan=?, tanggal=?, bulan=?, tahun=?, tanggal_dari=?, tanggal_sampai=?, jam_mulai=?, jam_selesai=?, warna_label=?, keterangan=?, aktif=? WHERE id=?');
-                $stmt->execute([$nama_event, $kategori, $tipe, $hari_pekan, $tanggal, $bulan, $tahun, $tanggal_dari, $tanggal_sampai, $jamMulai, $jamSelesai, $warna_label, $keterangan, $aktif, $data['id']]);
+                $stmt = $this->db->prepare('UPDATE psa___hari_penting SET nama_event=?, kategori=?, tipe=?, hari_pekan=?, tanggal=?, bulan=?, tahun=?, tanggal_dari=?, tanggal_sampai=?, jam_mulai=?, jam_selesai=?, jam_jenis=?, warna_label=?, keterangan=?, aktif=? WHERE id=?');
+                $stmt->execute([$nama_event, $kategori, $tipe, $hari_pekan, $tanggal, $bulan, $tahun, $tanggal_dari, $tanggal_sampai, $jamMulai, $jamSelesai, $jamJenis, $warna_label, $keterangan, $aktif, $data['id']]);
                 $eventId = (int) $data['id'];
                 if ($targetGlobal) {
                     $this->db->prepare('DELETE FROM psa___hari_penting_target WHERE id_hari_penting = ?')->execute([$eventId]);
@@ -685,8 +823,8 @@ class HariPentingController
                 }
                 return $this->json($response, ['message' => 'Hari penting berhasil diupdate']);
             }
-            $stmt = $this->db->prepare('INSERT INTO psa___hari_penting (nama_event, kategori, tipe, hari_pekan, tanggal, bulan, tahun, tanggal_dari, tanggal_sampai, jam_mulai, jam_selesai, warna_label, keterangan, aktif) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$nama_event, $kategori, $tipe, $hari_pekan, $tanggal, $bulan, $tahun, $tanggal_dari, $tanggal_sampai, $jamMulai, $jamSelesai, $warna_label, $keterangan, $aktif]);
+            $stmt = $this->db->prepare('INSERT INTO psa___hari_penting (nama_event, kategori, tipe, hari_pekan, tanggal, bulan, tahun, tanggal_dari, tanggal_sampai, jam_mulai, jam_selesai, jam_jenis, warna_label, keterangan, aktif) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$nama_event, $kategori, $tipe, $hari_pekan, $tanggal, $bulan, $tahun, $tanggal_dari, $tanggal_sampai, $jamMulai, $jamSelesai, $jamJenis, $warna_label, $keterangan, $aktif]);
             $newId = (int) $this->db->lastInsertId();
             if ($newId > 0) {
                 if ($targetGlobal) {
@@ -740,8 +878,7 @@ class HariPentingController
                 return $this->json($response, ['error' => 'kategori harus hijriyah atau masehi'], 400);
             }
             $tipe = $data['tipe'] ?? 'per_tahun';
-            $hari_pekan = isset($data['hari_pekan']) ? (int) $data['hari_pekan'] : null;
-            $tanggal = isset($data['tanggal']) ? (int) $data['tanggal'] : null;
+            $hari_pekan = self::normalizeHariPekan($data['hari_pekan'] ?? null);
             $bulan = isset($data['bulan']) ? (int) $data['bulan'] : null;
             $tahun = isset($data['tahun']) ? (int) $data['tahun'] : null;
             $tanggal_dari = isset($data['tanggal_dari']) ? trim((string) $data['tanggal_dari']) : null;
@@ -763,7 +900,28 @@ class HariPentingController
                 $tanggal = null;
                 $bulan = null;
                 $tahun = null;
+            } elseif ($tipe === 'per_pekan') {
+                if ($hari_pekan === null) {
+                    return $this->json($response, ['error' => 'Tipe per pekan wajib memilih minimal satu hari'], 400);
+                }
+                $tanggal = null;
+                $bulan = null;
+                $tahun = null;
+                $tanggal_dari = null;
+                $tanggal_sampai = null;
+            } elseif ($tipe === 'per_bulan') {
+                $tanggal = self::normalizeTanggalCsv($data['tanggal'] ?? null);
+                if ($tanggal === null) {
+                    return $this->json($response, ['error' => 'Tipe per bulan wajib memilih minimal satu tanggal'], 400);
+                }
+                $hari_pekan = null;
+                $bulan = null;
+                $tahun = null;
+                $tanggal_dari = null;
+                $tanggal_sampai = null;
             } else {
+                $hari_pekan = null;
+                $tanggal = self::normalizeTanggalSingle($data['tanggal'] ?? null);
                 $tanggal_dari = null;
                 $tanggal_sampai = null;
             }
@@ -780,6 +938,7 @@ class HariPentingController
             if ($jamMulai !== null && $jamSelesai !== null && strcmp($jamMulai, $jamSelesai) > 0) {
                 return $this->json($response, ['error' => 'jam_mulai tidak boleh setelah jam_selesai'], 400);
             }
+            $jamJenis = self::normalizeJamJenis($data['jam_jenis'] ?? null, $jamMulai, $jamSelesai);
 
             $dataTargets = [
                 'target_lembaga_ids' => [],
@@ -790,8 +949,8 @@ class HariPentingController
                 ? (isset($user['user_id']) ? (int) $user['user_id'] : (isset($user['id']) ? (int) $user['id'] : null))
                 : null;
 
-            $stmt = $this->db->prepare('INSERT INTO psa___hari_penting (nama_event, kategori, tipe, hari_pekan, tanggal, bulan, tahun, tanggal_dari, tanggal_sampai, jam_mulai, jam_selesai, warna_label, keterangan, aktif) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-            $stmt->execute([$nama_event, $kategori, $tipe, $hari_pekan, $tanggal, $bulan, $tahun, $tanggal_dari, $tanggal_sampai, $jamMulai, $jamSelesai, $warna_label, $keterangan, $aktif]);
+            $stmt = $this->db->prepare('INSERT INTO psa___hari_penting (nama_event, kategori, tipe, hari_pekan, tanggal, bulan, tahun, tanggal_dari, tanggal_sampai, jam_mulai, jam_selesai, jam_jenis, warna_label, keterangan, aktif) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+            $stmt->execute([$nama_event, $kategori, $tipe, $hari_pekan, $tanggal, $bulan, $tahun, $tanggal_dari, $tanggal_sampai, $jamMulai, $jamSelesai, $jamJenis, $warna_label, $keterangan, $aktif]);
             $newId = (int) $this->db->lastInsertId();
             if ($newId > 0) {
                 $this->replaceTargets($newId, $dataTargets);

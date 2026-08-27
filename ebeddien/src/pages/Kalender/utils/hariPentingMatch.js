@@ -1,6 +1,11 @@
+import { matchesHariPekanItem } from './hariPekan'
+import { matchesTanggalBulanItem } from './tanggalBulan'
+
 /**
  * Cocokkan event hari penting dengan satu hari di kalender Masehi atau Hijriyah.
  * Tipe `dari_sampai`: `tanggal_dari` / `tanggal_sampai` berupa string Y-m-d (Masehi atau Hijriyah).
+ * Tipe `per_pekan`: hari dalam pekan Gregorian (bisa lebih dari satu).
+ * Tipe `per_bulan`: tanggal 1–31 (bisa lebih dari satu), setiap bulan, tanpa tahun.
  */
 
 function validYmd(s) {
@@ -42,6 +47,19 @@ function matchSingleHijri(hDay, hMonth, hYear, item) {
  */
 export function matchesHariPentingMasehiCalendar(isoMasehi, hijriYmdForDay, gregDay, gregMonth, gregYear, item) {
   if (!item || item.aktif === 0) return false
+  if (item.tipe === 'per_pekan') {
+    return matchesHariPekanItem(item, gregYear, gregMonth, gregDay)
+  }
+  if (item.tipe === 'per_bulan') {
+    if (item.kategori === 'masehi') {
+      return matchesTanggalBulanItem(item, gregDay)
+    }
+    if (item.kategori === 'hijriyah' && hijriYmdForDay && hijriYmdForDay !== '0000-00-00') {
+      const hd = Number(hijriYmdForDay.split('-')[2])
+      return matchesTanggalBulanItem(item, hd)
+    }
+    return false
+  }
   if (item.tipe === 'dari_sampai') {
     if (item.kategori === 'masehi') {
       return ymdInInclusive(isoMasehi, item.tanggal_dari, item.tanggal_sampai)
@@ -66,6 +84,18 @@ export function matchesHariPentingMasehiCalendar(isoMasehi, hijriYmdForDay, greg
  */
 export function matchesHariPentingHijriCalendar(hijriDay, hijriMonth, hijriYear, gregDay, gregMonth, gregYear, item) {
   if (!item || item.aktif === 0) return false
+  if (item.tipe === 'per_pekan') {
+    return matchesHariPekanItem(item, gregYear, gregMonth, gregDay)
+  }
+  if (item.tipe === 'per_bulan') {
+    if (item.kategori === 'hijriyah') {
+      return matchesTanggalBulanItem(item, hijriDay)
+    }
+    if (item.kategori === 'masehi') {
+      return matchesTanggalBulanItem(item, gregDay)
+    }
+    return false
+  }
   if (item.tipe === 'dari_sampai') {
     if (item.kategori === 'hijriyah') {
       if (hijriMonth == null || hijriYear == null || Number.isNaN(hijriDay)) return false

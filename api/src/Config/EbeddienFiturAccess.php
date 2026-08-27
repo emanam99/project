@@ -196,6 +196,11 @@ final class EbeddienFiturAccess
         return EbeddienFiturSelectorRepository::codesForMethod('absenLokasiCrudApiSelectors');
     }
 
+    public static function absenAlamatCrudApiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('absenAlamatCrudApiSelectors');
+    }
+
     public static function absenSettingApiSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('absenSettingApiSelectors');
@@ -314,6 +319,11 @@ final class EbeddienFiturAccess
     public static function kalenderPengaturanIstiwaSelectors(): array
     {
         return EbeddienFiturSelectorRepository::codesForMethod('kalenderPengaturanIstiwaSelectors');
+    }
+
+    public static function kalenderPengaturanLokasiSelectors(): array
+    {
+        return EbeddienFiturSelectorRepository::codesForMethod('kalenderPengaturanLokasiSelectors');
     }
 
     public static function wiridMenus(): array

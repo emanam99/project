@@ -130,7 +130,7 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
     () => new Set(['rencana', 'pengeluaran', 'draft'])
   )
   const [kalenderPengaturanAccordionOpen, setKalenderPengaturanAccordionOpen] = useState(
-    () => new Set(['bulan', 'hari_penting'])
+    () => new Set(['bulan', 'hari_penting', 'lokasi'])
   )
   const [absenAccordionOpen, setAbsenAccordionOpen] = useState(
     () => new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen'])

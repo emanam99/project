@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../../../store/authStore'
 import { useNotification } from '../../../contexts/NotificationContext'
@@ -15,7 +16,6 @@ import {
   fallbackJadwalDefault
 } from '../../../utils/absenJadwal'
 import AbsenLokasiOffcanvas from './AbsenLokasiOffcanvas'
-import AbsenAlamatMasterOffcanvas from './AbsenAlamatMasterOffcanvas'
 import AbsenDefaultSettingsCard from './AbsenDefaultSettingsCard'
 
 function lokasiAlamatRingkas(r) {
@@ -27,22 +27,6 @@ function lokasiAlamatJudulTooltip(r) {
   const rtRw =
     r.rt && r.rw ? `RT ${r.rt} RW ${r.rw}` : r.rt ? `RT ${r.rt}` : r.rw ? `RW ${r.rw}` : ''
   return [r.dusun, rtRw, r.desa, r.kecamatan, r.kabupaten, r.provinsi].filter(Boolean).join(', ')
-}
-
-/** Satu baris teks untuk daftar master alamat absen */
-function alamatMasterSatuBaris(a) {
-  const rtRw =
-    a.rt && a.rw ? `RT ${a.rt} RW ${a.rw}` : a.rt ? `RT ${a.rt}` : a.rw ? `RW ${a.rw}` : ''
-  const s = [a.dusun, rtRw, a.desa, a.kecamatan, a.kabupaten, a.provinsi].filter(Boolean).join(', ')
-  const hasGps =
-    a.latitude != null &&
-    a.longitude != null &&
-    String(a.latitude).trim() !== '' &&
-    String(a.longitude).trim() !== ''
-  const rm = Number(a.radius_meter)
-  const gps = hasGps ? ` · zona GPS ~${Number.isFinite(rm) && rm > 0 ? rm : 100} m` : ''
-
-  return (s || '—') + gps
 }
 
 const emptyForm = {
@@ -69,30 +53,12 @@ const emptyForm = {
   jam_telat_malam: ''
 }
 
-const emptyAlamatForm = {
-  dusun: '',
-  rt: '',
-  rw: '',
-  desa: '',
-  kecamatan: '',
-  kabupaten: '',
-  provinsi: '',
-  latitude: '',
-  longitude: '',
-  radius_meter: ''
-}
-
 export default function AbsenPengaturanTab() {
   const user = useAuthStore((s) => s.user)
   const { showNotification } = useNotification()
   const absenFitur = useAbsenFiturAccess()
   const [rows, setRows] = useState([])
   const [alamatRows, setAlamatRows] = useState([])
-  const [alamatOcOpen, setAlamatOcOpen] = useState(false)
-  const [alamatEditingId, setAlamatEditingId] = useState(null)
-  const [alamatForm, setAlamatForm] = useState(emptyAlamatForm)
-  const [alamatSaving, setAlamatSaving] = useState(false)
-  const [deletingAlamatId, setDeletingAlamatId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [lembagaOpts, setLembagaOpts] = useState([])
   const [offcanvasOpen, setOffcanvasOpen] = useState(false)
@@ -100,7 +66,7 @@ export default function AbsenPengaturanTab() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  /** null | { kind: 'lokasi', nama: string } | { kind: 'alamat', id: number, ringkas: string } */
+  /** null | { kind: 'lokasi', nama: string } */
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [lembagaFilter, setLembagaFilter] = useState('')
@@ -120,10 +86,7 @@ export default function AbsenPengaturanTab() {
   const rowClickable =
     absenFitur.lokasiList && (absenFitur.lokasiUbah || absenFitur.lokasiHapus)
 
-  const alamatRowClickable =
-    absenFitur.lokasiList && (absenFitur.lokasiUbah || absenFitur.lokasiHapus)
-
-  const deleteModalBusy = deleting || deletingAlamatId !== null
+  const deleteModalBusy = deleting
 
   const lembagaFilterOptions = useMemo(() => {
     const map = new Map()
@@ -299,15 +262,9 @@ export default function AbsenPengaturanTab() {
 
   const closeOffcanvas = useCallback(() => {
     if (saving || deleting) return
-    setDeleteConfirm((prev) => (prev?.kind === 'lokasi' ? null : prev))
+    setDeleteConfirm(null)
     setOffcanvasOpen(false)
   }, [saving, deleting])
-
-  const tutupAlamatMasterOc = useCallback(() => {
-    if (alamatSaving || deletingAlamatId !== null) return
-    setDeleteConfirm((prev) => (prev?.kind === 'alamat' ? null : prev))
-    setAlamatOcOpen(false)
-  }, [alamatSaving, deletingAlamatId])
 
   const openCreate = () => {
     setEditingId(null)
@@ -426,119 +383,6 @@ export default function AbsenPengaturanTab() {
     }
   }
 
-  const openConfirmHapusAlamat = useCallback(() => {
-    if (!absenFitur.lokasiHapus || alamatEditingId == null) return
-    const id = Number(alamatEditingId)
-    if (!Number.isFinite(id) || id <= 0) return
-    const ringkas = alamatMasterSatuBaris({
-      dusun: alamatForm.dusun,
-      rt: alamatForm.rt,
-      rw: alamatForm.rw,
-      desa: alamatForm.desa,
-      kecamatan: alamatForm.kecamatan,
-      kabupaten: alamatForm.kabupaten,
-      provinsi: alamatForm.provinsi,
-      latitude: alamatForm.latitude,
-      longitude: alamatForm.longitude,
-      radius_meter: alamatForm.radius_meter
-    })
-    setDeleteConfirm({ kind: 'alamat', id, ringkas })
-  }, [absenFitur.lokasiHapus, alamatEditingId, alamatForm])
-
-  const executeHapusAlamat = async () => {
-    if (!deleteConfirm || deleteConfirm.kind !== 'alamat') return
-    const id = deleteConfirm.id
-    setDeleteConfirm(null)
-    setDeletingAlamatId(id)
-    try {
-      const res = await absenAlamatAPI.delete(id)
-      if (res?.success) {
-        showNotification(res.message || 'Alamat dihapus', 'success')
-        setAlamatOcOpen(false)
-        setAlamatEditingId(null)
-        void loadAlamat()
-        void load()
-      } else {
-        showNotification(res?.message || 'Gagal menghapus', 'error')
-      }
-    } catch (e) {
-      showNotification(e.response?.data?.message || e.message || 'Gagal menghapus', 'error')
-    } finally {
-      setDeletingAlamatId(null)
-    }
-  }
-
-  const bukaTambahAlamatMaster = () => {
-    if (!absenFitur.lokasiTambah) return
-    setAlamatEditingId(null)
-    setAlamatForm({
-      ...emptyAlamatForm
-    })
-    setAlamatOcOpen(true)
-  }
-
-  const bukaAlamatMasterDariBaris = (a) => {
-    if (!absenFitur.lokasiUbah && !absenFitur.lokasiHapus) return
-    setAlamatEditingId(Number(a.id))
-    setAlamatForm({
-      dusun: a.dusun != null ? String(a.dusun) : '',
-      rt: a.rt != null ? String(a.rt) : '',
-      rw: a.rw != null ? String(a.rw) : '',
-      desa: a.desa != null ? String(a.desa) : '',
-      kecamatan: a.kecamatan != null ? String(a.kecamatan) : '',
-      kabupaten: a.kabupaten != null ? String(a.kabupaten) : '',
-      provinsi: a.provinsi != null ? String(a.provinsi) : '',
-      latitude: a.latitude != null && String(a.latitude).trim() !== '' ? String(a.latitude) : '',
-      longitude: a.longitude != null && String(a.longitude).trim() !== '' ? String(a.longitude) : '',
-      radius_meter:
-        a.radius_meter != null && String(a.radius_meter).trim() !== '' ? String(a.radius_meter) : ''
-    })
-    setAlamatOcOpen(true)
-  }
-
-  const simpanAlamatMaster = async () => {
-    if (alamatEditingId != null && !absenFitur.lokasiUbah) return
-    if (alamatEditingId == null && !absenFitur.lokasiTambah) return
-    const keys = ['dusun', 'rt', 'rw', 'desa', 'kecamatan', 'kabupaten', 'provinsi']
-    const punyaIsian = keys.some((k) => String(alamatForm[k] ?? '').trim().length > 0)
-    if (!punyaIsian) {
-      showNotification('Isi minimal satu bagian alamat', 'error')
-      return
-    }
-    const body = {
-      dusun: alamatForm.dusun?.trim() || null,
-      rt: alamatForm.rt?.trim() || null,
-      rw: alamatForm.rw?.trim() || null,
-      desa: alamatForm.desa?.trim() || null,
-      kecamatan: alamatForm.kecamatan?.trim() || null,
-      kabupaten: alamatForm.kabupaten?.trim() || null,
-      provinsi: alamatForm.provinsi?.trim() || null,
-      latitude: String(alamatForm.latitude ?? '').trim(),
-      longitude: String(alamatForm.longitude ?? '').trim(),
-      radius_meter: String(alamatForm.radius_meter ?? '').trim()
-    }
-    setAlamatSaving(true)
-    try {
-      let res
-      if (alamatEditingId != null) {
-        res = await absenAlamatAPI.update(alamatEditingId, body)
-      } else {
-        res = await absenAlamatAPI.create(body)
-      }
-      if (res?.success) {
-        showNotification(res.message || 'Tersimpan', 'success')
-        setAlamatOcOpen(false)
-        void loadAlamat()
-      } else {
-        showNotification(res?.message || 'Gagal menyimpan', 'error')
-      }
-    } catch (e) {
-      showNotification(e.response?.data?.message || e.message || 'Gagal menyimpan', 'error')
-    } finally {
-      setAlamatSaving(false)
-    }
-  }
-
   const openConfirmHapusLokasi = useCallback(() => {
     if (!editingId || !absenFitur.lokasiHapus) return
     setDeleteConfirm({ kind: 'lokasi', nama: form.nama?.trim() || 'titik ini' })
@@ -623,65 +467,15 @@ export default function AbsenPengaturanTab() {
         <>
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Titik lokasi untuk validasi absen GPS. Radius dalam meter dari titik pusat. Ketuk kartu untuk membuka panel
-            detail; penghapusan dilakukan dari panel tersebut bila diizinkan.
+            detail; penghapusan dilakukan dari panel tersebut bila diizinkan. Daftar nama alamat dikelola di{' '}
+            <Link
+              to="/kalender/pengaturan?tab=lokasi"
+              className="font-medium text-teal-700 hover:underline dark:text-teal-400"
+            >
+              Pengaturan Kalender · Lokasi
+            </Link>
+            .
           </p>
-
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-4">
-            <div className="flex flex-wrap items-start justify-between gap-2 gap-y-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Master alamat</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                  Alamat administratif untuk dipakai bersama beberapa titik. Ketuk baris untuk membuka panel; penghapusan
-                  dari panel bila diizinkan. Tambah lewat tombol di atas.
-                  {absenFitur.lokasiHapus
-                    ? ' Hanya bisa dihapus jika tidak dipakai titik manapun.'
-                    : ''}
-                </p>
-              </div>
-              {absenFitur.lokasiTambah && (
-                <button
-                  type="button"
-                  onClick={bukaTambahAlamatMaster}
-                  className="shrink-0 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-500"
-                >
-                  Tambah alamat
-                </button>
-              )}
-            </div>
-            {alamatRows.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">Belum ada entri master alamat.</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-gray-100 dark:divide-gray-700/80" aria-label="Daftar master alamat">
-                {alamatRows.map((a) => (
-                  <li key={a.id} className="py-2.5 first:pt-0">
-                    <div
-                      role={alamatRowClickable ? 'button' : undefined}
-                      tabIndex={alamatRowClickable ? 0 : undefined}
-                      onClick={() => alamatRowClickable && bukaAlamatMasterDariBaris(a)}
-                      onKeyDown={(e) => {
-                        if (!alamatRowClickable) return
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          bukaAlamatMasterDariBaris(a)
-                        }
-                      }}
-                      className={[
-                        'rounded-lg px-2 py-1 -mx-2 -my-1 text-left w-full',
-                        alamatRowClickable
-                          ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500'
-                          : ''
-                      ].join(' ')}
-                    >
-                      <p className="text-xs font-mono text-gray-500 dark:text-gray-400">#{a.id}</p>
-                      <p className="text-sm text-gray-800 dark:text-gray-200 mt-0.5 break-words">
-                        {alamatMasterSatuBaris(a)}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
 
           <div className="sticky top-0 z-10 mb-4 rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
             <div className="relative px-4 pb-2 pt-3">
@@ -973,26 +767,6 @@ export default function AbsenPengaturanTab() {
         editingId={editingId}
         jadwalDefault={jadwalDefault}
       />
-      <AbsenAlamatMasterOffcanvas
-        isOpen={alamatOcOpen}
-        onClose={tutupAlamatMasterOc}
-        title={
-          alamatEditingId != null
-            ? absenFitur.lokasiUbah
-              ? 'Ubah master alamat'
-              : 'Master alamat'
-            : 'Tambah master alamat'
-        }
-        form={alamatForm}
-        setForm={setAlamatForm}
-        saving={alamatSaving}
-        onSave={simpanAlamatMaster}
-        canEdit={alamatEditingId != null ? absenFitur.lokasiUbah : absenFitur.lokasiTambah}
-        isEdit={alamatEditingId != null}
-        canDelete={absenFitur.lokasiHapus && alamatEditingId != null}
-        deletingAlamat={deletingAlamatId === alamatEditingId && alamatEditingId != null}
-        onRequestDelete={openConfirmHapusAlamat}
-      />
 
       {deleteConfirm &&
         createPortal(
@@ -1019,24 +793,11 @@ export default function AbsenPengaturanTab() {
                   id="absen-del-confirm-title"
                   className="text-base font-semibold text-gray-900 dark:text-gray-100"
                 >
-                  {deleteConfirm.kind === 'lokasi' ? 'Hapus titik lokasi?' : 'Hapus master alamat?'}
+                  Hapus titik lokasi?
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-                  {deleteConfirm.kind === 'lokasi' ? (
-                    <>
-                      Titik <span className="font-medium text-gray-900 dark:text-gray-100">«{deleteConfirm.nama}»</span>{' '}
-                      akan dihapus permanen dari daftar absen GPS.
-                    </>
-                  ) : (
-                    <>
-                      Master #{deleteConfirm.id}:{' '}
-                      <span className="font-medium text-gray-900 dark:text-gray-100">{deleteConfirm.ringkas}</span>
-                      <br />
-                      <span className="text-xs text-gray-500 dark:text-gray-500">
-                        Hanya bisa dihapus jika tidak ada titik lokasi yang menaut ke master ini.
-                      </span>
-                    </>
-                  )}
+                  Titik <span className="font-medium text-gray-900 dark:text-gray-100">«{deleteConfirm.nama}»</span>{' '}
+                  akan dihapus permanen dari daftar absen GPS.
                 </p>
               </div>
               <div className="flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50/90 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/40 sm:flex-row sm:justify-end">
@@ -1051,7 +812,7 @@ export default function AbsenPengaturanTab() {
                 <button
                   type="button"
                   disabled={deleteModalBusy}
-                  onClick={() => void (deleteConfirm.kind === 'lokasi' ? executeHapusLokasi() : executeHapusAlamat())}
+                  onClick={() => void executeHapusLokasi()}
                   className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500 sm:w-auto disabled:opacity-50"
                 >
                   {deleteModalBusy ? 'Menghapus…' : "Ya, hapus"}

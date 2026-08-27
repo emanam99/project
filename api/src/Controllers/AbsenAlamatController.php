@@ -93,7 +93,7 @@ final class AbsenAlamatController
             return ['ok' => false, 'message' => 'Latitude dan longitude wajib berpasangan, atau kosongkan keduanya'];
         }
         if ($lat === null && $lng === null) {
-            return ['ok' => true, 'latitude' => null, 'longitude' => null, 'radius_meter' => null];
+            return ['ok' => false, 'message' => 'Latitude dan longitude wajib diisi'];
         }
         if ($rad === null || $rad < 1) {
             $rad = 100;
@@ -123,9 +123,18 @@ final class AbsenAlamatController
         return $this->apiHasLokasiGranular($user) || $this->apiHasTabGranular($user);
     }
 
+    private function hasKalenderLokasi(array $user): bool
+    {
+        return RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'action.kalender.pengaturan.tab_lokasi')
+            || RoleHelper::tokenHasEbeddienFiturCode($this->db, $user, 'menu.kalender.pengaturan');
+    }
+
     private function canRead(array $user): bool
     {
         if ($this->isSuper($user)) {
+            return true;
+        }
+        if ($this->hasKalenderLokasi($user)) {
             return true;
         }
         if (!$this->hasMenuAbsen($user)) {
@@ -147,6 +156,9 @@ final class AbsenAlamatController
         if ($this->isSuper($user)) {
             return true;
         }
+        if ($this->hasKalenderLokasi($user)) {
+            return true;
+        }
         if (!$this->hasMenuAbsen($user)) {
             return false;
         }
@@ -165,6 +177,9 @@ final class AbsenAlamatController
         if ($this->isSuper($user)) {
             return true;
         }
+        if ($this->hasKalenderLokasi($user)) {
+            return true;
+        }
         if (!$this->hasMenuAbsen($user)) {
             return false;
         }
@@ -181,6 +196,9 @@ final class AbsenAlamatController
     private function canHapus(array $user): bool
     {
         if ($this->isSuper($user)) {
+            return true;
+        }
+        if ($this->hasKalenderLokasi($user)) {
             return true;
         }
         if (!$this->hasMenuAbsen($user)) {

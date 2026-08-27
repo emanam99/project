@@ -390,8 +390,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid #e5e7eb;
   background: #f9fafb;
 }
@@ -408,8 +408,9 @@
 
 .kalender-grid__day-popup-title {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.3;
   color: #111;
 }
 
@@ -419,8 +420,8 @@
 
 .kalender-grid__day-popup-subtitle {
   margin: 0;
-  margin-top: 2px;
-  font-size: 0.75rem;
+  margin-top: 1px;
+  font-size: 0.6875rem;
   font-weight: 400;
   color: #6b7280;
   line-height: 1.3;
@@ -434,12 +435,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
+  padding: 2px;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: #6b7280;
   cursor: pointer;
+}
+
+.kalender-grid__day-popup-close svg {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .kalender-grid__day-popup-close:hover {
@@ -453,7 +459,7 @@
 }
 
 .kalender-grid__day-popup-body {
-  padding: 8px;
+  padding: 6px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -461,8 +467,9 @@
 
 .kalender-grid__day-popup-empty {
   margin: 0;
-  padding: 12px 8px;
-  font-size: 0.8125rem;
+  padding: 8px 6px;
+  font-size: 0.6875rem;
+  line-height: 1.35;
   color: #6b7280;
 }
 
@@ -471,7 +478,7 @@
 }
 
 .kalender-grid__day-popup-footer {
-  padding: 8px 10px 10px;
+  padding: 6px 8px 8px;
   border-top: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
@@ -485,16 +492,22 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 0.8125rem;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 0.6875rem;
   font-weight: 600;
+  line-height: 1.3;
   color: #fff;
   background: #0d9488;
   border: none;
   cursor: pointer;
   transition: background 0.15s ease;
+}
+
+.kalender-grid__day-popup-tambah svg {
+  width: 0.75rem;
+  height: 0.75rem;
 }
 
 .kalender-grid__day-popup-tambah:hover:not(:disabled) {
@@ -523,10 +536,10 @@
 .kalender-grid__day-popup-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  margin-bottom: 4px;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  margin-bottom: 3px;
   background: #f9fafb;
   border: 1px solid #f3f4f6;
 }
@@ -542,10 +555,10 @@
 
 .kalender-grid__day-popup-dot {
   flex-shrink: 0;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .kalender-grid__day-popup-item-body {
@@ -554,8 +567,9 @@
 }
 
 .kalender-grid__day-popup-item-name {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.3;
   color: #111;
 }
 
@@ -564,14 +578,23 @@
 }
 
 .kalender-grid__day-popup-item-ket {
-  font-size: 0.8125rem;
+  font-size: 0.6875rem;
   color: #6b7280;
-  margin-top: 2px;
+  margin-top: 1px;
   line-height: 1.35;
 }
 
 .dark .kalender-grid__day-popup-item-ket {
   color: #9ca3af;
+}
+
+.kalender-grid__day-popup-item-jam {
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.dark .kalender-grid__day-popup-item-jam {
+  color: #d1d5db;
 }
 
 @media (min-width: 640px) {
