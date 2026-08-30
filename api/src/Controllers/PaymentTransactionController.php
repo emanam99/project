@@ -387,7 +387,7 @@ class PaymentTransactionController
                 // Jika id_payment tidak diberikan, buat payment record baru
                 if (!$idPayment) {
                     // Ambil data untuk membuat payment record baru
-                    $jenisPembayaran = $input['jenis_pembayaran'] ?? 'Pendaftaran';
+                    $jenisPembayaran = $this->normalizeJenisPembayaranForStorage((string) ($input['jenis_pembayaran'] ?? 'Pendaftaran'));
                     $idReferensi = $input['id_referensi'] ?? null;
                     $tabelReferensi = $input['tabel_referensi'] ?? 'psb___registrasi';
                     $idSantriParam = $input['id_santri'] ?? null;
@@ -418,6 +418,26 @@ class PaymentTransactionController
                     // Untuk UWABA: id_referensi = tahun_ajaran (format 1447-1448), sama dengan kolom tahun_ajaran di uwaba & uwaba___bayar
                     if ($tabelReferensi === 'uwaba___bayar' && $tahunAjaran !== null && $tahunAjaran !== '') {
                         $idReferensi = $tahunAjaran;
+                    }
+
+                    if ($tabelReferensi === 'cashless___accounts') {
+                        $accId = (int) ($idReferensi ?? 0);
+                        if ($accId <= 0) {
+                            $this->db->rollBack();
+                            return $this->jsonResponse($response, [
+                                'success' => false,
+                                'message' => 'Akun cashless tidak valid. Muat ulang halaman lalu coba lagi.',
+                            ], 400);
+                        }
+                        $stmtAcc = $this->db->prepare('SELECT id FROM cashless___accounts WHERE id = ? LIMIT 1');
+                        $stmtAcc->execute([$accId]);
+                        if (!$stmtAcc->fetch(\PDO::FETCH_ASSOC)) {
+                            $this->db->rollBack();
+                            return $this->jsonResponse($response, [
+                                'success' => false,
+                                'message' => 'Akun cashless tidak ditemukan',
+                            ], 404);
+                        }
                     }
 
                     // id_user (users.id) untuk notif WA mybeddian / audit cashless.
@@ -496,7 +516,10 @@ class PaymentTransactionController
                 $stmtJenis = $this->db->prepare("SELECT jenis_pembayaran FROM payment WHERE id = ? LIMIT 1");
                 $stmtJenis->execute([$idPayment]);
                 $rowJenis = $stmtJenis->fetch(\PDO::FETCH_ASSOC);
-                $jenisForProduct = $rowJenis['jenis_pembayaran'] ?? 'Pendaftaran';
+                $jenisForProduct = trim((string) ($rowJenis['jenis_pembayaran'] ?? ''));
+                if ($jenisForProduct === '') {
+                    $jenisForProduct = $this->normalizeJenisPembayaranForStorage((string) ($input['jenis_pembayaran'] ?? 'Pendaftaran'));
+                }
 
                 // Jika product/keterangan kosong, isi dari jenis pembayaran (Pendaftaran, UWABA, Tunggakan, Khusus, Tabungan, Umroh)
                 $keteranganLabel = $this->getKeteranganLabelForJenis($jenisForProduct);
@@ -2490,14 +2513,23 @@ class PaymentTransactionController
     /** Samakan input frontend (UWABA, dll.) dengan nilai enum kolom payment.jenis_pembayaran. */
     private function normalizeJenisPembayaranForIpaymuReuse(string $raw): string
     {
+        return $this->normalizeJenisPembayaranForStorage($raw);
+    }
+
+    /** Normalisasi jenis_pembayaran sebelum INSERT ke kolom enum payment. */
+    private function normalizeJenisPembayaranForStorage(string $raw): string
+    {
         $k = strtoupper(trim($raw));
         $map = [
             'PENDAFTARAN' => 'Pendaftaran',
             'UWABA' => 'Uwaba',
             'KHUSUS' => 'Khusus',
             'TUNGGAKAN' => 'Tunggakan',
+            'TABUNGAN' => 'Tabungan',
+            'UMROH' => 'Umroh',
+            'CASHLESS' => 'Cashless',
         ];
 
-        return $map[$k] ?? $raw;
+        return $map[$k] ?? trim($raw);
     }
 }

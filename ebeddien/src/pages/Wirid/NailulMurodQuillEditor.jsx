@@ -4,6 +4,8 @@ import Quill from 'quill'
 import {
   NAILUL_MUROD_QUILL_MODULES,
   NAILUL_MUROD_QUILL_FORMATS,
+  isArabicTypingContext,
+  toArabicIndicDigits,
 } from './nailulMurodQuill'
 
 const USER_SOURCE = 'user'
@@ -70,8 +72,42 @@ export default function NailulMurodQuillEditor({ value, onChange, placeholder })
     }
     quill.on('text-change', onTextChange)
 
+    // Saat mengetik Arab (font kitab / RTL), angka 0–9 diganti ٠–٩ seperti penomoran kitab.
+    const insertArabicIndic = (raw) => {
+      const range = quill.getSelection(true)
+      if (!range) return
+      const converted = toArabicIndicDigits(raw)
+      if (range.length > 0) {
+        quill.deleteText(range.index, range.length, USER_SOURCE)
+      }
+      quill.insertText(range.index, converted, USER_SOURCE)
+      quill.setSelection(range.index + converted.length, 0, USER_SOURCE)
+    }
+
+    const onBeforeInput = (e) => {
+      if (e.inputType !== 'insertText' || !e.data || !/[0-9]/.test(e.data)) return
+      if (!isArabicTypingContext(quill)) return
+      e.preventDefault()
+      insertArabicIndic(e.data)
+    }
+
+    const onPaste = (e) => {
+      if (!isArabicTypingContext(quill)) return
+      const plain = e.clipboardData?.getData('text/plain')
+      if (!plain || !/[0-9]/.test(plain)) return
+      // Biarkan Quill menangani paste HTML kompleks; hanya plain text angka yang kita konversi.
+      if (e.clipboardData?.types?.includes('text/html')) return
+      e.preventDefault()
+      insertArabicIndic(plain)
+    }
+
+    quill.root.addEventListener('beforeinput', onBeforeInput)
+    quill.root.addEventListener('paste', onPaste)
+
     return () => {
       quill.off('text-change', onTextChange)
+      quill.root.removeEventListener('beforeinput', onBeforeInput)
+      quill.root.removeEventListener('paste', onPaste)
       quillRef.current = null
       if (!el) return
       // Quill meletakkan .ql-toolbar sebagai SEBELUM .ql-container (bukan di dalam). innerHTML

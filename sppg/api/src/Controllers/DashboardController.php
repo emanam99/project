@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Config\Database;
+use App\Helpers\TenantHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -22,32 +23,33 @@ class DashboardController
         return $response->withHeader('Content-Type', 'application/json')->withStatus($status);
     }
 
-    private function sumBetween(string $from, string $toExclusive): float
+    private function sumBetween(int $sppgId, string $from, string $toExclusive): float
     {
         $stmt = $this->db->prepare(
-            'SELECT COALESCE(SUM(total), 0) FROM belanja WHERE tanggal >= ? AND tanggal < ?'
+            'SELECT COALESCE(SUM(total), 0) FROM belanja WHERE sppg_id = ? AND tanggal >= ? AND tanggal < ?'
         );
-        $stmt->execute([$from, $toExclusive]);
+        $stmt->execute([$sppgId, $from, $toExclusive]);
         return (float) $stmt->fetchColumn();
     }
 
-    private function sumOn(string $ymd): float
+    private function sumOn(int $sppgId, string $ymd): float
     {
-        $stmt = $this->db->prepare('SELECT COALESCE(SUM(total), 0) FROM belanja WHERE tanggal = ?');
-        $stmt->execute([$ymd]);
+        $stmt = $this->db->prepare('SELECT COALESCE(SUM(total), 0) FROM belanja WHERE sppg_id = ? AND tanggal = ?');
+        $stmt->execute([$sppgId, $ymd]);
         return (float) $stmt->fetchColumn();
     }
 
-    private function countOn(string $ymd): int
+    private function countOn(int $sppgId, string $ymd): int
     {
-        $stmt = $this->db->prepare('SELECT COUNT(*) FROM belanja WHERE tanggal = ?');
-        $stmt->execute([$ymd]);
+        $stmt = $this->db->prepare('SELECT COUNT(*) FROM belanja WHERE sppg_id = ? AND tanggal = ?');
+        $stmt->execute([$sppgId, $ymd]);
         return (int) $stmt->fetchColumn();
     }
 
     /** GET /dashboard/summary */
     public function summary(Request $request, Response $response): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $today = date('Y-m-d');
         $yesterday = date('Y-m-d', strtotime('-1 day'));
         $bulanIni = date('Y-m-01');
@@ -55,14 +57,25 @@ class DashboardController
         $bulanLaluAwal = date('Y-m-01', strtotime('first day of last month'));
         $bulanLaluAkhir = $bulanIni;
 
-        $totalSemua = (float) $this->db->query('SELECT COALESCE(SUM(total), 0) FROM belanja')->fetchColumn();
-        $totalBulanIni = $this->sumBetween($bulanIni, $bulanDepan);
-        $totalBulanLalu = $this->sumBetween($bulanLaluAwal, $bulanLaluAkhir);
-        $totalHariIni = $this->sumOn($today);
-        $totalKemarin = $this->sumOn($yesterday);
-        $catatanHariIni = $this->countOn($today);
-        $jumlahCatatan = (int) $this->db->query('SELECT COUNT(*) FROM belanja')->fetchColumn();
-        $jumlahItem = (int) $this->db->query('SELECT COUNT(*) FROM belanja_item')->fetchColumn();
+        $stmtAll = $this->db->prepare('SELECT COALESCE(SUM(total), 0) FROM belanja WHERE sppg_id = ?');
+        $stmtAll->execute([$sppgId]);
+        $totalSemua = (float) $stmtAll->fetchColumn();
+
+        $totalBulanIni = $this->sumBetween($sppgId, $bulanIni, $bulanDepan);
+        $totalBulanLalu = $this->sumBetween($sppgId, $bulanLaluAwal, $bulanLaluAkhir);
+        $totalHariIni = $this->sumOn($sppgId, $today);
+        $totalKemarin = $this->sumOn($sppgId, $yesterday);
+        $catatanHariIni = $this->countOn($sppgId, $today);
+
+        $stmtCount = $this->db->prepare('SELECT COUNT(*) FROM belanja WHERE sppg_id = ?');
+        $stmtCount->execute([$sppgId]);
+        $jumlahCatatan = (int) $stmtCount->fetchColumn();
+
+        $stmtItems = $this->db->prepare(
+            'SELECT COUNT(*) FROM belanja_item bi INNER JOIN belanja b ON b.id = bi.belanja_id WHERE b.sppg_id = ?'
+        );
+        $stmtItems->execute([$sppgId]);
+        $jumlahItem = (int) $stmtItems->fetchColumn();
 
         $hariBerjalan = max(1, (int) date('j'));
         $rataHarianBulan = $totalBulanIni / $hariBerjalan;
@@ -85,16 +98,15 @@ class DashboardController
             $pctVsBulanLalu = 0.0;
         }
 
-        // Tren 14 hari terakhir (isi 0 jika kosong)
         $from14 = date('Y-m-d', strtotime('-13 days'));
         $stmtDaily = $this->db->prepare(
             'SELECT tanggal, COALESCE(SUM(total), 0) AS total, COUNT(*) AS jumlah
              FROM belanja
-             WHERE tanggal >= ? AND tanggal <= ?
+             WHERE sppg_id = ? AND tanggal >= ? AND tanggal <= ?
              GROUP BY tanggal
              ORDER BY tanggal ASC'
         );
-        $stmtDaily->execute([$from14, $today]);
+        $stmtDaily->execute([$sppgId, $from14, $today]);
         $byDate = [];
         foreach ($stmtDaily->fetchAll() as $row) {
             $byDate[$row['tanggal']] = [
@@ -112,7 +124,6 @@ class DashboardController
             ];
         }
 
-        // Perbandingan hari ke hari (delta vs hari sebelumnya) untuk sparkline info
         $daily_delta = [];
         for ($i = 0; $i < count($daily); $i++) {
             $prev = $i > 0 ? $daily[$i - 1]['total'] : null;
@@ -134,48 +145,57 @@ class DashboardController
             ];
         }
 
-        $byKategori = $this->db->query(
+        $stmtKat = $this->db->prepare(
             "SELECT COALESCE(NULLIF(TRIM(kategori), ''), 'Tanpa kategori') AS nama,
                     COALESCE(SUM(total), 0) AS total,
                     COUNT(*) AS jumlah
              FROM belanja
-             WHERE tanggal >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+             WHERE sppg_id = ? AND tanggal >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
              GROUP BY nama
              ORDER BY total DESC
              LIMIT 6"
-        )->fetchAll();
+        );
+        $stmtKat->execute([$sppgId]);
+        $byKategori = $stmtKat->fetchAll();
 
-        $byRekening = $this->db->query(
+        $stmtRek = $this->db->prepare(
             "SELECT COALESCE(r.nama_penerima, 'Tanpa rekening') AS nama,
                     COALESCE(SUM(b.total), 0) AS total,
                     COUNT(*) AS jumlah
              FROM belanja b
-             LEFT JOIN rekening r ON r.id = b.rekening_id
-             WHERE b.tanggal >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+             LEFT JOIN rekening r ON r.id = b.rekening_id AND r.sppg_id = b.sppg_id
+             WHERE b.sppg_id = ? AND b.tanggal >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
              GROUP BY nama
              ORDER BY total DESC
              LIMIT 6"
-        )->fetchAll();
+        );
+        $stmtRek->execute([$sppgId]);
+        $byRekening = $stmtRek->fetchAll();
 
-        $recent = $this->db->query(
+        $stmtRecent = $this->db->prepare(
             'SELECT b.id, b.tanggal, b.keterangan, b.kategori, b.total,
                     r.nama_penerima, u.name AS created_by_name
              FROM belanja b
              LEFT JOIN users u ON u.id = b.created_by
              LEFT JOIN rekening r ON r.id = b.rekening_id
+             WHERE b.sppg_id = ?
              ORDER BY b.tanggal DESC, b.id DESC
              LIMIT 8'
-        )->fetchAll();
+        );
+        $stmtRecent->execute([$sppgId]);
+        $recent = $stmtRecent->fetchAll();
 
-        $topItems = $this->db->query(
+        $stmtTop = $this->db->prepare(
             'SELECT bi.nama_barang, SUM(bi.qty) AS total_qty, SUM(bi.subtotal) AS total_nilai
              FROM belanja_item bi
              INNER JOIN belanja b ON b.id = bi.belanja_id
-             WHERE b.tanggal >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+             WHERE b.sppg_id = ? AND b.tanggal >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
              GROUP BY bi.nama_barang
              ORDER BY total_nilai DESC
              LIMIT 8'
-        )->fetchAll();
+        );
+        $stmtTop->execute([$sppgId]);
+        $topItems = $stmtTop->fetchAll();
 
         return $this->json($response, [
             'success' => true,

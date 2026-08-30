@@ -1,8 +1,10 @@
 import { getTimes } from 'suncalc'
 
-/** Default kota Bondowoso — selaras KalenderIstiwa.php */
-export const ISTIWA_DEFAULT_LAT = -7.9138
-export const ISTIWA_DEFAULT_LNG = 113.8214
+/** Default pondok Beddian — selaras KalenderIstiwa.php / absen___alamat */
+export const ISTIWA_DEFAULT_LAT = -7.9955854
+export const ISTIWA_DEFAULT_LNG = 113.8443946
+export const ISTIWA_DEFAULT_LABEL =
+  'Beddian RT 29 RW 06, Jambesari, Jambesari Darus Sholah, Bondowoso'
 
 function jakartaYmd(d) {
   const parts = new Intl.DateTimeFormat('en-CA', {

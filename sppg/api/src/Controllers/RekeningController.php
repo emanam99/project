@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Config\Database;
 use App\Helpers\AuthHelper;
+use App\Helpers\TenantHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -78,10 +79,10 @@ class RekeningController
         ];
     }
 
-    private function findById(int $id): ?array
+    private function findById(int $id, int $sppgId): ?array
     {
-        $stmt = $this->db->prepare('SELECT * FROM rekening WHERE id = ? LIMIT 1');
-        $stmt->execute([$id]);
+        $stmt = $this->db->prepare('SELECT * FROM rekening WHERE id = ? AND sppg_id = ? LIMIT 1');
+        $stmt->execute([$id, $sppgId]);
         $row = $stmt->fetch();
         return $row ?: null;
     }
@@ -89,9 +90,10 @@ class RekeningController
     /** GET /rekening */
     public function index(Request $request, Response $response): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $q = $request->getQueryParams();
-        $sql = 'SELECT * FROM rekening WHERE 1=1';
-        $params = [];
+        $sql = 'SELECT * FROM rekening WHERE sppg_id = ?';
+        $params = [$sppgId];
 
         if (($q['aktif'] ?? '') !== 'all') {
             $sql .= ' AND aktif = 1';
@@ -119,6 +121,7 @@ class RekeningController
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menambah rekening'], 403);
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $check = $this->validatePayload($this->parseBody($request), false);
         if (!$check['ok']) {
             return $this->json($response, ['success' => false, 'message' => $check['message']], 422);
@@ -127,16 +130,17 @@ class RekeningController
 
         try {
             $ins = $this->db->prepare(
-                'INSERT INTO rekening (nomor_rekening, nama_penerima, online_bank_code, bank_tujuan, jenis) VALUES (?, ?, ?, ?, ?)'
+                'INSERT INTO rekening (sppg_id, nomor_rekening, nama_penerima, online_bank_code, bank_tujuan, jenis) VALUES (?, ?, ?, ?, ?, ?)'
             );
             $ins->execute([
+                $sppgId,
                 $data['nomor_rekening'],
                 $data['nama_penerima'],
                 $data['online_bank_code'],
                 $data['bank_tujuan'],
                 $data['jenis'] ?: 'rek',
             ]);
-            $row = $this->findById((int) $this->db->lastInsertId());
+            $row = $this->findById((int) $this->db->lastInsertId(), $sppgId);
             return $this->json($response, ['success' => true, 'data' => $row], 201);
         } catch (\PDOException $e) {
             if ((int) $e->getCode() === 23000) {
@@ -154,8 +158,9 @@ class RekeningController
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat mengubah rekening'], 403);
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        $existing = $this->findById($id);
+        $existing = $this->findById($id, $sppgId);
         if (!$existing) {
             return $this->json($response, ['success' => false, 'message' => 'Rekening tidak ditemukan'], 404);
         }
@@ -192,10 +197,10 @@ class RekeningController
                 'UPDATE rekening
                  SET nomor_rekening = ?, nama_penerima = ?, online_bank_code = ?, bank_tujuan = ?, jenis = ?, aktif = ?,
                      updated_at = CURRENT_TIMESTAMP
-                 WHERE id = ?'
+                 WHERE id = ? AND sppg_id = ?'
             );
-            $upd->execute([$nomor, $nama, $kode, $bank, $jenis, $aktif, $id]);
-            return $this->json($response, ['success' => true, 'data' => $this->findById($id)]);
+            $upd->execute([$nomor, $nama, $kode, $bank, $jenis, $aktif, $id, $sppgId]);
+            return $this->json($response, ['success' => true, 'data' => $this->findById($id, $sppgId)]);
         } catch (\PDOException $e) {
             if ((int) $e->getCode() === 23000) {
                 return $this->json($response, ['success' => false, 'message' => 'Nomor rekening sudah dipakai rekening lain'], 409);
@@ -212,15 +217,15 @@ class RekeningController
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menghapus rekening'], 403);
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        if (!$this->findById($id)) {
+        if (!$this->findById($id, $sppgId)) {
             return $this->json($response, ['success' => false, 'message' => 'Rekening tidak ditemukan'], 404);
         }
 
-        // Lepas referensi belanja agar FK tidak menghalangi hapus
-        $this->db->prepare('UPDATE belanja SET rekening_id = NULL WHERE rekening_id = ?')->execute([$id]);
-        $stmt = $this->db->prepare('DELETE FROM rekening WHERE id = ?');
-        $stmt->execute([$id]);
+        $this->db->prepare('UPDATE belanja SET rekening_id = NULL WHERE rekening_id = ? AND sppg_id = ?')->execute([$id, $sppgId]);
+        $stmt = $this->db->prepare('DELETE FROM rekening WHERE id = ? AND sppg_id = ?');
+        $stmt->execute([$id, $sppgId]);
 
         return $this->json($response, ['success' => true, 'message' => 'Rekening dihapus']);
     }

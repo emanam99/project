@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { getGoogleLoginUrl } from '../api/apiClient'
+import { getGoogleLoginUrl, getPlatformGoogleLoginUrl } from '../api/apiClient'
 import { FullPageFade, pageEase } from '../components/PageTransition'
 import PwaInstallButton from '../components/PwaInstallButton'
 import { APP_NAME } from '../config/version'
-import { isLoggedIn } from '../utils/auth'
+import { getStoredUser, isLoggedIn, isPlatformAdminRole } from '../utils/auth'
 import { gambarUrl } from '../utils/gambar'
+import { getLandingUrl, isLandingHost, isPlatformAdminHost } from '../utils/tenantHost'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -15,13 +16,23 @@ export default function LoginPage() {
   const reduce = useReducedMotion()
   const error = params.get('error') || ''
 
+  const isAdminHost = isPlatformAdminHost()
+
   useEffect(() => {
     if (isLoggedIn()) {
-      navigate('/dashboard', { replace: true })
-      return
+      if (isAdminHost) {
+        const user = getStoredUser()
+        if (isPlatformAdminRole(user?.role)) {
+          navigate('/', { replace: true })
+          return
+        }
+      } else {
+        navigate('/dashboard', { replace: true })
+        return
+      }
     }
     setChecking(false)
-  }, [navigate])
+  }, [navigate, isAdminHost])
 
   // Kunci scroll sepenuhnya selama di halaman login
   useEffect(() => {
@@ -83,12 +94,16 @@ export default function LoginPage() {
         />
 
         <h1 className="mt-5 font-display text-[1.85rem] font-bold tracking-tight text-ink leading-none">
-          {APP_NAME}
+          {isAdminHost ? 'Admin Platform' : APP_NAME}
         </h1>
-        <p className="mt-1.5 text-[13px] font-medium tracking-[0.04em] text-muted">al-utsmani</p>
+        <p className="mt-1.5 text-[13px] font-medium tracking-[0.04em] text-muted">
+          {isAdminHost ? 'SPPG Cloudy' : 'al-utsmani'}
+        </p>
 
         <p className="mt-4 text-[0.92rem] text-muted leading-snug max-w-[280px]">
-          Catat belanja dapur santri — masuk dengan Google.
+          {isAdminHost
+            ? 'Kelola tenant, langganan, dan pembayaran platform.'
+            : 'Catat belanja dapur santri — masuk dengan Google.'}
         </p>
 
         {error && (
@@ -96,7 +111,7 @@ export default function LoginPage() {
         )}
 
         <a
-          href={getGoogleLoginUrl('/dashboard')}
+          href={isAdminHost ? getPlatformGoogleLoginUrl('/') : getGoogleLoginUrl('/dashboard')}
           className="mt-6 ui-btn-primary w-full py-3 text-[0.95rem] gap-2.5 rounded-xl shadow-md shadow-[color-mix(in_srgb,var(--accent)_22%,transparent)]"
         >
           <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0" aria-hidden>
@@ -128,7 +143,22 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-5 text-[11px] text-faint leading-snug max-w-[260px]">
-          Akses fitur diberikan admin setelah login pertama.
+          {isAdminHost ? (
+            <>Hanya email terdaftar di platform_admins yang boleh masuk.</>
+          ) : (
+            <>Akses fitur diberikan admin setelah login pertama.</>
+          )}
+          {!isAdminHost && isLandingHost() ? (
+            <>
+              {' '}
+              <a href="/daftar" className="text-[var(--accent)] font-medium">Daftar SPPG baru</a>
+            </>
+          ) : !isAdminHost && getLandingUrl() ? (
+            <>
+              {' '}
+              <a href={`${getLandingUrl()}/daftar`} className="text-[var(--accent)] font-medium">Daftar SPPG baru</a>
+            </>
+          ) : null}
         </p>
       </motion.div>
     </FullPageFade>

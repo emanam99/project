@@ -39,11 +39,14 @@ class BniBatchService
      *   batches:list<array{batch_id:int,csv_filename:string,record_count:int,total_amount:int,kind:string}>
      * }
      */
-    public function archiveFromBelanjaIds(array $belanjaIds, string $namaFile, ?int $createdBy = null): array
+    public function archiveFromBelanjaIds(array $belanjaIds, string $namaFile, ?int $createdBy = null, int $sppgId = 0): array
     {
         $belanjaIds = array_values(array_unique(array_filter(array_map('intval', $belanjaIds), static fn ($id) => $id > 0)));
         if (!$belanjaIds) {
             throw new \InvalidArgumentException('Tidak ada ID belanja untuk diarsipkan');
+        }
+        if ($sppgId <= 0) {
+            throw new \InvalidArgumentException('Tenant tidak valid');
         }
 
         $debit = self::debitAccount();
@@ -51,7 +54,7 @@ class BniBatchService
             throw new \RuntimeException('BNI_DEBIT_ACCOUNT belum dikonfigurasi');
         }
 
-        $rows = $this->fetchRowsByIds($belanjaIds);
+        $rows = $this->fetchRowsByIds($belanjaIds, $sppgId);
         if (!$rows) {
             throw new \RuntimeException('Belanja ber-rekening tidak ditemukan untuk arsip CSV');
         }
@@ -63,7 +66,7 @@ class BniBatchService
 
         $batches = [];
         foreach ($builtList as $built) {
-            $batches[] = $this->persistCsvBatch($built, $debit, $createdBy);
+            $batches[] = $this->persistCsvBatch($built, $debit, $createdBy, $sppgId);
         }
 
         $first = $batches[0];
@@ -78,12 +81,15 @@ class BniBatchService
      * @param list<array{body:string,csv_filename:string,nama_file:string,record_count:int,total_amount:int,trx_date:string,belanja_ids:list<int>,kind:string}> $builtList
      * @return list<array{batch_id:int,csv_filename:string,record_count:int,total_amount:int,kind:string}>
      */
-    public function archiveBuiltCsvList(array $builtList, ?int $createdBy = null): array
+    public function archiveBuiltCsvList(array $builtList, ?int $createdBy = null, int $sppgId = 0): array
     {
+        if ($sppgId <= 0) {
+            throw new \InvalidArgumentException('Tenant tidak valid');
+        }
         $debit = self::debitAccount();
         $out = [];
         foreach ($builtList as $built) {
-            $out[] = $this->persistCsvBatch($built, $debit, $createdBy);
+            $out[] = $this->persistCsvBatch($built, $debit, $createdBy, $sppgId);
         }
         return $out;
     }
@@ -101,11 +107,15 @@ class BniBatchService
         string $binary,
         string $filename,
         int $totalAmount,
-        ?int $createdBy = null
+        ?int $createdBy = null,
+        int $sppgId = 0
     ): array {
         $belanjaIds = array_values(array_unique(array_filter(array_map('intval', $belanjaIds), static fn ($id) => $id > 0)));
         if (!$belanjaIds) {
             throw new \InvalidArgumentException('Tidak ada ID belanja untuk diarsipkan');
+        }
+        if ($sppgId <= 0) {
+            throw new \InvalidArgumentException('Tenant tidak valid');
         }
         if (!in_array($exportType, ['bni_csv', 'maker_xlsx'], true)) {
             throw new \InvalidArgumentException('Tipe ekspor tidak valid');
@@ -138,10 +148,11 @@ class BniBatchService
         $now = new \DateTimeImmutable('now');
         $stmt = $this->db->prepare(
             'INSERT INTO bni_batch
-             (export_type, nama_file, csv_filename, csv_path, debit_account, record_count, total_amount, trx_date, belanja_ids, status, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, \'waiting\', ?)'
+             (sppg_id, export_type, nama_file, csv_filename, csv_path, debit_account, record_count, total_amount, trx_date, belanja_ids, status, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, \'waiting\', ?)'
         );
         $stmt->execute([
+            $sppgId,
             $exportType,
             $namaFile,
             $safe,
@@ -226,15 +237,16 @@ class BniBatchService
             return ['success' => false, 'message' => 'Data batch rusak (belanja_ids)'];
         }
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn ($id) => $id > 0)));
+        $batchSppgId = (int) ($batch['sppg_id'] ?? 0);
 
         $this->db->beginTransaction();
         try {
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
             $upd = $this->db->prepare(
                 "UPDATE belanja SET bni_status = 'approved', updated_at = CURRENT_TIMESTAMP
-                 WHERE id IN ($placeholders) AND bni_status = 'maker'"
+                 WHERE id IN ($placeholders) AND bni_status = 'maker' AND sppg_id = ?"
             );
-            $upd->execute($ids);
+            $upd->execute(array_merge($ids, [$batchSppgId]));
             $approvedRows = $upd->rowCount();
 
             CairStatusHelper::applyAfterApproved($this->db, $ids);
@@ -358,7 +370,7 @@ class BniBatchService
     }
 
     /** @param list<int> $ids */
-    private function fetchRowsByIds(array $ids): array
+    private function fetchRowsByIds(array $ids, int $sppgId): array
     {
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $sql = "SELECT b.id, b.tanggal, b.keterangan, b.total,
@@ -366,11 +378,12 @@ class BniBatchService
                 FROM belanja b
                 INNER JOIN rekening r ON r.id = b.rekening_id
                 WHERE b.id IN ($placeholders)
+                  AND b.sppg_id = ?
                   AND r.nomor_rekening IS NOT NULL
                   AND r.nomor_rekening <> ''
                 ORDER BY b.tanggal ASC, b.id ASC";
         $stmt = $this->db->prepare($sql);
-        $stmt->execute($ids);
+        $stmt->execute(array_merge($ids, [$sppgId]));
         return $stmt->fetchAll() ?: [];
     }
 
@@ -387,7 +400,7 @@ class BniBatchService
      * } $built
      * @return array{batch_id:int,csv_filename:string,record_count:int,total_amount:int,kind:string}
      */
-    private function persistCsvBatch(array $built, string $debit, ?int $createdBy): array
+    private function persistCsvBatch(array $built, string $debit, ?int $createdBy, int $sppgId): array
     {
         $dir = $this->archiveDir();
         if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
@@ -414,10 +427,11 @@ class BniBatchService
 
         $stmt = $this->db->prepare(
             'INSERT INTO bni_batch
-             (export_type, nama_file, csv_filename, csv_path, debit_account, record_count, total_amount, trx_date, belanja_ids, status, created_by)
-             VALUES (\'bni_csv\', ?, ?, ?, ?, ?, ?, ?, ?, \'waiting\', ?)'
+             (sppg_id, export_type, nama_file, csv_filename, csv_path, debit_account, record_count, total_amount, trx_date, belanja_ids, status, created_by)
+             VALUES (?, \'bni_csv\', ?, ?, ?, ?, ?, ?, ?, ?, \'waiting\', ?)'
         );
         $stmt->execute([
+            $sppgId,
             $namaFile,
             $filename,
             $relPath,

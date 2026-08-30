@@ -746,9 +746,10 @@ class WhatsAppService
      * wa_sendiri → server Node (wa/), watzap → WatZap API, evolution → Evolution API.
      *
      * @param string|null $sessionId Slot Node (hanya wa_sendiri). Jika null, pakai WA_SESSION_ID / default.
+     * @param string|null $kategori Jika pengeluaran_rencana_notif / pengeluaran_notif, ikut override provider pengeluaran.
      * @return array{success: bool, data: array{phoneNumber: string, isRegistered: bool}, message: string}
      */
-    public static function checkNumber(string $noWa, ?string $sessionId = null): array
+    public static function checkNumber(string $noWa, ?string $sessionId = null, ?string $kategori = null): array
     {
         $phone = self::formatPhoneNumber($noWa);
         if (strlen($phone) < 10) {
@@ -759,7 +760,7 @@ class WhatsAppService
             ];
         }
 
-        $provider = self::getNotificationProvider();
+        $provider = self::getNotificationProvider($kategori);
 
         return match ($provider) {
             'watzap' => \App\Services\WatzapService::checkNumber($noWa),
@@ -1562,32 +1563,61 @@ class WhatsAppService
         return $prefix . ': kirim gagal';
     }
 
+    /** Kategori notif pengeluaran: boleh override provider lewat pengeluaran_notification_provider. */
+    private const PENGELUARAN_NOTIF_KATEGORI = [
+        'pengeluaran_rencana_notif',
+        'pengeluaran_notif',
+    ];
+
     /**
-     * Baca provider notifikasi WA dari app___settings: wa_sendiri | watzap | evolution.
+     * Baca nilai provider dari app___settings. Kosong jika kunci tidak ada / tidak valid.
      */
-    public static function getNotificationProvider(): string
+    private static function readNotificationProviderSetting(string $key): string
     {
         try {
             $db = Database::getInstance()->getConnection();
             $tableCheck = $db->query("SHOW TABLES LIKE 'app___settings'");
             if ($tableCheck->rowCount() === 0) {
-                return 'wa_sendiri';
+                return '';
             }
-            $stmt = $db->prepare("SELECT `value` FROM app___settings WHERE `key` = 'notification_provider' LIMIT 1");
-            $stmt->execute();
+            $stmt = $db->prepare("SELECT `value` FROM app___settings WHERE `key` = ? LIMIT 1");
+            $stmt->execute([$key]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            $v = ($row && isset($row['value'])) ? trim((string) $row['value']) : 'wa_sendiri';
-            if ($v === 'watzap') {
-                return 'watzap';
-            }
-            if ($v === 'evolution') {
-                return 'evolution';
+            $v = ($row && isset($row['value'])) ? trim((string) $row['value']) : '';
+            if (in_array($v, ['watzap', 'evolution', 'wa_sendiri'], true)) {
+                return $v;
             }
 
-            return 'wa_sendiri';
+            return '';
         } catch (\Throwable $e) {
-            return 'wa_sendiri';
+            return '';
         }
+    }
+
+    /**
+     * Baca provider notifikasi WA dari app___settings: wa_sendiri | watzap | evolution.
+     * Jika $kategori termasuk notif pengeluaran dan pengeluaran_notification_provider terisi, pakai override itu.
+     */
+    public static function getNotificationProvider(?string $kategori = null): string
+    {
+        $kat = $kategori !== null ? trim($kategori) : '';
+        if ($kat !== '' && in_array($kat, self::PENGELUARAN_NOTIF_KATEGORI, true)) {
+            $override = self::readNotificationProviderSetting('pengeluaran_notification_provider');
+            if ($override !== '') {
+                return $override;
+            }
+        }
+        $v = self::readNotificationProviderSetting('notification_provider');
+
+        return $v !== '' ? $v : 'wa_sendiri';
+    }
+
+    /**
+     * Override provider khusus pengeluaran (string kosong = ikuti pengaturan umum).
+     */
+    public static function getPengeluaranNotificationProvider(): string
+    {
+        return self::readNotificationProviderSetting('pengeluaran_notification_provider');
     }
 
     /**
@@ -1614,6 +1644,8 @@ class WhatsAppService
         if (strlen($originalPhone) < 10) {
             return ['success' => false, 'message' => 'Nomor tidak valid'];
         }
+        $notifKategori = is_array($logContext) ? (string) ($logContext['kategori'] ?? '') : '';
+        $notifProvider = self::getNotificationProvider($notifKategori !== '' ? $notifKategori : null);
         // Cek siap_terima_notif untuk nomor kontak (biodata), bukan nomor tujuan kirim
         $kontakStatus = self::getKontakStatus($originalPhone);
         /** OTP ganti nomor WA: harus ke nomor yang diketik user, bukan nomor_kanonik & bukan diblok siap_terima_notif (sama perilaku "Kirim tes" dari UI). */
@@ -1706,7 +1738,7 @@ class WhatsAppService
             }
         }
 
-        if (self::getNotificationProvider() === 'watzap') {
+        if ($notifProvider === 'watzap') {
             if ($logContext !== null && in_array(($logContext['kategori'] ?? ''), ['daftar_notif', 'wa_interactive_menu', 'ai_whatsapp'], true)) {
                 error_log('WhatsAppService: ' . ($logContext['kategori'] ?? '') . ' kirim via WatZap (bukan WA server). Tidak ada POST ke Node.');
             }
@@ -1753,7 +1785,7 @@ class WhatsAppService
             return ['success' => $res['success'], 'message' => $res['message']];
         }
 
-        if (self::getNotificationProvider() === 'evolution') {
+        if ($notifProvider === 'evolution') {
             if ($logContext !== null && \in_array(($logContext['kategori'] ?? ''), ['daftar_notif', 'wa_interactive_menu', 'ai_whatsapp'], true)) {
                 error_log('WhatsAppService: ' . ($logContext['kategori'] ?? '') . ' kirim via Evolution API.');
             }
@@ -1828,7 +1860,7 @@ class WhatsAppService
             $jsonPayload['linkPreview'] = false;
         }
 
-        if (self::getNotificationProvider() === 'wa_sendiri') {
+        if ($notifProvider === 'wa_sendiri') {
             self::wakeWaServer(false);
         }
 
@@ -1892,7 +1924,7 @@ class WhatsAppService
 
                     continue;
                 }
-                if (self::getNotificationProvider() === 'wa_sendiri' && self::nodeSendIndicatesReconnect($errMsg)) {
+                if ($notifProvider === 'wa_sendiri' && self::nodeSendIndicatesReconnect($errMsg)) {
                     $sessionCandidates = self::getConnectedSessionCandidates($preferredSessionId);
                     foreach ($sessionCandidates as $sid) {
                         if ($sid === $preferredSessionId) {
@@ -1973,7 +2005,7 @@ class WhatsAppService
                 return $result;
             } catch (\Throwable $e) {
                 error_log('WhatsAppService: attempt ' . ($attempt + 1) . ' ' . $e->getMessage());
-                if ($attempt === 0 && self::getNotificationProvider() === 'wa_sendiri') {
+                if ($attempt === 0 && $notifProvider === 'wa_sendiri') {
                     continue;
                 }
                 $errText = $e->getMessage();
@@ -2095,6 +2127,8 @@ class WhatsAppService
         if (strlen($originalPhone) < 10) {
             return ['success' => false, 'message' => 'Nomor tidak valid'];
         }
+        $notifKategori = is_array($logContext) ? (string) ($logContext['kategori'] ?? '') : '';
+        $notifProvider = self::getNotificationProvider($notifKategori !== '' ? $notifKategori : null);
 
         $kontakStatus = self::getKontakStatus($originalPhone);
         if (self::shouldBlockSendBySiapTerimaNotif($logContext, $kontakStatus)) {
@@ -2238,7 +2272,7 @@ class WhatsAppService
             }
 
             $errMsg = $data['message'] ?? $data['error'] ?? "HTTP {$code}";
-            if (self::getNotificationProvider() === 'wa_sendiri' && self::nodeSendIndicatesReconnect((string) $errMsg)) {
+            if ($notifProvider === 'wa_sendiri' && self::nodeSendIndicatesReconnect((string) $errMsg)) {
                 $sessionCandidates = self::getConnectedSessionCandidates($preferredSessionId);
                 foreach ($sessionCandidates as $sid) {
                     if ($sid === $preferredSessionId) {

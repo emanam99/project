@@ -7,6 +7,7 @@ import PickDateHijri, { formatHijriDateDisplay } from '../../components/PickDate
 import { getBulanName } from './utils/bulanHijri'
 import { INDONESIAN_MONTHS } from './utils/dateRange'
 import { apiTimeToTimeInput, formatJamRangeLabel, normalizeJamJenis } from './utils/hariPentingJam'
+import { ISTIWA_DEFAULT_LABEL } from './utils/jamIstiwa'
 import { parseHariPekan, serializeHariPekan, labelHariPekan } from './utils/hariPekan'
 import { parseTanggalBulan, serializeTanggalBulan, labelTanggalBulan } from './utils/tanggalBulan'
 import HariPekanChecklistSelect from './components/HariPekanChecklistSelect'
@@ -145,6 +146,9 @@ function KalenderPengaturan() {
       : null
 
   const useFiturCodes = Array.isArray(fiturMenuCodes) && fiturMenuCodes.length > 0
+  const apiHasKalenderTabGranular =
+    useFiturCodes &&
+    fiturMenuCodes.some((c) => String(c).startsWith('action.kalender.pengaturan.tab_'))
   const legacyKalenderAdmin = useMemo(() => {
     if (!authUser) return false
     const k = String(authUser.role_key || authUser.level || '').toLowerCase()
@@ -159,33 +163,18 @@ function KalenderPengaturan() {
 
   const bypassHpTargetPolicy = !!authUser?.is_real_super_admin || legacyKalenderAdmin
 
-  const canTabBulan = useMemo(() => {
+  const canKalenderPengaturanTab = (tabCode) => {
     if (!authUser) return false
     if (authUser.is_real_super_admin) return true
     if (!useFiturCodes) return legacyKalenderAdmin
-    return fiturMenuCodes.includes(FITUR_TAB_BULAN) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
-  }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
+    if (apiHasKalenderTabGranular) return fiturMenuCodes.includes(tabCode)
+    return fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
+  }
 
-  const canTabHariPenting = useMemo(() => {
-    if (!authUser) return false
-    if (authUser.is_real_super_admin) return true
-    if (!useFiturCodes) return legacyKalenderAdmin
-    return fiturMenuCodes.includes(FITUR_TAB_HARI_PENTING) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
-  }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
-
-  const canTabIstiwa = useMemo(() => {
-    if (!authUser) return false
-    if (authUser.is_real_super_admin) return true
-    if (!useFiturCodes) return legacyKalenderAdmin
-    return fiturMenuCodes.includes(FITUR_TAB_ISTIWA) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
-  }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
-
-  const canTabLokasi = useMemo(() => {
-    if (!authUser) return false
-    if (authUser.is_real_super_admin) return true
-    if (!useFiturCodes) return legacyKalenderAdmin
-    return fiturMenuCodes.includes(FITUR_TAB_LOKASI) || fiturMenuCodes.includes(FITUR_MENU_KAL_PENGATURAN)
-  }, [authUser, fiturMenuCodes, legacyKalenderAdmin, useFiturCodes])
+  const canTabBulan = canKalenderPengaturanTab(FITUR_TAB_BULAN)
+  const canTabHariPenting = canKalenderPengaturanTab(FITUR_TAB_HARI_PENTING)
+  const canTabIstiwa = canKalenderPengaturanTab(FITUR_TAB_ISTIWA)
+  const canTabLokasi = canKalenderPengaturanTab(FITUR_TAB_LOKASI)
 
   const canHpTargetGlobal = bypassHpTargetPolicy || fiturMenuCodes.includes(HP_TARGET_GLOBAL)
   const canHpTargetLembaga = bypassHpTargetPolicy || fiturMenuCodes.includes(HP_TARGET_LEMBAGA)
@@ -202,9 +191,20 @@ function KalenderPengaturan() {
 
   const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab')
-  const [tab, setTab] = useState(() =>
-    tabFromUrl && PENGATURAN_TAB_ORDER.includes(tabFromUrl) ? tabFromUrl : 'bulan'
-  )
+  const firstAllowedTab =
+    PENGATURAN_TAB_ORDER.find((t) => {
+      const allowed = {
+        bulan: canTabBulan,
+        'hari-penting': canTabHariPenting,
+        lokasi: canTabLokasi,
+        istiwa: canTabIstiwa
+      }
+      return !!allowed[t]
+    }) || 'bulan'
+  const [tab, setTab] = useState(() => {
+    if (tabFromUrl && PENGATURAN_TAB_ORDER.includes(tabFromUrl)) return tabFromUrl
+    return firstAllowedTab
+  })
 
   const tabAllowed = useCallback(
     (t) => {
@@ -1574,16 +1574,12 @@ function KalenderPengaturan() {
         </div>
       )}
 
-      {canTabLokasi && (
-        <div hidden={tab !== 'lokasi'}>
-          <KalenderLokasiAlamatTab />
-        </div>
-      )}
+      {canTabLokasi && tab === 'lokasi' && <KalenderLokasiAlamatTab />}
 
       {canTabIstiwa && (
         <div className="space-y-4 max-w-md" hidden={tab !== 'istiwa'}>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Koordinat default jam Istiwa’ jika GPS pengguna mati. Nilai awal: Bondowoso.
+            Koordinat default jam Istiwa’ jika GPS pengguna mati. Nilai awal: {ISTIWA_DEFAULT_LABEL}.
           </p>
           {messageIstiwa && (
             <div className="p-2 rounded bg-teal-50 dark:bg-teal-900/20 text-teal-800 dark:text-teal-200 text-sm">

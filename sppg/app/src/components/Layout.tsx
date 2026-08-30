@@ -200,6 +200,7 @@ function LayoutShell() {
       { to: '/rekening', label: 'Rekening', shortLabel: 'Rek', icon: 'bank' },
       ...(superAdmin
         ? ([
+            { to: '/profil-sppg', label: 'Profil SPPG', shortLabel: 'SPPG', icon: 'settings' as NavIcon },
             { to: '/arsip-ekspor', label: 'Arsip Ekspor', shortLabel: 'Arsip', icon: 'archive' },
             { to: '/pengguna', label: 'Pengguna', shortLabel: 'User', icon: 'users' },
           ] as NavItem[])

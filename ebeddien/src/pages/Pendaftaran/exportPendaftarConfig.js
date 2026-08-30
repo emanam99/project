@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { buildAlamatGabungan } from '../santri/exportSantriConfig'
+import { pendaftaranAPI } from '../../services/api'
 
 /**
  * Konfigurasi kolom export Data Pendaftar.
@@ -92,6 +93,88 @@ export function mapPendaftarRowsToSheetRows(rows, activeColumns) {
     })
     return out
   })
+}
+
+/** Kolom yang disamarkan di get-all-pendaftar (kecuali include_pii=1). */
+export const PENDFTAR_LIST_MASKED_PII_KEYS = [
+  'nik',
+  'no_kk',
+  'nik_ayah',
+  'nik_ibu',
+  'nik_wali',
+  'no_telpon',
+  'email',
+  'no_wa_santri',
+]
+
+const PII_MASK_HINT =
+  'NIK/KK/NIK ortu-wali, telepon, email, atau WA mungkin masih tersamarkan (*)'
+
+export function looksLikeMaskedPiiValue(v) {
+  if (v == null || v === '' || v === '-') return false
+  return String(v).includes('*')
+}
+
+/** True jika ada baris dengan kolom PII list yang masih berisi *. */
+export function rowsHaveMaskedPendaftarPii(rows, keys = PENDFTAR_LIST_MASKED_PII_KEYS) {
+  const list = Array.isArray(rows) ? rows : []
+  const keyList = Array.isArray(keys) && keys.length ? keys : PENDFTAR_LIST_MASKED_PII_KEYS
+  for (const row of list) {
+    if (!row) continue
+    for (const key of keyList) {
+      if (looksLikeMaskedPiiValue(row[key])) return true
+    }
+  }
+  return false
+}
+
+/**
+ * List API menyamarkan NIK/KK/kontak; sebelum export ambil ulang dengan include_pii=1 lalu merge per id_registrasi.
+ * @param {Array<object>} rows
+ * @param {string} tahunHijriyah
+ * @param {string} tahunMasehi
+ * @returns {Promise<{ rows: Array<object>, piiHydrated: boolean, stillMasked?: boolean, errorMessage?: string }>}
+ */
+export async function hydratePendaftarRowsWithFullPii(rows, tahunHijriyah, tahunMasehi) {
+  const base = Array.isArray(rows) ? rows : []
+  const h = String(tahunHijriyah || '').trim()
+  const m = String(tahunMasehi || '').trim()
+  if (!h || !m || base.length === 0) {
+    return { rows: base, piiHydrated: false }
+  }
+  try {
+    const res = await pendaftaranAPI.getAllPendaftar(h, m, undefined, { includePii: true })
+    if (!res?.success || !Array.isArray(res.data)) {
+      return {
+        rows: base,
+        piiHydrated: false,
+        stillMasked: rowsHaveMaskedPendaftarPii(base),
+        errorMessage: res?.message || `Gagal memuat identitas lengkap untuk eksport — ${PII_MASK_HINT}`,
+      }
+    }
+    const byReg = new Map(res.data.map((r) => [r.id_registrasi, r]))
+    const merged = base.map((r) => byReg.get(r.id_registrasi) || r)
+    const stillMasked = rowsHaveMaskedPendaftarPii(merged)
+    return {
+      rows: merged,
+      piiHydrated: true,
+      stillMasked,
+      ...(stillMasked
+        ? { errorMessage: `Data identitas masih tersamarkan setelah muat ulang — ${PII_MASK_HINT}` }
+        : {}),
+    }
+  } catch (e) {
+    const msg =
+      e?.response?.data?.message ||
+      e?.message ||
+      `Gagal memuat identitas lengkap untuk eksport — ${PII_MASK_HINT}`
+    return {
+      rows: base,
+      piiHydrated: false,
+      stillMasked: rowsHaveMaskedPendaftarPii(base),
+      errorMessage: msg,
+    }
+  }
 }
 
 /**

@@ -16,8 +16,12 @@ var CRON_KEY = PropertiesService.getScriptProperties().getProperty('BNI_CRON_KEY
 if (!CRON_KEY) {
   throw new Error('BNI_CRON_KEY belum di-set. Buka Project Settings > Script Properties, tambah BNI_CRON_KEY');
 }
-var SPPG_HOOK =
+var SPPG_HOOK_ALUTSMANI =
   'https://sppg.alutsmani.id/api/public/cron/bni-email-hook?key=' + CRON_KEY;
+var SPPG_HOOK_CLOUDY =
+  'https://sppg.cloudy.my.id/api/public/cron/bni-email-hook?key=' + CRON_KEY;
+// Tenant cloudy: set hook ke SPPG_HOOK_CLOUDY bila sudah migrasi
+var SPPG_HOOK = SPPG_HOOK_ALUTSMANI;
 
 function pollBniEmails() {
   var query =

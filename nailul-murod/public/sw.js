@@ -1,11 +1,15 @@
-const APP_VERSION = 'v7'
+const APP_VERSION = 'v8'
 const CACHE_HTML = `nm-html-${APP_VERSION}`
 const CACHE_ASSET = `nm-asset-${APP_VERSION}`
 const CACHE_IMG = `nm-img-${APP_VERSION}`
+const CACHE_FONT = `nm-font-${APP_VERSION}`
 
 /** Diisi otomatis saat vite build (lihat vite.config) — JS/CSS utama agar offline tersedia */
 const PRECACHE_CORE = ['/', '/index.html', '/manifest.webmanifest']
 const PRECACHE_BUNDLES = [] // nm-precache-bundles
+const PRECACHE_FONTS = [
+  'https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Lateef:wght@200;300;400;500;600;700;800&family=Scheherazade+New:wght@400;500;600;700&family=Roboto:ital,wght@0,400;0,500;0,700&family=Inter:wght@400;600;700&display=swap',
+]
 
 /**
  * Jangan hapus seluruh Cache Storage di install — itu membuang bundle JS/CSS yang sudah ada
@@ -16,8 +20,22 @@ self.addEventListener('install', (event) => {
     (async () => {
       const htmlCache = await caches.open(CACHE_HTML)
       const assetCache = await caches.open(CACHE_ASSET)
+      const fontCache = await caches.open(CACHE_FONT)
       await Promise.all(PRECACHE_CORE.map((url) => htmlCache.add(url).catch(() => {})))
       await Promise.all(PRECACHE_BUNDLES.map((url) => assetCache.add(url).catch(() => {})))
+      await Promise.all(PRECACHE_FONTS.map((url) => fontCache.add(url).catch(() => {})))
+      try {
+        const cssRes = await fetch(PRECACHE_FONTS[0])
+        if (cssRes.ok) {
+          const css = await cssRes.text()
+          const woffUrls = [...css.matchAll(/url\((https:\/\/fonts\.gstatic\.com[^)]+)\)/g)].map((m) =>
+            m[1].replace(/['"]/g, '')
+          )
+          await Promise.all([...new Set(woffUrls)].map((u) => fontCache.add(u).catch(() => {})))
+        }
+      } catch {
+        // install tetap lanjut; font akan ter-cache saat online pertama
+      }
       await self.skipWaiting()
     })()
   )
@@ -30,7 +48,9 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(
           keys.map((k) =>
-            k === CACHE_HTML || k === CACHE_ASSET || k === CACHE_IMG ? Promise.resolve() : caches.delete(k)
+            k === CACHE_HTML || k === CACHE_ASSET || k === CACHE_IMG || k === CACHE_FONT
+              ? Promise.resolve()
+              : caches.delete(k)
           )
         )
       )
@@ -110,9 +130,9 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Google Fonts: fetch bawaan browser (bukan cache HTML); selaras CSP connect-src + stylesheet.
+  // Google Fonts: cache-first agar font pembaca tersedia offline setelah pernah online
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    event.respondWith(fetch(event.request))
+    event.respondWith(cacheFirst(event.request, CACHE_FONT))
     return
   }
 

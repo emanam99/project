@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Config\Database;
 use App\Helpers\AuthHelper;
+use App\Helpers\TenantHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -39,16 +40,19 @@ class UserController
             return $denied;
         }
 
-        $rows = $this->db->query(
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
+        $stmt = $this->db->prepare(
             'SELECT id, email, name, picture, google_id, role, created_at, updated_at
              FROM users
+             WHERE sppg_id = ?
              ORDER BY FIELD(role, "super_admin", "admin_approve", "admin_maker", "admin", "user", "pending"), name ASC, email ASC'
-        )->fetchAll();
+        );
+        $stmt->execute([$sppgId]);
 
-        return $this->json($response, ['success' => true, 'data' => $rows]);
+        return $this->json($response, ['success' => true, 'data' => $stmt->fetchAll()]);
     }
 
-    /** POST /users — pre-register email + role (seperti tri_leadclass grant) */
+    /** POST /users */
     public function create(Request $request, Response $response): Response
     {
         if ($denied = $this->requireSuperAdmin($request, $response)) {
@@ -56,6 +60,7 @@ class UserController
         }
 
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $body = json_decode((string) $request->getBody(), true);
         $body = is_array($body) ? $body : [];
 
@@ -68,15 +73,11 @@ class UserController
         if (!in_array($role, ['user', 'admin', 'admin_maker', 'admin_approve', 'super_admin'], true)) {
             return $this->json($response, ['success' => false, 'message' => 'Role tidak valid'], 422);
         }
-        if ($role === 'super_admin' && ($actor['role'] ?? '') !== 'super_admin') {
-            return $this->json($response, ['success' => false, 'message' => 'Hanya super admin yang dapat menambah super admin'], 403);
-        }
 
-        $check = $this->db->prepare('SELECT id, role FROM users WHERE email = ?');
-        $check->execute([$email]);
+        $check = $this->db->prepare('SELECT id, role FROM users WHERE sppg_id = ? AND email = ?');
+        $check->execute([$sppgId, $email]);
         $existing = $check->fetch();
         if ($existing) {
-            // Grant akses ke akun pending yang sudah login Google.
             if (($existing['role'] ?? '') === 'pending') {
                 $upd = $this->db->prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
                 $upd->execute([$role, $existing['id']]);
@@ -85,11 +86,11 @@ class UserController
                     'data' => AuthHelper::getUserById((int) $existing['id']),
                 ]);
             }
-            return $this->json($response, ['success' => false, 'message' => 'Email sudah terdaftar'], 409);
+            return $this->json($response, ['success' => false, 'message' => 'Email sudah terdaftar di SPPG ini'], 409);
         }
 
-        $ins = $this->db->prepare('INSERT INTO users (email, name, role) VALUES (?, ?, ?)');
-        $ins->execute([$email, $email, $role]);
+        $ins = $this->db->prepare('INSERT INTO users (sppg_id, email, name, role) VALUES (?, ?, ?, ?)');
+        $ins->execute([$sppgId, $email, $email, $role]);
 
         $user = AuthHelper::getUserById((int) $this->db->lastInsertId());
         return $this->json($response, ['success' => true, 'data' => $user], 201);
@@ -103,6 +104,7 @@ class UserController
         }
 
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
         $body = json_decode((string) $request->getBody(), true);
         $body = is_array($body) ? $body : [];
@@ -113,16 +115,10 @@ class UserController
         }
 
         $target = AuthHelper::getUserById($id);
-        if (!$target) {
+        if (!$target || (int) ($target['sppg_id'] ?? 0) !== $sppgId) {
             return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 404);
         }
 
-        if (($target['role'] ?? '') === 'super_admin' && ($actor['role'] ?? '') !== 'super_admin') {
-            return $this->json($response, ['success' => false, 'message' => 'Tidak dapat mengubah super admin'], 403);
-        }
-        if ($role === 'super_admin' && ($actor['role'] ?? '') !== 'super_admin') {
-            return $this->json($response, ['success' => false, 'message' => 'Hanya super admin yang dapat menetapkan super admin'], 403);
-        }
         if ((int) $actor['id'] === $id) {
             $demotingSelf =
                 $role === 'pending'
@@ -132,8 +128,8 @@ class UserController
             }
         }
 
-        $upd = $this->db->prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-        $upd->execute([$role, $id]);
+        $upd = $this->db->prepare('UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND sppg_id = ?');
+        $upd->execute([$role, $id, $sppgId]);
 
         return $this->json($response, [
             'success' => true,
@@ -149,9 +145,10 @@ class UserController
         }
 
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
         $target = AuthHelper::getUserById($id);
-        if (!$target) {
+        if (!$target || (int) ($target['sppg_id'] ?? 0) !== $sppgId) {
             return $this->json($response, ['success' => false, 'message' => 'User tidak ditemukan'], 404);
         }
 
@@ -160,9 +157,9 @@ class UserController
         }
 
         if (($target['role'] ?? '') === 'super_admin') {
-            $count = (int) $this->db->query(
-                "SELECT COUNT(*) FROM users WHERE role = 'super_admin'"
-            )->fetchColumn();
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM users WHERE sppg_id = ? AND role = 'super_admin'");
+            $stmt->execute([$sppgId]);
+            $count = (int) $stmt->fetchColumn();
             if ($count <= 1) {
                 return $this->json($response, [
                     'success' => false,
@@ -171,8 +168,8 @@ class UserController
             }
         }
 
-        $del = $this->db->prepare('DELETE FROM users WHERE id = ?');
-        $del->execute([$id]);
+        $del = $this->db->prepare('DELETE FROM users WHERE id = ? AND sppg_id = ?');
+        $del->execute([$id, $sppgId]);
 
         return $this->json($response, [
             'success' => true,

@@ -78,6 +78,9 @@ class AuthHelper
         if (self::isSameRequestHost($origin)) {
             return true;
         }
+        if (TenantHostHelper::isCloudyOrigin($origin)) {
+            return true;
+        }
         // http://192.168.x.x:5177 | 10.x | 172.16-31.x
         return (bool) preg_match(
             '#^https?://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$#',
@@ -197,14 +200,14 @@ class AuthHelper
         return $data;
     }
 
-    public static function buildGoogleAuthUrl(string $returnTo, ?string $frontend = null): string
+    public static function buildGoogleAuthUrl(string $returnTo, ?string $frontend = null, array $extraState = []): string
     {
         $clientId = trim((string) ($_ENV['GOOGLE_CLIENT_ID'] ?? ''));
         if ($clientId === '') {
             throw new \RuntimeException('GOOGLE_CLIENT_ID belum dikonfigurasi');
         }
 
-        $payload = ['returnTo' => $returnTo];
+        $payload = array_merge(['returnTo' => $returnTo], $extraState);
         $frontend = self::resolveFrontendUrl($frontend);
         $payload['frontend'] = $frontend;
 
@@ -261,18 +264,20 @@ class AuthHelper
         ];
     }
 
-    public static function upsertGoogleUser(array $profile): array
+    public static function upsertGoogleUser(array $profile, int $sppgId): array
     {
         $pdo = self::pdo();
         $email = strtolower(trim($profile['email']));
         $superAdmin = strtolower(trim((string) ($_ENV['SUPER_ADMIN_EMAIL'] ?? '')));
 
-        $stmt = $pdo->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
-        $stmt->execute([$email]);
+        $stmt = $pdo->prepare('SELECT * FROM users WHERE sppg_id = ? AND email = ? LIMIT 1');
+        $stmt->execute([$sppgId, $email]);
         $existing = $stmt->fetch();
 
         if ($existing) {
-            $role = ($superAdmin !== '' && $email === $superAdmin) ? 'super_admin' : $existing['role'];
+            $role = ($superAdmin !== '' && $email === $superAdmin)
+                ? 'super_admin'
+                : $existing['role'];
             $upd = $pdo->prepare(
                 'UPDATE users SET name = ?, picture = ?, google_id = ?, role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
             );
@@ -286,12 +291,12 @@ class AuthHelper
             return self::getUserById((int) $existing['id']);
         }
 
-        // User baru tanpa pre-register: pending sampai admin grant akses.
         $role = ($superAdmin !== '' && $email === $superAdmin) ? 'super_admin' : 'pending';
         $ins = $pdo->prepare(
-            'INSERT INTO users (email, name, picture, google_id, role) VALUES (?, ?, ?, ?, ?)'
+            'INSERT INTO users (sppg_id, email, name, picture, google_id, role) VALUES (?, ?, ?, ?, ?, ?)'
         );
         $ins->execute([
+            $sppgId,
             $email,
             $profile['name'],
             $profile['picture'],
@@ -302,12 +307,118 @@ class AuthHelper
         return self::getUserById((int) $pdo->lastInsertId());
     }
 
-    public static function createSession(int $userId): string
+    /** User baru saat pendaftaran tenant — langsung super_admin. */
+    public static function createRegisterSuperAdmin(array $profile, int $sppgId): array
+    {
+        $pdo = self::pdo();
+        $email = strtolower(trim($profile['email']));
+
+        $check = $pdo->prepare('SELECT id FROM users WHERE sppg_id = ? AND email = ? LIMIT 1');
+        $check->execute([$sppgId, $email]);
+        if ($check->fetch()) {
+            throw new \RuntimeException('Email sudah terdaftar di SPPG ini');
+        }
+
+        $ins = $pdo->prepare(
+            'INSERT INTO users (sppg_id, email, name, picture, google_id, role) VALUES (?, ?, ?, ?, ?, \'super_admin\')'
+        );
+        $ins->execute([
+            $sppgId,
+            $email,
+            $profile['name'],
+            $profile['picture'],
+            $profile['googleId'],
+        ]);
+
+        return self::getUserById((int) $pdo->lastInsertId());
+    }
+
+    /** @return list<array> */
+    public static function findMembershipsByEmail(string $email): array
+    {
+        $stmt = self::pdo()->prepare(
+            'SELECT u.id, u.sppg_id, u.email, u.name, u.picture, u.role,
+                    s.public_id, s.slug, s.subdomain, s.nama_unit, s.nama_yayasan, s.status AS sppg_status
+             FROM users u
+             INNER JOIN sppg s ON s.id = u.sppg_id
+             WHERE u.email = ?
+             ORDER BY s.nama_unit ASC'
+        );
+        $stmt->execute([strtolower(trim($email))]);
+        return $stmt->fetchAll() ?: [];
+    }
+
+    public static function createPickToken(array $profile, array $memberships): string
+    {
+        $token = bin2hex(random_bytes(32));
+        $expires = (new \DateTimeImmutable('+15 minutes'))->format('Y-m-d H:i:s');
+        $payload = array_map(static function ($m) {
+            return [
+                'user_id' => (int) $m['id'],
+                'sppg_id' => (int) $m['sppg_id'],
+                'slug' => $m['slug'],
+                'subdomain' => $m['subdomain'] ?? null,
+                'tenant_url' => TenantHostHelper::tenantUrl($m['subdomain'] ?? null),
+                'nama_unit' => $m['nama_unit'],
+                'nama_yayasan' => $m['nama_yayasan'],
+                'role' => $m['role'],
+            ];
+        }, $memberships);
+
+        $stmt = self::pdo()->prepare(
+            'INSERT INTO auth_pick_tokens (token, email, google_id, name, picture, memberships, expires_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $token,
+            strtolower(trim($profile['email'])),
+            $profile['googleId'],
+            $profile['name'],
+            $profile['picture'],
+            json_encode($payload, JSON_UNESCAPED_UNICODE),
+            $expires,
+        ]);
+
+        return $token;
+    }
+
+    public static function consumePickToken(string $token, int $sppgId): ?array
+    {
+        $stmt = self::pdo()->prepare(
+            'SELECT * FROM auth_pick_tokens WHERE token = ? AND expires_at > NOW() LIMIT 1'
+        );
+        $stmt->execute([$token]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return null;
+        }
+
+        $memberships = json_decode((string) $row['memberships'], true);
+        if (!is_array($memberships)) {
+            return null;
+        }
+
+        $matchUserId = null;
+        foreach ($memberships as $m) {
+            if ((int) ($m['sppg_id'] ?? 0) === $sppgId) {
+                $matchUserId = (int) ($m['user_id'] ?? 0);
+                break;
+            }
+        }
+        if (!$matchUserId) {
+            return null;
+        }
+
+        self::pdo()->prepare('DELETE FROM auth_pick_tokens WHERE token = ?')->execute([$token]);
+        return self::getUserById($matchUserId);
+    }
+
+    public static function createSession(int $userId, int $sppgId): string
     {
         $sessionId = bin2hex(random_bytes(32));
         $expiresAt = (new \DateTimeImmutable('+' . self::SESSION_DAYS . ' days'))->format('Y-m-d H:i:s');
-        $stmt = self::pdo()->prepare('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)');
-        $stmt->execute([$sessionId, $userId, $expiresAt]);
+        $stmt = self::pdo()->prepare('INSERT INTO sessions (id, user_id, sppg_id, expires_at) VALUES (?, ?, ?, ?)');
+        $stmt->execute([$sessionId, $userId, $sppgId, $expiresAt]);
         return $sessionId;
     }
 
@@ -320,7 +431,7 @@ class AuthHelper
     public static function getUserById(int $id): ?array
     {
         $stmt = self::pdo()->prepare(
-            'SELECT id, email, name, picture, google_id, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1'
+            'SELECT id, sppg_id, email, name, picture, google_id, role, created_at, updated_at FROM users WHERE id = ? LIMIT 1'
         );
         $stmt->execute([$id]);
         $row = $stmt->fetch();
@@ -330,15 +441,48 @@ class AuthHelper
     public static function getUserFromSession(string $sessionId): ?array
     {
         $stmt = self::pdo()->prepare(
-            'SELECT u.id, u.email, u.name, u.picture, u.google_id, u.role, u.created_at, u.updated_at
+            'SELECT s.user_id, s.platform_admin_id, s.sppg_id,
+                    u.id AS u_id, u.sppg_id AS u_sppg_id, u.email AS u_email, u.name AS u_name,
+                    u.picture AS u_picture, u.google_id AS u_google_id, u.role AS u_role,
+                    pa.id AS pa_id, pa.email AS pa_email, pa.name AS pa_name, pa.picture AS pa_picture,
+                    pa.status AS pa_status
              FROM sessions s
-             INNER JOIN users u ON u.id = s.user_id
+             LEFT JOIN users u ON u.id = s.user_id
+             LEFT JOIN platform_admins pa ON pa.id = s.platform_admin_id
              WHERE s.id = ? AND s.expires_at > NOW()
              LIMIT 1'
         );
         $stmt->execute([$sessionId]);
         $row = $stmt->fetch();
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+
+        if (!empty($row['platform_admin_id'])) {
+            if (($row['pa_status'] ?? '') !== 'active') {
+                return null;
+            }
+            return PlatformAdminHelper::userFromPlatformAdmin([
+                'id' => $row['pa_id'],
+                'email' => $row['pa_email'],
+                'name' => $row['pa_name'],
+                'picture' => $row['pa_picture'],
+            ]);
+        }
+
+        if (empty($row['user_id'])) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $row['u_id'],
+            'sppg_id' => (int) ($row['u_sppg_id'] ?? 0),
+            'email' => $row['u_email'],
+            'name' => $row['u_name'],
+            'picture' => $row['u_picture'],
+            'google_id' => $row['u_google_id'],
+            'role' => $row['u_role'],
+        ];
     }
 
     public static function extractSessionId(Request $request): ?string
@@ -464,8 +608,12 @@ class AuthHelper
 
     public static function publicUser(array $user): array
     {
+        if (PlatformAdminHelper::isPlatformAdminRole($user['role'] ?? null)) {
+            return PlatformAdminHelper::publicUser($user);
+        }
         return [
             'id' => (int) $user['id'],
+            'sppg_id' => (int) ($user['sppg_id'] ?? 0),
             'email' => $user['email'],
             'name' => $user['name'],
             'picture' => $user['picture'],

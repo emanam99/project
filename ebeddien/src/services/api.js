@@ -3955,6 +3955,16 @@ export const pengeluaranAPI = {
   deleteFile: async (fileId) => {
     const response = await api.delete(`/v2/pengeluaran/rencana/file/${fileId}`)
     return response.data
+  },
+
+  getNotificationConfig: async () => {
+    const response = await api.get('/pengeluaran/notification-config')
+    return response.data
+  },
+
+  saveNotificationConfig: async (data) => {
+    const response = await api.put('/pengeluaran/notification-config', data)
+    return response.data
   }
 }
 
@@ -5275,6 +5285,30 @@ export const wiridNailulMurodAPI = {
   },
   getBabOptions: async () => {
     const response = await api.get('/wirid-nailul-murod/bab-options')
+    return response.data
+  },
+  getBabList: async () => {
+    const response = await api.get('/wirid-nailul-murod/bab')
+    return response.data
+  },
+  createBab: async (data) => {
+    const response = await api.post('/wirid-nailul-murod/bab', data)
+    return response.data
+  },
+  updateBab: async (id, data) => {
+    const response = await api.put(`/wirid-nailul-murod/bab/${id}`, data)
+    return response.data
+  },
+  deleteBab: async (id) => {
+    const response = await api.delete(`/wirid-nailul-murod/bab/${id}`)
+    return response.data
+  },
+  reorderBab: async (data) => {
+    const response = await api.put('/wirid-nailul-murod/bab/reorder', data)
+    return response.data
+  },
+  reorder: async (data) => {
+    const response = await api.put('/wirid-nailul-murod/reorder', data)
     return response.data
   },
   getById: async (id) => {

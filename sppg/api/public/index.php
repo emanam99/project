@@ -11,10 +11,16 @@ use App\Controllers\DashboardController;
 use App\Controllers\ExportArsipController;
 use App\Controllers\KategoriController;
 use App\Controllers\PorsiController;
+use App\Controllers\PlatformAdminController;
+use App\Controllers\PublicSppgController;
 use App\Controllers\RekeningController;
+use App\Controllers\SppgController;
+use App\Controllers\SubscriptionCronController;
 use App\Controllers\UserController;
+use App\Controllers\XenditWebhookController;
 use App\Helpers\AuthHelper;
 use App\Middleware\AuthMiddleware;
+use App\Middleware\PlatformAdminMiddleware;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -40,7 +46,7 @@ $app->add(function ($request, $handler) {
     }
 
     return $response
-        ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+        ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization, X-Cron-Key, x-callback-token')
         ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 });
 
@@ -52,6 +58,8 @@ $basePath = str_replace('/index.php', '', $_SERVER['SCRIPT_NAME'] ?? '');
 $app->setBasePath($basePath);
 
 $auth = new AuthController();
+$publicSppg = new PublicSppgController();
+$sppg = new SppgController();
 $belanja = new BelanjaController();
 $belanjaFile = new BelanjaFileController();
 $dashboard = new DashboardController();
@@ -60,18 +68,37 @@ $rekening = new RekeningController();
 $kategori = new KategoriController();
 $exportArsip = new ExportArsipController();
 $porsi = new PorsiController();
+$platform = new PlatformAdminController();
+$xenditWebhook = new XenditWebhookController();
+$subscriptionCron = new SubscriptionCronController();
 
 $app->get('/auth/google', [$auth, 'googleStart']);
 $app->get('/auth/google/callback', [$auth, 'googleCallback']);
+$app->get('/auth/pick-options', [$auth, 'pickOptions']);
+$app->post('/auth/complete-pick', [$auth, 'completePick']);
 
-// Auto-approve BNI dari email (dilindungi BNI_CRON_KEY)
+$app->get('/public/sppg/check-slug', [$publicSppg, 'checkSlug']);
+$app->get('/public/sppg/check-subdomain', [$publicSppg, 'checkSubdomain']);
+$app->post('/public/sppg/register', [$publicSppg, 'register']);
+$app->get('/public/sppg/pwa-logo', [$sppg, 'pwaLogo']);
+
+$app->post('/webhooks/xendit', [$xenditWebhook, 'invoice']);
+
 $bniNotify = new BniNotifyController();
 $app->map(['GET', 'POST'], '/cron/bni-email-poll', [$bniNotify, 'poll']);
 $app->post('/cron/bni-email-hook', [$bniNotify, 'hook']);
+$app->map(['GET', 'POST'], '/cron/subscription-renewal', [$subscriptionCron, 'renewal']);
 
-$app->group('', function (RouteCollectorProxy $group) use ($auth, $belanja, $belanjaFile, $dashboard, $users, $rekening, $kategori, $exportArsip, $porsi) {
+$app->group('', function (RouteCollectorProxy $group) use ($auth, $sppg, $belanja, $belanjaFile, $dashboard, $users, $rekening, $kategori, $exportArsip, $porsi) {
     $group->get('/auth/me', [$auth, 'me']);
     $group->post('/auth/logout', [$auth, 'logout']);
+
+    $group->get('/sppg/profile', [$sppg, 'profile']);
+    $group->put('/sppg/profile', [$sppg, 'updateProfile']);
+    $group->get('/sppg/manifest.webmanifest', [$sppg, 'manifest']);
+    $group->post('/sppg/profile/pwa-logo', [$sppg, 'uploadPwaLogo']);
+    $group->get('/sppg/subscription', [$sppg, 'subscription']);
+    $group->post('/sppg/subscription/pay', [$sppg, 'paySubscription']);
 
     $group->get('/dashboard/summary', [$dashboard, 'summary']);
 
@@ -116,5 +143,15 @@ $app->group('', function (RouteCollectorProxy $group) use ($auth, $belanja, $bel
     $group->put('/users/{id}/role', [$users, 'updateRole']);
     $group->delete('/users/{id}', [$users, 'delete']);
 })->add(new AuthMiddleware());
+
+$app->group('/platform', function (RouteCollectorProxy $group) use ($platform) {
+    $group->get('/dashboard', [$platform, 'dashboard']);
+    $group->get('/tenants', [$platform, 'tenants']);
+    $group->get('/tenants/{id}', [$platform, 'tenantDetail']);
+    $group->patch('/tenants/{id}', [$platform, 'updateTenant']);
+    $group->post('/tenants/{id}/retry-dns', [$platform, 'retryDns']);
+    $group->get('/subscriptions', [$platform, 'subscriptions']);
+    $group->get('/payments', [$platform, 'payments']);
+})->add(new PlatformAdminMiddleware())->add(new AuthMiddleware());
 
 $app->run();

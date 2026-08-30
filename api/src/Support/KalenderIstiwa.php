@@ -7,12 +7,19 @@ namespace App\Support;
 use PDO;
 
 /**
- * Koordinat default jam Istiwa’ (Bondowoso) dan pencocokan alamat master absen.
+ * Koordinat default jam Istiwa’ (pondok Beddian) dan pencocokan alamat master absen.
  */
 final class KalenderIstiwa
 {
-    public const DEFAULT_LAT = -7.9138;
-    public const DEFAULT_LNG = 113.8214;
+    /** Pondok Pesantren Salafiyah Al-Utsmani — absen___alamat id=1 (lokal). */
+    public const DEFAULT_LAT = -7.9955854;
+    public const DEFAULT_LNG = 113.8443946;
+    public const DEFAULT_LABEL = 'Beddian RT 29 RW 06, Jambesari, Jambesari Darus Sholah, Bondowoso';
+    /** Nilai lama (pusat kota Bondowoso) — migrasi hanya menimpa ini. */
+    public const LEGACY_CITY_LAT = -7.9138;
+    public const LEGACY_CITY_LNG = 113.8214;
+    /** Cap radius zona untuk marquee Istiwa’ (bukan validasi absen). */
+    public const MATCH_RADIUS_MAX_METER = 500;
     public const SETTING_LAT = 'kalender_istiwa_latitude';
     public const SETTING_LNG = 'kalender_istiwa_longitude';
 
@@ -168,7 +175,7 @@ final class KalenderIstiwa
             if ($radBase < 1) {
                 $radBase = 100;
             }
-            $radBase = min(25000, max(10, $radBase));
+            $radBase = min(self::MATCH_RADIUS_MAX_METER, max(10, $radBase));
             $dist = AbsenLokasiGeo::haversineMeters($lat, $lng, $plat, $plng);
             $rad = $radBase + $accSlack;
             if ($dist > $rad) {

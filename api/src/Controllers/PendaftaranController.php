@@ -8071,12 +8071,37 @@ class PendaftaranController
                 $params[] = $since;
             }
 
-            // List default: samarkan NIK/No.KK. Detail/biodata tetap penuh. include_pii=1 hanya untuk role PSB/super_admin.
+            // List default: samarkan NIK/No.KK. Detail/biodata tetap penuh.
+            // include_pii=1: role PSB legacy ATAU fitur menu Data Pendaftar (audit di bawah).
             $includePiiRaw = strtolower(trim((string) ($queryParams['include_pii'] ?? '')));
             $wantFullPii = in_array($includePiiRaw, ['1', 'true', 'yes'], true);
-            $canIncludePii = is_array($userPayload) && RoleHelper::tokenHasAnyRoleKey($userPayload, [
-                'super_admin', 'admin_psb', 'petugas_psb', 'panitia_tes',
-            ]);
+            $canIncludePii = false;
+            if (is_array($userPayload)) {
+                $canIncludePii = RoleHelper::tokenHasAnyRoleKey($userPayload, [
+                    'super_admin', 'admin_psb', 'petugas_psb', 'panitia_tes',
+                ]);
+                if (!$canIncludePii) {
+                    $canIncludePii = RoleHelper::tokenHasEbeddienFiturCode(
+                        $this->db,
+                        $userPayload,
+                        'menu.pendaftaran.data_pendaftar'
+                    )
+                        || RoleHelper::tokenHasEbeddienFiturCode(
+                            $this->db,
+                            $userPayload,
+                            'action.pendaftaran.data_pendaftar.edit'
+                        );
+                }
+                if (!$canIncludePii) {
+                    $hasAnyEbeddienFiturAssignment = RoleHelper::tokenUnionHasAnyEbeddienFiturAssignment(
+                        $this->db,
+                        $userPayload
+                    );
+                    if (!$hasAnyEbeddienFiturAssignment) {
+                        $canIncludePii = RoleHelper::tokenCanQueryAnyPendaftaranSantri($userPayload);
+                    }
+                }
+            }
             $includeFullPii = $wantFullPii && $canIncludePii;
             if ($wantFullPii && !$canIncludePii) {
                 return $this->jsonResponse($response, [

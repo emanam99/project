@@ -282,6 +282,7 @@ class MenuActionsFiturSeed extends AbstractSeed
             ['action.pengeluaran.tab.rencana', 'Pengeluaran · Tab Rencana', 10],
             ['action.pengeluaran.tab.pengeluaran', 'Pengeluaran · Tab Pengeluaran', 20],
             ['action.pengeluaran.tab.draft', 'Pengeluaran · Tab Draft', 30],
+            ['action.pengeluaran.tab.pengaturan', 'Pengeluaran · Tab Pengaturan', 35],
             ['action.pengeluaran.rencana.lembaga_semua', 'Rencana · Filter semua lembaga', 40],
             ['action.pengeluaran.pengeluaran.lembaga_semua', 'Pengeluaran · Filter semua lembaga', 50],
             ['action.pengeluaran.draft.lembaga_semua', 'Draft · Filter semua lembaga', 60],

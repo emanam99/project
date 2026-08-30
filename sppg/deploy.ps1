@@ -1,11 +1,14 @@
-# Deploy SPPG ke Hostinger (sppg.alutsmani.id)
-# Cara pakai: dari folder sppg di PowerShell: .\deploy.ps1
+# Deploy SPPG ke Hostinger
+# Cara pakai: .\deploy.ps1 -Target alutsmani -Scope 3
+# Cloudy:     .\deploy.ps1 -Target cloudy -Scope 3 -Migrate
 # Struktur: api/, app/, gambar/
 # - Frontend: build app/ ke public_html
 # - API: upload ke public_html/api
 # - Gambar: upload ke public_html/gambar (opsional)
 
 param(
+    [ValidateSet('alutsmani', 'cloudy')]
+    [string]$Target = 'alutsmani',
     [ValidateSet('', '1', '2', '3', '4')]
     [string]$Scope = '',
     [switch]$Migrate
@@ -22,14 +25,29 @@ $FRONT_TAR = "sppg-front.tar"
 $API_TAR   = "sppg-api.tar"
 
 # --- Target production ---
-$REMOTE_ROOT        = "domains/sppg.alutsmani.id/public_html"
-$REMOTE_FRONT_PATH  = $REMOTE_ROOT
-$REMOTE_API_PATH    = "$REMOTE_ROOT/api"
-$REMOTE_GAMBAR_PATH = "$REMOTE_ROOT/gambar"
-$envLabel           = "production"
-$publicUrl          = "https://sppg.alutsmani.id"
-$apiUrl             = "https://sppg.alutsmani.id/api/public"
-$gambarUrl          = "https://sppg.alutsmani.id/gambar"
+if ($Target -eq 'cloudy') {
+    $REMOTE_ROOT        = "domains/cloudy.my.id/public_html/sppg"
+    $REMOTE_FRONT_PATH  = $REMOTE_ROOT
+    $REMOTE_API_PATH    = "$REMOTE_ROOT/api"
+    $REMOTE_GAMBAR_PATH = "$REMOTE_ROOT/gambar"
+    $envLabel           = "cloudy"
+    $publicUrl          = "https://sppg.cloudy.my.id"
+    $apiUrl             = "https://sppg.cloudy.my.id/api/public"
+    $gambarUrl          = "https://sppg.cloudy.my.id/gambar"
+    $DB_NAME            = "u264984103_sppg_cloudy"
+    $DB_USER            = "u264984103_sppg_cloudy"
+} else {
+    $REMOTE_ROOT        = "domains/sppg.alutsmani.id/public_html"
+    $REMOTE_FRONT_PATH  = $REMOTE_ROOT
+    $REMOTE_API_PATH    = "$REMOTE_ROOT/api"
+    $REMOTE_GAMBAR_PATH = "$REMOTE_ROOT/gambar"
+    $envLabel           = "production"
+    $publicUrl          = "https://sppg.alutsmani.id"
+    $apiUrl             = "https://sppg.alutsmani.id/api/public"
+    $gambarUrl          = "https://sppg.alutsmani.id/gambar"
+    $DB_NAME            = "u264984103_sppg"
+    $DB_USER            = "u264984103_sppg"
+}
 
 function Invoke-Ssh {
     param([Parameter(Mandatory = $true)][string]$Command)
@@ -70,14 +88,26 @@ $SUPER_ADMIN_EMAIL    = "em.anam999@gmail.com"
 
 # Database Hostinger (dibuat via API)
 $DB_HOST = "localhost"
-$DB_NAME = "u264984103_sppg"
-$DB_USER = "u264984103_sppg"
+if (-not $DB_NAME) { $DB_NAME = "u264984103_sppg" }
+if (-not $DB_USER) { $DB_USER = "u264984103_sppg" }
 $DB_PASS = $env:DB_PASS
-if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
-    $DB_PASS = Get-LocalEnvValue 'DB_PASS'
-}
-if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
-    $DB_PASS = Get-RemoteEnvValue 'DB_PASS'
+if ($Target -eq 'cloudy') {
+    if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
+        $DB_PASS = Get-LocalEnvValue 'DB_PASS_CLOUDY'
+    }
+    if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
+        $DB_PASS = Get-RemoteEnvValue 'DB_PASS'
+    }
+} else {
+    if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
+        $DB_PASS = Get-LocalEnvValue 'DB_PASS_ALUTSMANI'
+    }
+    if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
+        $DB_PASS = Get-LocalEnvValue 'DB_PASS'
+    }
+    if ([string]::IsNullOrWhiteSpace($DB_PASS)) {
+        $DB_PASS = Get-RemoteEnvValue 'DB_PASS'
+    }
 }
 
 # Auto-approve BNI dari email mbeddien@gmail.com (IMAP). Isi App Password di server / biarkan deploy mempertahankan nilai lama.
@@ -201,6 +231,15 @@ RewriteRule . /index.html [L]
     $env:VITE_API_URL = $apiUrl
     $env:VITE_OAUTH_API_URL = $apiUrl
     $env:VITE_GAMBAR_BASE = $gambarUrl
+    if ($Target -eq 'cloudy') {
+        $env:VITE_TENANT_BASE_DOMAIN = 'cloudy.my.id'
+        $env:VITE_LANDING_HOST = 'sppg.cloudy.my.id'
+        $env:VITE_PLATFORM_ADMIN_HOST = 'adminsppg.cloudy.my.id'
+    } else {
+        Remove-Item Env:VITE_TENANT_BASE_DOMAIN -ErrorAction SilentlyContinue
+        Remove-Item Env:VITE_LANDING_HOST -ErrorAction SilentlyContinue
+        Remove-Item Env:VITE_PLATFORM_ADMIN_HOST -ErrorAction SilentlyContinue
+    }
 
     npm run build
     if (-not (Test-Path "dist")) {
@@ -211,6 +250,9 @@ RewriteRule . /index.html [L]
     Remove-Item Env:VITE_API_URL -ErrorAction SilentlyContinue
     Remove-Item Env:VITE_OAUTH_API_URL -ErrorAction SilentlyContinue
     Remove-Item Env:VITE_GAMBAR_BASE -ErrorAction SilentlyContinue
+    Remove-Item Env:VITE_TENANT_BASE_DOMAIN -ErrorAction SilentlyContinue
+    Remove-Item Env:VITE_LANDING_HOST -ErrorAction SilentlyContinue
+    Remove-Item Env:VITE_PLATFORM_ADMIN_HOST -ErrorAction SilentlyContinue
 
     if ($null -ne $htaccessBackup) {
         [System.IO.File]::WriteAllText($htaccessPath, $htaccessBackup, [System.Text.UTF8Encoding]::new($false))
@@ -307,6 +349,18 @@ BNI_NOTIFY_IMAP_USER=$BNI_NOTIFY_IMAP_USER
 BNI_NOTIFY_IMAP_PASS=$BNI_NOTIFY_IMAP_PASS
 BNI_NOTIFY_IMAP_FOLDER=$BNI_NOTIFY_IMAP_FOLDER
 "@
+    if ($Target -eq 'cloudy') {
+        $envContent += @"
+
+TENANT_BASE_DOMAIN=cloudy.my.id
+LANDING_HOST=sppg.cloudy.my.id
+PLATFORM_ADMIN_HOST=adminsppg.cloudy.my.id
+HOSTINGER_PROVISION_ENABLED=1
+HOSTINGER_ACCOUNT_USERNAME=$SSH_USER
+HOSTINGER_DOMAIN=cloudy.my.id
+HOSTINGER_SUBDOMAIN_DIRECTORY=sppg
+"@
+    }
     $envPathLocal = Join-Path $scriptDir ".env.remote"
     [System.IO.File]::WriteAllText($envPathLocal, $envContent.Trim() + "`n", [System.Text.UTF8Encoding]::new($false))
     Invoke-ScpWithRetry -LocalPath $envPathLocal -RemoteSpec "${SSH_USER}@${SSH_HOST}:${REMOTE_API_PATH}/.env"
@@ -316,9 +370,18 @@ BNI_NOTIFY_IMAP_FOLDER=$BNI_NOTIFY_IMAP_FOLDER
     $envLocalPath = Join-Path $scriptDir '.env.local'
     $localLines = @()
     if (Test-Path $envLocalPath) {
-        $localLines = @(Get-Content $envLocalPath | Where-Object { $_ -notmatch '^(DB_PASS|GOOGLE_CLIENT_SECRET|BNI_CRON_KEY)=' })
+        $skipPattern = if ($Target -eq 'cloudy') {
+            '^(DB_PASS_CLOUDY|GOOGLE_CLIENT_SECRET|BNI_CRON_KEY)='
+        } else {
+            '^(DB_PASS_ALUTSMANI|GOOGLE_CLIENT_SECRET|BNI_CRON_KEY)='
+        }
+        $localLines = @(Get-Content $envLocalPath | Where-Object { $_ -notmatch $skipPattern })
     }
-    $localLines += "DB_PASS=$DB_PASS"
+    if ($Target -eq 'cloudy') {
+        $localLines += "DB_PASS_CLOUDY=$DB_PASS"
+    } else {
+        $localLines += "DB_PASS_ALUTSMANI=$DB_PASS"
+    }
     $localLines += "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET"
     if (-not [string]::IsNullOrWhiteSpace($BNI_CRON_KEY)) {
         $localLines += "BNI_CRON_KEY=$BNI_CRON_KEY"
@@ -363,8 +426,26 @@ if ($doFrontend) { Write-Host "Frontend: $publicUrl" -ForegroundColor Green }
 if ($doApi) {
     Write-Host "API:      $apiUrl" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Penting - Google OAuth:" -ForegroundColor Yellow
-    Write-Host "  Tambahkan Authorized redirect URI di Google Cloud Console:" -ForegroundColor Yellow
-    Write-Host "  $apiUrl/auth/google/callback" -ForegroundColor White
+    Write-Host "Penting - Google OAuth (daftar di Google Cloud Console):" -ForegroundColor Yellow
+    Write-Host "  Admin utama: $SUPER_ADMIN_EMAIL (super_admin otomatis)" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Authorized redirect URI (callback):" -ForegroundColor Yellow
+    Write-Host "    $apiUrl/auth/google/callback" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Authorized JavaScript origins (minimal):" -ForegroundColor Yellow
+    Write-Host "    $publicUrl" -ForegroundColor White
+    if ($Target -eq 'cloudy') {
+        Write-Host "    https://sppgalutsmani.cloudy.my.id" -ForegroundColor White
+        Write-Host "    https://adminsppg.cloudy.my.id" -ForegroundColor White
+        Write-Host "    https://<subdomain-tenant>.cloudy.my.id" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "  Panel admin platform: https://adminsppg.cloudy.my.id/login" -ForegroundColor Cyan
+        Write-Host "  Login tenant contoh: https://sppgalutsmani.cloudy.my.id/login" -ForegroundColor Cyan
+        Write-Host "  Xendit webhook: $apiUrl/webhooks/xendit" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "  Dev lokal (tambah juga di Console):" -ForegroundColor Yellow
+    Write-Host "    http://localhost/sppg/api/public/auth/google/callback" -ForegroundColor White
+    Write-Host "    http://localhost:5177" -ForegroundColor White
 }
 if ($doGambar) { Write-Host "Gambar:   $gambarUrl" -ForegroundColor Green }

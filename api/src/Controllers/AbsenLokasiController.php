@@ -336,6 +336,37 @@ final class AbsenLokasiController
         return $this->alamatMasterTableOk() && $this->lokasiHasAlamatFkColumn();
     }
 
+    private function alamatHasGpsColumns(): bool
+    {
+        try {
+            $st = $this->db->query(
+                "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+                 AND table_name = 'absen___alamat' AND column_name = 'latitude' LIMIT 1"
+            );
+
+            return (bool) $st->fetchColumn();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * @return array{lat: ?float, lng: ?float, radius: int}
+     */
+    private function coordsFromLokasiBody(array $body): array
+    {
+        $lat = self::floatCoord($body['latitude'] ?? $body['lat'] ?? null);
+        $lng = self::floatCoord($body['longitude'] ?? $body['lng'] ?? null);
+        if ($lat === null || $lng === null || abs($lat) > 90.0 || abs($lng) > 180.0) {
+            return ['lat' => null, 'lng' => null, 'radius' => 100];
+        }
+        $radRaw = $body['radius_meter'] ?? null;
+        $rad = ($radRaw === null || $radRaw === '') ? 100 : (int) $radRaw;
+        $rad = min(25000, max(10, $rad));
+
+        return ['lat' => $lat, 'lng' => $lng, 'radius' => $rad];
+    }
+
     /** Basis data lama: kolom alamat masih di absen___lokasi (sebelum migrasi absen___alamat). */
     private function lokasiLegacyAlamatColumnsOk(): bool
     {
@@ -544,18 +575,54 @@ final class AbsenLokasiController
             return null;
         }
         try {
-            $sel = $this->db->prepare(
-                'SELECT id FROM absen___alamat WHERE dusun <=> ? AND rt <=> ? AND rw <=> ? AND desa <=> ? AND kecamatan <=> ? AND kabupaten <=> ? AND provinsi <=> ? LIMIT 1'
-            );
+            $hasGpsCols = $this->alamatHasGpsColumns();
+            $selSql = $hasGpsCols
+                ? 'SELECT id, latitude, longitude FROM absen___alamat WHERE dusun <=> ? AND rt <=> ? AND rw <=> ? AND desa <=> ? AND kecamatan <=> ? AND kabupaten <=> ? AND provinsi <=> ? LIMIT 1'
+                : 'SELECT id FROM absen___alamat WHERE dusun <=> ? AND rt <=> ? AND rw <=> ? AND desa <=> ? AND kecamatan <=> ? AND kabupaten <=> ? AND provinsi <=> ? LIMIT 1';
+            $sel = $this->db->prepare($selSql);
             $sel->execute([$dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi]);
             $found = $sel->fetch(PDO::FETCH_ASSOC);
+            $gps = $this->coordsFromLokasiBody($body);
             if ($found !== false) {
-                return (int) $found['id'];
+                $id = (int) $found['id'];
+                if (
+                    $hasGpsCols
+                    && $gps['lat'] !== null
+                    && $gps['lng'] !== null
+                    && AbsenLokasiGeo::floatCoord($found['latitude'] ?? null) === null
+                    && AbsenLokasiGeo::floatCoord($found['longitude'] ?? null) === null
+                ) {
+                    $upd = $this->db->prepare(
+                        'UPDATE absen___alamat SET latitude = ?, longitude = ?, radius_meter = ? WHERE id = ?'
+                    );
+                    $upd->execute([$gps['lat'], $gps['lng'], $gps['radius'], $id]);
+                }
+
+                return $id;
             }
-            $ins = $this->db->prepare(
-                'INSERT INTO absen___alamat (dusun, rt, rw, desa, kecamatan, kabupaten, provinsi) VALUES (?, ?, ?, ?, ?, ?, ?)'
-            );
-            $ins->execute([$dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi]);
+            if ($hasGpsCols && $gps['lat'] !== null && $gps['lng'] !== null) {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___alamat (dusun, rt, rw, desa, kecamatan, kabupaten, provinsi, latitude, longitude, radius_meter)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([
+                    $dusun,
+                    $rt,
+                    $rw,
+                    $desa,
+                    $kecamatan,
+                    $kabupaten,
+                    $provinsi,
+                    $gps['lat'],
+                    $gps['lng'],
+                    $gps['radius'],
+                ]);
+            } else {
+                $ins = $this->db->prepare(
+                    'INSERT INTO absen___alamat (dusun, rt, rw, desa, kecamatan, kabupaten, provinsi) VALUES (?, ?, ?, ?, ?, ?, ?)'
+                );
+                $ins->execute([$dusun, $rt, $rw, $desa, $kecamatan, $kabupaten, $provinsi]);
+            }
 
             return (int) $this->db->lastInsertId();
         } catch (\Throwable $e) {

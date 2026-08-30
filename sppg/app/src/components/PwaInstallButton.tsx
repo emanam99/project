@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { usePwaInstallPrompt } from '../hooks/usePwaInstallPrompt'
+import PwaInstallDialog from './PwaInstallDialog'
 
 type Props = {
   className?: string
@@ -17,33 +19,40 @@ function DownloadIcon({ className = 'h-4 w-4' }: { className?: string }) {
 }
 
 export default function PwaInstallButton({ className = '', compact = false }: Props) {
-  const { canInstall, promptInstall } = usePwaInstallPrompt()
+  const { canInstall } = usePwaInstallPrompt()
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   if (!canInstall) return null
 
   if (compact) {
     return (
-      <button
-        type="button"
-        onClick={() => void promptInstall()}
-        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-surface text-ink hover:bg-surface-soft transition ${className}`}
-        title="Install aplikasi SPPG"
-        aria-label="Install aplikasi SPPG"
-      >
-        <DownloadIcon />
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-surface text-ink hover:bg-surface-soft transition ${className}`}
+          title="Install aplikasi"
+          aria-label="Install aplikasi"
+        >
+          <DownloadIcon />
+        </button>
+        <PwaInstallDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      </>
     )
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void promptInstall()}
-      className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-line bg-surface text-[13px] font-semibold text-ink hover:bg-surface-soft transition ${className}`}
-      title="Install aplikasi SPPG"
-    >
-      <DownloadIcon />
-      Install
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => setDialogOpen(true)}
+        className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-line bg-surface text-[13px] font-semibold text-ink hover:bg-surface-soft transition ${className}`}
+        title="Install aplikasi"
+      >
+        <DownloadIcon />
+        Install
+      </button>
+      <PwaInstallDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+    </>
   )
 }

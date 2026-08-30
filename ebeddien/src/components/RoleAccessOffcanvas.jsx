@@ -127,7 +127,7 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
   const [expandedIds, setExpandedIds] = useState(() => new Set())
   /** Accordion tab Rencana / Pengeluaran / Draft di bawah menu Pengeluaran (Pengaturan → Fitur). */
   const [pengeluaranAccordionOpen, setPengeluaranAccordionOpen] = useState(
-    () => new Set(['rencana', 'pengeluaran', 'draft'])
+    () => new Set(['rencana', 'pengeluaran', 'draft', 'pengaturan'])
   )
   const [kalenderPengaturanAccordionOpen, setKalenderPengaturanAccordionOpen] = useState(
     () => new Set(['bulan', 'hari_penting', 'lokasi'])
@@ -155,7 +155,7 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
     setFiturError(null)
     setSearchQuery('')
     setGroupFilter('')
-    setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft']))
+    setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft', 'pengaturan']))
     setKalenderPengaturanAccordionOpen(new Set(['bulan', 'hari_penting']))
     setAbsenAccordionOpen(new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen']))
     setUgtLaporanAccordionOpen(new Set(['koordinator', 'gt', 'pjgt']))
@@ -219,7 +219,7 @@ export default function RoleAccessOffcanvas({ isOpen, onClose, roleKey, role, on
       })
       return next
     })
-    setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft']))
+    setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft', 'pengaturan']))
     setKalenderPengaturanAccordionOpen(new Set(['bulan', 'hari_penting']))
     setAbsenAccordionOpen(new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen']))
     setUgtLaporanAccordionOpen(new Set(['koordinator', 'gt', 'pjgt']))

@@ -7,6 +7,7 @@ const SYNC_INTERVAL_MS = 2 * 60 * 1000
 export function useReaderData() {
   const [state, setState] = useState<ReaderState>({
     rows: [],
+    babList: [],
     loading: true,
     syncing: false,
     source: null,
@@ -19,6 +20,7 @@ export function useReaderData() {
     setState((prev) => ({
       ...prev,
       rows: result.rows,
+      babList: result.babList,
       source: result.source,
       loading: false,
       syncing: false,

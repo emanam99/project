@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Config\Database;
+use App\Helpers\TenantHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -22,23 +23,22 @@ class KategoriController
         return $response->withHeader('Content-Type', 'application/json')->withStatus($status);
     }
 
-    /** GET /kategori — daftar kategori yang pernah dipakai / tersimpan */
+    /** GET /kategori */
     public function index(Request $request, Response $response): Response
     {
-        $rows = $this->db->query(
-            'SELECT id, nama FROM kategori ORDER BY nama ASC'
-        )->fetchAll();
-
-        return $this->json($response, ['success' => true, 'data' => $rows]);
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
+        $stmt = $this->db->prepare('SELECT id, nama FROM kategori WHERE sppg_id = ? ORDER BY nama ASC');
+        $stmt->execute([$sppgId]);
+        return $this->json($response, ['success' => true, 'data' => $stmt->fetchAll()]);
     }
 
-    public static function ensureKategori(PDO $db, string $nama): void
+    public static function ensureKategori(PDO $db, int $sppgId, string $nama): void
     {
         $nama = trim($nama);
         if ($nama === '') {
             return;
         }
-        $stmt = $db->prepare('INSERT IGNORE INTO kategori (nama) VALUES (?)');
-        $stmt->execute([$nama]);
+        $stmt = $db->prepare('INSERT IGNORE INTO kategori (sppg_id, nama) VALUES (?, ?)');
+        $stmt->execute([$sppgId, $nama]);
     }
 }

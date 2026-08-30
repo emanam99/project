@@ -11,6 +11,7 @@ const KEUANGAN_SKILL_ACCESS_ALL_TRUE = {
   keuanganReviewDraft: true,
   keuanganAnalisisDashboard: true,
   keuanganLihatDetail: true,
+  keuanganPengeluaranPengaturan: true,
 }
 
 const SANTRI_SKILL_ACCESS_ALL_TRUE = {
@@ -106,6 +107,7 @@ export function buildChatAiKeuanganSkillAccess(fiturMenuCodes, user) {
     some((c) => c.startsWith('action.pengeluaran.pengeluaran.') || c.startsWith('action.pengeluaran.item.'))
   const tabDraft =
     has('action.pengeluaran.tab.draft') || some((c) => c.startsWith('action.pengeluaran.draft.'))
+  const tabPengaturan = has('action.pengeluaran.tab.pengaturan')
 
   const pengeluaranHalaman = menuPengeluaran
 
@@ -114,6 +116,7 @@ export function buildChatAiKeuanganSkillAccess(fiturMenuCodes, user) {
     keuanganPengeluaranRealisasi: pengeluaranHalaman && tabRealisasi,
     keuanganRencanaAlur: pengeluaranHalaman && tabRencana,
     keuanganReviewDraft: pengeluaranHalaman && tabDraft,
+    keuanganPengeluaranPengaturan: pengeluaranHalaman && tabPengaturan,
     keuanganAnalisisDashboard: menuDashboardKeuangan,
     keuanganLihatDetail: menuPemasukan || menuPengeluaran || menuAktivitas || menuAktivitasTa,
   }

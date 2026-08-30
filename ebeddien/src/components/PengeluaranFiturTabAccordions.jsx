@@ -1,7 +1,7 @@
 import { PENGELUARAN_TAB_ACCORDIONS, groupPengeluaranFiturChildren } from '../config/pengeluaranFiturCodes'
 
 /**
- * Mengelompokkan aksi fitur menu Pengeluaran ke 3 accordion (tab Rencana / Pengeluaran / Draft).
+ * Mengelompokkan aksi fitur menu Pengeluaran ke accordion (tab Rencana / Pengeluaran / Draft / Pengaturan).
  * Model data tetap flat action di API; hanya tampilan yang bertingkat.
  */
 export default function PengeluaranFiturTabAccordions({

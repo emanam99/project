@@ -1,7 +1,9 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { wiridNailulMurodAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
+import NailulMurodBabOffcanvas from './components/NailulMurodBabOffcanvas'
+import { resolveBabName, readEbeddienTitleLang } from './utils/wiridTitle'
 import './NailulMurod.css'
 
 const NailulMurodQuillEditor = lazy(() => import('./NailulMurodQuillEditor'))
@@ -40,33 +42,45 @@ export default function NailulMurodForm() {
   const [formErr, setFormErr] = useState('')
 
   const [bab, setBab] = useState('')
-  const [judul, setJudul] = useState('')
+  const [judulId, setJudulId] = useState('')
+  const [judulAr, setJudulAr] = useState('')
   const [urutan, setUrutan] = useState(0)
   const [isi, setIsi] = useState('')
   const [arti, setArti] = useState('')
-  const [babOptions, setBabOptions] = useState([])
+  const [babList, setBabList] = useState([])
+  const [babOffcanvasOpen, setBabOffcanvasOpen] = useState(false)
+
+  const loadBabList = useCallback(async () => {
+    try {
+      const res = await wiridNailulMurodAPI.getBabList()
+      if (res?.success && Array.isArray(res.data)) {
+        setBabList(res.data)
+      }
+    } catch {
+      // diam-diam: select hanya bantuan, bukan blocker
+    }
+  }, [])
+
+  const titleLang = useMemo(() => readEbeddienTitleLang(), [])
+
+  const babSelectOptions = useMemo(() => {
+    const names = new Set(babList.map((b) => b.nama))
+    const options = [...babList]
+    const current = String(bab).trim()
+    if (current && !names.has(current)) {
+      options.push({ id: `legacy-${current}`, nama: current, urutan: 9999, jumlah_entri: 0 })
+    }
+    return options.sort((a, b) => (a.urutan - b.urutan) || String(a.nama).localeCompare(String(b.nama), 'id'))
+  }, [bab, babList])
 
   // `initialReady` jadi gerbang render editor — pastikan kita tidak mengganti value Quill
   // saat user sedang mengetik (yang bikin cursor lompat di versi offcanvas dulu).
   const [initialReady, setInitialReady] = useState(!isEdit)
 
-  // Muat opsi bab (untuk datalist), independen dari load entri.
+  // Muat daftar bab (untuk select), independen dari load entri.
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const o = await wiridNailulMurodAPI.getBabOptions()
-        if (!cancelled && o?.success && Array.isArray(o.data)) {
-          setBabOptions(o.data)
-        }
-      } catch {
-        // diam-diam: datalist hanya bantuan, bukan blocker
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    loadBabList()
+  }, [loadBabList])
 
   // Muat data jika edit.
   useEffect(() => {
@@ -83,7 +97,20 @@ export default function NailulMurodForm() {
         if (cancelled) return
         if (res?.success && res.data) {
           setBab(res.data.bab != null ? String(res.data.bab) : '')
-          setJudul(res.data.judul != null ? String(res.data.judul) : '')
+          setJudulId(
+            res.data.judul_id != null && String(res.data.judul_id).trim()
+              ? String(res.data.judul_id)
+              : res.data.judul != null
+                ? String(res.data.judul)
+                : ''
+          )
+          setJudulAr(
+            res.data.judul_ar != null && String(res.data.judul_ar).trim()
+              ? String(res.data.judul_ar)
+              : res.data.judul != null
+                ? String(res.data.judul)
+                : ''
+          )
           setUrutan(res.data.urutan != null ? Number(res.data.urutan) : 0)
           setIsi(res.data.isi != null ? String(res.data.isi) : '')
           setArti(res.data.arti != null ? String(res.data.arti) : '')
@@ -111,8 +138,13 @@ export default function NailulMurodForm() {
   const handleSubmit = useCallback(
     async (e) => {
       e.preventDefault()
-      if (!String(judul).trim()) {
-        setFormErr('Judul wajib diisi')
+      if (!String(judulId).trim() && !String(judulAr).trim()) {
+        setFormErr('Isi minimal satu judul (Indonesia atau Arab)')
+        return
+      }
+      const babTrimmed = String(bab).trim()
+      if (babTrimmed && !babSelectOptions.some((b) => b.nama === babTrimmed)) {
+        setFormErr('Pilih bab dari daftar atau kelola bab terlebih dahulu')
         return
       }
       setSaving(true)
@@ -120,7 +152,8 @@ export default function NailulMurodForm() {
       try {
         const body = {
           bab: String(bab).trim(),
-          judul: String(judul).trim(),
+          judul_id: String(judulId).trim(),
+          judul_ar: String(judulAr).trim(),
           urutan: Number(urutan) || 0,
           isi,
           arti,
@@ -140,7 +173,7 @@ export default function NailulMurodForm() {
         setSaving(false)
       }
     },
-    [arti, bab, isEdit, isi, judul, navigate, numericId, showNotification, urutan]
+    [arti, bab, babSelectOptions, isEdit, isi, judulAr, judulId, navigate, numericId, showNotification, urutan]
   )
 
   if (loading) {
@@ -198,9 +231,9 @@ export default function NailulMurodForm() {
             {isEdit ? 'Ubah entri Nailul Murod' : 'Tambah entri Nailul Murod'}
           </h1>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Pilih font di toolbar editor: <strong>Amiri</strong> untuk ayat,{' '}
-            <strong>Lateef</strong>/<strong>Scheherazade</strong> untuk teks wirid,{' '}
-            <strong>Inter</strong>/<strong>Roboto</strong> untuk terjemahan.
+            Pilih gaya di toolbar: <strong>Judul</strong>, <strong>Sub judul</strong>,{' '}
+            <strong>Wirid</strong>, <strong>Ayat</strong>, atau <strong>Normal</strong>. Font
+            tampilan diatur di aplikasi Nailul Murod.
           </p>
         </div>
 
@@ -218,36 +251,66 @@ export default function NailulMurodForm() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="sm:col-span-1">
                 <label className={labelClass}>Bab (pengelompokan)</label>
+                <div className="flex gap-2 items-stretch">
+                  <select
+                    name="bab"
+                    value={bab}
+                    onChange={(e) => setBab(e.target.value)}
+                    className={`${inputClass} flex-1 min-w-0`}
+                  >
+                    <option value="">— Tanpa bab —</option>
+                    {babSelectOptions.map((b) => (
+                      <option key={b.id} value={b.nama}>
+                        {resolveBabName(b, titleLang)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setBabOffcanvasOpen(true)}
+                    className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    title="Kelola bab"
+                    aria-label="Kelola bab"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="sm:col-span-1">
+                <label className={labelClass}>Judul Indonesia</label>
                 <input
                   type="text"
-                  name="bab"
-                  value={bab}
-                  onChange={(e) => setBab(e.target.value)}
+                  name="judul_id"
+                  value={judulId}
+                  onChange={(e) => setJudulId(e.target.value)}
                   className={inputClass}
-                  placeholder="Contoh: Pagi, Malam, Jumat…"
-                  list="nm-bab-suggestions"
                   autoComplete="off"
+                  dir="ltr"
                 />
-                <datalist id="nm-bab-suggestions">
-                  {babOptions.map((b) => (
-                    <option key={b} value={b} />
-                  ))}
-                </datalist>
               </div>
-              <div className="sm:col-span-2">
-                <label className={labelClass}>
-                  Judul <span className="text-red-500">*</span>
-                </label>
+              <div className="sm:col-span-1">
+                <label className={labelClass}>Judul Arab</label>
                 <input
                   type="text"
-                  name="judul"
-                  value={judul}
-                  onChange={(e) => setJudul(e.target.value)}
-                  className={inputClass}
-                  required
+                  name="judul_ar"
+                  value={judulAr}
+                  onChange={(e) => setJudulAr(e.target.value)}
+                  className={`${inputClass} text-right`}
                   autoComplete="off"
+                  dir="rtl"
+                  lang="ar"
                 />
               </div>
+              <p className="sm:col-span-3 text-xs text-gray-500 dark:text-gray-400 -mt-1">
+                Isi minimal satu judul. Keduanya boleh diisi untuk tampilan bilingual.
+              </p>
               <div className="sm:col-span-1">
                 <label className={labelClass}>Urutan dalam bab</label>
                 <input
@@ -264,10 +327,11 @@ export default function NailulMurodForm() {
 
           <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-5">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
-              Isi (wirid, ayat, teks Arab)
+              Isi (wirid, nadhom, ayat, teks Arab)
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Pilih font Amiri / Lateef / Scheherazade dari toolbar untuk teks Arab.
+              Tandai bagian Arab dengan gaya <strong>Wirid</strong> atau <strong>Ayat</strong> dari
+              toolbar. Font final diatur di app Nailul Murod.
             </p>
             <div className="nm-quill rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-800/50">
               {initialReady ? (
@@ -276,7 +340,7 @@ export default function NailulMurodForm() {
                     key="nm-form-isi"
                     value={isi}
                     onChange={setIsi}
-                    placeholder="Tulis wirid, ayat, atau teks Arab…"
+                    placeholder="Tulis wirid, nadhom, ayat, atau teks Arab…"
                   />
                 </Suspense>
               ) : (
@@ -290,7 +354,8 @@ export default function NailulMurodForm() {
               Arti / terjemahan (Latin)
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Pilih font Inter / Roboto untuk teks Latin.
+              Untuk teks Latin, biarkan <strong>Normal</strong> atau pakai Judul / Sub judul bila
+              perlu.
             </p>
             <div className="nm-quill nm-quill-arti rounded-xl border border-gray-200 dark:border-gray-600 dark:bg-gray-800/50">
               {initialReady ? (
@@ -326,6 +391,13 @@ export default function NailulMurodForm() {
             </button>
           </div>
         </form>
+
+        <NailulMurodBabOffcanvas
+          isOpen={babOffcanvasOpen}
+          onClose={() => setBabOffcanvasOpen(false)}
+          onChanged={loadBabList}
+          titleLang={titleLang}
+        />
       </div>
     </div>
   )

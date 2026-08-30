@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Config\Database;
 use App\Helpers\AuthHelper;
 use App\Helpers\FileUploadValidator;
+use App\Helpers\TenantHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -36,16 +37,16 @@ class PorsiController
         return is_array($data) ? $data : [];
     }
 
-    private function find(int $id): ?array
+    private function find(int $id, int $sppgId): ?array
     {
         $stmt = $this->db->prepare(
             'SELECT p.*, u.name AS created_by_name, u.email AS created_by_email
              FROM porsi p
              LEFT JOIN users u ON u.id = p.created_by
-             WHERE p.id = ?
+             WHERE p.id = ? AND p.sppg_id = ?
              LIMIT 1'
         );
-        $stmt->execute([$id]);
+        $stmt->execute([$id, $sppgId]);
         $row = $stmt->fetch();
         return $row ?: null;
     }
@@ -140,6 +141,7 @@ class PorsiController
     /** GET /porsi */
     public function index(Request $request, Response $response): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $q = $request->getQueryParams();
         $sql = 'SELECT p.*, u.name AS created_by_name,
                        (SELECT COUNT(*) FROM porsi_menu m WHERE m.porsi_id = p.id) AS menu_count,
@@ -150,8 +152,8 @@ class PorsiController
                         ),0) FROM porsi_menu m WHERE m.porsi_id = p.id) AS total_harga
                 FROM porsi p
                 LEFT JOIN users u ON u.id = p.created_by
-                WHERE 1=1';
-        $params = [];
+                WHERE p.sppg_id = ?';
+        $params = [$sppgId];
         if (!empty($q['from'])) {
             $sql .= ' AND p.tanggal >= ?';
             $params[] = $q['from'];
@@ -183,14 +185,15 @@ class PorsiController
     /** GET /porsi/item-options — nama + harga terakhir untuk PB dan PK */
     public function itemOptions(Request $request, Response $response): Response
     {
-        $stmt = $this->db->query(
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
+        $stmt = $this->db->prepare(
             'SELECT
                 names.nama,
                 (
                     SELECT m.pb
                     FROM porsi_menu m
                     INNER JOIN porsi p ON p.id = m.porsi_id
-                    WHERE LOWER(TRIM(m.nama)) = names.k AND p.ukuran = \'besar\'
+                    WHERE LOWER(TRIM(m.nama)) = names.k AND p.ukuran = \'besar\' AND p.sppg_id = ?
                     ORDER BY m.id DESC
                     LIMIT 1
                 ) AS pb,
@@ -198,20 +201,22 @@ class PorsiController
                     SELECT m.pk
                     FROM porsi_menu m
                     INNER JOIN porsi p ON p.id = m.porsi_id
-                    WHERE LOWER(TRIM(m.nama)) = names.k AND p.ukuran = \'kecil\'
+                    WHERE LOWER(TRIM(m.nama)) = names.k AND p.ukuran = \'kecil\' AND p.sppg_id = ?
                     ORDER BY m.id DESC
                     LIMIT 1
                 ) AS pk
              FROM (
-                SELECT LOWER(TRIM(nama)) AS k, MAX(nama) AS nama
-                FROM porsi_menu
-                WHERE TRIM(nama) <> \'\'
-                GROUP BY LOWER(TRIM(nama))
+                SELECT LOWER(TRIM(m.nama)) AS k, MAX(m.nama) AS nama
+                FROM porsi_menu m
+                INNER JOIN porsi p ON p.id = m.porsi_id
+                WHERE TRIM(m.nama) <> \'\' AND p.sppg_id = ?
+                GROUP BY LOWER(TRIM(m.nama))
              ) names
              ORDER BY names.nama ASC
              LIMIT 800'
         );
-        $rows = $stmt ? $stmt->fetchAll() : [];
+        $stmt->execute([$sppgId, $sppgId, $sppgId]);
+        $rows = $stmt->fetchAll() ?: [];
         $data = [];
         foreach ($rows as $row) {
             $data[] = [
@@ -226,8 +231,9 @@ class PorsiController
     /** GET /porsi/{id} */
     public function show(Request $request, Response $response, array $args): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        $row = $this->find($id);
+        $row = $this->find($id, $sppgId);
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan porsi tidak ditemukan'], 404);
         }
@@ -247,6 +253,8 @@ class PorsiController
         if (!AuthHelper::canManageData($user['role'] ?? null)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menambah porsi'], 403);
         }
+
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
 
         $body = $this->parseBody($request);
         $tanggal = trim((string) ($body['tanggal'] ?? ''));
@@ -273,10 +281,11 @@ class PorsiController
 
         $ins = $this->db->prepare(
             'INSERT INTO porsi
-             (tanggal, judul, ukuran, energi_kkal, karbohidrat_gr, protein_gr, lemak_gr, serat_gr, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             (sppg_id, tanggal, judul, ukuran, energi_kkal, karbohidrat_gr, protein_gr, lemak_gr, serat_gr, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $ins->execute([
+            $sppgId,
             $tanggal,
             $judulCheck['judul'],
             $ukuran,
@@ -294,7 +303,7 @@ class PorsiController
             'success' => true,
             'message' => 'Porsi disimpan',
             'data' => [
-                'porsi' => $this->find($id),
+                'porsi' => $this->find($id, $sppgId),
                 'menu' => $this->menuOf($id),
             ],
         ], 201);
@@ -308,8 +317,9 @@ class PorsiController
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat mengubah porsi'], 403);
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        if (!$this->find($id)) {
+        if (!$this->find($id, $sppgId)) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan porsi tidak ditemukan'], 404);
         }
 
@@ -340,7 +350,7 @@ class PorsiController
             'UPDATE porsi
              SET tanggal = ?, judul = ?, ukuran = ?, energi_kkal = ?, karbohidrat_gr = ?, protein_gr = ?,
                  lemak_gr = ?, serat_gr = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?'
+             WHERE id = ? AND sppg_id = ?'
         );
         $upd->execute([
             $tanggal,
@@ -352,6 +362,7 @@ class PorsiController
             $this->numField($body, 'lemak_gr'),
             $this->numField($body, 'serat_gr'),
             $id,
+            $sppgId,
         ]);
         $this->replaceMenu($id, $menuCheck['items'] ?? []);
 
@@ -359,7 +370,7 @@ class PorsiController
             'success' => true,
             'message' => 'Porsi diperbarui',
             'data' => [
-                'porsi' => $this->find($id),
+                'porsi' => $this->find($id, $sppgId),
                 'menu' => $this->menuOf($id),
             ],
         ]);
@@ -373,15 +384,16 @@ class PorsiController
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menghapus porsi'], 403);
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        $row = $this->find($id);
+        $row = $this->find($id, $sppgId);
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan porsi tidak ditemukan'], 404);
         }
 
         $this->deleteFotoFile($row);
-        $del = $this->db->prepare('DELETE FROM porsi WHERE id = ?');
-        $del->execute([$id]);
+        $del = $this->db->prepare('DELETE FROM porsi WHERE id = ? AND sppg_id = ?');
+        $del->execute([$id, $sppgId]);
 
         return $this->json($response, ['success' => true, 'message' => 'Porsi dihapus']);
     }
@@ -394,8 +406,9 @@ class PorsiController
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat meng-upload foto'], 403);
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        $row = $this->find($id);
+        $row = $this->find($id, $sppgId);
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan porsi tidak ditemukan'], 404);
         }
@@ -427,7 +440,7 @@ class PorsiController
             'UPDATE porsi
              SET foto_nama = ?, foto_simpan = ?, foto_path = ?, foto_tipe = ?, foto_ukuran = ?,
                  updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?'
+             WHERE id = ? AND sppg_id = ?'
         );
         $upd->execute([
             $file->getClientFilename() ?: $safe,
@@ -436,12 +449,13 @@ class PorsiController
             $validation['mime'] ?? $file->getClientMediaType(),
             (int) ($validation['size'] ?? $file->getSize()),
             $id,
+            $sppgId,
         ]);
 
         return $this->json($response, [
             'success' => true,
             'message' => 'Foto diunggah',
-            'data' => $this->find($id),
+            'data' => $this->find($id, $sppgId),
         ]);
     }
 
@@ -453,8 +467,9 @@ class PorsiController
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menghapus foto'], 403);
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        $row = $this->find($id);
+        $row = $this->find($id, $sppgId);
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan porsi tidak ditemukan'], 404);
         }
@@ -464,22 +479,23 @@ class PorsiController
             'UPDATE porsi
              SET foto_nama = NULL, foto_simpan = NULL, foto_path = NULL, foto_tipe = NULL, foto_ukuran = 0,
                  updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?'
+             WHERE id = ? AND sppg_id = ?'
         );
-        $upd->execute([$id]);
+        $upd->execute([$id, $sppgId]);
 
         return $this->json($response, [
             'success' => true,
             'message' => 'Foto dihapus',
-            'data' => $this->find($id),
+            'data' => $this->find($id, $sppgId),
         ]);
     }
 
     /** GET /porsi/{id}/foto */
     public function downloadFoto(Request $request, Response $response, array $args): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
-        $row = $this->find($id);
+        $row = $this->find($id, $sppgId);
         if (!$row || empty($row['foto_path'])) {
             return $this->json($response, ['success' => false, 'message' => 'Foto tidak ditemukan'], 404);
         }

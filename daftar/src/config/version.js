@@ -4,4 +4,4 @@ export const APP_VERSION = '2.2.34'
 
 // Versi backend (API) saat ini — harus sama dengan config.api_version di api/config.php
 // Bisa juga diambil runtime dari GET /api/version
-export const BACKEND_VERSION = '2.13.85'
+export const BACKEND_VERSION = '2.13.117'

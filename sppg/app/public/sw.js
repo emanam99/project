@@ -10,7 +10,7 @@ skipWaiting()
 clientsClaim()
 
 /** Naikkan bersama APP_VERSION agar cache gambar/ikon lama dibuang. */
-const CACHE_REV = '0.2.1'
+const CACHE_REV = '0.3.0'
 const IMAGES_CACHE = `images-cache-${CACHE_REV}`
 
 precacheAndRoute(self.__WB_MANIFEST || [])
@@ -114,7 +114,7 @@ registerRoute(
 )
 
 registerRoute(
-  /^https:\/\/sppg\.alutsmani\.id\/gambar\/.*/i,
+  /^https:\/\/(sppg\.alutsmani\.id|sppg\.cloudy\.my\.id|[a-z0-9-]+\.cloudy\.my\.id)\/gambar\/.*/i,
   new CacheFirst({
     cacheName: IMAGES_CACHE,
     plugins: [

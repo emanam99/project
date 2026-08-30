@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { fetchMe } from '../api/apiClient'
 import { FullPageFade, pageEase } from '../components/PageTransition'
-import { saveSession } from '../utils/auth'
+import { isPlatformAdminRole, saveSession } from '../utils/auth'
+import { isPlatformAdminHost } from '../utils/tenantHost'
 
 export default function AuthCallbackPage() {
   const [params] = useSearchParams()
@@ -31,13 +32,21 @@ export default function AuthCallbackPage() {
     void (async () => {
       const me = await fetchMe()
       if (me.success && me.user) {
-        saveSession(token, me.user)
-        const dest =
-          me.user.role === 'pending'
-            ? '/menunggu-akses'
-            : returnTo.startsWith('/')
-              ? returnTo
-              : '/dashboard'
+        saveSession(token, me.user, {
+          sppg: me.sppg ?? null,
+          subscription: me.subscription ?? null,
+          subscription_active: me.subscription_active,
+        })
+        let dest =
+          isPlatformAdminHost() || isPlatformAdminRole(me.user.role)
+            ? '/'
+            : me.user.role === 'pending'
+              ? '/menunggu-akses'
+              : me.subscription_active === false
+                ? '/langganan'
+                : returnTo.startsWith('/')
+                  ? returnTo
+                  : '/dashboard'
         // Sedikit jeda agar fade keluar terasa sebelum Layout masuk
         await new Promise((r) => setTimeout(r, reduce ? 40 : 180))
         navigate(dest, { replace: true })

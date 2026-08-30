@@ -423,7 +423,7 @@ class iPaymuService
 
         // Prepare data sesuai format iPaymu API v2
         // Pastikan semua field yang wajib terisi
-        $amount = (float)($paymentData['amount'] ?? 0);
+        $amount = (int) round((float) ($paymentData['amount'] ?? 0));
         // Tidak memaksa minimal Rp 100.000 di sini — nominal kecil (sisa tagihan PAUD/dll.) diteruskan ke API iPayMu.
         if ($amount <= 0) {
             return [
@@ -681,11 +681,17 @@ class iPaymuService
         // Product/keterangan (array product, quantity, price) — opsional, bisa dipakai bersama/selain comments
         if (!empty($paymentData['product']) && is_array($paymentData['product'])) {
             if (isset($paymentData['product']['product']) && is_array($paymentData['product']['product'])) {
-                $requestData['product'] = $paymentData['product']['product'];
+                $requestData['product'] = array_map(
+                    static fn ($v) => trim((string) $v),
+                    $paymentData['product']['product']
+                );
                 $requestData['quantity'] = $paymentData['product']['quantity'] ?? ['1'];
-                $requestData['price'] = $paymentData['product']['price'] ?? [(string)(int)($amount)];
+                $requestData['price'] = $paymentData['product']['price'] ?? [(string) $amount];
             } else {
-                $requestData['product'] = $paymentData['product'];
+                $requestData['product'] = array_map(
+                    static fn ($v) => is_string($v) ? trim($v) : $v,
+                    $paymentData['product']
+                );
             }
         }
 
@@ -1379,7 +1385,12 @@ class iPaymuService
             );
             $stmt->execute([$idPayment]);
             $p = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$p || ($p['jenis_pembayaran'] ?? '') !== 'Cashless') {
+            if (!$p) {
+                return;
+            }
+            $isCashlessPayment = ($p['jenis_pembayaran'] ?? '') === 'Cashless'
+                || (($p['tabel_referensi'] ?? '') === 'cashless___accounts' && ($p['jenis_pembayaran'] ?? '') === '');
+            if (!$isCashlessPayment) {
                 return;
             }
             if (($p['tabel_referensi'] ?? '') !== 'cashless___accounts') {

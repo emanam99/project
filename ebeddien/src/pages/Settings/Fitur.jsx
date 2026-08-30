@@ -365,7 +365,7 @@ export default function Fitur() {
   const [selectedFiturId, setSelectedFiturId] = useState(null)
   const [expandedIds, setExpandedIds] = useState(() => new Set())
   const [pengeluaranAccordionOpen, setPengeluaranAccordionOpen] = useState(
-    () => new Set(['rencana', 'pengeluaran', 'draft'])
+    () => new Set(['rencana', 'pengeluaran', 'draft', 'pengaturan'])
   )
   const [kalenderPengaturanAccordionOpen, setKalenderPengaturanAccordionOpen] = useState(
     () => new Set(['bulan', 'hari_penting', 'lokasi'])
@@ -455,7 +455,7 @@ export default function Fitur() {
       })
       return next
     })
-    setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft']))
+    setPengeluaranAccordionOpen(new Set(['rencana', 'pengeluaran', 'draft', 'pengaturan']))
     setKalenderPengaturanAccordionOpen(new Set(['bulan', 'hari_penting']))
     setAbsenAccordionOpen(new Set(['riwayat', 'absen', 'pengaturan', 'ngabsen']))
     setBisyarohAccordionOpen(new Set(['rekap', 'histori', 'aturan']))

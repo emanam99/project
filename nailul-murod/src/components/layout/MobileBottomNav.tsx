@@ -9,6 +9,9 @@ type Props = {
   showSyiirLayoutToggle?: boolean
   syiirLayoutMode?: SyiirLayoutMode
   onToggleSyiirLayout?: () => void
+  /** Di halaman baca: List Bab membuka offcanvas pilih wirid, bukan navigasi ke /list */
+  isReaderPickMode?: boolean
+  onListBabPick?: () => void
   /** Nav di dalam host fixed (beranda) — hilangkan position fixed ganda */
   dockedInBerandaChrome?: boolean
 }
@@ -23,6 +26,8 @@ export function MobileBottomNav({
   showSyiirLayoutToggle,
   syiirLayoutMode = 'paired',
   onToggleSyiirLayout,
+  isReaderPickMode,
+  onListBabPick,
   dockedInBerandaChrome,
 }: Props) {
   const extraReaderChrome = Boolean(showReaderFontSettings || showSyiirLayoutToggle)
@@ -67,8 +72,60 @@ export function MobileBottomNav({
             </span>
           )}
         </NavLink>
+        {isReaderPickMode ? (
+          <button
+            type="button"
+            className="mobile-bottom-nav__link mobile-bottom-nav__link--active"
+            onClick={onListBabPick}
+            aria-label="Pilih bacaan lain"
+          >
+            <span className="mobile-bottom-nav__link-body">
+              <span className="mobile-bottom-nav__icon-wrap">
+                <motion.span
+                  className="mobile-bottom-nav__active-disc"
+                  layoutId="mobile-bottom-nav-active-pill"
+                  transition={activePillTransition}
+                />
+                <motion.span className="mobile-bottom-nav__emoji" aria-hidden animate={{ scale: 1.06 }}>
+                  📚
+                </motion.span>
+              </span>
+              <small>List Bab</small>
+            </span>
+          </button>
+        ) : (
+          <NavLink
+            to="/list"
+            className={({ isActive }) =>
+              `mobile-bottom-nav__link${isActive ? ' mobile-bottom-nav__link--active' : ''}`
+            }
+          >
+            {({ isActive }) => (
+              <span className="mobile-bottom-nav__link-body">
+                <span className="mobile-bottom-nav__icon-wrap">
+                  {isActive && (
+                    <motion.span
+                      className="mobile-bottom-nav__active-disc"
+                      layoutId="mobile-bottom-nav-active-pill"
+                      transition={activePillTransition}
+                    />
+                  )}
+                  <motion.span
+                    className="mobile-bottom-nav__emoji"
+                    aria-hidden
+                    animate={{ scale: isActive ? 1.06 : 1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                  >
+                    📚
+                  </motion.span>
+                </span>
+                <small>List Bab</small>
+              </span>
+            )}
+          </NavLink>
+        )}
         <NavLink
-          to="/list"
+          to="/pengaturan"
           className={({ isActive }) =>
             `mobile-bottom-nav__link${isActive ? ' mobile-bottom-nav__link--active' : ''}`
           }
@@ -89,10 +146,10 @@ export function MobileBottomNav({
                   animate={{ scale: isActive ? 1.06 : 1 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                 >
-                  📚
+                  ⚙️
                 </motion.span>
               </span>
-              <small>List Bab</small>
+              <small>Pengaturan</small>
             </span>
           )}
         </NavLink>

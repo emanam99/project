@@ -7,21 +7,20 @@ import {
 } from 'framer-motion'
 import { useEffect, useMemo, useState, type RefObject } from 'react'
 
-/** Scroll (px) dari atas → chrome sepenuhnya terlihat */
+/** Scroll (px) dari atas → header topbar sepenuhnya terlihat */
 const REVEAL_SCROLL_PX = 40
 /** Ruang untuk topbar fixed + sedikit napas */
 const TOPBAR_OFFSET_PX = 56
-/** Setara area tap nav + sedikit; maks mendekati padding konten mobile beranda */
-const MAIN_PAD_BOTTOM_MIN = 20
-const MAIN_PAD_BOTTOM_MAX = 94
+/** Nav bawah selalu terlihat — padding bawah konstan */
+const MAIN_PAD_BOTTOM = 94
 
 type Result = {
   enabled: boolean
-  /** Untuk pembungkus header mobile (slide ke atas saat hero penuh) */
+  /** Header atas: slide saat hero penuh (logo-only) */
   topY: MotionValue<string>
   topOpacity: MotionValue<number>
   topPointerEvents: MotionValue<'none' | 'auto'>
-  /** Untuk host nav bawah (slide ke bawah) */
+  /** Nav bawah: selalu terlihat agar menu dapat diakses sejak awal */
   bottomY: MotionValue<string>
   bottomOpacity: MotionValue<number>
   bottomPointerEvents: MotionValue<'none' | 'auto'>
@@ -30,8 +29,8 @@ type Result = {
 }
 
 /**
- * Beranda + viewport mobile: sembunyikan header & nav bawah saat scroll ≈0 (mode logo penuh),
- * muncul halus setelah scroll sedikit.
+ * Beranda + viewport mobile: hero logo penuh di atas, tapi nav bawah (Beranda / List Bab)
+ * tetap terlihat sejak awal — tidak disembunyikan saat scrollTop ≈ 0.
  */
 export function useBerandaHeroChrome(
   mainRef: RefObject<HTMLElement | null>,
@@ -113,15 +112,16 @@ export function useBerandaHeroChrome(
   const topY = useTransform(reveal, [0, 1], ['-100%', '0%'])
   const topOpacity = useTransform(reveal, [0, 0.14, 1], [0, 1, 1])
   const topPointerEvents = useTransform(reveal, (v) => (v < 0.06 ? 'none' : 'auto'))
-  const bottomY = useTransform(reveal, [0, 1], ['100%', '0%'])
-  const bottomOpacity = useTransform(reveal, [0, 0.14, 1], [0, 1, 1])
-  const bottomPointerEvents = useTransform(reveal, (v) => (v < 0.06 ? 'none' : 'auto'))
+
+  const bottomY = useMotionValue('0%')
+  const bottomOpacity = useMotionValue(1)
+  const bottomPointerEvents = useMotionValue<'none' | 'auto'>('auto')
 
   const padTopPx = useTransform(reveal, [0, 1], [0, TOPBAR_OFFSET_PX])
-  const padBottomInner = useTransform(reveal, [0, 1], [MAIN_PAD_BOTTOM_MIN, MAIN_PAD_BOTTOM_MAX])
+  const padBottomPx = useMotionValue(MAIN_PAD_BOTTOM)
 
   const paddingTop = useMotionTemplate`calc(${padTopPx}px + env(safe-area-inset-top, 0px))`
-  const paddingBottom = useMotionTemplate`calc(${padBottomInner}px + env(safe-area-inset-bottom, 0px))`
+  const paddingBottom = useMotionTemplate`calc(${padBottomPx}px + env(safe-area-inset-bottom, 0px))`
 
   return useMemo(
     () => ({

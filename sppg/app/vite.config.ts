@@ -117,7 +117,8 @@ export default defineConfig(({ command, mode }) => {
           background_color: '#2a96e0',
           display: 'minimal-ui',
           scope: startUrl,
-          start_url: startUrl,
+          // Buka langsung beranda; RequireAuth → /login bila belum sesi
+          start_url: startUrl === '/' ? '/dashboard' : `${startUrl}dashboard`,
           orientation: 'portrait',
           lang: 'id',
           dir: 'ltr',

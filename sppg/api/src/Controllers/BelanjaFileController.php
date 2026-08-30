@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Config\Database;
 use App\Helpers\AuthHelper;
 use App\Helpers\FileUploadValidator;
+use App\Helpers\TenantHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -30,10 +31,10 @@ class BelanjaFileController
         return $response->withHeader('Content-Type', 'application/json')->withStatus($status);
     }
 
-    private function findBelanja(int $id): ?array
+    private function findBelanja(int $id, int $sppgId): ?array
     {
-        $stmt = $this->db->prepare('SELECT id, bni_status FROM belanja WHERE id = ? LIMIT 1');
-        $stmt->execute([$id]);
+        $stmt = $this->db->prepare('SELECT id, bni_status FROM belanja WHERE id = ? AND sppg_id = ? LIMIT 1');
+        $stmt->execute([$id, $sppgId]);
         $row = $stmt->fetch();
         return $row ?: null;
     }
@@ -52,8 +53,9 @@ class BelanjaFileController
     /** GET /belanja/{id}/files */
     public function index(Request $request, Response $response, array $args): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $belanjaId = (int) ($args['id'] ?? 0);
-        if (!$this->findBelanja($belanjaId)) {
+        if (!$this->findBelanja($belanjaId, $sppgId)) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan belanja tidak ditemukan'], 404);
         }
 
@@ -75,13 +77,14 @@ class BelanjaFileController
     public function upload(Request $request, Response $response, array $args): Response
     {
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $role = $actor['role'] ?? null;
         if (!AuthHelper::canManageData($role)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat meng-upload'], 403);
         }
 
         $belanjaId = (int) ($args['id'] ?? 0);
-        $belanja = $this->findBelanja($belanjaId);
+        $belanja = $this->findBelanja($belanjaId, $sppgId);
         if (!$belanja) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan belanja tidak ditemukan'], 404);
         }
@@ -169,9 +172,15 @@ class BelanjaFileController
     /** GET /belanja/files/{fileId}/download */
     public function download(Request $request, Response $response, array $args): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $fileId = (int) ($args['fileId'] ?? 0);
-        $stmt = $this->db->prepare('SELECT * FROM belanja_file WHERE id = ? LIMIT 1');
-        $stmt->execute([$fileId]);
+        $stmt = $this->db->prepare(
+            'SELECT f.* FROM belanja_file f
+             INNER JOIN belanja b ON b.id = f.belanja_id
+             WHERE f.id = ? AND b.sppg_id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$fileId, $sppgId]);
         $row = $stmt->fetch();
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'File tidak ditemukan'], 404);
@@ -204,20 +213,26 @@ class BelanjaFileController
     public function delete(Request $request, Response $response, array $args): Response
     {
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $role = $actor['role'] ?? null;
         if (!AuthHelper::canManageData($role)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menghapus'], 403);
         }
 
         $fileId = (int) ($args['fileId'] ?? 0);
-        $stmt = $this->db->prepare('SELECT * FROM belanja_file WHERE id = ? LIMIT 1');
-        $stmt->execute([$fileId]);
+        $stmt = $this->db->prepare(
+            'SELECT f.* FROM belanja_file f
+             INNER JOIN belanja b ON b.id = f.belanja_id
+             WHERE f.id = ? AND b.sppg_id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$fileId, $sppgId]);
         $row = $stmt->fetch();
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'File tidak ditemukan'], 404);
         }
 
-        $belanja = $this->findBelanja((int) $row['belanja_id']);
+        $belanja = $this->findBelanja((int) $row['belanja_id'], $sppgId);
         if ($belanja && ($denied = $this->denyIfLocked($belanja['bni_status'] ?? null, $response))) {
             return $denied;
         }

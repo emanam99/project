@@ -1,4 +1,5 @@
 export type UserRole =
+  | 'platform_admin'
   | 'super_admin'
   | 'admin_approve'
   | 'admin_maker'
@@ -12,14 +13,49 @@ export type RekeningJenis = 'va' | 'rek'
 
 export type AuthUser = {
   id: number
+  sppg_id?: number
   email: string
   name: string | null
   picture: string | null
   role: UserRole
 }
 
+export type SppgProfile = {
+  id: number
+  public_id: string
+  slug: string
+  subdomain?: string | null
+  tenant_url?: string | null
+  nama_unit: string
+  nama_yayasan: string
+  alamat?: string | null
+  telepon?: string | null
+  email_kontak?: string | null
+  status: string
+  pwa_short_name?: string | null
+  pwa_logo_url?: string | null
+}
+
+export type SubscriptionInfo = {
+  id: number
+  plan_code: string
+  amount: number
+  currency: string
+  status: string
+  period_start?: string | null
+  period_end?: string | null
+  invoice_url?: string | null
+}
+
+export type SessionContext = {
+  sppg?: SppgProfile | null
+  subscription?: SubscriptionInfo | null
+  subscription_active?: boolean
+}
+
 export const AUTH_TOKEN_KEY = 'sppg_token'
 export const AUTH_USER_KEY = 'sppg_user'
+export const SESSION_CONTEXT_KEY = 'sppg_context'
 
 export function getToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_KEY)
@@ -37,14 +73,34 @@ export function getStoredUser(): AuthUser | null {
   }
 }
 
-export function saveSession(token: string, user: AuthUser): void {
+export function saveSession(token: string, user: AuthUser, context?: SessionContext): void {
   localStorage.setItem(AUTH_TOKEN_KEY, token)
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+  if (context) {
+    localStorage.setItem(SESSION_CONTEXT_KEY, JSON.stringify(context))
+  }
+}
+
+export function getSessionContext(): SessionContext | null {
+  const raw = localStorage.getItem(SESSION_CONTEXT_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as SessionContext
+  } catch {
+    return null
+  }
+}
+
+export function isSubscriptionActive(): boolean {
+  const ctx = getSessionContext()
+  if (ctx?.subscription_active === false) return false
+  return ctx?.subscription_active !== false
 }
 
 export function clearSession(): void {
   localStorage.removeItem(AUTH_TOKEN_KEY)
   localStorage.removeItem(AUTH_USER_KEY)
+  localStorage.removeItem(SESSION_CONTEXT_KEY)
 }
 
 export function isLoggedIn(): boolean {
@@ -58,6 +114,10 @@ export function isAdminRole(role?: string | null): boolean {
     role === 'admin_approve' ||
     role === 'super_admin'
   )
+}
+
+export function isPlatformAdminRole(role?: string | null): boolean {
+  return role === 'platform_admin'
 }
 
 export function isSuperAdminRole(role?: string | null): boolean {

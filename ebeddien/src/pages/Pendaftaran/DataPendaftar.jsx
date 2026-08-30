@@ -21,7 +21,7 @@ import {
   getLocalPendaftarSinceWatermark,
   subscribePendaftarListForScope,
 } from '../../services/pendaftarListCache'
-import { exportPendaftarRowsToXlsx } from './exportPendaftarConfig'
+import { exportPendaftarRowsToXlsx, hydratePendaftarRowsWithFullPii } from './exportPendaftarConfig'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 
 /** State history stabil untuk useOffcanvasBackClose (detail pendaftar). */
@@ -867,19 +867,11 @@ function DataPendaftar() {
     if (mode === 'lunas') rows = base.filter(rowPendaftarIsLunas)
     else if (mode === 'belum_lunas') rows = base.filter(rowPendaftarIsBelumLunas)
 
-    // List API menyamarkan NIK/KK; export meminta include_pii (audit di backend).
-    try {
-      const h = tahunAjaran
-      const m = tahunAjaranMasehi
-      if (String(h || '').trim() && String(m || '').trim() && rows.length > 0) {
-        const res = await pendaftaranAPI.getAllPendaftar(h, m, undefined, { includePii: true })
-        if (res?.success && Array.isArray(res.data)) {
-          const byReg = new Map(res.data.map((r) => [r.id_registrasi, r]))
-          rows = rows.map((r) => byReg.get(r.id_registrasi) || r)
-        }
-      }
-    } catch (_) {
-      // Fallback: export data ter-mask (masih berguna untuk kolom non-PII)
+    // List API menyamarkan NIK/KK/kontak; export meminta include_pii (audit di backend).
+    const hydrated = await hydratePendaftarRowsWithFullPii(rows, tahunAjaran, tahunAjaranMasehi)
+    rows = hydrated.rows
+    if (hydrated.errorMessage && (!hydrated.piiHydrated || hydrated.stillMasked)) {
+      showNotification(hydrated.errorMessage, 'warning')
     }
 
     exportPendaftarRowsToXlsx(

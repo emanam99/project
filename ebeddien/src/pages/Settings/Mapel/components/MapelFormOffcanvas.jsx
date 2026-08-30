@@ -42,7 +42,7 @@ function kitabPickerLabel(k) {
   return arab || indo || `Kitab #${k.id}`
 }
 
-function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, kitabList, onSuccess }) {
+function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, kitabList, onSuccess, onDelete }) {
   const isEdit = Boolean(record?.id)
   const originalRombelId = isEdit && record?.id_rombel != null ? String(record.id_rombel) : ''
   const [idLembaga, setIdLembaga] = useState('')
@@ -517,7 +517,17 @@ function MapelFormOffcanvas({ isOpen, onClose, record, lembagaList, rombelList, 
                 </div>
               </div>
 
-              <div className="flex-shrink-0 p-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-white dark:bg-gray-800 rounded-bl-2xl">
+              <div className="flex-shrink-0 p-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3 bg-white dark:bg-gray-800 rounded-bl-2xl">
+                {isEdit && typeof onDelete === 'function' ? (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(record)}
+                    disabled={loading}
+                    className="mr-auto px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl disabled:opacity-50"
+                  >
+                    Hapus
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={handleClose}

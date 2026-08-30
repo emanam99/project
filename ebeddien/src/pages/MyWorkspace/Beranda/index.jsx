@@ -89,7 +89,7 @@ const listItemTransition = { duration: 0.35, ease: easing }
 
 /* Animasi perpindahan blok tanggal/jam (bawah ↔ kanan) */
 const dateBlockLayoutTransition = { type: 'tween', duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }
-import { profilAPI, pendaftaranAPI } from '../../../services/api'
+import { profilAPI, pendaftaranAPI, kalenderAPI } from '../../../services/api'
 import { buildFlatNavMenusFromFitur, iconKeyForPathFromCatalog } from '../../../utils/menuCatalogNav'
 import { getIcon } from '../../../config/menuIcons'
 import { getTanggalFromAPI, getBootPenanggalanPair, persistPenanggalanHariIni } from '../../../utils/hijriDate'
@@ -103,9 +103,35 @@ import { useChatOffcanvas } from '../../../contexts/ChatOffcanvasContext'
 import { useChatAiOffcanvas } from '../../../contexts/ChatAiOffcanvasContext'
 import InstallPrompt from '../../../components/InstallPrompt'
 import { usePwaInstallPrompt } from '../../../hooks/usePwaInstallPrompt'
+import { calculatePasaran } from '../../Kalender/utils/pasaran'
+import {
+  ISTIWA_DEFAULT_LAT,
+  ISTIWA_DEFAULT_LNG,
+  formatAlamatMarquee,
+  formatHmsJakarta,
+  formatWibKeIstSelisih,
+  istiwaOffsetMs,
+  istiwaSolarOffsetMs,
+} from '../../Kalender/utils/jamIstiwa'
+import { loadHourCycle, saveHourCycle } from '../../Kalender/utils/kalenderStorage'
+import { useAbsenLokasi } from '../../../contexts/AbsenLokasiContext'
+import './BerandaIstiwaBar.css'
 
 /** Maks item menu di Beranda; sisanya lewat Semua menu */
 const BERANDA_MENU_DISPLAY_LIMIT = 30
+
+/** Hindari fetch alamat ulang jika GPS bergeser sedikit (selaras KalenderJamIstiwaBar). */
+const FETCH_ALAMAT_MOVE_THRESHOLD_M = 42
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000
+  const p1 = (lat1 * Math.PI) / 180
+  const p2 = (lat2 * Math.PI) / 180
+  const dp = ((lat2 - lat1) * Math.PI) / 180
+  const dl = ((lon2 - lon1) * Math.PI) / 180
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 /** Path yang tidak ditampilkan di kisi menu Beranda — sudah ada tombol di header. */
 const BERANDA_EXCLUDE_HEADER_DUPLICATE_PATHS = new Set(['/chat', '/chat-ai'])
@@ -123,11 +149,11 @@ function getHariIndonesia(date = new Date()) {
   return HARI_INDONESIA[date.getDay()] || ''
 }
 
-function formatJamDetik(date = new Date()) {
-  const h = String(date.getHours()).padStart(2, '0')
-  const m = String(date.getMinutes()).padStart(2, '0')
-  const s = String(date.getSeconds()).padStart(2, '0')
-  return `${h}:${m}:${s}`
+/** Contoh: "Senin Legi" */
+function getHariPasaran(date = new Date()) {
+  const hari = getHariIndonesia(date)
+  const pasaran = calculatePasaran(date)
+  return pasaran ? `${hari} ${pasaran}` : hari
 }
 
 /** Format Y-m-d ke "dd mmmm yyyy" */
@@ -278,6 +304,23 @@ export default function Beranda() {
   const [dashboardPendaftaran, setDashboardPendaftaran] = useState(null)
   const [dashboardPendaftaranLoading, setDashboardPendaftaranLoading] = useState(false)
   const [waktuSekarang, setWaktuSekarang] = useState(() => new Date())
+  const { gpsEnabled, setGpsEnabled, coords, geoError, geoSupported } = useAbsenLokasi()
+  const [istiwaDefaultCoords, setIstiwaDefaultCoords] = useState({
+    lat: ISTIWA_DEFAULT_LAT,
+    lng: ISTIWA_DEFAULT_LNG,
+  })
+  const [istiwaAlamatText, setIstiwaAlamatText] = useState('')
+  const [hourCycle, setHourCycle] = useState(loadHourCycle)
+  const istiwaAlamatSeqRef = useRef(0)
+  const istiwaLastResolvedPosRef = useRef(null)
+
+  const useGpsIstiwa =
+    gpsEnabled && coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)
+  const istiwaEffLat = useGpsIstiwa ? coords.lat : istiwaDefaultCoords.lat
+  const istiwaEffLng = useGpsIstiwa ? coords.lng : istiwaDefaultCoords.lng
+  const istiwaEffAcc =
+    useGpsIstiwa && Number.isFinite(coords.accuracy) ? coords.accuracy : 0
+  const showIstiwaGpsBtn = !gpsEnabled || (!!geoError && !coords)
 
   /** Widget Beranda: izin dari kode action di /me/fitur-menu (Pengaturan → Fitur), bukan daftar role statis */
   const widgetAllowed = useMemo(() => {
@@ -312,6 +355,65 @@ export default function Beranda() {
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [])
+
+  // Koordinat default jam Istiwa’ (pengaturan kalender / pondok) — dipakai jika GPS belum aktif
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await kalenderAPI.get({ action: 'istiwa' })
+        const lat = Number(data?.latitude)
+        const lng = Number(data?.longitude)
+        if (cancelled || !Number.isFinite(lat) || !Number.isFinite(lng)) return
+        setIstiwaDefaultCoords({ lat, lng })
+      } catch {
+        /* tetap default pondok */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    saveHourCycle(hourCycle)
+  }, [hourCycle])
+
+  // Alamat marquee: GPS pengguna bila aktif, selain itu koordinat default pondok
+  useEffect(() => {
+    if (!Number.isFinite(istiwaEffLat) || !Number.isFinite(istiwaEffLng)) return undefined
+    const prev = istiwaLastResolvedPosRef.current
+    if (
+      prev &&
+      haversineMeters(prev.lat, prev.lng, istiwaEffLat, istiwaEffLng) < FETCH_ALAMAT_MOVE_THRESHOLD_M
+    ) {
+      return undefined
+    }
+    const seq = ++istiwaAlamatSeqRef.current
+    let cancelled = false
+    const t = setTimeout(async () => {
+      try {
+        const res = await kalenderAPI.get({
+          action: 'istiwa-alamat',
+          lat: String(istiwaEffLat),
+          lng: String(istiwaEffLng),
+          accuracy: istiwaEffAcc > 0 ? String(istiwaEffAcc) : undefined,
+        })
+        if (cancelled || seq !== istiwaAlamatSeqRef.current) return
+        const text = formatAlamatMarquee(res?.data)
+        if (text) {
+          setIstiwaAlamatText(text)
+          istiwaLastResolvedPosRef.current = { lat: istiwaEffLat, lng: istiwaEffLng }
+        }
+      } catch {
+        /* biarkan placeholder / teks lama */
+      }
+    }, 280)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [istiwaEffLat, istiwaEffLng, istiwaEffAcc])
 
   // Tanggal hari ini: cache mirror/IndexedDB dulu, lalu segarkan dari API
   useEffect(() => {
@@ -558,31 +660,124 @@ export default function Beranda() {
     formatDDMMMMYYYY(todayTanggal.hijriyah, BULAN_HIJRIYAH) ??
     (todayTanggal.masehi ? <span className="text-gray-400">⋯</span> : '–')
 
+  const hariPasaranText = getHariPasaran(waktuSekarang)
+  const solarOffsetMs = useMemo(
+    () => istiwaSolarOffsetMs(waktuSekarang, istiwaEffLat, istiwaEffLng),
+    [waktuSekarang, istiwaEffLat, istiwaEffLng]
+  )
+  const offsetMs = useMemo(
+    () => istiwaOffsetMs(waktuSekarang, istiwaEffLat, istiwaEffLng),
+    [waktuSekarang, istiwaEffLat, istiwaEffLng]
+  )
+  const selisihWibIstText = formatWibKeIstSelisih(solarOffsetMs)
+  const wibJamText = formatHmsJakarta(waktuSekarang, hourCycle)
+  const istiwaJamText = formatHmsJakarta(new Date(waktuSekarang.getTime() + offsetMs), hourCycle)
+
+  const istiwaAlamatBar = (
+    <div className="beranda-istiwa-bar" aria-label="Alamat jam Istiwa’">
+      <div className="beranda-istiwa-bar__marquee" aria-label={istiwaAlamatText || 'Alamat'}>
+        {istiwaAlamatText ? (
+          <div className="beranda-istiwa-bar__track">
+            <span className="beranda-istiwa-bar__item">{istiwaAlamatText}</span>
+            <span className="beranda-istiwa-bar__item" aria-hidden>
+              {istiwaAlamatText}
+            </span>
+          </div>
+        ) : (
+          <span className="beranda-istiwa-bar__placeholder">Memuat alamat…</span>
+        )}
+      </div>
+      {showIstiwaGpsBtn && (
+        <button
+          type="button"
+          className="beranda-istiwa-bar__gps"
+          onClick={() => setGpsEnabled(true)}
+          disabled={!geoSupported}
+          title={
+            geoSupported
+              ? 'Izinkan akses lokasi agar alamat & jam Istiwa’ mengikuti posisi Anda'
+              : 'Peramban tidak mendukung geolokasi'
+          }
+          aria-label="Berikan akses lokasi"
+        >
+          Akses lokasi
+        </button>
+      )}
+      {gpsEnabled && !coords && !geoError && geoSupported && (
+        <span className="beranda-istiwa-bar__hint" title="Mencari posisi GPS…">
+          GPS…
+        </span>
+      )}
+      {gpsEnabled && geoError && !coords && (
+        <span className="beranda-istiwa-bar__hint beranda-istiwa-bar__hint--wide" title={geoError}>
+          {geoError.length > 28 ? `${geoError.slice(0, 28)}…` : geoError}
+        </span>
+      )}
+      <button
+        type="button"
+        className="beranda-istiwa-bar__btn"
+        onClick={() => navigate('/kalender')}
+        title="Buka kalender"
+        aria-label="Buka kalender"
+      >
+        {getIcon('calendar', 'w-4 h-4')}
+      </button>
+      <button
+        type="button"
+        className="beranda-istiwa-bar__btn"
+        onClick={() => setHourCycle((v) => (v === 12 ? 24 : 12))}
+        aria-pressed={hourCycle === 24}
+        aria-label={
+          hourCycle === 12 ? 'Format 12 jam, klik untuk 24 jam' : 'Format 24 jam, klik untuk 12 jam'
+        }
+        title={hourCycle === 12 ? 'Format 12 jam — klik untuk 24 jam' : 'Format 24 jam — klik untuk 12 jam'}
+      >
+        {hourCycle}
+      </button>
+    </div>
+  )
+
   /* Konten tanggal & jam (dipakai di posisi bawah dan kanan) untuk animasi layoutId */
   const dateTimeContent = (
-    <>
-      <motion.div
-        key={`beranda-tgl-${todayTanggal.hijriyah || 'x'}-${todayTanggal.masehi || 'y'}`}
-        initial={{ opacity: 0.55, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-      >
-        <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Tanggal</p>
-        <p className="text-[11px] leading-tight text-gray-700 dark:text-gray-200">
-          {hijriTampilBeranda}
-          <span className="text-[9px] text-teal-500/90 ml-0.5">H</span>
-        </p>
-        <p className="text-[11px] leading-tight text-gray-700 dark:text-gray-200">
-          {formatDDMMMMYYYY(todayTanggal.masehi, BULAN_MASEHI) ?? '–'}
-          <span className="text-[9px] text-teal-500/90 ml-0.5">M</span>
-        </p>
-      </motion.div>
-      <div>
-        <p className="text-[10px] font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Hari & Jam</p>
-        <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-tight">{getHariIndonesia(waktuSekarang)}</p>
-        <p className="text-[11px] font-semibold text-teal-700 dark:text-teal-300 tabular-nums">{formatJamDetik(waktuSekarang)}</p>
+    <div className="space-y-2 w-full min-w-0">
+      <div className="grid grid-cols-2 gap-4">
+        <motion.div
+          key={`beranda-tgl-${todayTanggal.hijriyah || 'x'}-${todayTanggal.masehi || 'y'}`}
+          initial={{ opacity: 0.55, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+        >
+          <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-tight mb-1">
+            {hariPasaranText}
+          </p>
+          <p className="text-[11px] leading-tight text-gray-700 dark:text-gray-200">
+            {hijriTampilBeranda}
+            <span className="text-[9px] text-teal-500/90 ml-0.5">H</span>
+          </p>
+          <p className="text-[11px] leading-tight text-gray-700 dark:text-gray-200">
+            {formatDDMMMMYYYY(todayTanggal.masehi, BULAN_MASEHI) ?? '–'}
+            <span className="text-[9px] text-teal-500/90 ml-0.5">M</span>
+          </p>
+        </motion.div>
+        <div>
+          <p
+            className="text-[10px] font-medium text-teal-600 dark:text-teal-400 tracking-wide mb-1"
+            title="Selisih menit Istiwa’ terhadap WIB"
+          >
+            {selisihWibIstText}
+          </p>
+          <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-tight tabular-nums">
+            <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 mr-1">WIB</span>
+            {wibJamText}
+          </p>
+          <p className="text-[11px] font-semibold text-teal-700 dark:text-teal-300 leading-tight tabular-nums">
+            <span className="text-[9px] font-medium text-teal-600/80 dark:text-teal-400/80 mr-1">Istiwa’</span>
+            {istiwaJamText}
+          </p>
+        </div>
       </div>
-    </>
+      {istiwaAlamatBar}
+    </div>
   )
 
   const berandaContent = (
@@ -669,7 +864,7 @@ export default function Beranda() {
                   layout
                   layoutId="beranda-date-time"
                   transition={dateBlockLayoutTransition}
-                  className="hidden sm:grid sm:grid-cols-2 sm:gap-4 sm:mt-3 sm:pt-3 sm:border-t border-gray-200/60 dark:border-gray-700/50"
+                  className="hidden sm:block sm:mt-3 sm:pt-3 sm:border-t border-gray-200/60 dark:border-gray-700/50"
                 >
                   {dateTimeContent}
                 </motion.div>
@@ -682,11 +877,9 @@ export default function Beranda() {
               layout
               layoutId="beranda-date-time"
               transition={dateBlockLayoutTransition}
-              className="hidden lg:flex lg:shrink-0 lg:pl-5 lg:border-l border-gray-200/60 dark:border-gray-700/50 lg:items-center"
+              className="hidden lg:flex lg:shrink-0 lg:pl-5 lg:border-l border-gray-200/60 dark:border-gray-700/50 lg:items-center lg:min-w-[17rem] lg:max-w-[20rem]"
             >
-              <div className="grid grid-cols-2 gap-4">
-                {dateTimeContent}
-              </div>
+              {dateTimeContent}
             </motion.div>
           )}
         </motion.div>
@@ -705,7 +898,9 @@ export default function Beranda() {
             >
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-slate-50 dark:bg-gray-700/40 p-2.5 text-center">
-                  <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Tanggal</p>
+                  <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-tight mb-1">
+                    {hariPasaranText}
+                  </p>
                   <p className="text-[10px] leading-tight text-gray-700 dark:text-gray-200">
                     {hijriTampilBeranda}
                     <span className="text-[9px] text-teal-500/90 ml-0.5">H</span>
@@ -716,11 +911,23 @@ export default function Beranda() {
                   </p>
                 </div>
                 <div className="rounded-lg bg-teal-50/80 dark:bg-teal-900/20 p-2.5 text-center">
-                  <p className="text-[10px] font-medium text-teal-600 dark:text-teal-400 uppercase tracking-wider mb-1">Hari & Jam</p>
-                  <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-tight">{getHariIndonesia(waktuSekarang)}</p>
-                  <p className="text-[11px] font-semibold text-teal-700 dark:text-teal-300 tabular-nums">{formatJamDetik(waktuSekarang)}</p>
+                  <p
+                    className="text-[10px] font-medium text-teal-600 dark:text-teal-400 tracking-wide mb-1"
+                    title="Selisih menit Istiwa’ terhadap WIB"
+                  >
+                    {selisihWibIstText}
+                  </p>
+                  <p className="text-[11px] font-semibold text-gray-800 dark:text-gray-100 leading-tight tabular-nums">
+                    <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 mr-1">WIB</span>
+                    {wibJamText}
+                  </p>
+                  <p className="text-[11px] font-semibold text-teal-700 dark:text-teal-300 leading-tight tabular-nums">
+                    <span className="text-[9px] font-medium text-teal-600/80 dark:text-teal-400/80 mr-1">Istiwa’</span>
+                    {istiwaJamText}
+                  </p>
                 </div>
               </div>
+              {istiwaAlamatBar}
             </motion.div>
           </div>
         </motion.div>

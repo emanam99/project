@@ -12,6 +12,7 @@ import SearchAndFilterRencana from './components/SearchAndFilterRencana'
 import SearchAndFilterPengeluaran from './components/SearchAndFilterPengeluaran'
 import SearchAndFilterDraft from './components/SearchAndFilterDraft'
 import DraftTab from './components/DraftTab'
+import PengeluaranPengaturanTab from './components/PengeluaranPengaturanTab'
 import WaNotifRecipientChecklist from './components/WaNotifRecipientChecklist'
 import { formatCurrency, getStatusBadge, generatePreviewPesan, generateRencanaWhatsAppMessage } from './utils/pengeluaranUtils'
 import { useRencanaFilters } from './hooks/useRencanaFilters'
@@ -80,17 +81,18 @@ function Pengeluaran() {
 
   // Set activeTab dari URL query param jika ada
   const tabFromUrl = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState(tabFromUrl || 'rencana') // 'rencana', 'pengeluaran', atau 'draft'
+  const [activeTab, setActiveTab] = useState(tabFromUrl || 'rencana') // 'rencana' | 'pengeluaran' | 'draft' | 'pengaturan'
   const [itemsPerPage, setItemsPerPage] = useState(50)
   const [confirmKomentarId, setConfirmKomentarId] = useState(null)
   const [confirmKomentarData, setConfirmKomentarData] = useState(null)
 
   useEffect(() => {
-    const order = ['rencana', 'pengeluaran', 'draft']
+    const order = ['rencana', 'pengeluaran', 'draft', 'pengaturan']
     const allowed = {
       rencana: pengeluaranFitur.tabRencana,
       pengeluaran: pengeluaranFitur.tabPengeluaran,
-      draft: pengeluaranFitur.tabDraft
+      draft: pengeluaranFitur.tabDraft,
+      pengaturan: pengeluaranFitur.tabPengaturan
     }
     if (!allowed[activeTab]) {
       const next = order.find((t) => allowed[t])
@@ -100,7 +102,8 @@ function Pengeluaran() {
     activeTab,
     pengeluaranFitur.tabRencana,
     pengeluaranFitur.tabPengeluaran,
-    pengeluaranFitur.tabDraft
+    pengeluaranFitur.tabDraft,
+    pengeluaranFitur.tabPengaturan
   ])
   
   // Use custom hooks for filtering
@@ -269,7 +272,8 @@ function Pengeluaran() {
     const allowedUrl = {
       rencana: pengeluaranFitur.tabRencana,
       pengeluaran: pengeluaranFitur.tabPengeluaran,
-      draft: pengeluaranFitur.tabDraft
+      draft: pengeluaranFitur.tabDraft,
+      pengaturan: pengeluaranFitur.tabPengaturan
     }
     if (tabFromUrl && allowedUrl[tabFromUrl]) {
       setActiveTab(tabFromUrl)
@@ -282,7 +286,8 @@ function Pengeluaran() {
     loadAllDraft,
     pengeluaranFitur.tabRencana,
     pengeluaranFitur.tabPengeluaran,
-    pengeluaranFitur.tabDraft
+    pengeluaranFitur.tabDraft,
+    pengeluaranFitur.tabPengaturan
   ])
 
   /** Klik tab navigasi: samakan state dengan query `tab` di URL (hindari URL masih draft saat user sudah pindah ke Rencana). */
@@ -291,7 +296,8 @@ function Pengeluaran() {
       const allowed = {
         rencana: pengeluaranFitur.tabRencana,
         pengeluaran: pengeluaranFitur.tabPengeluaran,
-        draft: pengeluaranFitur.tabDraft
+        draft: pengeluaranFitur.tabDraft,
+        pengaturan: pengeluaranFitur.tabPengaturan
       }
       if (!allowed[tab]) return
       setActiveTab(tab)
@@ -308,6 +314,7 @@ function Pengeluaran() {
       pengeluaranFitur.tabRencana,
       pengeluaranFitur.tabPengeluaran,
       pengeluaranFitur.tabDraft,
+      pengeluaranFitur.tabPengaturan,
       loadAllDraft
     ]
   )
@@ -672,6 +679,29 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                       }`}
                     >
                       Draft
+                    </button>
+                  )}
+                  {pengeluaranFitur.tabPengaturan && (
+                    <button
+                      type="button"
+                      onClick={() => goToTab('pengaturan')}
+                      aria-label="Pengaturan"
+                      title="Pengaturan"
+                      className={`flex-none px-2.5 sm:px-3 py-2.5 sm:py-3 text-center border-b-2 transition-colors ${
+                        activeTab === 'pengaturan'
+                          ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
                     </button>
                   )}
                 </nav>
@@ -1156,6 +1186,10 @@ ${pengeluaranDetailHook.selectedPengeluaran?.admin_approve_nama ? `Di-approve ol
                   </div>
                 )}
               </div>
+            )}
+
+            {activeTab === 'pengaturan' && pengeluaranFitur.tabPengaturan && (
+              <PengeluaranPengaturanTab />
             )}
           </motion.div>
         </div>

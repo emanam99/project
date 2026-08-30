@@ -612,6 +612,19 @@ class RoleHelper
     }
 
     /**
+     * Akses tab Pengaturan WA di halaman Pengeluaran.
+     * Super admin selalu boleh. Tanpa aksi ini: tidak diizinkan (tanpa fallback legacy).
+     */
+    public static function tokenPengeluaranTabPengaturanAllowed(\PDO $db, array $user): bool
+    {
+        if (self::tokenHasAnyRoleKey($user, ['super_admin'])) {
+            return true;
+        }
+
+        return self::tokenHasEbeddienFiturCode($db, $user, 'action.pengeluaran.tab.pengaturan');
+    }
+
+    /**
      * True jika pengguna boleh memilih menonaktifkan notifikasi WA/Push saat simpan/update draft rencana (body kirim_notifikasi_draft).
      */
     public static function tokenMayToggleDraftNotifOnSave(\PDO $db, array $user): bool

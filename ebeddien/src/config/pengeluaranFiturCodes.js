@@ -3,6 +3,7 @@ export const PENGELUARAN_ACTION_CODES = {
   tabRencana: 'action.pengeluaran.tab.rencana',
   tabPengeluaran: 'action.pengeluaran.tab.pengeluaran',
   tabDraft: 'action.pengeluaran.tab.draft',
+  tabPengaturan: 'action.pengeluaran.tab.pengaturan',
   rencanaLembagaSemua: 'action.pengeluaran.rencana.lembaga_semua',
   pengeluaranLembagaSemua: 'action.pengeluaran.pengeluaran.lembaga_semua',
   draftLembagaSemua: 'action.pengeluaran.draft.lembaga_semua',
@@ -34,9 +35,9 @@ export const PENGELUARAN_ACTION_CODES = {
 export const PENGELUARAN_MENU_CODE = 'menu.pengeluaran'
 
 /**
- * Memetakan kode aksi anak menu Pengeluaran ke salah satu tab UI (rencana / pengeluaran / draft).
+ * Memetakan kode aksi anak menu Pengeluaran ke salah satu tab UI (rencana / pengeluaran / draft / pengaturan).
  * Notifikasi WA rencana (action.pengeluaran.notif.*) ke tab Rencana; draft notif (action.pengeluaran.draft.notif.*) ke tab Draft.
- * @returns {'rencana'|'pengeluaran'|'draft'|null}
+ * @returns {'rencana'|'pengeluaran'|'draft'|'pengaturan'|null}
  */
 export function pengeluaranActionTabKey(code) {
   const c = String(code || '')
@@ -57,6 +58,9 @@ export function pengeluaranActionTabKey(code) {
   if (c === PENGELUARAN_ACTION_CODES.tabDraft || c.startsWith('action.pengeluaran.draft.')) {
     return 'draft'
   }
+  if (c === PENGELUARAN_ACTION_CODES.tabPengaturan) {
+    return 'pengaturan'
+  }
   return null
 }
 
@@ -76,15 +80,20 @@ export const PENGELUARAN_TAB_ACCORDIONS = [
     key: 'draft',
     title: 'Tab Draft',
     subtitle: 'Akses tab, filter lembaga, buat/edit/hapus draft, notifikasi WA draft (satu lembaga)'
+  },
+  {
+    key: 'pengaturan',
+    title: 'Tab Pengaturan',
+    subtitle: 'Akses tab pengaturan provider WhatsApp khusus notifikasi pengeluaran'
   }
 ]
 
 /**
  * @param {Array<{ code?: string }>} children — anak menu Pengeluaran (biasanya type action), sudah terurut sort_order
- * @returns {{ rencana: any[], pengeluaran: any[], draft: any[], other: any[] }}
+ * @returns {{ rencana: any[], pengeluaran: any[], draft: any[], pengaturan: any[], other: any[] }}
  */
 export function groupPengeluaranFiturChildren(children) {
-  const buckets = { rencana: [], pengeluaran: [], draft: [], other: [] }
+  const buckets = { rencana: [], pengeluaran: [], draft: [], pengaturan: [], other: [] }
   for (const ch of children || []) {
     const k = pengeluaranActionTabKey(ch.code)
     if (k) buckets[k].push(ch)

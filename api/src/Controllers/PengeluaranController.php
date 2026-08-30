@@ -4331,5 +4331,100 @@ class PengeluaranController
             ], 500);
         }
     }
+
+    private function denyUnlessPengeluaranTabPengaturan(Request $request, Response $response): ?Response
+    {
+        $user = $this->userFromRequest($request);
+        if (RoleHelper::tokenPengeluaranTabPengaturanAllowed($this->db, $user)) {
+            return null;
+        }
+
+        return $this->jsonResponse($response, [
+            'success' => false,
+            'message' => 'Anda tidak memiliki akses pengaturan notifikasi pengeluaran.',
+        ], 403);
+    }
+
+    /**
+     * GET /api/pengeluaran/notification-config
+     * Provider WA khusus notifikasi pengeluaran (kosong = ikuti pengaturan umum).
+     *
+     * @return array{provider: string, global_provider: string}
+     */
+    public function getNotificationConfig(Request $request, Response $response): Response
+    {
+        $deny = $this->denyUnlessPengeluaranTabPengaturan($request, $response);
+        if ($deny !== null) {
+            return $deny;
+        }
+
+        try {
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'provider' => WhatsAppService::getPengeluaranNotificationProvider(),
+                    'global_provider' => WhatsAppService::getNotificationProvider(),
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('PengeluaranController::getNotificationConfig ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal mengambil pengaturan notifikasi pengeluaran',
+            ], 500);
+        }
+    }
+
+    /**
+     * PUT /api/pengeluaran/notification-config
+     * Body: { provider: '' | wa_sendiri | evolution | watzap }
+     */
+    public function saveNotificationConfig(Request $request, Response $response): Response
+    {
+        $deny = $this->denyUnlessPengeluaranTabPengaturan($request, $response);
+        if ($deny !== null) {
+            return $deny;
+        }
+
+        try {
+            $body = (array) $request->getParsedBody();
+            $provider = isset($body['provider']) ? trim((string) $body['provider']) : '';
+            if ($provider !== '' && !in_array($provider, ['watzap', 'evolution', 'wa_sendiri'], true)) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Provider tidak valid. Pilih WA sendiri, Evolution, WatZap, atau ikuti pengaturan umum.',
+                ], 400);
+            }
+
+            $tableCheck = $this->db->query("SHOW TABLES LIKE 'app___settings'");
+            if ($tableCheck->rowCount() === 0) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Tabel app___settings belum ada.',
+                ], 500);
+            }
+
+            $stmt = $this->db->prepare(
+                "INSERT INTO app___settings (`key`, `value`) VALUES ('pengeluaran_notification_provider', ?) ON DUPLICATE KEY UPDATE `value` = ?, updated_at = NOW()"
+            );
+            $stmt->execute([$provider, $provider]);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => [
+                    'provider' => $provider,
+                    'global_provider' => WhatsAppService::getNotificationProvider(),
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            error_log('PengeluaranController::saveNotificationConfig ' . $e->getMessage());
+
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Gagal menyimpan pengaturan notifikasi pengeluaran',
+            ], 500);
+        }
+    }
 }
 

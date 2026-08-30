@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Config\Database;
 use App\Helpers\AuthHelper;
+use App\Helpers\TenantHelper;
 use PDO;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -42,14 +43,15 @@ class ExportArsipController
             return $denied;
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $q = $request->getQueryParams();
         $sql = 'SELECT b.id, b.export_type, b.nama_file, b.csv_filename, b.record_count, b.total_amount,
                        b.trx_date, b.status, b.bni_reference, b.email_datetime, b.matched_at, b.created_at,
                        b.created_by, u.name AS exported_by_name, u.email AS exported_by_email
                 FROM bni_batch b
                 LEFT JOIN users u ON u.id = b.created_by
-                WHERE 1=1';
-        $params = [];
+                WHERE b.sppg_id = ?';
+        $params = [$sppgId];
         $type = trim((string) ($q['type'] ?? ''));
         if (in_array($type, ['bni_csv', 'maker_xlsx'], true)) {
             $sql .= ' AND b.export_type = ?';
@@ -70,15 +72,16 @@ class ExportArsipController
             return $denied;
         }
 
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
         $stmt = $this->db->prepare(
             'SELECT b.*, u.name AS exported_by_name, u.email AS exported_by_email
              FROM bni_batch b
              LEFT JOIN users u ON u.id = b.created_by
-             WHERE b.id = ?
+             WHERE b.id = ? AND b.sppg_id = ?
              LIMIT 1'
         );
-        $stmt->execute([$id]);
+        $stmt->execute([$id, $sppgId]);
         $batch = $stmt->fetch();
         if (!$batch) {
             return $this->json($response, ['success' => false, 'message' => 'Arsip tidak ditemukan'], 404);
@@ -99,10 +102,10 @@ class ExportArsipController
                     FROM belanja b
                     LEFT JOIN users u ON u.id = b.created_by
                     LEFT JOIN rekening r ON r.id = b.rekening_id
-                    WHERE b.id IN ($placeholders)
+                    WHERE b.id IN ($placeholders) AND b.sppg_id = ?
                     ORDER BY FIELD(b.id, $placeholders)";
             $stmt = $this->db->prepare($sql);
-            $stmt->execute(array_merge($ids, $ids));
+            $stmt->execute(array_merge($ids, [$sppgId], $ids));
             $belanja = $stmt->fetchAll() ?: [];
         }
 

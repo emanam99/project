@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { isPwaDisplayMode } from './lib/isPwaDisplayMode'
+import { prefetchReaderFonts } from './utils/readerFonts'
 import './style.css'
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/$/, '')
@@ -88,4 +89,8 @@ if ('serviceWorker' in navigator) {
       })
       .catch(() => {})
   })
+}
+
+if (typeof navigator !== 'undefined' && navigator.onLine) {
+  void prefetchReaderFonts()
 }

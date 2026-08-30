@@ -124,6 +124,13 @@ export function canAccessPathByFitur(pathname, fiturMenuCodes) {
     )
   }
 
+  /** Pengaturan Kalender: menu halaman atau aksi tab (mis. tab Lokasi dari Absen). */
+  if (norm === '/kalender/pengaturan' || norm.startsWith('/kalender/pengaturan/')) {
+    if (codes.includes('menu.kalender.pengaturan')) return true
+    if (codes.some((c) => String(c).startsWith('action.kalender.pengaturan.'))) return true
+    return false
+  }
+
   const tabKey = (norm.endsWith('/') ? norm.slice(0, -1) : norm) || norm
   const tabCode = UGT_LAPORAN_PATH_TO_TAB[tabKey]
   if (tabCode) {

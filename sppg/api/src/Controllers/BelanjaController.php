@@ -6,6 +6,7 @@ use App\Config\Database;
 use App\Helpers\AuthHelper;
 use App\Helpers\CairStatusHelper;
 use App\Helpers\SimpleXlsxWriter;
+use App\Helpers\TenantHelper;
 use App\Helpers\ZipStore;
 use App\Services\BniBatchService;
 use PDO;
@@ -33,18 +34,19 @@ class BelanjaController
         return is_array($data) ? $data : [];
     }
 
-    private function recalcTotal(int $belanjaId): void
+    private function recalcTotal(int $belanjaId, int $sppgId): void
     {
         $stmt = $this->db->prepare('SELECT COALESCE(SUM(subtotal), 0) AS total FROM belanja_item WHERE belanja_id = ?');
         $stmt->execute([$belanjaId]);
         $total = (float) ($stmt->fetchColumn() ?: 0);
-        $upd = $this->db->prepare('UPDATE belanja SET total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
-        $upd->execute([$total, $belanjaId]);
+        $upd = $this->db->prepare('UPDATE belanja SET total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND sppg_id = ?');
+        $upd->execute([$total, $belanjaId, $sppgId]);
     }
 
     /** GET /belanja?from=&to=&q=&bni_status= */
     public function index(Request $request, Response $response): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $q = $request->getQueryParams();
         $sql = 'SELECT b.*, u.name AS created_by_name, u.email AS created_by_email,
                        r.nomor_rekening, r.nama_penerima, r.bank_tujuan, r.online_bank_code, r.jenis AS rekening_jenis,
@@ -52,8 +54,8 @@ class BelanjaController
                 FROM belanja b
                 LEFT JOIN users u ON u.id = b.created_by
                 LEFT JOIN rekening r ON r.id = b.rekening_id
-                WHERE 1=1';
-        $params = [];
+                WHERE b.sppg_id = ?';
+        $params = [$sppgId];
 
         if (!empty($q['from'])) {
             $sql .= ' AND b.tanggal >= ?';
@@ -106,29 +108,36 @@ class BelanjaController
      */
     public function itemOptions(Request $request, Response $response): Response
     {
-        $namaStmt = $this->db->query(
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
+        $namaStmt = $this->db->prepare(
             'SELECT bi.nama_barang AS nama, bi.satuan, bi.harga_satuan
              FROM belanja_item bi
+             INNER JOIN belanja b ON b.id = bi.belanja_id
              INNER JOIN (
-                 SELECT LOWER(TRIM(nama_barang)) AS k, MAX(id) AS max_id
-                 FROM belanja_item
-                 WHERE TRIM(nama_barang) <> \'\'
-                 GROUP BY LOWER(TRIM(nama_barang))
+                 SELECT LOWER(TRIM(bi2.nama_barang)) AS k, MAX(bi2.id) AS max_id
+                 FROM belanja_item bi2
+                 INNER JOIN belanja b2 ON b2.id = bi2.belanja_id
+                 WHERE TRIM(bi2.nama_barang) <> \'\' AND b2.sppg_id = ?
+                 GROUP BY LOWER(TRIM(bi2.nama_barang))
              ) t ON t.max_id = bi.id
+             WHERE b.sppg_id = ?
              ORDER BY bi.nama_barang ASC
              LIMIT 800'
         );
-        $namaRows = $namaStmt ? $namaStmt->fetchAll() : [];
+        $namaStmt->execute([$sppgId, $sppgId]);
+        $namaRows = $namaStmt->fetchAll();
 
-        $satuanStmt = $this->db->query(
-            'SELECT TRIM(satuan) AS satuan, COUNT(*) AS c
-             FROM belanja_item
-             WHERE TRIM(satuan) <> \'\'
-             GROUP BY LOWER(TRIM(satuan)), TRIM(satuan)
+        $satuanStmt = $this->db->prepare(
+            'SELECT TRIM(bi.satuan) AS satuan, COUNT(*) AS c
+             FROM belanja_item bi
+             INNER JOIN belanja b ON b.id = bi.belanja_id
+             WHERE TRIM(bi.satuan) <> \'\' AND b.sppg_id = ?
+             GROUP BY LOWER(TRIM(bi.satuan)), TRIM(bi.satuan)
              ORDER BY c DESC, satuan ASC
              LIMIT 100'
         );
-        $satuanRows = $satuanStmt ? $satuanStmt->fetchAll() : [];
+        $satuanStmt->execute([$sppgId]);
+        $satuanRows = $satuanStmt->fetchAll();
 
         $defaults = ['pcs', 'kg', 'gram', 'liter', 'ikat', 'bungkus', 'pack', 'dus', 'karung', 'buah'];
         $satuan = [];
@@ -173,6 +182,7 @@ class BelanjaController
     /** GET /belanja/{id} */
     public function show(Request $request, Response $response, array $args): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $id = (int) ($args['id'] ?? 0);
         $stmt = $this->db->prepare(
             'SELECT b.*, u.name AS created_by_name, u.email AS created_by_email,
@@ -180,9 +190,9 @@ class BelanjaController
              FROM belanja b
              LEFT JOIN users u ON u.id = b.created_by
              LEFT JOIN rekening r ON r.id = b.rekening_id
-             WHERE b.id = ? LIMIT 1'
+             WHERE b.id = ? AND b.sppg_id = ? LIMIT 1'
         );
-        $stmt->execute([$id]);
+        $stmt->execute([$id, $sppgId]);
         $row = $stmt->fetch();
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan belanja tidak ditemukan'], 404);
@@ -204,6 +214,7 @@ class BelanjaController
     public function create(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         if (!AuthHelper::canManageData($user['role'] ?? null)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menambah belanja'], 403);
         }
@@ -220,7 +231,7 @@ class BelanjaController
             return $this->json($response, ['success' => false, 'message' => 'Tanggal wajib diisi (YYYY-MM-DD)'], 422);
         }
 
-        if ($rekeningId !== null && !$this->rekeningExists($rekeningId)) {
+        if ($rekeningId !== null && !$this->validateRekening($rekeningId, $sppgId)) {
             return $this->json($response, ['success' => false, 'message' => 'Rekening tidak ditemukan'], 422);
         }
 
@@ -228,14 +239,15 @@ class BelanjaController
             $this->db->beginTransaction();
 
             if ($kategori !== '') {
-                KategoriController::ensureKategori($this->db, $kategori);
+                KategoriController::ensureKategori($this->db, $sppgId, $kategori);
             }
 
             $ins = $this->db->prepare(
-                'INSERT INTO belanja (tanggal, keterangan, rekening_id, kategori, bni_status, total, created_by)
-                 VALUES (?, ?, ?, ?, \'belum\', 0, ?)'
+                'INSERT INTO belanja (sppg_id, tanggal, keterangan, rekening_id, kategori, bni_status, total, created_by)
+                 VALUES (?, ?, ?, ?, ?, \'belum\', 0, ?)'
             );
             $ins->execute([
+                $sppgId,
                 $tanggal,
                 $keterangan !== '' ? $keterangan : null,
                 $rekeningId,
@@ -250,7 +262,7 @@ class BelanjaController
                 }
             }
 
-            $this->recalcTotal($belanjaId);
+            $this->recalcTotal($belanjaId, $sppgId);
             $this->db->commit();
         } catch (\Throwable $e) {
             if ($this->db->inTransaction()) {
@@ -266,6 +278,7 @@ class BelanjaController
     public function update(Request $request, Response $response, array $args): Response
     {
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $role = $actor['role'] ?? null;
         if (!AuthHelper::canManageData($role)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat mengubah belanja'], 403);
@@ -274,7 +287,7 @@ class BelanjaController
         $id = (int) ($args['id'] ?? 0);
         $body = $this->parseBody($request);
 
-        $row = $this->findBelanja($id);
+        $row = $this->findBelanja($id, $sppgId);
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan belanja tidak ditemukan'], 404);
         }
@@ -302,7 +315,7 @@ class BelanjaController
             if (array_key_exists('kategori', $body)) {
                 $kategori = trim((string) $body['kategori']);
                 if ($kategori !== '') {
-                    KategoriController::ensureKategori($this->db, $kategori);
+                    KategoriController::ensureKategori($this->db, $sppgId, $kategori);
                 }
                 $fields[] = 'kategori = ?';
                 $params[] = $kategori !== '' ? $kategori : null;
@@ -335,7 +348,7 @@ class BelanjaController
                 $rekeningId = $body['rekening_id'] !== '' && $body['rekening_id'] !== null
                     ? (int) $body['rekening_id']
                     : null;
-                if ($rekeningId !== null && !$this->rekeningExists($rekeningId)) {
+                if ($rekeningId !== null && !$this->validateRekening($rekeningId, $sppgId)) {
                     return $this->json($response, ['success' => false, 'message' => 'Rekening tidak ditemukan'], 422);
                 }
                 $fields[] = 'rekening_id = ?';
@@ -344,7 +357,7 @@ class BelanjaController
             if (array_key_exists('kategori', $body)) {
                 $kategori = trim((string) $body['kategori']);
                 if ($kategori !== '') {
-                    KategoriController::ensureKategori($this->db, $kategori);
+                    KategoriController::ensureKategori($this->db, $sppgId, $kategori);
                 }
                 $fields[] = 'kategori = ?';
                 $params[] = $kategori !== '' ? $kategori : null;
@@ -354,7 +367,8 @@ class BelanjaController
         if ($fields) {
             $fields[] = 'updated_at = CURRENT_TIMESTAMP';
             $params[] = $id;
-            $sql = 'UPDATE belanja SET ' . implode(', ', $fields) . ' WHERE id = ?';
+            $params[] = $sppgId;
+            $sql = 'UPDATE belanja SET ' . implode(', ', $fields) . ' WHERE id = ? AND sppg_id = ?';
             $this->db->prepare($sql)->execute($params);
         }
 
@@ -365,13 +379,14 @@ class BelanjaController
     public function delete(Request $request, Response $response, array $args): Response
     {
         $user = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $role = $user['role'] ?? null;
         if (!AuthHelper::canManageData($role)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menghapus'], 403);
         }
 
         $id = (int) ($args['id'] ?? 0);
-        $row = $this->findBelanja($id);
+        $row = $this->findBelanja($id, $sppgId);
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan belanja tidak ditemukan'], 404);
         }
@@ -384,8 +399,8 @@ class BelanjaController
             ], 403);
         }
 
-        $stmt = $this->db->prepare('DELETE FROM belanja WHERE id = ?');
-        $stmt->execute([$id]);
+        $stmt = $this->db->prepare('DELETE FROM belanja WHERE id = ? AND sppg_id = ?');
+        $stmt->execute([$id, $sppgId]);
 
         return $this->json($response, ['success' => true, 'message' => 'Berhasil dihapus']);
     }
@@ -394,18 +409,19 @@ class BelanjaController
     public function addItem(Request $request, Response $response, array $args): Response
     {
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         if (!AuthHelper::canManageData($actor['role'] ?? null)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menambah item'], 403);
         }
 
         $belanjaId = (int) ($args['id'] ?? 0);
-        if ($denied = $this->denyIfItemsLocked($belanjaId, $response)) {
+        if ($denied = $this->denyIfItemsLocked($belanjaId, $sppgId, $response)) {
             return $denied;
         }
 
         try {
             $itemId = $this->insertItem($belanjaId, $this->parseBody($request));
-            $this->recalcTotal($belanjaId);
+            $this->recalcTotal($belanjaId, $sppgId);
         } catch (\InvalidArgumentException $e) {
             return $this->json($response, ['success' => false, 'message' => $e->getMessage()], 422);
         }
@@ -423,13 +439,14 @@ class BelanjaController
     public function updateItem(Request $request, Response $response, array $args): Response
     {
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         if (!AuthHelper::canManageData($actor['role'] ?? null)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat mengubah item'], 403);
         }
 
         $belanjaId = (int) ($args['id'] ?? 0);
         $itemId = (int) ($args['itemId'] ?? 0);
-        if ($denied = $this->denyIfItemsLocked($belanjaId, $response)) {
+        if ($denied = $this->denyIfItemsLocked($belanjaId, $sppgId, $response)) {
             return $denied;
         }
 
@@ -471,7 +488,7 @@ class BelanjaController
             $itemId,
         ]);
 
-        $this->recalcTotal($belanjaId);
+        $this->recalcTotal($belanjaId, $sppgId);
 
         $item = $this->db->prepare('SELECT * FROM belanja_item WHERE id = ?');
         $item->execute([$itemId]);
@@ -486,13 +503,14 @@ class BelanjaController
     public function deleteItem(Request $request, Response $response, array $args): Response
     {
         $actor = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         if (!AuthHelper::canManageData($actor['role'] ?? null)) {
             return $this->json($response, ['success' => false, 'message' => 'Hanya admin yang dapat menghapus item'], 403);
         }
 
         $belanjaId = (int) ($args['id'] ?? 0);
         $itemId = (int) ($args['itemId'] ?? 0);
-        if ($denied = $this->denyIfItemsLocked($belanjaId, $response)) {
+        if ($denied = $this->denyIfItemsLocked($belanjaId, $sppgId, $response)) {
             return $denied;
         }
 
@@ -502,7 +520,7 @@ class BelanjaController
             return $this->json($response, ['success' => false, 'message' => 'Item tidak ditemukan'], 404);
         }
 
-        $this->recalcTotal($belanjaId);
+        $this->recalcTotal($belanjaId, $sppgId);
         return $this->json($response, ['success' => true, 'message' => 'Item dihapus']);
     }
 
@@ -513,6 +531,7 @@ class BelanjaController
     public function bulkUpdateBniStatus(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $role = $user['role'] ?? null;
         if (!AuthHelper::canChangeBniStatus($role)) {
             return $this->json($response, [
@@ -543,8 +562,8 @@ class BelanjaController
         }
 
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $this->db->prepare("SELECT id, bni_status FROM belanja WHERE id IN ($placeholders)");
-        $stmt->execute($ids);
+        $stmt = $this->db->prepare("SELECT id, bni_status FROM belanja WHERE id IN ($placeholders) AND sppg_id = ?");
+        $stmt->execute(array_merge($ids, [$sppgId]));
         $rows = $stmt->fetchAll();
         if (count($rows) !== count($ids)) {
             return $this->json($response, ['success' => false, 'message' => 'Beberapa catatan tidak ditemukan'], 404);
@@ -561,9 +580,9 @@ class BelanjaController
             }
         }
 
-        $params = array_merge([$status], $ids);
+        $params = array_merge([$status], $ids, [$sppgId]);
         $upd = $this->db->prepare(
-            "UPDATE belanja SET bni_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ($placeholders)"
+            "UPDATE belanja SET bni_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ($placeholders) AND sppg_id = ?"
         );
         $upd->execute($params);
 
@@ -578,7 +597,7 @@ class BelanjaController
             try {
                 $nama = trim((string) ($body['nama'] ?? 'belanja'));
                 $svc = new BniBatchService($this->db);
-                $batch = $svc->archiveFromBelanjaIds($ids, $nama, isset($user['id']) ? (int) $user['id'] : null);
+                $batch = $svc->archiveFromBelanjaIds($ids, $nama, isset($user['id']) ? (int) $user['id'] : null, $sppgId);
                 $payload['batch'] = $batch;
                 $payload['batches'] = $batch['batches'] ?? [$batch];
                 $n = count($payload['batches']);
@@ -613,6 +632,7 @@ class BelanjaController
     public function bulkUpdateCairStatus(Request $request, Response $response): Response
     {
         $user = $request->getAttribute('user');
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $role = $user['role'] ?? null;
         if (!AuthHelper::canChangeCairStatus($role)) {
             return $this->json($response, [
@@ -643,16 +663,16 @@ class BelanjaController
         }
 
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $this->db->prepare("SELECT id FROM belanja WHERE id IN ($placeholders)");
-        $stmt->execute($ids);
+        $stmt = $this->db->prepare("SELECT id FROM belanja WHERE id IN ($placeholders) AND sppg_id = ?");
+        $stmt->execute(array_merge($ids, [$sppgId]));
         $found = $stmt->fetchAll(PDO::FETCH_COLUMN);
         if (count($found) !== count($ids)) {
             return $this->json($response, ['success' => false, 'message' => 'Beberapa catatan tidak ditemukan'], 404);
         }
 
-        $params = array_merge([$status], $ids);
+        $params = array_merge([$status], $ids, [$sppgId]);
         $upd = $this->db->prepare(
-            "UPDATE belanja SET cair_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ($placeholders)"
+            "UPDATE belanja SET cair_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN ($placeholders) AND sppg_id = ?"
         );
         $upd->execute($params);
 
@@ -671,6 +691,7 @@ class BelanjaController
     public function exportBniOnline(Request $request, Response $response): Response
     {
         try {
+            $sppgId = TenantHelper::getSppgIdFromRequest($request);
             $q = $request->getQueryParams();
             $rawDebit = trim((string) ($_ENV['BNI_DEBIT_ACCOUNT'] ?? ''));
             if ($rawDebit === '') {
@@ -688,10 +709,11 @@ class BelanjaController
                        r.nomor_rekening, r.nama_penerima, r.bank_tujuan, r.online_bank_code
                 FROM belanja b
                 INNER JOIN rekening r ON r.id = b.rekening_id
-                WHERE b.rekening_id IS NOT NULL
+                WHERE b.sppg_id = ?
+                  AND b.rekening_id IS NOT NULL
                   AND r.nomor_rekening IS NOT NULL
                   AND r.nomor_rekening <> \'\'';
-        $params = [];
+        $params = [$sppgId];
 
         if (!empty($q['from'])) {
             $sql .= ' AND b.tanggal >= ?';
@@ -775,7 +797,7 @@ class BelanjaController
 
         try {
             $user = $request->getAttribute('user');
-            $svc->archiveBuiltCsvList($builtList, isset($user['id']) ? (int) $user['id'] : null);
+            $svc->archiveBuiltCsvList($builtList, isset($user['id']) ? (int) $user['id'] : null, $sppgId);
         } catch (\Throwable $e) {
             error_log('bni csv archive on export: ' . $e->getMessage());
         }
@@ -816,14 +838,15 @@ class BelanjaController
      */
     public function exportMakerXlsx(Request $request, Response $response): Response
     {
+        $sppgId = TenantHelper::getSppgIdFromRequest($request);
         $q = $request->getQueryParams();
 
         $sql = 'SELECT b.id, b.tanggal, b.keterangan, b.kategori, b.total, b.rekening_id,
                        r.nama_penerima, r.nomor_rekening, r.bank_tujuan
                 FROM belanja b
                 LEFT JOIN rekening r ON r.id = b.rekening_id
-                WHERE 1=1';
-        $params = [];
+                WHERE b.sppg_id = ?';
+        $params = [$sppgId];
 
         if (!empty($q['from'])) {
             $sql .= ' AND b.tanggal >= ?';
@@ -1074,7 +1097,8 @@ class BelanjaController
                 $binary,
                 $safeName,
                 $totalAmount,
-                isset($user['id']) ? (int) $user['id'] : null
+                isset($user['id']) ? (int) $user['id'] : null,
+                $sppgId
             );
         } catch (\Throwable $e) {
             error_log('excel archive: ' . $e->getMessage());
@@ -1194,18 +1218,18 @@ class BelanjaController
         return implode(',', $cols);
     }
 
-    private function findBelanja(int $id): ?array
+    private function findBelanja(int $id, int $sppgId): ?array
     {
-        $stmt = $this->db->prepare('SELECT * FROM belanja WHERE id = ? LIMIT 1');
-        $stmt->execute([$id]);
+        $stmt = $this->db->prepare('SELECT * FROM belanja WHERE id = ? AND sppg_id = ? LIMIT 1');
+        $stmt->execute([$id, $sppgId]);
         $row = $stmt->fetch();
         return $row ?: null;
     }
 
     /** Item terkunci untuk maker/approved (termasuk super admin). */
-    private function denyIfItemsLocked(int $belanjaId, Response $response): ?Response
+    private function denyIfItemsLocked(int $belanjaId, int $sppgId, Response $response): ?Response
     {
-        $row = $this->findBelanja($belanjaId);
+        $row = $this->findBelanja($belanjaId, $sppgId);
         if (!$row) {
             return $this->json($response, ['success' => false, 'message' => 'Catatan belanja tidak ditemukan'], 404);
         }
@@ -1219,10 +1243,10 @@ class BelanjaController
         return null;
     }
 
-    private function rekeningExists(int $id): bool
+    private function validateRekening(int $id, int $sppgId): bool
     {
-        $stmt = $this->db->prepare('SELECT id FROM rekening WHERE id = ? AND aktif = 1 LIMIT 1');
-        $stmt->execute([$id]);
+        $stmt = $this->db->prepare('SELECT id FROM rekening WHERE id = ? AND sppg_id = ? AND aktif = 1 LIMIT 1');
+        $stmt->execute([$id, $sppgId]);
         return (bool) $stmt->fetch();
     }
 

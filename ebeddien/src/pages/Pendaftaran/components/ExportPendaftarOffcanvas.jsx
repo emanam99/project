@@ -6,17 +6,20 @@ import {
   getExportColumnsSelection,
   setStoredExportColumns,
   getDefaultExportColumns,
-  mapPendaftarRowsToSheetRows
+  mapPendaftarRowsToSheetRows,
+  hydratePendaftarRowsWithFullPii,
 } from '../exportPendaftarConfig'
 import { useNotification } from '../../../contexts/NotificationContext'
 
 export default function ExportPendaftarOffcanvas({ isOpen, onClose, filteredData = [], isExportSelected = false, tahunAjaran, tahunAjaranMasehi }) {
   const { showNotification } = useNotification()
   const [selected, setSelected] = useState(() => getExportColumnsSelection())
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
       setSelected(getExportColumnsSelection())
+      setExporting(false)
     }
   }, [isOpen])
 
@@ -33,26 +36,41 @@ export default function ExportPendaftarOffcanvas({ isOpen, onClose, filteredData
     setStoredExportColumns(next)
   }
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const activeColumns = EXPORT_COLUMNS.filter(({ key }) => selected[key])
     if (activeColumns.length === 0) {
       showNotification('Pilih minimal satu kolom untuk dieksport', 'warning')
       return
     }
+    if (!Array.isArray(filteredData) || filteredData.length === 0) {
+      showNotification('Tidak ada baris untuk dieksport', 'warning')
+      return
+    }
 
-    const rows = mapPendaftarRowsToSheetRows(filteredData, activeColumns)
-
+    setExporting(true)
     try {
-      const ws = XLSX.utils.json_to_sheet(rows)
+      const { rows, piiHydrated, stillMasked, errorMessage } = await hydratePendaftarRowsWithFullPii(
+        filteredData,
+        tahunAjaran,
+        tahunAjaranMasehi
+      )
+      if (errorMessage && (!piiHydrated || stillMasked)) {
+        showNotification(errorMessage, 'warning')
+      }
+
+      const sheetRows = mapPendaftarRowsToSheetRows(rows, activeColumns)
+      const ws = XLSX.utils.json_to_sheet(sheetRows)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Data Pendaftar')
       const suffix = [tahunAjaran, tahunAjaranMasehi].filter(Boolean).join('_') || 'filter'
       const filename = `Data_Pendaftar_${suffix}_${new Date().toISOString().split('T')[0]}.xlsx`
       XLSX.writeFile(wb, filename)
-      showNotification(`Berhasil eksport ${rows.length} baris`, 'success')
+      showNotification(`Berhasil eksport ${sheetRows.length} baris`, 'success')
       onClose()
     } catch (e) {
       showNotification('Gagal eksport: ' + (e.message || 'Unknown error'), 'error')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -140,13 +158,13 @@ export default function ExportPendaftarOffcanvas({ isOpen, onClose, filteredData
           <button
             type="button"
             onClick={handleExport}
-            disabled={filteredData.length === 0 || noneChecked}
+            disabled={exporting || filteredData.length === 0 || noneChecked}
             className="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Eksport ke Excel
+            {exporting ? 'Menyiapkan NIK lengkap…' : 'Eksport ke Excel'}
           </button>
         </div>
       </motion.div>

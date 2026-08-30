@@ -14,10 +14,12 @@ import {
   getHariIndonesia,
   getTanggalFromAPI,
 } from '../../../utils/hijriDate'
-import { groupByBab } from '../../../utils/groupByBab'
+import { countBabWithEntries } from '../../../utils/groupByBab'
 import { APP_VERSION } from '../../../config/version'
 import { getGambarBase } from '../../../config/gambarBase'
 import { slugify } from '../../../utils/slug'
+import { resolveWiridTitle } from '../../../utils/wiridTitle'
+import { useTitleLang } from '../../../hooks/useTitleLang'
 import { getTopWiridOpens, type WiridOpenStatRow } from '../../../utils/wiridOpenStats'
 
 type Props = {
@@ -247,6 +249,7 @@ function BerandaDateScrollBlock({
 }
 
 export function HomePage({ state }: Props) {
+  const { lang: titleLang } = useTitleLang()
   const mainScrollRef = useMainScrollEl()
   const introRef = useRef<HTMLDivElement>(null)
   const bookCardRef = useRef<HTMLDivElement>(null)
@@ -477,8 +480,7 @@ export function HomePage({ state }: Props) {
 
   const gambarBase = getGambarBase()
   const heroIconSrc = `${gambarBase}/icon/nailul-murod-icon.png`
-  const grouped = groupByBab(state.rows)
-  const totalBab = grouped.length
+  const totalBab = countBabWithEntries(state.babList, state.rows)
   const totalWirid = state.rows.length
   const syncInfo = state.lastSyncAt
     ? state.lastSyncAt.toLocaleString('id-ID', {
@@ -642,7 +644,10 @@ export function HomePage({ state }: Props) {
           <h2 className="beranda-frequent-heading">Paling sering dibuka</h2>
           <ul className="beranda-frequent-timeline">
             {frequentOpens.map((row, index) => {
-              const to = `/list/${slugify(row.bab)}/${slugify(row.judul)}-${row.id}`
+              const full = state.rows.find((r) => r.id === row.id)
+              const display = resolveWiridTitle(full ?? row, titleLang)
+              const slugBase = full?.judul ?? row.judul
+              const to = `/list/${slugify(row.bab)}/${slugify(slugBase)}-${row.id}`
               const isLast = index === frequentOpens.length - 1
               return (
                 <motion.li
@@ -667,7 +672,7 @@ export function HomePage({ state }: Props) {
                   <div className="beranda-frequent-tl-body">
                     <NavLink to={to} className="beranda-frequent-tl-link">
                       <div className="beranda-frequent-tl-text">
-                        <p className="beranda-frequent-tl-title">{row.judul}</p>
+                        <p className={`beranda-frequent-tl-title${titleLang === 'ar' ? ' beranda-frequent-tl-title--ar' : ''}`}>{display}</p>
                         <p className="beranda-frequent-tl-sub">
                           <span className="beranda-frequent-tl-bab">{row.bab}</span>
                           <span className="beranda-frequent-tl-sep" aria-hidden>

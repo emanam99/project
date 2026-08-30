@@ -23,6 +23,8 @@ function isPwaDisplayMode() {
   )
 }
 
+export { isPwaDisplayMode }
+
 function snapshot() {
   return {
     canInstall: Boolean(promptEvent) && !installed,

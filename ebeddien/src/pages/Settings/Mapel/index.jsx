@@ -7,66 +7,65 @@ import MapelFormOffcanvas from './components/MapelFormOffcanvas'
 import { useLembagaFilterAccess } from '../../../hooks/useLembagaFilterAccess'
 import { LEMBAGA_FILTER_ACTION_CODES } from '../../../config/lembagaFilterFiturCodes'
 
-const MapelListItem = memo(({ row, index, onClick, onDelete, statusBadge }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.2, delay: index * 0.02 }}
-    className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-all duration-200 group"
-  >
-    <button type="button" onClick={() => onClick(row)} className="w-full text-left">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-0.5 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors line-clamp-2">
-            {row.kitab_nama || '—'}
-          </h3>
-          <p className="text-xs text-gray-600 dark:text-gray-400">
-            {row.lembaga_nama || row.lembaga_id || '—'}
-            {row.kelas != null && row.kelas !== '' ? ` · Kelas ${row.kelas}` : ''}
-            {row.kel != null && row.kel !== '' ? ` ${row.kel}` : ''}
-          </p>
-          {row.kitab_fan && (
-            <span className="inline-block mt-1.5 px-2 py-0.5 rounded text-xs font-medium bg-teal-50 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300">
-              {row.kitab_fan}
-            </span>
-          )}
-          {(row.dari || row.sampai) && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-              Pelajaran: {[row.dari, row.sampai].filter(Boolean).join(' — ')}
-            </p>
-          )}
-          {row.keterangan && (
-            <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 line-clamp-2">{row.keterangan}</p>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          {statusBadge(row.status)}
-          <span className="text-[10px] text-gray-400 tabular-nums">#{row.id}</span>
-          <svg
-            className="w-5 h-5 text-gray-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-          </svg>
+function kitabNama(row) {
+  const indo = String(row?.kitab_nama ?? '').trim()
+  const arab = String(row?.kitab_nama_arab ?? '').trim()
+  return indo || arab || '—'
+}
+
+function kelasLabel(row) {
+  const parts = [row?.kelas, row?.kel].filter((x) => x != null && String(x).trim() !== '')
+  return parts.length ? parts.join(' · ') : '—'
+}
+
+function rombelChipLabel(r) {
+  if (!r) return ''
+  const parts = [r.kelas, r.kel].filter((x) => x != null && String(x).trim() !== '')
+  return parts.length ? parts.join(' · ') : `Rombel #${r.id}`
+}
+
+function isRombelAktif(r) {
+  const s = String(r?.status ?? '').toLowerCase().trim()
+  return s === 'aktif' || s === 'active'
+}
+
+const MapelListItem = memo(({ row, index, onClick, kelasColStyle }) => {
+  const fan = String(row?.kitab_fan ?? '').trim()
+  const kitab = kitabNama(row)
+  const kelas = kelasLabel(row)
+  return (
+    <motion.button
+      type="button"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: Math.min(index, 20) * 0.01 }}
+      onClick={() => onClick(row)}
+      className="w-full flex md:grid items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+      style={kelasColStyle}
+    >
+      <div className="md:hidden min-w-0 flex-1">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+          {fan || '—'}
+        </p>
+        <div className="mt-0.5 flex items-center gap-2 min-w-0">
+          <span className="min-w-0 flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{kitab}</span>
+          <span className="shrink-0 text-xs font-medium text-gray-800 dark:text-gray-100 tabular-nums">
+            {kelas}
+          </span>
         </div>
       </div>
-    </button>
-    <div className="mt-2 flex justify-end">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete(row)
-        }}
-        className="text-xs text-red-600 dark:text-red-400 hover:underline px-1 py-0.5"
-      >
-        Hapus
-      </button>
-    </div>
-  </motion.div>
-))
+      <span className="hidden md:block min-w-0 text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+        {fan || '—'}
+      </span>
+      <span className="hidden md:block min-w-0 text-sm text-gray-700 dark:text-gray-200 truncate text-center">
+        {kitab}
+      </span>
+      <span className="hidden md:block min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100 truncate text-right tabular-nums">
+        {kelas}
+      </span>
+    </motion.button>
+  )
+})
 MapelListItem.displayName = 'MapelListItem'
 
 function Mapel({ embedded = false }) {
@@ -75,10 +74,13 @@ function Mapel({ embedded = false }) {
   const [list, setList] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [hasBooted, setHasBooted] = useState(false)
   const [error, setError] = useState('')
+  const loadSeqRef = useRef(0)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [lembagaFilter, setLembagaFilter] = useState('')
+  const [rombelFilter, setRombelFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
@@ -108,6 +110,10 @@ function Mapel({ embedded = false }) {
     const t = setTimeout(() => setDebouncedSearch(searchInput), 350)
     return () => clearTimeout(t)
   }, [searchInput])
+
+  useEffect(() => {
+    setCurrentPage((p) => (p === 1 ? p : 1))
+  }, [debouncedSearch])
 
   useEffect(() => {
     const onDoc = (e) => {
@@ -146,10 +152,15 @@ function Mapel({ embedded = false }) {
   useEffect(() => {
     const allowed = lembagaAccess.allowedLembagaIds
     if (!allowed || allowed.length !== 1) return
-    if (lembagaFilter !== allowed[0]) setLembagaFilter(allowed[0])
+    if (lembagaFilter !== allowed[0]) {
+      setLembagaFilter(allowed[0])
+      setRombelFilter('')
+      setCurrentPage(1)
+    }
   }, [lembagaAccess.allowedLembagaIds, lembagaFilter])
 
   const loadMapel = useCallback(async () => {
+    const seq = ++loadSeqRef.current
     try {
       setLoading(true)
       setError('')
@@ -157,10 +168,12 @@ function Mapel({ embedded = false }) {
         search: debouncedSearch.trim(),
         lembaga_id: lembagaFilter,
         lembaga_ids: lembagaAccess.allowedLembagaIds?.length ? lembagaAccess.allowedLembagaIds.join(',') : undefined,
+        id_rombel: rombelFilter,
         status: statusFilter,
         page: currentPage,
         limit: itemsPerPage
       })
+      if (seq !== loadSeqRef.current) return
       if (res?.success) {
         setList(Array.isArray(res.data) ? res.data : [])
         setTotal(typeof res.total === 'number' ? res.total : 0)
@@ -170,32 +183,47 @@ function Mapel({ embedded = false }) {
         setTotal(0)
       }
     } catch (err) {
+      if (seq !== loadSeqRef.current) return
       console.error(err)
       setError(err.response?.data?.message || 'Terjadi kesalahan saat memuat data')
       setList([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) {
+        setLoading(false)
+        setHasBooted(true)
+      }
     }
-  }, [debouncedSearch, lembagaFilter, statusFilter, currentPage, itemsPerPage, lembagaAccess.allowedLembagaIds])
+  }, [debouncedSearch, lembagaFilter, rombelFilter, statusFilter, currentPage, itemsPerPage, lembagaAccess.allowedLembagaIds])
 
   useEffect(() => {
     loadMapel()
   }, [loadMapel])
 
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [debouncedSearch, lembagaFilter, statusFilter, itemsPerPage])
+  const rombelOptions = useMemo(() => {
+    if (!lembagaFilter) return []
+    const arr = rombelList.filter(
+      (r) => String(r.lembaga_id) === String(lembagaFilter) && isRombelAktif(r)
+    )
+    return [...arr].sort((a, b) => rombelChipLabel(a).localeCompare(rombelChipLabel(b), 'id'))
+  }, [rombelList, lembagaFilter])
 
-  const statusBadge = useCallback((s) => {
-    const t = String(s || '').toLowerCase()
-    const isAktif = t === 'aktif' || t === 'active'
-    const cls = isAktif
-      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-      : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-    const label = isAktif ? 'Aktif' : 'Nonaktif'
-    return <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${cls}`}>{label}</span>
-  }, [])
+  useEffect(() => {
+    if (!rombelFilter) return
+    if (!rombelOptions.some((r) => String(r.id) === String(rombelFilter))) {
+      setRombelFilter('')
+    }
+  }, [rombelFilter, rombelOptions])
+
+  const kelasColStyle = useMemo(() => {
+    let max = 4
+    list.forEach((row) => {
+      const n = kelasLabel(row).length
+      if (n > max) max = n
+    })
+    const rem = Math.min(10, Math.max(4.5, max * 0.52 + 1.2))
+    return { gridTemplateColumns: `minmax(0,1fr) minmax(0,1fr) ${rem}rem` }
+  }, [list])
 
   const openTambah = () => {
     setMenuOpen(false)
@@ -256,6 +284,7 @@ function Mapel({ embedded = false }) {
         setShowDeleteModal(false)
         setDeletingRow(null)
         setDeleteConfirmId('')
+        closeForm()
         loadMapel()
       } else {
         showNotification(res?.message || 'Gagal menghapus', 'error')
@@ -277,23 +306,14 @@ function Mapel({ embedded = false }) {
   const resetFilter = () => {
     setSearchInput('')
     setLembagaFilter(lembagaAccess.allowedLembagaIds?.length === 1 ? lembagaAccess.allowedLembagaIds[0] : '')
+    setRombelFilter('')
     setStatusFilter('')
     setCurrentPage(1)
   }
 
-  if (loading && list.length === 0 && !error) {
-    return (
-      <div className={`flex items-center justify-center ${embedded ? 'py-16' : 'h-full overflow-hidden'}`} style={embedded ? undefined : { minHeight: 0 }}>
-        <div className={embedded ? '' : 'h-full overflow-y-auto page-content-scroll flex items-center justify-center'} style={embedded ? undefined : { minHeight: 0 }}>
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
-        </div>
-      </div>
-    )
-  }
-
   const body = (
     <>
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          <div>
             {error && (
               <div className="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
                 {error}
@@ -386,7 +406,11 @@ function Mapel({ embedded = false }) {
                     <div className="px-4 py-3 flex flex-wrap gap-2 items-center">
                       <select
                         value={lembagaFilter}
-                        onChange={(e) => setLembagaFilter(e.target.value)}
+                        onChange={(e) => {
+                          setLembagaFilter(e.target.value)
+                          setRombelFilter('')
+                          setCurrentPage(1)
+                        }}
                         className="border rounded-lg px-2 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 min-w-[10rem]"
                         disabled={lembagaAccess.lembagaFilterLocked && (lembagaAccess.allowedLembagaIds?.length === 1)}
                       >
@@ -399,7 +423,10 @@ function Mapel({ embedded = false }) {
                       </select>
                       <select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => {
+                          setStatusFilter(e.target.value)
+                          setCurrentPage(1)
+                        }}
                         className="border rounded-lg px-2 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                       >
                         <option value="">Semua status</option>
@@ -408,7 +435,10 @@ function Mapel({ embedded = false }) {
                       </select>
                       <select
                         value={itemsPerPage}
-                        onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                        onChange={(e) => {
+                          setItemsPerPage(Number(e.target.value))
+                          setCurrentPage(1)
+                        }}
                         className="border rounded-lg px-2 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                       >
                         <option value={10}>10 / hal</option>
@@ -428,10 +458,60 @@ function Mapel({ embedded = false }) {
                   </motion.div>
                 )}
               </AnimatePresence>
+              {lembagaFilter ? (
+                <div className="px-4 pt-2 pb-1 border-t border-gray-200 dark:border-gray-700">
+                  <div
+                    className="overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    <div className="flex gap-2 min-w-max">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRombelFilter('')
+                          setCurrentPage(1)
+                        }}
+                        className={`flex-shrink-0 px-2 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                          rombelFilter === ''
+                            ? 'bg-teal-600 text-white shadow-md'
+                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        Semua
+                      </button>
+                      {rombelOptions.map((r) => {
+                        const id = String(r.id)
+                        const isActive = rombelFilter === id
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => {
+                              setRombelFilter(isActive ? '' : id)
+                              setCurrentPage(1)
+                            }}
+                            className={`flex-shrink-0 px-2 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                              isActive
+                                ? 'bg-teal-600 text-white shadow-md'
+                                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            {rombelChipLabel(r)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-              {list.length === 0 ? (
+            <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden ${loading && hasBooted ? 'opacity-60' : ''}`}>
+              {!hasBooted && loading ? (
+                <div className="p-8 flex justify-center">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-teal-600" />
+                </div>
+              ) : list.length === 0 ? (
                 <div className="p-8 text-center text-gray-500 dark:text-gray-400">
                   {loading ? 'Memuat…' : 'Tidak ada mapel'}
                 </div>
@@ -444,8 +524,7 @@ function Mapel({ embedded = false }) {
                         row={row}
                         index={index}
                         onClick={openEdit}
-                        onDelete={onDeleteClick}
-                        statusBadge={statusBadge}
+                        kelasColStyle={kelasColStyle}
                       />
                     ))}
                   </div>
@@ -477,7 +556,7 @@ function Mapel({ embedded = false }) {
             </div>
 
             <div className="h-20 sm:h-0" aria-hidden="true" />
-          </motion.div>
+          </div>
 
       <MapelFormOffcanvas
         isOpen={formOpen}
@@ -487,6 +566,7 @@ function Mapel({ embedded = false }) {
         rombelList={rombelList}
         kitabList={kitabList}
         onSuccess={onFormSuccess}
+        onDelete={onDeleteClick}
       />
 
       <Modal

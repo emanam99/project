@@ -4,13 +4,10 @@ import { kitabAPI } from '../../../services/api'
 import { useNotification } from '../../../contexts/NotificationContext'
 import KitabFormOffcanvas from './components/KitabFormOffcanvas'
 
-function kitabListTitle(row) {
+function kitabTitles(row) {
+  const indo = String(row?.nama_indo ?? '').trim()
   const arab = String(row?.nama_arab ?? '').trim()
-  return arab || String(row?.nama_indo ?? '').trim() || '—'
-}
-
-function kitabTitleIsArab(row) {
-  return String(row?.nama_arab ?? '').trim() !== ''
+  return { indo, arab }
 }
 
 function kitabMatchesSearch(row, query) {
@@ -113,6 +110,16 @@ function Kitab({ embedded = false }) {
     })
   }, [list, fanFilter, penulisFilter, debouncedSearch])
 
+  const fanColStyle = useMemo(() => {
+    let max = 0
+    list.forEach((row) => {
+      const n = String(row?.fan ?? '').trim().length
+      if (n > max) max = n
+    })
+    const rem = Math.min(11, Math.max(5, max * 0.52 + 1.4))
+    return { gridTemplateColumns: `minmax(0,1fr) minmax(0,1fr) ${rem}rem` }
+  }, [list])
+
   const openTambah = () => {
     setEditingKitab(null)
     setFormOpen(true)
@@ -168,33 +175,56 @@ function Kitab({ embedded = false }) {
                 className={`absolute left-0 right-0 bottom-0 h-0.5 bg-teal-500 transition-opacity ${isInputFocused ? 'opacity-100' : 'opacity-0'}`}
               />
             </div>
-            <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-2 justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={fanFilter}
-                  onChange={(e) => setFanFilter(e.target.value)}
-                  className="border rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-teal-500 min-w-[10rem]"
-                >
-                  <option value="">Semua fan</option>
-                  {fanOptions.map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={penulisFilter}
-                  onChange={(e) => setPenulisFilter(e.target.value)}
-                  className="border rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-teal-500 min-w-[12rem]"
-                >
-                  <option value="">Semua penulis</option>
-                  {penulisOptions.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
+            <div className="px-4 pt-2 pb-1 border-t border-gray-200 dark:border-gray-700">
+              <div
+                className="overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                <div className="flex gap-2 min-w-max">
+                  <button
+                    type="button"
+                    onClick={() => setFanFilter('')}
+                    className={`flex-shrink-0 px-2 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                      fanFilter === ''
+                        ? 'bg-teal-600 text-white shadow-md'
+                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    Semua
+                  </button>
+                  {fanOptions.map((f) => {
+                    const isActive = fanFilter === f
+                    return (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setFanFilter(isActive ? '' : f)}
+                        className={`flex-shrink-0 px-2 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                          isActive
+                            ? 'bg-teal-600 text-white shadow-md'
+                            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
+            </div>
+            <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-2 justify-between">
+              <select
+                value={penulisFilter}
+                onChange={(e) => setPenulisFilter(e.target.value)}
+                className="border rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 focus:ring-2 focus:ring-teal-500 min-w-[12rem]"
+              >
+                <option value="">Semua penulis</option>
+                {penulisOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -230,7 +260,8 @@ function Kitab({ embedded = false }) {
               <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 <AnimatePresence>
                   {displayedList.map((row, index) => {
-                    const isArab = kitabTitleIsArab(row)
+                    const { indo, arab } = kitabTitles(row)
+                    const mobileTitle = arab || indo || '—'
                     return (
                       <motion.button
                         key={row.id}
@@ -241,16 +272,37 @@ function Kitab({ embedded = false }) {
                         exit={{ opacity: 0 }}
                         transition={{ delay: Math.min(index, 20) * 0.01 }}
                         onClick={() => openEdit(row)}
-                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+                        className="w-full flex md:grid items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
+                        style={fanColStyle}
                       >
                         <span
-                          className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-gray-100 truncate"
-                          dir={isArab ? 'rtl' : 'ltr'}
+                          className="md:hidden min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-gray-100 truncate"
+                          dir={arab ? 'rtl' : 'ltr'}
                         >
-                          {kitabListTitle(row)}
+                          {mobileTitle}
+                        </span>
+                        <span className="hidden md:block min-w-0 text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                          {indo || (!arab ? '—' : '')}
+                        </span>
+                        {arab ? (
+                          <span
+                            className="hidden md:block min-w-0 text-sm text-gray-700 dark:text-gray-200 truncate text-center"
+                            dir="rtl"
+                          >
+                            {arab}
+                          </span>
+                        ) : (
+                          <span className="hidden md:block min-w-0" aria-hidden />
+                        )}
+                        <span className="hidden md:flex min-w-0 justify-end">
+                          {row.fan ? (
+                            <span className="max-w-full truncate px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200">
+                              {row.fan}
+                            </span>
+                          ) : null}
                         </span>
                         {row.fan ? (
-                          <span className="shrink-0 px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200">
+                          <span className="md:hidden shrink-0 max-w-[7rem] truncate px-2 py-0.5 rounded-md text-xs font-medium bg-teal-50 dark:bg-teal-900/40 text-teal-800 dark:text-teal-200">
                             {row.fan}
                           </span>
                         ) : null}

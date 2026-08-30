@@ -13,12 +13,18 @@ return function (\Slim\App $app): void {
     // Reader publik (tanpa login): aplikasi mandiri Nailul Murod hanya butuh baca data.
     $app->group('/api/wirid-nailul-murod', function ($group) {
         $group->get('/bab-options', [WiridNailulMurodController::class, 'getBabOptions']);
+        $group->get('/bab', [WiridNailulMurodController::class, 'getBabList']);
         $group->get('', [WiridNailulMurodController::class, 'getList']);
         $group->get('/{id}', [WiridNailulMurodController::class, 'getById']);
     });
 
     // Kelola data tetap khusus user terautentikasi dengan akses fitur.
     $app->group('/api/wirid-nailul-murod', function ($group) {
+        $group->put('/bab/reorder', [WiridNailulMurodController::class, 'reorderBab']);
+        $group->put('/reorder', [WiridNailulMurodController::class, 'reorder']);
+        $group->post('/bab', [WiridNailulMurodController::class, 'createBab']);
+        $group->put('/bab/{id}', [WiridNailulMurodController::class, 'updateBab']);
+        $group->delete('/bab/{id}', [WiridNailulMurodController::class, 'deleteBab']);
         $group->post('', [WiridNailulMurodController::class, 'create']);
         $group->put('/{id}', [WiridNailulMurodController::class, 'update']);
         $group->delete('/{id}', [WiridNailulMurodController::class, 'delete']);

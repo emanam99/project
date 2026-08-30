@@ -1,24 +1,27 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, matchPath, useNavigate } from 'react-router-dom'
 import { AnimatedHeaderTitle } from './components/layout/AnimatedHeaderTitle'
 import { DesktopSidebar } from './components/layout/DesktopSidebar'
 import { MobileBottomNav } from './components/layout/MobileBottomNav'
 import { MobileTopbar } from './components/layout/MobileTopbar'
 import { ReaderFontSettingsPanel } from './components/reader/ReaderFontSettingsPanel'
+import { ReaderPickOffcanvas } from './components/reader/ReaderPickOffcanvas'
 import { SyiirLayoutToggleIcon } from './components/reader/SyiirLayoutToggleIcon'
 import { SyiirReaderProvider, useSyiirReader } from './contexts/SyiirReaderContext'
 import { useBerandaHeroChrome } from './hooks/useBerandaHeroChrome'
 import { useAppHeaderTitle } from './hooks/usePageTitle'
 import { useReaderFontScale } from './hooks/useReaderFontScale'
 import { useWiridReaderRoute } from './hooks/useWiridReaderRoute'
-import { BabDetailPage, HomePage, ListBabPage, WiridDetailPage } from './features/wirid/pages'
+import { BabDetailPage, HomePage, ListBabPage, SettingsPage, WiridDetailPage } from './features/wirid/pages'
+import { parseWiridIdFromSlug } from './utils/slug'
 import { usePwaInstallPrompt } from './hooks/usePwaInstallPrompt'
 import { useReaderData } from './hooks/useReaderData'
 import { useTheme } from './hooks/useTheme'
 import { MainScrollContext } from './contexts/MainScrollContext'
 
 const READER_FONT_PANEL_HISTORY_KEY = 'nmReaderFontPanel'
+const READER_PICK_OFFCANVAS_HISTORY_KEY = 'nmReaderPickOffcanvas'
 
 function SyiirReaderRouteSync({ isWiridReader }: { isWiridReader: boolean }) {
   const { registerHasSyiir } = useSyiirReader()
@@ -29,18 +32,27 @@ function SyiirReaderRouteSync({ isWiridReader }: { isWiridReader: boolean }) {
 }
 
 function AppContent() {
+  const navigate = useNavigate()
   const { state, refreshData, syncInfo } = useReaderData()
   const { theme, toggleTheme } = useTheme()
   const { canInstall, installReady, installed, promptInstall } = usePwaInstallPrompt()
   const location = useLocation()
-  const pageTitle = useAppHeaderTitle(location, state.rows, state.loading)
+  const pageTitle = useAppHeaderTitle(location, state.rows, state.loading, state.babList)
   const isWiridReader = useWiridReaderRoute(location)
   const { hasSyiir, layoutMode: syiirLayoutMode, toggleLayoutMode } = useSyiirReader()
   const readerFont = useReaderFontScale()
   const [readerFontPanelOpen, setReaderFontPanelOpen] = useState(false)
+  const [readerPickOpen, setReaderPickOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   /** Entri history dummy untuk panel font — tombol back menutup panel dulu */
   const readerFontHistoryPushed = useRef(false)
+  const readerPickHistoryPushed = useRef(false)
+
+  const readerMatch = matchPath({ path: '/list/:babSlug/:wiridSlug' }, location.pathname)
+  const currentBabSlug = readerMatch?.params.babSlug
+  const currentWiridId = readerMatch?.params.wiridSlug
+    ? parseWiridIdFromSlug(readerMatch.params.wiridSlug)
+    : undefined
 
   const openReaderFontPanel = () => {
     if (!readerFontHistoryPushed.current) {
@@ -58,11 +70,44 @@ function AppContent() {
     }
   }
 
+  const openReaderPickOffcanvas = () => {
+    if (!readerPickHistoryPushed.current) {
+      window.history.pushState({ [READER_PICK_OFFCANVAS_HISTORY_KEY]: 1 }, '')
+      readerPickHistoryPushed.current = true
+    }
+    setReaderPickOpen(true)
+  }
+
+  const closeReaderPickOffcanvas = () => {
+    setReaderPickOpen(false)
+    if (readerPickHistoryPushed.current) {
+      readerPickHistoryPushed.current = false
+      window.history.back()
+    }
+  }
+
+  /** Pilih wirid dari offcanvas: ganti entri history dummy dengan URL bacaan baru. */
+  const pickWiridFromOffcanvas = (path: string) => {
+    setReaderPickOpen(false)
+    const replaceDummy = readerPickHistoryPushed.current
+    if (replaceDummy) {
+      readerPickHistoryPushed.current = false
+    }
+    navigate(path, replaceDummy ? { replace: true } : undefined)
+  }
+
   useEffect(() => {
     const onPopState = () => {
       setReaderFontPanelOpen((wasOpen) => {
         if (wasOpen && readerFontHistoryPushed.current) {
           readerFontHistoryPushed.current = false
+          return false
+        }
+        return wasOpen
+      })
+      setReaderPickOpen((wasOpen) => {
+        if (wasOpen && readerPickHistoryPushed.current) {
+          readerPickHistoryPushed.current = false
           return false
         }
         return wasOpen
@@ -75,7 +120,9 @@ function AppContent() {
   useEffect(() => {
     if (!isWiridReader) {
       readerFontHistoryPushed.current = false
+      readerPickHistoryPushed.current = false
       setReaderFontPanelOpen(false)
+      setReaderPickOpen(false)
     }
   }, [isWiridReader])
 
@@ -119,6 +166,8 @@ function AppContent() {
         installReady={installReady}
         installed={installed}
         onInstall={() => void promptInstall()}
+        isReaderPickMode={isWiridReader}
+        onListBabPick={openReaderPickOffcanvas}
       />
 
       <div className={`main-view${isBeranda ? ' main-view--beranda' : ''}`}>
@@ -233,9 +282,10 @@ function AppContent() {
               >
                 <Routes location={location}>
                   <Route path="/" element={<HomePage state={state} />} />
-                  <Route path="/list" element={<ListBabPage rows={state.rows} />} />
-                  <Route path="/list/:babSlug" element={<BabDetailPage rows={state.rows} />} />
+                  <Route path="/list" element={<ListBabPage rows={state.rows} babList={state.babList} />} />
+                  <Route path="/list/:babSlug" element={<BabDetailPage rows={state.rows} babList={state.babList} />} />
                   <Route path="/list/:babSlug/:wiridSlug" element={<WiridDetailPage rows={state.rows} />} />
+                  <Route path="/pengaturan" element={<SettingsPage readerFont={readerFont} />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </motion.div>
@@ -261,6 +311,8 @@ function AppContent() {
             syiirLayoutMode={syiirLayoutMode}
             onToggleSyiirLayout={toggleLayoutMode}
             onReaderFontSettings={openReaderFontPanel}
+            isReaderPickMode={isWiridReader}
+            onListBabPick={openReaderPickOffcanvas}
           />
         </motion.div>
       ) : (
@@ -270,8 +322,20 @@ function AppContent() {
           syiirLayoutMode={syiirLayoutMode}
           onToggleSyiirLayout={toggleLayoutMode}
           onReaderFontSettings={openReaderFontPanel}
+          isReaderPickMode={isWiridReader}
+          onListBabPick={openReaderPickOffcanvas}
         />
       )}
+
+      <ReaderPickOffcanvas
+        isOpen={readerPickOpen}
+        onClose={closeReaderPickOffcanvas}
+        onPickWirid={pickWiridFromOffcanvas}
+        rows={state.rows}
+        babList={state.babList}
+        currentBabSlug={currentBabSlug}
+        currentWiridId={currentWiridId}
+      />
 
       <ReaderFontSettingsPanel
         open={readerFontPanelOpen}
@@ -288,6 +352,11 @@ function AppContent() {
         onBumpLineUp={readerFont.bumpLineUp}
         canBumpLineDown={readerFont.canBumpLineDown}
         canBumpLineUp={readerFont.canBumpLineUp}
+        faces={readerFont.faces}
+        onAyatFace={readerFont.setAyatFace}
+        onWiridFace={readerFont.setWiridFace}
+        onNadhomFace={readerFont.setNadhomFace}
+        onLatinFace={readerFont.setLatinFace}
       />
     </MainScrollContext.Provider>
   )

@@ -51,7 +51,7 @@ export default function KalenderJamIstiwaBar() {
         if (cancelled || !Number.isFinite(lat) || !Number.isFinite(lng)) return
         setDefaultCoords({ lat, lng })
       } catch {
-        /* tetap Bondowoso */
+        /* tetap default pondok */
       }
     })()
     return () => {

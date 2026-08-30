@@ -6,6 +6,12 @@ import {
   useCallback,
   useRef
 } from 'react'
+import {
+  formatGeolocationError,
+  getGeolocationPosition,
+  GEOLOCATION_WATCH_OPTIONS,
+  positionFromGeolocation,
+} from '../utils/geolocation'
 
 const STORAGE_KEY = 'ebeddien_absen_gps_aktif'
 
@@ -19,6 +25,11 @@ export function AbsenLokasiProvider({ children }) {
   const [geoError, setGeoError] = useState(null)
   const [coordsRefreshing, setCoordsRefreshing] = useState(false)
   const watchRef = useRef(null)
+  const coordsRef = useRef(null)
+
+  useEffect(() => {
+    coordsRef.current = coords
+  }, [coords])
 
   const setGpsEnabled = useCallback((on) => {
     setGpsEnabledState(!!on)
@@ -45,22 +56,57 @@ export function AbsenLokasiProvider({ children }) {
       setGeoError('Peramban tidak mendukung geolokasi')
       return undefined
     }
+
+    let cancelled = false
+    setGeoError(null)
+
+    // Posisi awal: high accuracy → fallback jaringan (HP sering timeout hanya pakai watchPosition).
+    getGeolocationPosition()
+      .then((pos) => {
+        if (cancelled) return
+        setCoords(positionFromGeolocation(pos))
+        setGeoError(null)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setGeoError(formatGeolocationError(err))
+      })
+
     watchRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        setCoords({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        })
+        if (cancelled) return
+        setCoords(positionFromGeolocation(pos))
         setGeoError(null)
       },
       (err) => {
-        setGeoError(err.message || 'Izin lokasi ditolak atau tidak tersedia')
-        setCoords(null)
+        if (cancelled) return
+        if (err.code === 1) {
+          setGeoError(formatGeolocationError(err))
+          setCoords(null)
+          return
+        }
+        // Timeout watch: jangan hapus coords yang sudah ada; coba fallback sekali.
+        if (err.code === 3 && coordsRef.current) {
+          return
+        }
+        getGeolocationPosition({ preferHighAccuracy: false })
+          .then((pos) => {
+            if (cancelled) return
+            setCoords(positionFromGeolocation(pos))
+            setGeoError(null)
+          })
+          .catch((fallbackErr) => {
+            if (cancelled) return
+            if (!coordsRef.current) {
+              setGeoError(formatGeolocationError(fallbackErr))
+            }
+          })
       },
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 25000 }
+      GEOLOCATION_WATCH_OPTIONS
     )
+
     return () => {
+      cancelled = true
       if (watchRef.current != null) {
         navigator.geolocation.clearWatch(watchRef.current)
         watchRef.current = null
@@ -68,33 +114,25 @@ export function AbsenLokasiProvider({ children }) {
     }
   }, [gpsEnabled])
 
-  /** Satu kali baca GPS segar (maximumAge 0) — melengkapi watchPosition agar posisi bisa diperbarui manual. */
+  /** Satu kali baca GPS segar — high accuracy lalu fallback jaringan. */
   const refreshCoords = useCallback(() => {
     if (!gpsEnabled || typeof navigator === 'undefined' || !navigator.geolocation) {
       return Promise.resolve()
     }
     setCoordsRefreshing(true)
-    return new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setCoords({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy
-          })
-          setGeoError(null)
-          setCoordsRefreshing(false)
-          resolve()
-        },
-        (err) => {
-          // Jangan timpa geoError global: posisi dari watchPosition bisa tetap valid;
-          // setGeoError di sini bisa menyembunyikan panel absen mandiri padahal coords dari watch masih ada.
-          setCoordsRefreshing(false)
-          resolve()
-        },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 35000 }
-      )
-    })
+    return getGeolocationPosition({ preferHighAccuracy: true })
+      .then((pos) => {
+        setCoords(positionFromGeolocation(pos))
+        setGeoError(null)
+      })
+      .catch((err) => {
+        if (!coordsRef.current) {
+          setGeoError(formatGeolocationError(err))
+        }
+      })
+      .finally(() => {
+        setCoordsRefreshing(false)
+      })
   }, [gpsEnabled])
 
   const value = {

@@ -4,6 +4,7 @@ import { hasSyiirPattern, useSyiirPairedLayout } from '../../../hooks/useSyiirPa
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { WiridItem } from '../../../types/wirid'
 import { parseWiridIdFromSlug, slugify } from '../../../utils/slug'
+import { wiridBabLabel } from '../../../utils/groupByBab'
 import { recordWiridOpen } from '../../../utils/wiridOpenStats'
 import { sanitizeHtml } from '../../../utils/safeHtml'
 import { Breadcrumbs } from '../components/Breadcrumbs'
@@ -15,7 +16,9 @@ type Props = {
 export function WiridDetailPage({ rows }: Props) {
   const { babSlug, wiridSlug } = useParams()
   const id = parseWiridIdFromSlug(wiridSlug)
-  const item = rows.find((row) => row.id === id && slugify(row.bab) === babSlug)
+  const item = rows.find(
+    (row) => row.id === id && slugify(wiridBabLabel(row.bab)) === babSlug
+  )
   const navigate = useNavigate()
   const isiRef = useRef<HTMLDivElement>(null)
   const syiirContentKey = item ? `${item.id}:${item.isi ?? ''}` : ''

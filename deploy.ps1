@@ -887,15 +887,13 @@ if ($doNailul) {
     Invoke-ContentDirUpload -LocalDir $nailulDist -RemotePath $REMOTE_NAILUL_PATH -TarFileName $NAILUL_TAR `
         -UseDelta:$useDeltaUpload -Label 'nailul-murod' -CompareRoots $nailulRoots
 
-    if ($hasEnvFile) {
-        $envContent = Get-Content $envPath -Raw -Encoding UTF8
-        $envContent = $envContent -replace '(?m)^VITE_API_BASE=.*', "VITE_API_BASE=/api"
-        $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=http://localhost/api/public/api"
-        $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=development"
-        $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=/gambar"
-        [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
-        Write-Host "[Frontend nailul-murod] .env dikembalikan ke local." -ForegroundColor Gray
-    }
+    $envContent = Get-Content $envPath -Raw -Encoding UTF8
+    $envContent = $envContent -replace '(?m)^VITE_API_BASE=.*', "VITE_API_BASE=/api"
+    $envContent = $envContent -replace '(?m)^VITE_API_BASE_URL=.*', "VITE_API_BASE_URL=http://localhost/api/public/api"
+    $envContent = $envContent -replace '(?m)^VITE_APP_ENV=.*', "VITE_APP_ENV=development"
+    $envContent = $envContent -replace '(?m)^VITE_GAMBAR_BASE=.*', "VITE_GAMBAR_BASE=/gambar"
+    [System.IO.File]::WriteAllText($envPath, $envContent, [System.Text.UTF8Encoding]::new($false))
+    Write-Host "[Frontend nailul-murod] .env dikembalikan ke local." -ForegroundColor Gray
 
     Write-Host "[Frontend nailul-murod] Selesai." -ForegroundColor Green
 }

@@ -1,25 +1,35 @@
 import { motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import type { WiridItem } from '../../../types/wirid'
+import type { WiridBabMeta, WiridItem } from '../../../types/wirid'
 import { ListSearchMorph } from '../../../components/search/ListSearchMorph'
 import { groupByBab } from '../../../utils/groupByBab'
 import { slugify } from '../../../utils/slug'
+import { babNameSearchText, resolveBabLabel, wiridTitleSearchText } from '../../../utils/wiridTitle'
+import { useTitleLang } from '../../../hooks/useTitleLang'
 import { listCardsContainerVariants, listCardsItemVariants } from '../listCardsMotion'
 
 type Props = {
   rows: WiridItem[]
+  babList?: WiridBabMeta[]
 }
 
-export function ListBabPage({ rows }: Props) {
-  const grouped = useMemo(() => groupByBab(rows), [rows])
+export function ListBabPage({ rows, babList = [] }: Props) {
+  const { lang: titleLang } = useTitleLang()
+  const grouped = useMemo(() => groupByBab(rows, babList), [rows, babList])
   const [search, setSearch] = useState('')
 
   const normalizedSearch = search.trim().toLowerCase()
   const filtered = useMemo(() => {
     if (!normalizedSearch) return grouped
-    return grouped.filter(([bab]) => bab.toLowerCase().includes(normalizedSearch))
-  }, [grouped, normalizedSearch])
+    return grouped.filter(([canonical, list]) => {
+      const meta = babList.find((b) => b.nama === canonical)
+      const label = resolveBabLabel(canonical, babList, titleLang).toLowerCase()
+      const metaText = meta ? babNameSearchText(meta) : canonical.toLowerCase()
+      return label.includes(normalizedSearch) || metaText.includes(normalizedSearch)
+        || list.some((w) => wiridTitleSearchText(w).includes(normalizedSearch))
+    })
+  }, [grouped, normalizedSearch, babList, titleLang])
 
   return (
     <section className="page-block">
@@ -36,14 +46,20 @@ export function ListBabPage({ rows }: Props) {
         animate="visible"
         variants={listCardsContainerVariants}
       >
-        {filtered.map(([bab, list]) => (
-          <motion.div key={bab} variants={listCardsItemVariants} className="cards__motion-item">
-            <NavLink to={`/list/${slugify(bab)}`} className="card link-card">
-              <strong>{bab}</strong>
+        {filtered.map(([canonical, list]) => {
+          const label = resolveBabLabel(canonical, babList, titleLang)
+          const isArab = titleLang === 'ar'
+          return (
+          <motion.div key={canonical} variants={listCardsItemVariants} className="cards__motion-item">
+            <NavLink to={`/list/${slugify(canonical)}`} className="card link-card">
+              <strong className={isArab ? 'card__title--ar' : undefined} dir={isArab ? 'rtl' : undefined} lang={isArab ? 'ar' : 'id'}>
+                {label}
+              </strong>
               <span>{list.length} wirid</span>
             </NavLink>
           </motion.div>
-        ))}
+          )
+        })}
         {filtered.length === 0 && (
           <motion.div variants={listCardsItemVariants} className="cards__motion-item">
             <div className="card">

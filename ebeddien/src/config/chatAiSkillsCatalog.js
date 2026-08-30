@@ -216,6 +216,12 @@ export const CHAT_AI_SKILL_GROUPS = [
         requiresAccess: 'keuanganReviewDraft',
       },
       {
+        title: 'Pengaturan provider WA pengeluaran',
+        description:
+          'Menjelaskan tab ikon gerigi di Pengeluaran: memilih provider WhatsApp khusus notifikasi pengeluaran (WA sendiri, Evolution, WatZap) atau mengikuti pengaturan umum.',
+        requiresAccess: 'keuanganPengeluaranPengaturan',
+      },
+      {
         title: 'Analisis & ikhtisar keuangan',
         description:
           'Interpretasi ringkas angka di dashboard (tren, perbandingan sederhana) berdasarkan data yang Anda salin atau jelaskan — bukan pengganti laporan resmi.',

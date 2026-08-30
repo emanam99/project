@@ -66,9 +66,11 @@ export function usePengeluaranFiturAccess() {
     const tabRencana = can(C.tabRencana, () => hasMenuPengeluaran)
     const tabPengeluaran = can(C.tabPengeluaran, () => hasMenuPengeluaran)
     const tabDraft = can(C.tabDraft, () => hasMenuPengeluaran)
+    /** Tanpa aksi pengeluaran di token: jangan tampilkan (hanya yang punya aksi / super). */
+    const tabPengaturan = isSuper || (apiHasPengeluaran && codes.includes(C.tabPengaturan))
 
     const noTabAccess =
-      apiHasPengeluaran && !tabRencana && !tabPengeluaran && !tabDraft
+      apiHasPengeluaran && !tabRencana && !tabPengeluaran && !tabDraft && !tabPengaturan
 
     const rencanaBuat = can(C.rencanaBuat, () => hasMenuPengeluaran)
     const rencanaSimpan = can(C.rencanaSimpan, () => hasMenuPengeluaran)
@@ -119,6 +121,7 @@ export function usePengeluaranFiturAccess() {
       tabRencana,
       tabPengeluaran,
       tabDraft,
+      tabPengaturan,
       rencanaLembagaSemua,
       pengeluaranLembagaSemua,
       draftLembagaSemua,

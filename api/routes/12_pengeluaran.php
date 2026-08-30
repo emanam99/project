@@ -22,6 +22,8 @@ return function (\Slim\App $app): void {
     })->add(new EbeddienFiturMiddleware(EbeddienFiturAccess::financeMenus(), LegacyRouteRoles::forKey(LegacyRouteRoleKeys::FINANCE_MENUS)))->add(new AuthMiddleware());
 
     $app->group('/api/pengeluaran', function ($group) {
+        $group->get('/notification-config', [PengeluaranController::class, 'getNotificationConfig']);
+        $group->put('/notification-config', [PengeluaranController::class, 'saveNotificationConfig']);
         $group->post('/notif-wa', [PengeluaranController::class, 'sendPengeluaranNotifWa']);
         $group->post('/rencana/notif-wa', [PengeluaranController::class, 'sendRencanaNotifWa']);
         $group->get('/rencana/wa-wake', [PengeluaranController::class, 'getRencanaWaWake']);

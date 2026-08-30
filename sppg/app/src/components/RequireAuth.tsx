@@ -1,9 +1,11 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { getStoredUser, hasAppAccess, isLoggedIn, isPendingRole } from '../utils/auth'
+import { getStoredUser, hasAppAccess, isLoggedIn, isPendingRole, isSubscriptionActive } from '../utils/auth'
 
 export default function RequireAuth() {
   const location = useLocation()
   const waiting = location.pathname === '/menunggu-akses'
+  const langganan = location.pathname === '/langganan'
+  const profil = location.pathname === '/profil-sppg'
 
   if (!isLoggedIn()) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
@@ -22,6 +24,10 @@ export default function RequireAuth() {
 
   if (!pending && !hasAppAccess(user?.role)) {
     return <Navigate to="/menunggu-akses" replace />
+  }
+
+  if (!pending && !isSubscriptionActive() && !langganan && !profil && !waiting) {
+    return <Navigate to="/langganan" replace />
   }
 
   return <Outlet />

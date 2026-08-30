@@ -1,4 +1,5 @@
-import { clearSession, getStoredUser, getToken, saveSession, type AuthUser } from '../utils/auth'
+import { clearSession, getStoredUser, getToken, saveSession, type AuthUser, type SessionContext, type SppgProfile, type SubscriptionInfo } from '../utils/auth'
+import { getOAuthApiBaseUrl, getTenantSubdomain } from '../utils/tenantHost'
 
 function isPrivateHostname(hostname: string): boolean {
   const h = hostname.toLowerCase()
@@ -38,6 +39,9 @@ function resolveOAuthApiUrl(): string {
   const explicit = (import.meta.env.VITE_OAUTH_API_URL as string | undefined)?.replace(/\/$/, '')
   if (explicit) return explicit
 
+  const cloudyCentral = getOAuthApiBaseUrl()
+  if (cloudyCentral) return cloudyCentral
+
   const api = resolveApiBaseUrl()
   if (typeof window !== 'undefined' && isPrivateHostname(window.location.hostname)) {
     return 'http://localhost/sppg/api/public'
@@ -54,13 +58,27 @@ function resolveOAuthApiUrl(): string {
 }
 
 const API_URL = resolveApiBaseUrl()
-const OAUTH_API_URL = resolveOAuthApiUrl()
 
 export const getApiBaseUrl = (): string => API_URL
 
+export function getOAuthApiUrl(): string {
+  return resolveOAuthApiUrl()
+}
+
+export function getPlatformGoogleLoginUrl(returnTo = '/'): string {
+  const frontend = encodeURIComponent(window.location.origin)
+  const oauth = resolveOAuthApiUrl()
+  return `${oauth}/auth/google?mode=platform_admin&returnTo=${encodeURIComponent(returnTo)}&frontend=${frontend}`
+}
+
 export function getGoogleLoginUrl(returnTo = '/dashboard'): string {
   const frontend = encodeURIComponent(window.location.origin)
-  return `${OAUTH_API_URL}/auth/google?returnTo=${encodeURIComponent(returnTo)}&frontend=${frontend}`
+  let url = `${resolveOAuthApiUrl()}/auth/google?returnTo=${encodeURIComponent(returnTo)}&frontend=${frontend}`
+  const sub = getTenantSubdomain()
+  if (sub) {
+    url += `&sppg_subdomain=${encodeURIComponent(sub)}`
+  }
+  return url
 }
 
 type ApiResult<T = unknown> = {
@@ -93,6 +111,12 @@ async function request<T = unknown>(
     if (res.status === 401) {
       clearSession()
     }
+    if (res.status === 402 && json.code === 'subscription_inactive') {
+      const path402 = window.location.pathname
+      if (path402 !== '/langganan' && path402 !== '/profil-sppg') {
+        window.location.replace('/langganan')
+      }
+    }
     if (res.status === 403 && json.code === 'pending_access') {
       const token = getToken()
       const user = getStoredUser()
@@ -113,11 +137,30 @@ async function request<T = unknown>(
   }
 }
 
-export async function fetchMe(): Promise<ApiResult<AuthUser>> {
+export type MeResponse = AuthUser & {
+  sppg?: SppgProfile | null
+  subscription?: SubscriptionInfo | null
+  subscription_active?: boolean
+}
+
+export async function fetchMe(): Promise<
+  ApiResult<AuthUser> & {
+    sppg?: SppgProfile | null
+    subscription?: SubscriptionInfo | null
+    subscription_active?: boolean
+  }
+> {
   const result = await request<AuthUser>('/auth/me')
   if (result.success && result.user) {
     const token = getToken()
-    if (token) saveSession(token, result.user)
+    if (token) {
+      const ctx: SessionContext = {
+        sppg: (result as { sppg?: SppgProfile | null }).sppg ?? null,
+        subscription: (result as { subscription?: SubscriptionInfo | null }).subscription ?? null,
+        subscription_active: (result as { subscription_active?: boolean }).subscription_active,
+      }
+      saveSession(token, result.user, ctx)
+    }
   }
   return result
 }
@@ -791,4 +834,152 @@ export async function downloadPorsiFotoBlob(
   } catch {
     return { success: false, message: 'Koneksi gagal saat mengunduh foto.' }
   }
+}
+
+export async function checkSppgSlug(slug: string) {
+  return request<{ slug: string; available: boolean }>(
+    `/public/sppg/check-slug?slug=${encodeURIComponent(slug)}`,
+  )
+}
+
+export async function checkSppgSubdomain(subdomain: string) {
+  return request<{ subdomain: string; available: boolean; tenant_url?: string | null }>(
+    `/public/sppg/check-subdomain?subdomain=${encodeURIComponent(subdomain)}`,
+  )
+}
+
+export type RegisterSppgPayload = {
+  nama_unit: string
+  nama_yayasan: string
+  slug: string
+  subdomain?: string
+  alamat?: string
+  telepon?: string
+  email_kontak?: string
+}
+
+export async function registerSppg(payload: RegisterSppgPayload) {
+  return request<{ auth_url: string }>('/public/sppg/register', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, frontend: window.location.origin }),
+  })
+}
+
+export async function fetchSppgProfile() {
+  return request<{ sppg: SppgProfile; subscription: SubscriptionInfo | null }>('/sppg/profile')
+}
+
+export async function updateSppgProfile(payload: Partial<RegisterSppgPayload> & { pwa_short_name?: string }) {
+  return request<{ sppg: SppgProfile; subscription: SubscriptionInfo | null }>('/sppg/profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function uploadSppgPwaLogo(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  const headers = new Headers()
+  const token = getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  try {
+    const res = await fetch(`${API_URL}/sppg/profile/pwa-logo`, {
+      method: 'POST',
+      headers,
+      body: form,
+      credentials: 'include',
+    })
+    const json = (await res.json().catch(() => ({}))) as ApiResult<{
+      sppg: SppgProfile
+      subscription: SubscriptionInfo | null
+    }>
+    if (res.status === 401) clearSession()
+    if (!res.ok && json.success === undefined) {
+      return { success: false, message: json.message || `HTTP ${res.status}` }
+    }
+    return json
+  } catch {
+    return { success: false, message: 'Koneksi gagal saat meng-upload logo.' }
+  }
+}
+
+export async function fetchSubscriptionDetail() {
+  return request<{
+    sppg: SppgProfile
+    subscription: SubscriptionInfo | null
+    payments: Array<{
+      id: number
+      amount: number
+      status: string
+      paid_at?: string | null
+      created_at: string
+    }>
+  }>('/sppg/subscription')
+}
+
+export async function createSubscriptionPayment() {
+  return request<{ invoice_url: string; amount: number }>('/sppg/subscription/pay', {
+    method: 'POST',
+  })
+}
+
+export type TenantPickOption = {
+  user_id: number
+  sppg_id: number
+  slug: string
+  nama_unit: string
+  nama_yayasan: string
+  role: string
+}
+
+export async function fetchPickOptions(pick: string) {
+  return request<TenantPickOption[]>(`/auth/pick-options?pick=${encodeURIComponent(pick)}`)
+}
+
+export async function completeTenantPick(pick: string, sppgId: number) {
+  return request<{ token: string; user: AuthUser }>('/auth/complete-pick', {
+    method: 'POST',
+    body: JSON.stringify({ pick, sppg_id: sppgId }),
+  })
+}
+
+export async function fetchPlatformDashboard() {
+  return request<{
+    tenants_total: number
+    subscriptions_active: number
+    subscriptions_attention: number
+    tenants_pending_dns: number
+    revenue_month: number
+  }>('/platform/dashboard')
+}
+
+export async function fetchPlatformTenants(q = '', status = '') {
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  if (status) params.set('status', status)
+  const qs = params.toString()
+  return request<{ items: SppgProfile[] }>(`/platform/tenants${qs ? `?${qs}` : ''}`)
+}
+
+export async function updatePlatformTenantStatus(id: number, status: string) {
+  return request<{ sppg: SppgProfile }>(`/platform/tenants/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function retryPlatformTenantDns(id: number) {
+  return request<{ sppg: SppgProfile }>(`/platform/tenants/${id}/retry-dns`, {
+    method: 'POST',
+  })
+}
+
+export async function fetchPlatformSubscriptions(status = '') {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : ''
+  return request<{ items: Record<string, unknown>[] }>(`/platform/subscriptions${qs}`)
+}
+
+export async function fetchPlatformPayments(sppgId = 0) {
+  const qs = sppgId > 0 ? `?sppg_id=${sppgId}` : ''
+  return request<{ items: Record<string, unknown>[] }>(`/platform/payments${qs}`)
 }

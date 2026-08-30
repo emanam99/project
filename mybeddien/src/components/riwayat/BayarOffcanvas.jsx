@@ -960,7 +960,7 @@ export default function BayarOffcanvas({
         phone: phone.trim(),
         email: email.trim(),
         payment_method: paymentMethod,
-        reference_id: `PAY-${jenisPembayaran}-${Date.now()}-${idSantri || idReferensi || 'X'}`,
+        reference_id: `PAY-${String(jenisPembayaran).toUpperCase()}-${Date.now()}-${idSantri || idReferensi || 'X'}`,
         jenis_pembayaran: jenisPembayaran,
         id_referensi: idReferensi ?? null,
         tabel_referensi: tabelReferensi,

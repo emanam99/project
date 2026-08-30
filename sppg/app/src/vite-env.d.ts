@@ -7,6 +7,9 @@ interface ImportMetaEnv {
   readonly VITE_OAUTH_API_URL?: string
   readonly VITE_APP_BASE?: string
   readonly VITE_GAMBAR_BASE?: string
+  readonly VITE_TENANT_BASE_DOMAIN?: string
+  readonly VITE_LANDING_HOST?: string
+  readonly VITE_PLATFORM_ADMIN_HOST?: string
 }
 
 interface ImportMeta {

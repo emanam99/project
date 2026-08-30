@@ -6,6 +6,15 @@ import { wiridNailulMurodAPI } from '../../services/api'
 import { useNotification } from '../../contexts/NotificationContext'
 import { useOffcanvasBackClose } from '../../hooks/useOffcanvasBackClose'
 import { sanitizeHtml } from '../../utils/safeHtml'
+import {
+  EBEDDien_NAILUL_TITLE_LANG_KEY,
+  readEbeddienTitleLang,
+  resolveBabLabel,
+  resolveWiridTitle,
+  wiridTitleSearchText,
+} from './utils/wiridTitle'
+import NailulMurodWiridReorderList from './components/NailulMurodWiridReorderList'
+import NailulMurodBabOffcanvas from './components/NailulMurodBabOffcanvas'
 import './NailulMurod.css'
 
 /** State history stabil untuk useOffcanvasBackClose (hindari pushState berulang). */
@@ -25,14 +34,25 @@ function stripTags(html) {
   return (d.textContent || d.innerText || '').replace(/\s+/g, ' ').trim()
 }
 
-function groupByBab(rows) {
+function groupByBab(rows, babList = []) {
   const m = new Map()
   for (const r of rows) {
     const b = (r.bab && String(r.bab).trim()) || '(Tanpa bab)'
     if (!m.has(b)) m.set(b, [])
     m.get(b).push(r)
   }
-  return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0], 'id'))
+  const babOrder = new Map()
+  babList.forEach((b) => babOrder.set(b.nama, b.urutan))
+  const sortItems = (list) =>
+    [...list].sort((a, b) => (a.urutan - b.urutan) || (a.id - b.id))
+  const entries = Array.from(m.entries()).map(([bab, list]) => [bab, sortItems(list)])
+  entries.sort((a, b) => {
+    const keyA = a[0] === '(Tanpa bab)' ? 10000 : babOrder.get(a[0]) ?? 9999
+    const keyB = b[0] === '(Tanpa bab)' ? 10000 : babOrder.get(b[0]) ?? 9999
+    if (keyA !== keyB) return keyA - keyB
+    return a[0].localeCompare(b[0], 'id')
+  })
+  return entries
 }
 
 /** Bar cari + tambah + filter bab — pola mirip halaman Fitur / ManageUsers. */
@@ -48,6 +68,7 @@ const NailulMurodSearchBar = memo(function NailulMurodSearchBar({
   onBabFilterChange,
   babOptions,
   onTambahClick,
+  onEditBabClick,
   totalShown,
 }) {
   return (
@@ -133,6 +154,22 @@ const NailulMurodSearchBar = memo(function NailulMurodSearchBar({
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={onEditBabClick}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                title="Kelola bab"
+                aria-label="Kelola bab"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  />
+                </svg>
+              </button>
               {typeof totalShown === 'number' && (
                 <span className="text-xs text-gray-500 dark:text-gray-500 ml-auto">
                   {totalShown} entri
@@ -149,7 +186,7 @@ const NailulMurodSearchBar = memo(function NailulMurodSearchBar({
 NailulMurodSearchBar.displayName = 'NailulMurodSearchBar'
 
 /** Pratinjau penuh — klik item daftar. Edit & hapus hanya di sini. */
-function PreviewOffcanvas({ isOpen, row, onClose, onEdit, onDeleteRequest, onExitComplete }) {
+function PreviewOffcanvas({ isOpen, row, onClose, onEdit, onDeleteRequest, onExitComplete, titleLang, babList }) {
   const closeWithBack = useOffcanvasBackClose(isOpen, onClose, { state: WIRID_PREVIEW_OFFCANVAS_STATE })
   if (typeof document === 'undefined' || !row) return null
 
@@ -186,9 +223,15 @@ function PreviewOffcanvas({ isOpen, row, onClose, onEdit, onDeleteRequest, onExi
             <div className="shrink-0 border-b border-gray-200/80 dark:border-gray-700/80 bg-gray-50/50 dark:bg-gray-900/30 px-3 py-2.5 flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-[11px] text-teal-600 dark:text-teal-400 font-medium uppercase tracking-wide">
-                  {row.bab && String(row.bab).trim() ? String(row.bab).trim() : '(Tanpa bab)'}
+                  {resolveBabLabel(
+                    row.bab && String(row.bab).trim() ? String(row.bab).trim() : '(Tanpa bab)',
+                    babList,
+                    titleLang
+                  )}
                 </p>
-                <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">{row.judul}</h2>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">
+                  {resolveWiridTitle(row, titleLang)}
+                </h2>
                 {row.urutan != null && row.urutan > 0 && (
                   <p className="text-[11px] text-gray-500">Urutan: {row.urutan}</p>
                 )}
@@ -247,14 +290,16 @@ function PreviewOffcanvas({ isOpen, row, onClose, onEdit, onDeleteRequest, onExi
   )
 }
 
-function DeleteModal({ open, row, onClose, onConfirm, busy }) {
+function DeleteModal({ open, row, onClose, onConfirm, busy, titleLang }) {
   if (!open || !row) return null
   return createPortal(
     <div className="fixed inset-0 z-[10230] flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Tutup" />
       <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl max-w-md w-full p-4 border border-gray-200 dark:border-gray-700">
         <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1.5">Hapus entri?</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-2">{row.judul}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-2">
+          {resolveWiridTitle(row, titleLang)}
+        </p>
         <div className="flex justify-end gap-1.5">
           <button type="button" onClick={onClose} className={ocBtnGhost}>
             Batal
@@ -281,10 +326,23 @@ export default function NailulMurod() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(null)
   const [babOptions, setBabOptions] = useState([])
+  const [babList, setBabList] = useState([])
   const [filterBab, setFilterBab] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const [titleLang, setTitleLang] = useState(() =>
+    typeof window !== 'undefined' ? readEbeddienTitleLang() : 'id'
+  )
+
+  const handleTitleLang = useCallback((lang) => {
+    setTitleLang(lang)
+    try {
+      localStorage.setItem(EBEDDien_NAILUL_TITLE_LANG_KEY, lang)
+    } catch {
+      // ignore
+    }
+  }, [])
 
   /** `open: false` = sedang animasi tutup; `row` tetap ada sampai onExitComplete. */
   const [preview, setPreview] = useState(null) // { open, row } | null
@@ -292,6 +350,8 @@ export default function NailulMurod() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [deletingBusy, setDeletingBusy] = useState(false)
+  const [reorderBusy, setReorderBusy] = useState(false)
+  const [babOffcanvasOpen, setBabOffcanvasOpen] = useState(false)
   const stripCacheRef = useRef(new Map())
 
   const requestClosePreview = useCallback(
@@ -325,6 +385,10 @@ export default function NailulMurod() {
       if (o?.success && Array.isArray(o.data)) {
         setBabOptions(o.data)
       }
+      const babRes = await wiridNailulMurodAPI.getBabList()
+      if (babRes?.success && Array.isArray(babRes.data)) {
+        setBabList(babRes.data)
+      }
     } catch (e) {
       setErr('Terjadi kesalahan saat memuat data')
       setList([])
@@ -342,7 +406,7 @@ export default function NailulMurod() {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return list
     return list.filter((r) => {
-      const judul = (r.judul || '').toLowerCase()
+      const qtext = wiridTitleSearchText(r)
       const isiKey = `isi:${r.id}:${r.isi || ''}`
       const artiKey = `arti:${r.id}:${r.arti || ''}`
       let isi = cache.get(isiKey)
@@ -355,11 +419,48 @@ export default function NailulMurod() {
         arti = stripTags(r.arti)
         cache.set(artiKey, arti)
       }
-      return judul.includes(q) || isi.includes(q) || arti.includes(q)
+      return qtext.includes(q) || isi.includes(q) || arti.includes(q)
     })
   }, [list, searchQuery])
 
-  const grouped = useMemo(() => groupByBab(filteredList), [filteredList])
+  const grouped = useMemo(() => groupByBab(filteredList, babList), [filteredList, babList])
+
+  const reorderDisabled = Boolean(searchQuery.trim()) || reorderBusy
+
+  const handlePersistWiridOrder = useCallback(
+    async (babName, ordered) => {
+      setReorderBusy(true)
+      try {
+        const res = await wiridNailulMurodAPI.reorder({
+          bab: babName,
+          order: ordered.map((r) => r.id),
+        })
+        if (res?.success && Array.isArray(res.data)) {
+          setList((prev) => {
+            const map = new Map(prev.map((r) => [r.id, r]))
+            for (const row of res.data) map.set(row.id, row)
+            return Array.from(map.values())
+          })
+        } else {
+          showNotification(res?.message || 'Gagal mengubah urutan', 'error')
+          load()
+        }
+      } catch (e) {
+        showNotification(e?.response?.data?.message || 'Gagal mengubah urutan', 'error')
+        load()
+      } finally {
+        setReorderBusy(false)
+      }
+    },
+    [load, showNotification]
+  )
+
+  const filterBabOptions = useMemo(() => {
+    if (babList.length > 0) {
+      return babList.map((b) => b.nama)
+    }
+    return babOptions
+  }, [babList, babOptions])
 
   return (
     <div className="h-full overflow-hidden" style={{ minHeight: 0 }}>
@@ -368,25 +469,29 @@ export default function NailulMurod() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Nailul Murod</h1>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Wirid dan amaliyah sehari-hari. Pilih font di editor: <strong>Amiri</strong> untuk ayat,{' '}
-              <strong>Lateef</strong>/<strong>Scheherazade</strong> untuk teks wirid,{' '}
-              <strong>Inter</strong>/<strong>Roboto</strong> untuk terjemahan.
+              Wirid dan amaliyah sehari-hari. Di editor, tandai teks dengan gaya{' '}
+              <strong>Judul</strong>, <strong>Wirid</strong>, <strong>Ayat</strong>, dll. — font
+              tampilan diatur di aplikasi Nailul Murod.
             </p>
           </div>
 
           <div className="rounded-xl border border-teal-200/60 dark:border-teal-800/50 bg-teal-50/50 dark:bg-teal-950/20 p-4 mb-6 text-sm text-gray-700 dark:text-gray-300">
-            <p className="font-medium text-gray-800 dark:text-gray-200 mb-2">Panduan tipografi</p>
+            <p className="font-medium text-gray-800 dark:text-gray-200 mb-2">Panduan gaya di editor</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                <span className="font-['Amiri',serif] text-base">Ayat Al-Qur’an</span> — font Amiri (klasik, rapi
-                standar kitab)
+                <strong>Judul / Sub judul</strong> — judul bagian dalam isi entri
               </li>
               <li>
-                <span className="font-['Lateef',serif] text-lg">Teks wirid</span> — Lateef atau Scheherazade
-                (spasi harakat nyaman)
+                <strong>Wirid</strong> — teks wirid / doa Arab
               </li>
               <li>
-                <span className="font-['Inter',sans-serif]">Terjemahan</span> — Inter atau Roboto (Latin modern)
+                <strong>Nadhom</strong> — bait nadhom / syair Arab
+              </li>
+              <li>
+                <strong>Ayat</strong> — kutipan ayat Al-Qur’an
+              </li>
+              <li>
+                <strong>Normal</strong> — teks biasa / terjemahan tanpa peran khusus
               </li>
             </ul>
           </div>
@@ -407,10 +512,48 @@ export default function NailulMurod() {
             onFilterToggle={() => setIsFilterOpen((v) => !v)}
             babFilter={filterBab}
             onBabFilterChange={(e) => setFilterBab(e.target.value)}
-            babOptions={babOptions}
+            babOptions={filterBabOptions}
             onTambahClick={() => navigate('/wirid/nailul-murod/create')}
+            onEditBabClick={() => setBabOffcanvasOpen(true)}
             totalShown={filteredList.length}
           />
+
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4 -mt-2 px-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-600 dark:text-gray-400">Bahasa tampilan:</span>
+              <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => handleTitleLang('id')}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${
+                    titleLang === 'id'
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                  aria-pressed={titleLang === 'id'}
+                >
+                  Indonesia
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTitleLang('ar')}
+                  className={`px-3 py-1 text-xs font-medium transition-colors ${
+                    titleLang === 'ar'
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                  aria-pressed={titleLang === 'ar'}
+                >
+                  Arab
+                </button>
+              </div>
+            </div>
+            {searchQuery.trim() ? (
+              <p className="text-xs text-amber-700 dark:text-amber-300/90">
+                Urutan dinonaktifkan saat pencarian aktif.
+              </p>
+            ) : null}
+          </div>
 
           {loading && list.length === 0 ? (
             <div className="flex justify-center py-16">
@@ -425,43 +568,27 @@ export default function NailulMurod() {
           ) : (
             <div className="space-y-8">
               {grouped.map(([babName, items]) => (
-                <section key={babName}>
-                  <h2 className="text-sm font-semibold text-teal-700 dark:text-teal-400 uppercase tracking-wider mb-3">
-                    {babName}
-                  </h2>
-                  <ul className="space-y-3">
-                    {items
-                      .slice()
-                      .sort((a, b) => (a.urutan - b.urutan) || (a.id - b.id))
-                      .map((r) => (
-                        <li key={r.id}>
-                          <button
-                            type="button"
-                            onClick={() => setPreview({ row: r, open: true })}
-                            className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/50 p-4 cursor-pointer transition-colors hover:border-teal-300 dark:hover:border-teal-600 hover:bg-teal-50/30 dark:hover:bg-gray-800/80 focus:outline-none focus:ring-2 focus:ring-teal-500/30"
-                          >
-                            <h3 className="font-semibold text-gray-900 dark:text-white">
-                              {r.judul}
-                              {r.urutan != null && r.urutan > 0 && (
-                                <span className="ml-2 text-xs text-gray-400">#{r.urutan}</span>
-                              )}
-                            </h3>
-                            {r.isi && (
-                              <div
-                                className="nm-preview-isi mt-2 text-gray-800 dark:text-gray-200 line-clamp-2 ql-snow"
-                                dangerouslySetInnerHTML={{ __html: sanitizeHtml(r.isi) }}
-                              />
-                            )}
-                            {r.arti && (
-                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-                                {stripTags(r.arti).slice(0, 200)}
-                              </p>
-                            )}
-                            <p className="mt-2 text-xs text-teal-600 dark:text-teal-400">Ketuk untuk pratinjau lengkap</p>
-                          </button>
-                        </li>
-                      ))}
-                  </ul>
+                <section key={babName} className="nm-wirid-bab-section">
+                  <header className="nm-wirid-bab-section__head">
+                    <h2
+                      className={`nm-wirid-bab-section__title${
+                        titleLang === 'ar' ? ' nm-wirid-bab-section__title--ar' : ''
+                      }`}
+                      dir={titleLang === 'ar' ? 'rtl' : undefined}
+                      lang={titleLang === 'ar' ? 'ar' : 'id'}
+                    >
+                      {resolveBabLabel(babName, babList, titleLang)}
+                    </h2>
+                    <span className="nm-wirid-bab-section__meta">{items.length} judul</span>
+                  </header>
+                  <NailulMurodWiridReorderList
+                    babName={babName}
+                    rows={items}
+                    disabled={reorderDisabled}
+                    titleLang={titleLang}
+                    onPersistOrder={handlePersistWiridOrder}
+                    onOpen={(r) => setPreview({ row: r, open: true })}
+                  />
                 </section>
               ))}
             </div>
@@ -471,6 +598,8 @@ export default function NailulMurod() {
             <PreviewOffcanvas
               isOpen={preview.open}
               row={preview.row}
+              titleLang={titleLang}
+              babList={babList}
               onClose={requestClosePreview}
               onExitComplete={onPreviewExitComplete}
               onEdit={(r) => {
@@ -487,6 +616,7 @@ export default function NailulMurod() {
           <DeleteModal
             open={deleteOpen}
             row={deleting}
+            titleLang={titleLang}
             busy={deletingBusy}
             onClose={() => {
               setDeleteOpen(false)
@@ -511,6 +641,12 @@ export default function NailulMurod() {
                 setDeletingBusy(false)
               }
             }}
+          />
+          <NailulMurodBabOffcanvas
+            isOpen={babOffcanvasOpen}
+            onClose={() => setBabOffcanvasOpen(false)}
+            onChanged={load}
+            titleLang={titleLang}
           />
         </div>
       </div>
