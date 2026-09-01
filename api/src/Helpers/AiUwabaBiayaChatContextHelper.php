@@ -79,9 +79,10 @@ final class AiUwabaBiayaChatContextHelper
     {
         $lines = [];
         $lines[] = '=== TARIF UWABA / SYAHRIAH BULANAN (sisipan server; publik; baca saja) ===';
-        $lines[] = 'Sumber: uwaba-prices.json — sama dengan kalkulator di eBeddien (Input UWABA, Manage Data, rincian print).';
+        $lines[] = 'Sumber: uwaba-prices.json + paket sederhana di Input UWABA eBeddien.';
         $lines[] = 'Ini iuran bulanan per santri (10 bulan tahun ajaran hijriyah), BUKAN biaya pendaftaran PSB sekali daftar.';
-        $lines[] = 'Rumus per bulan: harga dasar per status + tambahan diniyah + tambahan formal + tambahan LTTQ − diskon saudara di pesantren.';
+        $lines[] = 'Metode baru (default Input UWABA): 6 paket — 185.000 Normal, 415.000 STAI Mukim, 290.000 STAI Khoriji, 270.000 STAI Tugas, 86.000 SD, 50.000 PAUD — lalu diskon saudara 0% / 25% (1 saudara) / 35% (2+). Default paket: formal STAI menurut status, PAUD = 50.000, selain itu 185.000 (SD dipilih manual). Di Input UWABA, centang sama = ikut biodata (JSON ditulis ulang); pilih paket lewat offcanvas radio.';
+        $lines[] = 'Metode lama: harga dasar per status + tambahan diniyah + tambahan formal + tambahan LTTQ − diskon saudara.';
 
         $extracted = self::extractBiodataFromMessage($userMessage, $prices);
         if ($extracted !== []) {

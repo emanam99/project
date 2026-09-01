@@ -647,7 +647,15 @@ function Invoke-FrontendNpmBuild {
             }
             if ($LASTEXITCODE -ne 0) { throw "npm install/ci gagal (exit $LASTEXITCODE)" }
         }
-        npm run build
+        $prevNodeOpts = $env:NODE_OPTIONS
+        try {
+            if (-not $env:NODE_OPTIONS) {
+                $env:NODE_OPTIONS = '--max-old-space-size=4096'
+            }
+            npm run build
+        } finally {
+            $env:NODE_OPTIONS = $prevNodeOpts
+        }
         if ($LASTEXITCODE -ne 0) { throw "npm run build gagal (exit $LASTEXITCODE)" }
     } finally {
         Pop-Location

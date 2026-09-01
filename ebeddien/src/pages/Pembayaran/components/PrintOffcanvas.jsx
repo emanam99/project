@@ -9,6 +9,8 @@ import { getSlimApiUrl, getAuthHeaders, uwabaAPI, waAPI, chatAPI } from '../../.
 import { calculateWajibFromBiodata, mergeBiodataForUwabaPricing } from '../../../utils/uwabaCalculator'
 import PrintKwitansi from '../print/PrintKwitansi'
 import PrintUwaba from '../print/PrintUwaba'
+import PrintPdfActions from './PrintPdfActions'
+import { buildKwitansiPdfFilename } from '../../../utils/kwitansiPdf'
 import './PrintOffcanvas.css'
 
 function PrintOffcanvas({ isOpen, onClose, santriId, mode = 'tunggakan' }) {
@@ -378,6 +380,9 @@ Barakallahu fiikum.`
     return 'Print Kwitansi Tunggakan'
   }
 
+  const pdfPrefix = mode === 'uwaba' ? 'Kwitansi-UWABA' : mode === 'khusus' ? 'Kwitansi-Khusus' : 'Kwitansi-Tunggakan'
+  const pdfCaption = `${getTitle().replace(/^Print\s+/i, '')} — ${printData?.biodata?.nama || santriId}`
+
   const offcanvasContent = (
     <AnimatePresence onExitComplete={() => setShowPortal(false)}>
       {isOpen && (
@@ -497,6 +502,17 @@ Barakallahu fiikum.`
                       <span className="text-xs">Print</span>
                     </span>
                   </button>
+                  <PrintPdfActions
+                    filename={buildKwitansiPdfFilename(pdfPrefix, printData?.biodata, santriId)}
+                    caption={pdfCaption}
+                    printData={printData}
+                    printMode={mode}
+                    uwabaPrices={uwabaPrices}
+                    waNumber={waNumber}
+                    waRegistered={waRegistered}
+                    idSantri={santriId}
+                    onNotify={showNotification}
+                  />
                   {waStatus.visible && (
                     <div 
                       className={`text-lg cursor-help flex items-center ${
@@ -585,9 +601,20 @@ Barakallahu fiikum.`
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
                     </svg>
-                    <span className="text-xs">Print</span>
-                  </span>
-                </button>
+                      <span className="text-xs">Print</span>
+                    </span>
+                  </button>
+                  <PrintPdfActions
+                    filename={buildKwitansiPdfFilename(pdfPrefix, printData?.biodata, santriId)}
+                    caption={pdfCaption}
+                    printData={printData}
+                    printMode={mode}
+                    uwabaPrices={uwabaPrices}
+                    waNumber={waNumber}
+                    waRegistered={waRegistered}
+                    idSantri={santriId}
+                    onNotify={showNotification}
+                  />
                 {waStatus.visible && (
                   <div 
                     className={`text-lg cursor-help flex items-center ${

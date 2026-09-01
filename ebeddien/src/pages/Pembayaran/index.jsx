@@ -165,6 +165,8 @@ function Pembayaran() {
         // Harga uwaba-prices memakai lembaga.id; nama di diniyah/formal tetap untuk tampilan di tempat lain
         diniyah: santriData.lembaga_id_diniyah || santriData.lembaga_diniyah || santriData.diniyah || '',
         formal: santriData.lembaga_id_formal || santriData.lembaga_formal || santriData.formal || '',
+        lembaga_formal: santriData.lembaga_formal || '',
+        formal_nama: santriData.formal || santriData.nama_formal || '',
         lttq: santriData.lttq || '',
         saudara: santriData.saudara || santriData.saudara_di_pesantren || ''
       })

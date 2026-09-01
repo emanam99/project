@@ -124,6 +124,10 @@ export function canAccessPathByFitur(pathname, fiturMenuCodes) {
     )
   }
 
+  if (norm === '/kalender/jadwal-sholat') {
+    return codes.includes('menu.kalender.jadwal_sholat')
+  }
+
   /** Pengaturan Kalender: menu halaman atau aksi tab (mis. tab Lokasi dari Absen). */
   if (norm === '/kalender/pengaturan' || norm.startsWith('/kalender/pengaturan/')) {
     if (codes.includes('menu.kalender.pengaturan')) return true

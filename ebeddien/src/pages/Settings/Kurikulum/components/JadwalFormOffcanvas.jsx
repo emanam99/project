@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { mapelAPI, kurikulumJadwalAPI } from '../../../../services/api'
 import CariPengurusOffcanvas from '../../../../components/CariPengurusOffcanvas'
+import JamJenisToggle from '../../../Kalender/components/JamJenisToggle'
+import { normalizeJamJenis } from '../../../Kalender/utils/hariPentingJam'
 
 const inputClass =
   'w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-teal-500 dark:bg-gray-700 dark:text-gray-200'
@@ -71,6 +73,7 @@ export default function JadwalFormOffcanvas({ isOpen, onClose, record, lembagaLi
   const [tanggal, setTanggal] = useState('')
   const [jamMulai, setJamMulai] = useState('')
   const [jamSelesai, setJamSelesai] = useState('')
+  const [jamJenis, setJamJenis] = useState('wib')
   const [idPengurus, setIdPengurus] = useState('')
   const [pengurusNama, setPengurusNama] = useState('')
   const [pengurusPickerOpen, setPengurusPickerOpen] = useState(false)
@@ -107,6 +110,7 @@ export default function JadwalFormOffcanvas({ isOpen, onClose, record, lembagaLi
       setTanggal(record.tanggal ? String(record.tanggal).slice(0, 10) : '')
       setJamMulai(toTimeInput(record.jam_mulai))
       setJamSelesai(toTimeInput(record.jam_selesai))
+      setJamJenis(normalizeJamJenis(record.jam_jenis))
       setIdPengurus(record.id_pengurus != null ? String(record.id_pengurus) : '')
       setPengurusNama(pengurusDisplayName(record))
       setStatus(record.status === 'nonaktif' ? 'nonaktif' : 'aktif')
@@ -121,6 +125,7 @@ export default function JadwalFormOffcanvas({ isOpen, onClose, record, lembagaLi
       setTanggal('')
       setJamMulai('')
       setJamSelesai('')
+      setJamJenis('wib')
       setIdPengurus('')
       setPengurusNama('')
       setStatus('aktif')
@@ -198,6 +203,7 @@ export default function JadwalFormOffcanvas({ isOpen, onClose, record, lembagaLi
       pola,
       jam_mulai: jamMulai,
       jam_selesai: jamSelesai,
+      jam_jenis: normalizeJamJenis(jamJenis),
       status: status || 'aktif',
       hari: null,
       tanggal_bulan: null,
@@ -471,32 +477,37 @@ export default function JadwalFormOffcanvas({ isOpen, onClose, record, lembagaLi
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label htmlFor="jadwal-jam-mulai" className={labelClass}>
-                      Jam mulai <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="jadwal-jam-mulai"
-                      type="time"
-                      value={jamMulai}
-                      onChange={(e) => setJamMulai(e.target.value)}
-                      className={inputClass}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="jadwal-jam-selesai" className={labelClass}>
-                      Jam selesai <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="jadwal-jam-selesai"
-                      type="time"
-                      value={jamSelesai}
-                      onChange={(e) => setJamSelesai(e.target.value)}
-                      className={inputClass}
-                      required
-                    />
+                <div className="space-y-3">
+                  <JamJenisToggle value={normalizeJamJenis(jamJenis)} onChange={setJamJenis} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="jadwal-jam-mulai" className={labelClass}>
+                        Jam mulai ({normalizeJamJenis(jamJenis) === 'istiwa' ? 'Istiwa’' : 'WIB'}){' '}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="jadwal-jam-mulai"
+                        type="time"
+                        value={jamMulai}
+                        onChange={(e) => setJamMulai(e.target.value)}
+                        className={inputClass}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="jadwal-jam-selesai" className={labelClass}>
+                        Jam selesai ({normalizeJamJenis(jamJenis) === 'istiwa' ? 'Istiwa’' : 'WIB'}){' '}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="jadwal-jam-selesai"
+                        type="time"
+                        value={jamSelesai}
+                        onChange={(e) => setJamSelesai(e.target.value)}
+                        className={inputClass}
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
 

@@ -130,6 +130,7 @@ const ExcelSantriEditor = lazy(() => import('./pages/santri/ExcelSantriEditor'))
 const Kalender = lazy(() => import('./pages/Kalender/index.jsx'))
 const KalenderPengaturan = lazy(() => import('./pages/Kalender/KalenderPengaturan'))
 const KalenderHariPenting = lazy(() => import('./pages/Kalender/HariPenting'))
+const KalenderJadwalSholat = lazy(() => import('./pages/Kalender/JadwalSholat'))
 const Converter = lazy(() => import('./pages/Converter/index.jsx'))
 const DataMadrasah = lazy(() => import('./pages/UGT/DataMadrasah'))
 const LaporanUGT = lazy(() => import('./pages/UGT/LaporanUGT'))
@@ -1004,6 +1005,14 @@ function App() {
               element={
                 <Suspense fallback={<PageLoader />}>
                   <KalenderHariPenting />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/kalender/jadwal-sholat"
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <KalenderJadwalSholat />
                 </Suspense>
               }
             />

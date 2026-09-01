@@ -9,6 +9,8 @@ import { getSlimApiUrl, getAuthHeaders, uwabaAPI, waAPI, chatAPI } from '../../.
 import { getMybeddienKwitansiQrUrl } from '../../../config/mybeddienAppUrl'
 import { calculateWajibFromBiodata, mergeBiodataForUwabaPricing } from '../../../utils/uwabaCalculator'
 import PrintUwaba from '../print/PrintUwaba'
+import PrintPdfActions from './PrintPdfActions'
+import { buildKwitansiPdfFilename } from '../../../utils/kwitansiPdf'
 import './PrintOffcanvas.css'
 
 function UwabaPrintOffcanvas({ isOpen, onClose, santriId, tahunAjaran: tahunAjaranProp }) {
@@ -436,6 +438,17 @@ Barakallahu fiikum.`
                       <span className="text-xs">Print</span>
                     </span>
                   </button>
+                  <PrintPdfActions
+                    filename={buildKwitansiPdfFilename('Kwitansi-UWABA', uwabaData?.biodata, santriId)}
+                    caption={`Kwitansi UWABA — ${uwabaData?.biodata?.nama || santriId}`}
+                    printData={uwabaData}
+                    printMode="uwaba"
+                    uwabaPrices={uwabaPrices}
+                    waNumber={waNumber}
+                    waRegistered={waRegistered}
+                    idSantri={santriId}
+                    onNotify={showNotification}
+                  />
                 </div>
               </div>
             </div>

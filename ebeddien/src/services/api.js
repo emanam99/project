@@ -1077,8 +1077,21 @@ export const waAPI = {
     if (options && options.field) {
       body.field = options.field
     }
+    if (options && options.documentBase64) {
+      body.documentBase64 = String(options.documentBase64).replace(/^data:[^;]+;base64,/, '')
+      body.fileName = options.fileName || 'kwitansi.pdf'
+      body.mimetype = options.mimetype || 'application/pdf'
+    }
+    if (options && options.imageBase64) {
+      body.imageBase64 = String(options.imageBase64).replace(/^data:[^;]+;base64,/, '')
+      body.mimetype = options.mimetype || 'image/jpeg'
+    }
     try {
-      const response = await api.post('/wa/send', body)
+      const response = await api.post(
+        '/wa/send',
+        body,
+        options?.documentBase64 || options?.imageBase64 ? { timeout: 120000 } : undefined
+      )
       return response.data
     } catch (e) {
       if (e.response?.data && typeof e.response.data === 'object') {

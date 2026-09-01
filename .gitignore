@@ -37,6 +37,7 @@ Thumbs.db
 !package-lock.json
 !**/package-lock.json
 !ebeddien/src/**/*.json
+!ebeddien/public/js/uwaba/uwaba-prices.json
 !daftar/src/**/*.json
 !mybeddien/src/**/*.json
 !nailul-murod/src/**/*.json

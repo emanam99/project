@@ -1,0 +1,137 @@
+{
+  "status_santri": {
+    "Mukim": {
+      "wajib": 71000,
+      "keterangan": "Wajib dasar santri Mukim"
+    },
+    "Boyong": {
+      "wajib": 71000,
+      "keterangan": "Wajib dasar santri Boyong"
+    },
+    "Khoriji": {
+      "wajib": 71000,
+      "keterangan": "Wajib dasar santri Khoriji (jenjang ikut formal)"
+    },
+    "Guru Tugas": {
+      "wajib": 0,
+      "keterangan": "Tidak ada wajib dasar"
+    },
+    "Pengurus": {
+      "wajib": 0,
+      "keterangan": "Tidak ada wajib dasar"
+    },
+    "Alumni": {
+      "wajib": 0,
+      "keterangan": "Tidak ada wajib dasar"
+    }
+  },
+  "diniyah": {
+    "Isti'dadiyah": {
+      "wajib": 66000,
+      "keterangan": "Wajib tambahan Rp 66.000"
+    },
+    "Ula": {
+      "wajib": 66000,
+      "keterangan": "Wajib tambahan Rp 66.000"
+    },
+    "Wustha": {
+      "wajib": 66000,
+      "keterangan": "Wajib tambahan Rp 66.000"
+    },
+    "Ulya": {
+      "wajib": 66000,
+      "keterangan": "Wajib tambahan Rp 66.000"
+    },
+    "UGT": {
+      "wajib": -51000,
+      "keterangan": "Tidak ada wajib tambahan"
+    },
+    "Tidak Sekolah": {
+      "wajib": -51000,
+      "keterangan": "Tidak ada wajib tambahan"
+    }
+  },
+  "formal": {
+    "PAUD": {
+      "wajib": 30000,
+      "keterangan": "Wajib tambahan Rp 30.000"
+    },
+    "SMP": {
+      "wajib": 40000,
+      "keterangan": "Wajib tambahan Rp 40.000"
+    },
+    "MTs": {
+      "wajib": 40000,
+      "keterangan": "Wajib tambahan Rp 40.000"
+    },
+    "SMAI": {
+      "wajib": 40000,
+      "keterangan": "Wajib tambahan Rp 40.000"
+    },
+    "STAI": {
+      "wajib": 270000,
+      "keterangan": "Wajib tambahan Rp 270.000"
+    },
+    "Tidak Sekolah": {
+      "wajib": 0,
+      "keterangan": "Tidak ada wajib tambahan"
+    }
+  },
+  "lttq": {
+    "Asfal": {
+      "wajib": 8000,
+      "keterangan": "Wajib tambahan Rp 8.000"
+    },
+    "Ibtidaiyah": {
+      "wajib": 8000,
+      "keterangan": "Wajib tambahan Rp 8.000"
+    },
+    "Tsanawiyah": {
+      "wajib": 8000,
+      "keterangan": "Wajib tambahan Rp 8.000"
+    },
+    "Aliyah": {
+      "wajib": 8000,
+      "keterangan": "Wajib tambahan Rp 8.000"
+    },
+    "Mualim": {
+      "wajib": 8000,
+      "keterangan": "Tidak ada wajib tambahan"
+    },
+    "Ngaji Kitab": {
+      "wajib": 8000,
+      "keterangan": "Tidak ada wajib tambahan"
+    },
+    "Tidak Mengaji": {
+      "wajib": 0,
+      "keterangan": "Tidak ada wajib tambahan"
+    }
+  },
+  "saudara": {
+    "Tidak Ada": {
+      "diskon": 0,
+      "diskon_type": "fixed",
+      "keterangan": "Tidak ada diskon"
+    },
+    "1": {
+      "diskon": 25,
+      "diskon_type": "percentage",
+      "keterangan": "Potongan 25% dari total wajib"
+    },
+    "2": {
+      "diskon": 35,
+      "diskon_type": "percentage",
+      "keterangan": "Potongan 35% dari total wajib"
+    },
+    "3": {
+      "diskon": 35,
+      "diskon_type": "percentage",
+      "keterangan": "Potongan 35% dari total wajib"
+    },
+    "4": {
+      "diskon": 35,
+      "diskon_type": "percentage",
+      "keterangan": "Potongan 35% dari total wajib"
+    }
+  }
+}

@@ -4,6 +4,7 @@ import { kurikulumJadwalAPI, rombelAPI, lembagaAPI, mapelAPI } from '../../../se
 import Modal from '../../../components/Modal/Modal'
 import { useNotification } from '../../../contexts/NotificationContext'
 import JadwalFormOffcanvas from './components/JadwalFormOffcanvas'
+import { formatJamRangeLabel } from '../../Kalender/utils/hariPentingJam'
 import { useLembagaFilterAccess } from '../../../hooks/useLembagaFilterAccess'
 import { LEMBAGA_FILTER_ACTION_CODES } from '../../../config/lembagaFilterFiturCodes'
 
@@ -74,7 +75,7 @@ const JadwalListItem = memo(({ row, onClick, onDelete, statusBadge }) => (
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
             {polaLabel(row)}
             {' · '}
-            {[toTimeLabel(row.jam_mulai), toTimeLabel(row.jam_selesai)].filter(Boolean).join('–')}
+            {formatJamRangeLabel(row) || [toTimeLabel(row.jam_mulai), toTimeLabel(row.jam_selesai)].filter(Boolean).join('–')}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Pengajar: {pengurusLabel(row)}</p>
         </div>

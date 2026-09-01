@@ -232,6 +232,7 @@ final class EbeddienFiturAccessDefinitions
         return [
             'menu.kalender',
             'menu.kalender.hari_penting',
+            'menu.kalender.jadwal_sholat',
             'menu.kalender.pengaturan',
             'menu.converter',
         ];

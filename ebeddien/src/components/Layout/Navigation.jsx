@@ -629,6 +629,7 @@ function Navigation() {
     if (path === '/kalender') return location.pathname === '/kalender'
     if (path === '/converter') return location.pathname === '/converter'
     if (path === '/kalender/hari-penting') return location.pathname === '/kalender/hari-penting'
+    if (path === '/kalender/jadwal-sholat') return location.pathname === '/kalender/jadwal-sholat'
     if (path === '/kalender/pengaturan') return location.pathname === '/kalender/pengaturan'
     // Special handling for /juara - also match sub-paths
     if (path === '/juara/data-juara' && location.pathname.startsWith('/juara')) {

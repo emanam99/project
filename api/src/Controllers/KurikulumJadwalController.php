@@ -210,6 +210,11 @@ class KurikulumJadwalController
             return ['ok' => false, 'message' => 'Jam selesai harus setelah jam mulai'];
         }
 
+        $jamJenis = strtolower(trim((string) ($data['jam_jenis'] ?? 'wib')));
+        if ($jamJenis !== 'istiwa') {
+            $jamJenis = 'wib';
+        }
+
         $hari = null;
         $tanggalBulan = null;
         $tanggal = null;
@@ -259,6 +264,7 @@ class KurikulumJadwalController
                 $tanggal,
                 $jamMulai,
                 $jamSelesai,
+                $jamJenis,
                 $status,
             ],
         ];
@@ -303,8 +309,8 @@ class KurikulumJadwalController
 
             $stmt = $this->db->prepare(
                 'INSERT INTO lembaga___jadwal
-                    (id_lembaga_kitab, id_pengurus, pola, hari, tanggal_bulan, tanggal, jam_mulai, jam_selesai, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    (id_lembaga_kitab, id_pengurus, pola, hari, tanggal_bulan, tanggal, jam_mulai, jam_selesai, jam_jenis, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $stmt->execute($parsed['values']);
             $newId = (int) $this->db->lastInsertId();
@@ -348,7 +354,7 @@ class KurikulumJadwalController
             $stmt = $this->db->prepare(
                 'UPDATE lembaga___jadwal SET
                     id_lembaga_kitab = ?, id_pengurus = ?, pola = ?, hari = ?, tanggal_bulan = ?,
-                    tanggal = ?, jam_mulai = ?, jam_selesai = ?, status = ?
+                    tanggal = ?, jam_mulai = ?, jam_selesai = ?, jam_jenis = ?, status = ?
                  WHERE id = ?'
             );
             $stmt->execute($vals);

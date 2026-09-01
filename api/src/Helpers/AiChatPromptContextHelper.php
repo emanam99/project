@@ -128,8 +128,8 @@ final class AiChatPromptContextHelper
             $prompt .= "\n\n--- TARIF UWABA / SYAHRIAH BULANAN (disisipkan server; publik; baca saja) ---\n"
                 . $uwabaBiaya
                 . "\nGunakan blok di atas untuk biaya UWABA per bulan (bukan PSB). "
-                . 'Nominal hanya dari katalog uwaba-prices.json; jelaskan rincian dasar + tambahan − diskon saudara. '
-                . 'Tanyakan status santri, kategori, diniyah, formal, LTTQ bila belum jelas. '
+                . 'Utamakan metode paket baru (6 paket + diskon 0/25/35%) bila user bicara Input UWABA / togel baru; rumus komponen uwaba-prices.json untuk metode lama. '
+                . 'Tanyakan status, formal (STAI/PAUD/dll.), dan saudara bila belum jelas. '
                 . 'Detail per santri (riwayat UWABA/PSB, tunggakan) → arahkan https://mybeddien.alutsmani.id';
         }
 

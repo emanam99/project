@@ -14,9 +14,16 @@ import {
   buildUwabaSaveJson,
   isUwabaJsonSamaBiodata,
   applySamakanBiodata,
+  applySamakanPaket,
+  applyUwabaPaketToBulan,
+  hitungWajibPaket,
+  inferUwabaPaketFromJson,
+  resolveUwabaDiskonFromBiodata,
+  resolveUwabaPaketFromBiodata,
   withWajibOnly
 } from '../../../utils/uwabaCalculator'
 import UwabaEditOffcanvas from './UwabaEditOffcanvas'
+import UwabaPaketOffcanvas from './UwabaPaketOffcanvas'
 import UnifiedPaymentOffcanvas from './UnifiedPaymentOffcanvas'
 import UwabaPrintOffcanvas from './UwabaPrintOffcanvas'
 
@@ -56,10 +63,33 @@ function UwabaRincian({ santriId, biodata, prices }) {
   const [showPrintOffcanvas, setShowPrintOffcanvas] = useState(false)
   const [masterCheckbox, setMasterCheckbox] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showMasterPaketOffcanvas, setShowMasterPaketOffcanvas] = useState(false)
   const [editingBulanIndex, setEditingBulanIndex] = useState(null)
   const [summaryRefreshKey, setSummaryRefreshKey] = useState(0)
   const [topSectionOpen, setTopSectionOpen] = useState(true)
+  const [samakanBackup, setSamakanBackup] = useState({})
+  const [metodeBaru, setMetodeBaru] = useState(true)
+  const [masterPaket, setMasterPaket] = useState('185')
+  const [masterDiskon, setMasterDiskon] = useState('0')
   const masterCheckboxRef = useRef(null)
+
+  const cloneJson = (j) => (j && typeof j === 'object' ? JSON.parse(JSON.stringify(j)) : j)
+
+  const captureSamakanSnap = (bulan) => ({
+    jsonData: cloneJson(bulan.jsonData),
+    wajib: bulan.wajib,
+  })
+
+  const restoreFromSamakanSnap = (bulan, snap) => {
+    if (!snap) return bulan
+    const jsonData = cloneJson(snap.jsonData)
+    return {
+      ...bulan,
+      jsonData,
+      wajib: snap.wajib,
+      keterangan: formatKeteranganPembayaran(snap.wajib, bulan.nominal ?? 0),
+    }
+  }
   
   // State untuk menyimpan data awal (untuk tracking perubahan)
   const [originalBulanData, setOriginalBulanData] = useState(null)
@@ -80,6 +110,23 @@ function UwabaRincian({ santriId, biodata, prices }) {
     biodata?.saudara,
     biodata?.saudara_di_pesantren, // Juga deteksi perubahan saudara_di_pesantren
     prices
+  ])
+
+  useEffect(() => {
+    setMetodeBaru(true)
+  }, [santriId])
+
+  useEffect(() => {
+    setMasterPaket(resolveUwabaPaketFromBiodata(biodata))
+    setMasterDiskon(resolveUwabaDiskonFromBiodata(biodata))
+  }, [
+    santriId,
+    biodata?.status_santri,
+    biodata?.formal,
+    biodata?.lembaga_id_formal,
+    biodata?.lembaga_formal,
+    biodata?.saudara,
+    biodata?.saudara_di_pesantren,
   ])
   
   /** Centang indikator: bandingkan JSON bulan vs biodata (bukan pilihan user). */
@@ -108,6 +155,7 @@ function UwabaRincian({ santriId, biodata, prices }) {
     biodata?.formal,
     biodata?.lembaga_id_diniyah,
     biodata?.lembaga_id_formal,
+    biodata?.lembaga_formal,
     biodata?.lttq,
     biodata?.saudara,
     biodata?.saudara_di_pesantren
@@ -143,88 +191,107 @@ function UwabaRincian({ santriId, biodata, prices }) {
     }
   }, [bulanData])
   
-  /** Sesuaikan wajib tampilan ke biodata; JSON bulan tidak diubah. */
-  const handleSesuaikanWajibSemua = () => {
-    if (!biodata || !prices || wajibFromBiodata <= 0) return
+  const applyMasterPaketKeSemuaAktif = (paketId, diskonKode) => {
     setBulanData((prev) =>
       attachSamaFlags(
         prev.map((bulan) => {
           if (bulan.isDisabled) return bulan
-          return withWajibOnly(bulan, wajibFromBiodata)
+          return applyUwabaPaketToBulan(bulan, paketId, diskonKode, biodata)
         })
       )
     )
-    showNotification('Wajib disesuaikan ke biodata (JSON tidak diubah).', 'success')
   }
 
   const handleSamakanSemua = () => {
-    if (!biodata || !prices) return
+    if (!biodata) return
+    if (!metodeBaru && !prices) return
+    setSamakanBackup((old) => {
+      const next = { ...old }
+      bulanData.forEach((bulan) => {
+        if (bulan.isDisabled) return
+        if (next[bulan.index] == null) next[bulan.index] = captureSamakanSnap(bulan)
+      })
+      return next
+    })
     setBulanData((prev) =>
       prev.map((bulan) => {
         if (bulan.isDisabled) return bulan
-        return applySamakanBiodata(bulan, biodata, prices)
+        return metodeBaru
+          ? applySamakanPaket(bulan, biodata)
+          : applySamakanBiodata(bulan, biodata, prices)
       })
     )
+    if (metodeBaru) {
+      setMasterPaket(resolveUwabaPaketFromBiodata(biodata))
+      setMasterDiskon(resolveUwabaDiskonFromBiodata(biodata))
+    }
     showNotification('Semua bulan disamakan dengan biodata.', 'success')
   }
 
+  const handleBatalSamakanSemua = () => {
+    setBulanData((prev) =>
+      attachSamaFlags(
+        prev.map((bulan) => restoreFromSamakanSnap(bulan, samakanBackup[bulan.index]))
+      )
+    )
+    setSamakanBackup({})
+    showNotification('Samakan dibatalkan — JSON dikembalikan.', 'success')
+  }
+
   const handleSamakanBulan = (index) => {
-    if (!biodata || !prices) return
+    if (!biodata) return
+    if (!metodeBaru && !prices) return
+    setSamakanBackup((old) => {
+      if (old[index] != null) return old
+      return { ...old, [index]: captureSamakanSnap(bulanData[index]) }
+    })
     const newBulanData = [...bulanData]
-    newBulanData[index] = applySamakanBiodata(newBulanData[index], biodata, prices)
+    newBulanData[index] = metodeBaru
+      ? applySamakanPaket(newBulanData[index], biodata)
+      : applySamakanBiodata(newBulanData[index], biodata, prices)
     setBulanData(newBulanData)
     showNotification(`Bulan ${bulanHijriyah[index]} disamakan dengan biodata.`, 'success')
   }
 
-  const handleSesuaikanWajibBulan = (index) => {
-    if (!biodata || !prices || wajibFromBiodata <= 0) return
+  const handleBatalSamakanBulan = (index) => {
+    const snap = samakanBackup[index]
+    if (!snap) return
     const newBulanData = [...bulanData]
-    newBulanData[index] = withWajibOnly(newBulanData[index], wajibFromBiodata)
+    newBulanData[index] = restoreFromSamakanSnap(newBulanData[index], snap)
     newBulanData[index].samaSebelumnya = isUwabaJsonSamaBiodata(biodata, newBulanData[index].jsonData)
     setBulanData(newBulanData)
+    setSamakanBackup((old) => {
+      const next = { ...old }
+      delete next[index]
+      return next
+    })
+    showNotification(`Samakan ${bulanHijriyah[index]} dibatalkan.`, 'success')
   }
 
-  const handleRestoreWajibBulan = (index) => {
-    const newBulanData = [...bulanData]
-    const jsonW =
-      newBulanData[index].jsonData?.total_wajib != null
-        ? Math.round(Number(newBulanData[index].jsonData.total_wajib) || 0)
-        : newBulanData[index].wajib
-    newBulanData[index] = withWajibOnly(newBulanData[index], jsonW)
-    newBulanData[index].samaSebelumnya = isUwabaJsonSamaBiodata(biodata, newBulanData[index].jsonData)
-    setBulanData(newBulanData)
-  }
-
-  /** Centang: sesuaikan wajib ke biodata (JSON tetap). Lepas centang: wajib dari JSON. */
+  /** Centang = ikut biodata (tulis JSON). Lepas = batal samakan jika ada cadangan. */
   const handleSamaCheckboxChange = (index, checked) => {
     if (checked) {
-      handleSesuaikanWajibBulan(index)
-      showNotification(`Wajib ${bulanHijriyah[index]} disesuaikan ke biodata.`, 'success')
-    } else {
-      handleRestoreWajibBulan(index)
+      if (bulanData[index]?.samaSebelumnya) return
+      handleSamakanBulan(index)
+      return
+    }
+    if (samakanBackup[index] != null) {
+      handleBatalSamakanBulan(index)
     }
   }
 
-  const handleRestoreWajibSemua = () => {
-    setBulanData((prev) =>
-      attachSamaFlags(
-        prev.map((bulan) => {
-          if (bulan.isDisabled) return bulan
-          const jsonW =
-            bulan.jsonData?.total_wajib != null
-              ? Math.round(Number(bulan.jsonData.total_wajib) || 0)
-              : bulan.wajib
-          return withWajibOnly(bulan, jsonW)
-        })
-      )
-    )
-  }
+  const masterBatalSama = useMemo(() => {
+    const active = bulanData.filter((b) => !b.isDisabled)
+    return active.length > 0 && active.every((b) => samakanBackup[b.index] != null)
+  }, [bulanData, samakanBackup])
 
   const handleMasterSamaCheckboxChange = (checked) => {
     if (checked) {
-      handleSesuaikanWajibSemua()
-    } else {
-      handleRestoreWajibSemua()
+      handleSamakanSemua()
+      return
+    }
+    if (masterBatalSama) {
+      handleBatalSamakanSemua()
     }
   }
   
@@ -254,6 +321,7 @@ function UwabaRincian({ santriId, biodata, prices }) {
   const loadUwabaData = async () => {
     if (!santriId || !/^\d{7}$/.test(santriId)) return
     
+    setSamakanBackup({})
     setLoading(true)
     try {
       // Load data UWABA dan payment history secara parallel
@@ -673,6 +741,7 @@ function UwabaRincian({ santriId, biodata, prices }) {
       
       if (result.success) {
         showNotification('Data UWABA berhasil disimpan!', 'success')
+        setSamakanBackup({})
         const flagged = attachSamaFlags(bulanData)
         setBulanData(flagged)
         setOriginalBulanData(JSON.parse(JSON.stringify(flagged)))
@@ -717,10 +786,15 @@ function UwabaRincian({ santriId, biodata, prices }) {
       }
     } else {
       // Jika tidak dikunci, kembalikan wajib sesuai checkbox status
+      const inferred = inferUwabaPaketFromJson(newBulanData[index].jsonData, 0)
       const wajib =
         newBulanData[index].jsonData?.total_wajib != null
           ? Math.round(Number(newBulanData[index].jsonData.total_wajib) || 0)
-          : wajibFromBiodata
+          : metodeBaru
+            ? (inferred
+              ? hitungWajibPaket(inferred.paket, inferred.diskonKode)
+              : hitungWajibPaket(masterPaket, masterDiskon))
+            : wajibFromBiodata
       newBulanData[index] = withWajibOnly(
         { ...newBulanData[index], isDisabled: false, nominal: 0 },
         wajib
@@ -763,24 +837,98 @@ function UwabaRincian({ santriId, biodata, prices }) {
             hijriyahOptions={hijriyahOptions}
             refreshKey={summaryRefreshKey}
           />
-          <button
-            type="button"
-            onClick={() => setTopSectionOpen((v) => !v)}
-            className="shrink-0 flex items-center justify-center w-7 h-8 self-center rounded-md border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
-            aria-expanded={topSectionOpen}
-            aria-label={topSectionOpen ? 'Tutup ringkasan' : 'Buka ringkasan'}
-            title={topSectionOpen ? 'Tutup ringkasan' : 'Buka ringkasan'}
-          >
-            <svg
-              className={`w-3 h-3 transition-transform duration-200 ${topSectionOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+          <div className="shrink-0 flex flex-col items-end justify-center gap-1">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={loading}
+                className="p-1.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-md hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={loading}
+                className="p-1.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-md hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                title="Save"
+              >
+                {loading ? (
+                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (santriId && /^\d{7}$/.test(santriId)) {
+                    setShowPrintOffcanvas(true)
+                  }
+                }}
+                disabled={!santriId || !/^\d{7}$/.test(santriId) || hasChanges}
+                className="p-1.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-md hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                title={hasChanges ? 'Simpan perubahan terlebih dahulu' : 'Print'}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTopSectionOpen((v) => !v)}
+                className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"
+                aria-expanded={topSectionOpen}
+                aria-label={topSectionOpen ? 'Tutup ringkasan' : 'Buka ringkasan'}
+                title={topSectionOpen ? 'Tutup ringkasan' : 'Buka ringkasan'}
+              >
+                <svg
+                  className={`w-3 h-3 transition-transform duration-200 ${topSectionOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 h-8 px-1.5 rounded-md border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40">
+                <span className={`text-[10px] font-medium ${metodeBaru ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>
+                  Lama
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={metodeBaru}
+                  aria-label={metodeBaru ? 'Metode baru' : 'Metode lama'}
+                  onClick={() => setMetodeBaru((v) => !v)}
+                  className={`relative w-10 h-5 rounded-full transition-colors ${
+                    metodeBaru ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                      metodeBaru ? 'translate-x-5' : ''
+                    }`}
+                  />
+                </button>
+                <span className={`text-[10px] font-medium ${metodeBaru ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
+                  Baru
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <AnimatePresence initial={false}>
@@ -812,86 +960,58 @@ function UwabaRincian({ santriId, biodata, prices }) {
 
                 {/* Wajib Perbulan dengan Master Checkbox dan Buttons */}
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
-                    {wajibFromBiodata > 0 ? (
-                      <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
-                        <input
-                          type="checkbox"
-                          ref={masterCheckboxRef}
-                          checked={masterCheckbox}
-                          onChange={(e) => handleMasterSamaCheckboxChange(e.target.checked)}
-                          className="w-5 h-5 sm:w-4 sm:h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 flex-shrink-0"
-                          title="Centang: wajib semua bulan = biodata (JSON tidak diubah). Status centang = JSON sudah sama biodata."
-                        />
-                        <span className="font-semibold text-sm sm:text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap">
-                          Rp {wajibFromBiodata.toLocaleString('id-ID')}
-                        </span>
+                  {(metodeBaru || wajibFromBiodata > 0) ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        ref={masterCheckboxRef}
+                        checked={masterCheckbox}
+                        onChange={(e) => handleMasterSamaCheckboxChange(e.target.checked)}
+                        className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 flex-shrink-0"
+                        title="Centang: wajib & JSON semua bulan ikut biodata. Lepas centang: batalkan samakan yang baru dilakukan."
+                      />
+                      {metodeBaru ? (
                         <button
                           type="button"
-                          onClick={handleSamakanSemua}
-                          disabled={loading}
-                          className="px-2 py-1 text-xs font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                          title="Samakan JSON semua bulan dengan biodata"
+                          onClick={() => setShowMasterPaketOffcanvas(true)}
+                          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 font-semibold text-sm sm:text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap hover:border-blue-400 dark:hover:border-blue-500"
+                          title="Pilih paket wajib semua bulan"
                         >
-                          Samakan
+                          Rp {hitungWajibPaket(masterPaket, masterDiskon).toLocaleString('id-ID')}
+                          <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
                         </button>
-                      </div>
-                    ) : (
-                      <div className="flex-1"></div>
-                    )}
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-1 rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 font-semibold text-sm sm:text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap">
+                          Rp {wajibFromBiodata.toLocaleString('id-ID')}
+                        </span>
+                      )}
                       <button
+                        type="button"
                         onClick={() => setShowPaymentOffcanvas(true)}
-                        className="px-2 sm:px-4 py-2 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg text-xs sm:text-sm font-bold hover:from-teal-700 hover:to-teal-800 transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-1.5"
+                        className="ml-auto px-2 sm:px-4 py-1.5 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg text-xs sm:text-sm font-bold hover:from-teal-700 hover:to-teal-800 transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-1.5"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
                         </svg>
                         Bayar
                       </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-end">
                       <button
-                        onClick={handleRefresh}
-                        disabled={loading}
-                        className="p-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Refresh"
+                        type="button"
+                        onClick={() => setShowPaymentOffcanvas(true)}
+                        className="px-2 sm:px-4 py-1.5 bg-gradient-to-r from-teal-600 to-teal-700 text-white rounded-lg text-xs sm:text-sm font-bold hover:from-teal-700 hover:to-teal-800 transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-1.5"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
                         </svg>
-                      </button>
-                      <button
-                        onClick={handleSave}
-                        disabled={loading}
-                        className="p-2 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                        title="Save"
-                      >
-                        {loading ? (
-                          <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                        ) : (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
-                          </svg>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (santriId && /^\d{7}$/.test(santriId)) {
-                            setShowPrintOffcanvas(true)
-                          }
-                        }}
-                        disabled={!santriId || !/^\d{7}$/.test(santriId) || hasChanges}
-                        className="p-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={hasChanges ? 'Simpan perubahan terlebih dahulu' : 'Print'}
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
-                        </svg>
+                        Bayar
                       </button>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -985,37 +1105,27 @@ function UwabaRincian({ santriId, biodata, prices }) {
                       className="w-5 h-5 text-blue-600 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
                       title={
                         bulan.samaSebelumnya
-                          ? 'JSON sama biodata — lepas centang untuk wajib dari JSON tersimpan'
-                          : 'Centang untuk wajib = biodata (JSON tidak diubah)'
+                          ? samakanBackup[bulan.index] != null
+                            ? 'Lepas centang untuk batalkan samakan bulan ini'
+                            : 'JSON sudah ikut biodata. Ubah wajib lewat pensil.'
+                          : 'Centang: samakan wajib & JSON bulan ini dengan biodata'
                       }
                     />
-                    <span className="wajib-uwaba-label font-semibold text-gray-800 dark:text-gray-200">
+                    <button
+                      type="button"
+                      disabled={!metodeBaru && bulan.samaSebelumnya}
+                      onClick={() => {
+                        if (!metodeBaru && bulan.samaSebelumnya) return
+                        setEditingBulanIndex(bulan.index)
+                        setShowEditModal(true)
+                      }}
+                      className="wajib-uwaba-label inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 font-semibold text-gray-800 dark:text-gray-200 hover:border-blue-400 dark:hover:border-blue-500 hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Edit bulan ini"
+                    >
                       {bulan.wajib > 0
                         ? `Rp ${bulan.wajib.toLocaleString('id-ID')}`
                         : '-'}
-                    </span>
-                    {!bulan.samaSebelumnya && (
-                      <button
-                        type="button"
-                        onClick={() => handleSamakanBulan(bulan.index)}
-                        className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-indigo-600 text-white hover:bg-indigo-700"
-                        title="Samakan JSON dengan biodata"
-                      >
-                        Samakan
-                      </button>
-                    )}
-                    <button
-                      disabled={bulan.samaSebelumnya}
-                      onClick={() => {
-                        if (!bulan.samaSebelumnya) {
-                          setEditingBulanIndex(bulan.index)
-                          setShowEditModal(true)
-                        }
-                      }}
-                      className="p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Edit bulan ini"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </button>
@@ -1031,19 +1141,50 @@ function UwabaRincian({ santriId, biodata, prices }) {
       </div>
       
       {/* Edit Uwaba — offcanvas kanan */}
-      <UwabaEditOffcanvas
-        isOpen={showEditModal}
-        onClose={() => {
-          setShowEditModal(false)
-          setEditingBulanIndex(null)
-        }}
-        bulanIndex={editingBulanIndex}
-        bulanData={editingBulanIndex !== null ? bulanData[editingBulanIndex] : null}
-        santriId={santriId}
-        biodata={biodata}
-        prices={prices}
-        onSave={handleEditSave}
-      />
+      {metodeBaru ? (
+        <>
+          <UwabaPaketOffcanvas
+            isOpen={showMasterPaketOffcanvas}
+            onClose={() => setShowMasterPaketOffcanvas(false)}
+            title="Wajib semua bulan"
+            biodata={biodata}
+            initialPaket={masterPaket}
+            initialDiskon={masterDiskon}
+            onApply={({ paket, diskonKode }) => {
+              setMasterPaket(paket)
+              setMasterDiskon(diskonKode)
+              applyMasterPaketKeSemuaAktif(paket, diskonKode)
+            }}
+          />
+          <UwabaPaketOffcanvas
+            isOpen={showEditModal}
+            onClose={() => {
+              setShowEditModal(false)
+              setEditingBulanIndex(null)
+            }}
+            bulanData={editingBulanIndex !== null ? bulanData[editingBulanIndex] : null}
+            biodata={biodata}
+            onApply={({ wajib, jsonData }) => {
+              if (editingBulanIndex == null) return
+              handleEditSave(editingBulanIndex, { wajib, jsonData })
+            }}
+          />
+        </>
+      ) : (
+        <UwabaEditOffcanvas
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false)
+            setEditingBulanIndex(null)
+          }}
+          bulanIndex={editingBulanIndex}
+          bulanData={editingBulanIndex !== null ? bulanData[editingBulanIndex] : null}
+          santriId={santriId}
+          biodata={biodata}
+          prices={prices}
+          onSave={handleEditSave}
+        />
+      )}
       
       {/* Payment Offcanvas */}
       <UnifiedPaymentOffcanvas

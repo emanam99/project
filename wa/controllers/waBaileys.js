@@ -989,7 +989,31 @@ function buildTextContent(text, linkPreviewEnabled = false) {
   return { text: t, linkPreview: false };
 }
 
-export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase64, imageMimetype, chatId = null, linkPreviewEnabled = false) {
+function decodeBase64Buffer(rawB64) {
+  const raw = String(rawB64 || '')
+    .replace(/^data:[^;]+;base64,/i, '')
+    .replace(/\s+/g, '');
+  if (!raw) return null;
+  const buffer = Buffer.from(raw, 'base64');
+  return buffer.length > 4 ? buffer : null;
+}
+
+function looksLikePdfBuffer(buffer, mimetype, fileName) {
+  const mime = String(mimetype || '')
+    .toLowerCase()
+    .split(';')[0]
+    .trim();
+  if (mime === 'application/pdf') return true;
+  if (typeof fileName === 'string' && /\.pdf$/i.test(fileName)) return true;
+  if (buffer && buffer.length >= 4 && buffer.subarray(0, 4).toString('ascii') === '%PDF') return true;
+  return false;
+}
+
+/**
+ * Baileys 6.x sudah mendukung document (PDF). Jangan kirim byte PDF lewat { image }.
+ * documentBase64 terpisah dari imageBase64 agar tidak tertukar jadi gambar.
+ */
+export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase64, imageMimetype, chatId = null, linkPreviewEnabled = false, fileName = null, documentBase64 = null, documentMimetype = null) {
   const id = sessionId || DEFAULT_SESSION;
   const sock = sockRefBySession[id];
   const st = getBaileysStatusObj(id);
@@ -1021,20 +1045,37 @@ export async function sendMessageBaileys(sessionId, phoneNumber, text, imageBase
     };
   }
   const content = (typeof text === 'string' ? text : '').trim() || '(pesan kosong)';
-  const hasImage = typeof imageBase64 === 'string' && imageBase64.trim().length > 0;
+  const docBuffer = decodeBase64Buffer(documentBase64);
+  const imgBuffer = decodeBase64Buffer(imageBase64);
+  const docFromImage = !!(imgBuffer && looksLikePdfBuffer(imgBuffer, imageMimetype, fileName));
+  const sendAsDocument = !!(docBuffer || docFromImage);
+  const sendAsImage = !!(!sendAsDocument && imgBuffer);
+  const pdfBuffer = docBuffer || (docFromImage ? imgBuffer : null);
+  const hasMedia = sendAsDocument || sendAsImage;
   let lastErr = null;
   for (let i = 0; i < jids.length; i++) {
     const jid = jids[i];
     try {
-      if (!hasImage && typeof sock.presenceSubscribe === 'function') {
+      if (!hasMedia && typeof sock.presenceSubscribe === 'function') {
         await sock.presenceSubscribe(jid).catch(() => {});
         await delay(i === 0 ? 400 : 250);
       }
       let result;
-      if (hasImage) {
-        const mimetype = (imageMimetype || 'image/png').split(';')[0].trim();
-        const buffer = Buffer.from(imageBase64.replace(/^data:image\/[^;]+;base64,/, '').trim(), 'base64');
-        result = await sock.sendMessage(jid, { image: buffer, caption: content }, {});
+      if (sendAsDocument) {
+        if (!looksLikePdfBuffer(pdfBuffer, documentMimetype || imageMimetype, fileName)) {
+          return { ok: false, error: 'Berkas bukan PDF yang valid' };
+        }
+        const caption = content === '(pesan kosong)' ? '' : content;
+        const docPayload = {
+          document: pdfBuffer,
+          mimetype: 'application/pdf',
+          fileName: (typeof fileName === 'string' && fileName.trim()) ? fileName.trim() : 'kwitansi.pdf',
+        };
+        if (caption) docPayload.caption = caption;
+        result = await sock.sendMessage(jid, docPayload, { mediaUploadTimeoutMs: 120000 });
+      } else if (sendAsImage) {
+        const imgMime = String(imageMimetype || 'image/jpeg').split(';')[0].trim() || 'image/jpeg';
+        result = await sock.sendMessage(jid, { image: imgBuffer, caption: content, mimetype: imgMime }, { mediaUploadTimeoutMs: 120000 });
       } else {
         result = await sock.sendMessage(jid, buildTextContent(content, linkPreviewEnabled), {});
       }

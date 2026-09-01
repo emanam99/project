@@ -32,7 +32,11 @@ class WhatsAppController
             $data = is_array($data) ? $data : [];
             // Jangan pakai cleanText pada seluruh body: itu menghapus baris baru (WA jadi satu baris).
             $message = TextSanitizer::cleanMultilineMessage($data['message'] ?? '');
-            unset($data['message']);
+            $documentBase64 = trim((string) ($data['documentBase64'] ?? ''));
+            $imageBase64 = trim((string) ($data['imageBase64'] ?? ''));
+            $fileName = trim((string) ($data['fileName'] ?? ''));
+            $mimetype = trim((string) ($data['mimetype'] ?? ''));
+            unset($data['message'], $data['documentBase64'], $data['imageBase64'], $data['fileName'], $data['mimetype']);
             $data = TextSanitizer::sanitizeStringValues($data, []);
             $phoneNumber = trim($data['phoneNumber'] ?? $data['phone_number'] ?? '');
             $instance = isset($data['instance']) ? trim($data['instance']) : null;
@@ -53,7 +57,43 @@ class WhatsAppController
             if ($phoneNumber === '' || NikHelper::looksMasked($phoneNumber)) {
                 return $this->json($response, ['success' => false, 'message' => 'Nomor WhatsApp harus diisi'], 400);
             }
-            if ($message === '') {
+            if (preg_match('#^data:[^;]+;base64,#i', $documentBase64)) {
+                $documentBase64 = trim((string) preg_replace('#^data:[^;]+;base64,#i', '', $documentBase64));
+            }
+            if (preg_match('#^data:[^;]+;base64,#i', $imageBase64)) {
+                $imageBase64 = trim((string) preg_replace('#^data:[^;]+;base64,#i', '', $imageBase64));
+            }
+            $documentBase64 = preg_replace('/\s+/', '', $documentBase64) ?? '';
+            $imageBase64 = preg_replace('/\s+/', '', $imageBase64) ?? '';
+            $isPdfDocument = $documentBase64 !== '' && (
+                $mimetype === 'application/pdf'
+                || preg_match('/\.pdf$/i', $fileName) === 1
+            );
+            $isImageMedia = !$isPdfDocument && $imageBase64 !== '';
+            if ($isPdfDocument) {
+                if (strlen($documentBase64) > 7000000) {
+                    return $this->json($response, ['success' => false, 'message' => 'Berkas PDF terlalu besar'], 413);
+                }
+                if ($fileName === '') {
+                    $fileName = 'kwitansi.pdf';
+                }
+                if ($mimetype === '') {
+                    $mimetype = 'application/pdf';
+                }
+                if ($message === '') {
+                    $message = 'Kwitansi PDF';
+                }
+            } elseif ($isImageMedia) {
+                if (strlen($imageBase64) > 7000000) {
+                    return $this->json($response, ['success' => false, 'message' => 'Berkas gambar terlalu besar'], 413);
+                }
+                if ($mimetype === '' || !str_starts_with(strtolower($mimetype), 'image/')) {
+                    $mimetype = 'image/jpeg';
+                }
+                if ($message === '') {
+                    $message = 'Kwitansi';
+                }
+            } elseif ($message === '') {
                 return $this->json($response, ['success' => false, 'message' => 'Pesan harus diisi'], 400);
             }
 
@@ -74,7 +114,28 @@ class WhatsAppController
             if (!empty($data['id_santri'])) {
                 $logContext['id_santri'] = (int) $data['id_santri'];
             }
-            $result = WhatsAppService::sendMessage($phoneNumber, $message, $instance, $logContext);
+            if ($isPdfDocument) {
+                $result = WhatsAppService::sendMessageWithImage(
+                    $phoneNumber,
+                    $message,
+                    $documentBase64,
+                    $mimetype !== '' ? $mimetype : 'application/pdf',
+                    $instance,
+                    $logContext,
+                    $fileName
+                );
+            } elseif ($isImageMedia) {
+                $result = WhatsAppService::sendMessageWithImage(
+                    $phoneNumber,
+                    $message,
+                    $imageBase64,
+                    $mimetype !== '' ? $mimetype : 'image/jpeg',
+                    $instance,
+                    $logContext
+                );
+            } else {
+                $result = WhatsAppService::sendMessage($phoneNumber, $message, $instance, $logContext);
+            }
 
             if (!empty($result['success']) && !WhatsAppService::deliveryWasNotActuallySent($result)) {
                 $payload = ['success' => true, 'message' => $result['message'] ?? 'Pesan berhasil dikirim'];

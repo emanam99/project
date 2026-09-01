@@ -135,3 +135,17 @@ export function loadHourCycle() {
 export function saveHourCycle(cycle) {
   set(KEY_HOUR_CYCLE, cycle === 24 ? '24' : '12')
 }
+
+const KEY_IKHTIYATH = 'uwaba_kalender_jadwal_ikhtiyath'
+
+export function loadJadwalIkhtiyath() {
+  try {
+    const s = get(KEY_IKHTIYATH, null)
+    if (s) return JSON.parse(s)
+  } catch (e) {}
+  return null
+}
+
+export function saveJadwalIkhtiyath(value) {
+  set(KEY_IKHTIYATH, JSON.stringify(value))
+}

@@ -124,6 +124,10 @@ export function buildChatAiKeuanganSkillAccess(fiturMenuCodes, user) {
 
 /** Nilai dari hook useChatAiFiturAccess(). */
 export function buildChatAiKemampuanAccess(chatAi, fiturMenuCodes, user) {
+  const codes = new Set((fiturMenuCodes || []).map(String))
+  const kalenderJadwalSholat =
+    userHasSuperAdminAccess(user) || codes.has('menu.kalender.jadwal_sholat')
+
   return {
     pageTrainingBank: chatAi.pageTrainingBank,
     pageTrainingChat: chatAi.pageTrainingChat,
@@ -135,6 +139,7 @@ export function buildChatAiKemampuanAccess(chatAi, fiturMenuCodes, user) {
     selectProviderManual: chatAi.selectProviderManual,
     agentUse: chatAi.agentUse,
     agentConfirmWrite: chatAi.agentConfirmWrite,
+    kalenderJadwalSholat,
     ...buildChatAiSantriSkillAccess(fiturMenuCodes, user),
     ...buildChatAiKeuanganSkillAccess(fiturMenuCodes, user),
     ...buildChatAiPendaftarAnalisisAccess(fiturMenuCodes, user),

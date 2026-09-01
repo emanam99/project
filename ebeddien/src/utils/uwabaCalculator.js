@@ -373,9 +373,145 @@ export const compareBiodata = (biodata1, biodata2) => {
   return fields.every(field => biodata1Mapped[field] === biodata2Mapped[field])
 }
 
+/** Paket wajib metode baru (dasar sebelum diskon saudara). */
+export const UWABA_PAKET_OPTIONS = [
+  { id: '185', dasar: 185000, label: 'Normal' },
+  { id: '415', dasar: 415000, label: 'STAI Mukim' },
+  { id: '290', dasar: 290000, label: 'STAI Khoriji' },
+  { id: '270', dasar: 270000, label: 'STAI Tugas' },
+  { id: '86', dasar: 86000, label: 'SD' },
+  { id: '50', dasar: 50000, label: 'PAUD' },
+]
+
+/** Diskon saudara metode baru. */
+export const UWABA_DISKON_OPTIONS = [
+  { kode: '0', pct: 0, label: 'Tanpa saudara (0%)' },
+  { kode: '1', pct: 25, label: '1 Saudara (25%)' },
+  { kode: '2', pct: 35, label: '2 saudara atau lebih (35%)' },
+]
+
+export function getUwabaPaketOption(paketId) {
+  return UWABA_PAKET_OPTIONS.find((p) => p.id === String(paketId)) || UWABA_PAKET_OPTIONS[0]
+}
+
+export function getUwabaDiskonOption(kode) {
+  return UWABA_DISKON_OPTIONS.find((d) => d.kode === String(kode)) || UWABA_DISKON_OPTIONS[0]
+}
+
+/** Total wajib = paket × (1 − diskon). */
+export function hitungWajibPaket(paketId, diskonKode) {
+  const paket = getUwabaPaketOption(paketId)
+  const diskon = getUwabaDiskonOption(diskonKode)
+  return Math.round(paket.dasar * (1 - diskon.pct / 100))
+}
+
+function formalJenjangFromBiodata(biodata) {
+  if (!biodata || typeof biodata !== 'object') return ''
+  const parts = [
+    biodata.formal,
+    biodata.lembaga_id_formal,
+    biodata.lembaga_formal,
+    biodata.formal_nama,
+    biodata.nama_formal,
+  ]
+    .map((v) => normalizeUwabaPriceKey(v))
+    .filter(Boolean)
+  const u = parts.join(' ').toUpperCase()
+  if (u.includes('STAI')) return 'STAI'
+  if (u.includes('PAUD')) return 'PAUD'
+  return ''
+}
+
+/**
+ * Default paket dari biodata. 86 (SD) tidak pernah auto.
+ * STAI → 415/290/270 menurut status; PAUD → 50; selain itu → 185.
+ */
+export function resolveUwabaPaketFromBiodata(biodata) {
+  const jenjang = formalJenjangFromBiodata(biodata)
+  const status = normalizeUwabaPriceKey(biodata?.status_santri)
+  if (jenjang === 'STAI') {
+    if (status === 'Khoriji') return '290'
+    if (status === 'Guru Tugas' || status === 'Pengurus' || status === 'Alumni') return '270'
+    return '415'
+  }
+  if (jenjang === 'PAUD') return '50'
+  return '185'
+}
+
+/** Diskon dari field saudara: kosong/Tidak Ada = 0; 1 = 25%; 2+ = 35%. */
+export function resolveUwabaDiskonFromBiodata(biodata) {
+  const raw = normalizeUwabaPriceKey(biodata?.saudara || biodata?.saudara_di_pesantren)
+  if (!raw || raw === 'Tidak Ada' || raw === '0') return '0'
+  const n = parseInt(raw, 10)
+  if (n === 1) return '1'
+  if (Number.isFinite(n) && n >= 2) return '2'
+  return '0'
+}
+
+export function buildUwabaJsonFromPaket(paketId, diskonKode) {
+  const paket = getUwabaPaketOption(paketId)
+  const diskon = getUwabaDiskonOption(diskonKode)
+  const total_wajib = hitungWajibPaket(paket.id, diskon.kode)
+  return {
+    metode: 'paket',
+    paket: paket.id,
+    diskon_kode: diskon.kode,
+    diskon_pct: diskon.pct,
+    total_wajib,
+    timestamp: Date.now(),
+  }
+}
+
+export function applyUwabaPaketToBulan(bulan, paketId, diskonKode, biodata = null) {
+  if (!bulan) return bulan
+  const jsonData = buildUwabaJsonFromPaket(paketId, diskonKode)
+  const w = jsonData.total_wajib
+  return {
+    ...bulan,
+    wajib: w,
+    jsonData,
+    samaSebelumnya: biodata ? isUwabaJsonSamaBiodata(biodata, jsonData) : true,
+    keterangan: formatKeteranganPembayaran(w, bulan.nominal ?? 0),
+  }
+}
+
+export function applySamakanPaket(bulan, biodata) {
+  if (!bulan || !biodata) return bulan
+  const paket = resolveUwabaPaketFromBiodata(biodata)
+  const diskon = resolveUwabaDiskonFromBiodata(biodata)
+  return applyUwabaPaketToBulan(bulan, paket, diskon, biodata)
+}
+
+/** Infer paket+diskon dari JSON tersimpan atau nominal wajib. */
+export function inferUwabaPaketFromJson(jsonData, wajibFallback = 0) {
+  if (jsonData && typeof jsonData === 'object' && jsonData.metode === 'paket') {
+    const paket = getUwabaPaketOption(jsonData.paket).id
+    const diskon = getUwabaDiskonOption(jsonData.diskon_kode).kode
+    return { paket, diskonKode: diskon }
+  }
+  const target = Math.round(Number(jsonData?.total_wajib ?? wajibFallback) || 0)
+  if (target > 0) {
+    for (const p of UWABA_PAKET_OPTIONS) {
+      for (const d of UWABA_DISKON_OPTIONS) {
+        if (hitungWajibPaket(p.id, d.kode) === target) {
+          return { paket: p.id, diskonKode: d.kode }
+        }
+      }
+    }
+  }
+  return null
+}
+
+function isPaketSamaBiodata(biodata, jsonData) {
+  const paket = resolveUwabaPaketFromBiodata(biodata)
+  const diskon = resolveUwabaDiskonFromBiodata(biodata)
+  return String(jsonData.paket) === paket && String(jsonData.diskon_kode) === diskon
+}
+
 /** Apakah JSON bulan selaras dengan biodata santri (untuk indikator centang). */
 export function isUwabaJsonSamaBiodata(biodata, jsonData) {
   if (!biodata || !jsonData || typeof jsonData !== 'object') return false
+  if (jsonData.metode === 'paket') return isPaketSamaBiodata(biodata, jsonData)
   return compareBiodata(biodata, jsonData)
 }
 

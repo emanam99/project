@@ -497,7 +497,17 @@ export const sendMessage = async (req, res) => {
   try {
     if (!waEngineEnabled) return respondWaEngineStopped(res);
     const safeId = resolveSlotLenient(req.body?.sessionId || DEFAULT_SESSION);
-    const { phoneNumber, message, imageBase64, imageMimetype, chatId: bodyChatId, linkPreview: bodyLinkPreview } = req.body || {};
+    const {
+      phoneNumber,
+      message,
+      imageBase64,
+      imageMimetype,
+      chatId: bodyChatId,
+      linkPreview: bodyLinkPreview,
+      fileName,
+      documentBase64,
+      documentMimetype,
+    } = req.body || {};
     const text = typeof message === 'string' ? message : '';
     /** Default mati: kartu preview URL (extendedTextMessage) sering jadi «Menunggu pesan ini» di sebagian HP. */
     const linkPreviewEnabled = bodyLinkPreview === true;
@@ -527,7 +537,10 @@ export const sendMessage = async (req, res) => {
       imageBase64,
       imageMimetype,
       chatIdOverride,
-      linkPreviewEnabled
+      linkPreviewEnabled,
+      typeof fileName === 'string' ? fileName : null,
+      documentBase64,
+      documentMimetype
     );
     if (WA_VERBOSE_LOG) {
       console.log('[WA] send via Baileys: ' + (result.ok ? 'OK' : 'fail ' + (result.error || '')));

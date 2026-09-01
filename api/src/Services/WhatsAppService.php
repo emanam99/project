@@ -2119,9 +2119,10 @@ class WhatsAppService
      * @param string $imageMimetype image/png, image/jpeg, dll. Default image/png
      * @param string|null $instance Instance (default dari config)
      * @param array|null $logContext ['id_santri'=>?, 'id_pengurus'=>?, 'kategori'=>?, 'sumber'=>?]
+     * @param string|null $fileName Nama berkas jika mimetype dokumen (mis. application/pdf)
      * @return array ['success' => bool, 'message' => string]
      */
-    public static function sendMessageWithImage(string $noWa, string $message, string $imageBase64, string $imageMimetype = 'image/png', ?string $instance = null, ?array $logContext = null): array
+    public static function sendMessageWithImage(string $noWa, string $message, string $imageBase64, string $imageMimetype = 'image/png', ?string $instance = null, ?array $logContext = null, ?string $fileName = null): array
     {
         $originalPhone = self::formatPhoneNumber($noWa);
         if (strlen($originalPhone) < 10) {
@@ -2211,6 +2212,10 @@ class WhatsAppService
         $cfg = self::getConfig();
         $apiUrl = $cfg['api_url'];
         $apiKey = $cfg['api_key'];
+        $preferredSessionId = trim((string) ($cfg['session_id'] ?? ''));
+        if ($preferredSessionId === '') {
+            $preferredSessionId = 'default';
+        }
 
         if (empty($apiUrl) || empty($apiKey)) {
             error_log('WhatsAppService: WA_API_URL/WA_API_KEY tidak diset. Pesan+gambar ke ' . $phone . ' tidak dikirim.');
@@ -2224,9 +2229,19 @@ class WhatsAppService
             'phoneNumber' => $phone,
             'message' => $message,
         ];
-        if ($imageBase64 !== '' && $imageMimetype !== '') {
+        $mimeLower = strtolower(trim(explode(';', $imageMimetype)[0] ?? ''));
+        $isPdfMedia = $mimeLower === 'application/pdf'
+            || ($fileName !== null && preg_match('/\.pdf$/i', trim((string) $fileName)) === 1);
+        if ($imageBase64 !== '' && $isPdfMedia) {
+            $payload['documentBase64'] = $imageBase64;
+            $payload['documentMimetype'] = 'application/pdf';
+            $payload['fileName'] = ($fileName !== null && trim($fileName) !== '') ? trim($fileName) : 'kwitansi.pdf';
+        } elseif ($imageBase64 !== '' && $imageMimetype !== '') {
             $payload['imageBase64'] = $imageBase64;
             $payload['imageMimetype'] = $imageMimetype;
+        }
+        if ($fileName !== null && trim($fileName) !== '' && empty($payload['fileName'])) {
+            $payload['fileName'] = trim($fileName);
         }
         $payload = self::mergeWaSessionPayload($payload, $cfg);
 
@@ -2284,9 +2299,16 @@ class WhatsAppService
                             'message' => $message,
                             'sessionId' => $sid,
                         ];
-                        if ($imageBase64 !== '' && $imageMimetype !== '') {
+                        if ($imageBase64 !== '' && $isPdfMedia) {
+                            $retryPayload['documentBase64'] = $imageBase64;
+                            $retryPayload['documentMimetype'] = 'application/pdf';
+                            $retryPayload['fileName'] = ($fileName !== null && trim($fileName) !== '') ? trim($fileName) : 'kwitansi.pdf';
+                        } elseif ($imageBase64 !== '' && $imageMimetype !== '') {
                             $retryPayload['imageBase64'] = $imageBase64;
                             $retryPayload['imageMimetype'] = $imageMimetype;
+                        }
+                        if ($fileName !== null && trim($fileName) !== '' && empty($retryPayload['fileName'])) {
+                            $retryPayload['fileName'] = trim($fileName);
                         }
                         $retryResponse = $client->post($apiUrl, [
                             'headers' => [

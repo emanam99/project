@@ -71,7 +71,7 @@ export const CHAT_AI_SKILL_GROUPS = [
       {
         title: 'Tarif UWABA / syahriah bulanan (publik)',
         description:
-          'Pertanyaan biaya UWABA per bulan (mis. diniyah Wustha, formal STAI, status Mukim) — server menyisipkan katalog uwaba-prices.json selaras Input UWABA & kalkulator di eBeddien: harga dasar per status (flat), tambahan diniyah/formal/LTTQ, diskon saudara. Jenjang Khoriji ikut formal. Bukan biaya pendaftaran PSB; sebutkan kombinasi biodata bila perlu. Riwayat bayar/tunggakan per santri → https://mybeddien.alutsmani.id',
+          'Pertanyaan biaya UWABA per bulan. Metode baru (default di Input UWABA): 6 paket — 185 Normal, 415 STAI Mukim, 290 STAI Khoriji, 270 STAI Tugas, 86 SD, 50 PAUD — plus diskon saudara 0% / 25% (1 saudara) / 35% (2+). Pilih paket lewat offcanvas radio (total setelah diskon di header). Default paket dari biodata: STAI menurut status, PAUD = 50, selain itu 185 (SD dipilih manual). Centang “sama” = ikut biodata (menulis JSON). Metode lama tetap rumus komponen uwaba-prices.json (dasar status + diniyah/formal/LTTQ − diskon). Bukan biaya pendaftaran PSB. Riwayat bayar/tunggakan per santri → https://mybeddien.alutsmani.id',
         requiresAccess: null,
       },
       {
@@ -174,7 +174,7 @@ export const CHAT_AI_SKILL_GROUPS = [
       },
       {
         title: 'UWABA, tunggakan & pembayaran',
-        description: 'Agregat tagihan dan pembayaran terbaru dari basis data (bukan pengganti laporan resmi).',
+        description: 'Agregat tagihan dan pembayaran terbaru dari basis data (bukan pengganti laporan resmi). Offcanvas print/kwitansi: unduh PDF teks, kirim PDF sebagai dokumen WA, atau kirim gambar kolom 1 (layout A4 lebar, bukan preview HP).',
         requiresAccess: 'santriUwabaPembayaran',
       },
     ],
@@ -232,6 +232,19 @@ export const CHAT_AI_SKILL_GROUPS = [
         description:
           'Membantu membaca detail baris transaksi, status, atau aktivitas tahun ajaran agar lebih mudah dipahami atau dilaporkan.',
         requiresAccess: 'keuanganLihatDetail',
+      },
+    ],
+  },
+  {
+    id: 'kalender',
+    title: 'Kalender & waktu',
+    subtitle: 'Jadwal ibadah dan kalender lembaga di eBeddien.',
+    skills: [
+      {
+        title: 'Jadwal sholat (GPS / pondok)',
+        description:
+          'Halaman Kalender → Jadwal Sholat: waktu Imsak–Isya hari ini termasuk Thulu’ (metode Kemenag-like: Subuh 20°, Isya 18°, Imsak = Subuh − 10 menit) dari GPS atau koordinat default pondok, plus countdown ke waktu berikutnya. Ikhtiyath per waktu (1–5 menit, Thulu’ −1 s.d. −5) diatur di perangkat pengguna.',
+        requiresAccess: 'kalenderJadwalSholat',
       },
     ],
   },
