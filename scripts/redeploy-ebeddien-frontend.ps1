@@ -8,9 +8,12 @@ $REMOTE_PATH = "domains/alutsmani.id/public_html/ebeddien"
 $TAR_FILE = "ebeddien-dist.tar"
 
 $scriptDir = Split-Path $PSScriptRoot -Parent
-$ebeddienDir = Join-Path $scriptDir "ebeddien"
+$ebeddienDir = Join-Path $scriptDir "alutsmani\ebeddien"
 if (-not (Test-Path $ebeddienDir)) {
-    throw "Folder ebeddien tidak ditemukan: $ebeddienDir"
+    $ebeddienDir = Join-Path $scriptDir "ebeddien"
+}
+if (-not (Test-Path $ebeddienDir)) {
+    throw "Folder ebeddien tidak ditemukan (cari alutsmani\ebeddien)"
 }
 
 function Invoke-ScpWithRetry {

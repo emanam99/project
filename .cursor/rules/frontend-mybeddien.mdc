@@ -1,6 +1,6 @@
 ---
 description: Frontend mybeddien — React, Vite, Tailwind v4 + theme
-globs: mybeddien/**/*.{js,jsx}
+globs: alutsmani/mybeddien/**/*.{js,jsx}
 alwaysApply: false
 ---
 

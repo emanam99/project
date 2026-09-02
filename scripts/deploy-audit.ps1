@@ -8,8 +8,10 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$root = Split-Path $PSScriptRoot -Parent
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$root = Join-Path $repoRoot 'alutsmani'
 $deployPs1 = Join-Path $root 'deploy.ps1'
+if (-not (Test-Path $deployPs1)) { $deployPs1 = Join-Path $repoRoot 'deploy.ps1' }
 
 function Write-DebugAuditLog {
     param(

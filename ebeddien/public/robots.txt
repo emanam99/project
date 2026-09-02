@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://ebeddien.alutsmani.id/sitemap.xml

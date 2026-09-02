@@ -1,2 +1,0 @@
-# Hindari CRLF pada entrypoint Docker (tanpa ini: "set: Illegal option" / exec gagal)
-scripts/*.sh text eol=lf

@@ -1,0 +1,30 @@
+---
+description: Hemat token — selalu pakai RTK untuk perintah shell
+alwaysApply: true
+---
+
+# RTK (Rust Token Killer)
+
+Proyek ini memakai [RTK](https://www.rtk-ai.app) untuk mengompres output terminal sebelum masuk konteks agen.
+
+## Wajib
+
+- Untuk **Shell/terminal**, panggil perintah lewat prefix **`rtk`** bila hook belum menulis ulang otomatis.
+- Contoh: `rtk git status`, `rtk git diff`, `rtk grep "pattern" .`, `rtk find`, `rtk ls`, `rtk npm test`, `rtk php vendor/bin/phinx migrate`.
+- Baca file via shell: **`rtk read path/to/file`** (bukan `cat`/`type` mentah).
+- Cari di repo: **`rtk grep`** / **`rtk rg`** (bukan grep panjang tanpa filter).
+
+## Hook Cursor
+
+Hook global ada di `~/.cursor/hooks.json` (`rtk hook cursor`). Setelah install/upgrade RTK, **reload Cursor** agar hook aktif.
+
+## Jangan
+
+- Jangan dump output panjang mentah (`git log` penuh, `npm test` verbose, `find` ribuan baris) tanpa RTK.
+- **`rtk proxy <cmd>`** hanya untuk debug bila output RTK terlalu agresif.
+
+## Cek hemat
+
+```powershell
+rtk gain
+```

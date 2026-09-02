@@ -1,7 +1,0 @@
-node_modules/
-.env
-.env.*
-whatsapp-sessions/
-.wwebjs_cache/
-*.log
-proxy-config.json

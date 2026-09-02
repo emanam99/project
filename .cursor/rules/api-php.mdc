@@ -1,10 +1,10 @@
 ---
 description: Konvensi backend PHP / Slim di folder api
-globs: api/**/*.php
+globs: alutsmani/api/**/*.php
 alwaysApply: false
 ---
 
-# API (`api/`)
+# API (`alutsmani/api/`)
 
 - Ikuti pola **route** + **controller** + **service** yang sudah dipakai di file sejenis di dekat perubahan.
 - Migrasi DB: nama file timestamp + isi idempotent / aman diulang sesuai pola repo.

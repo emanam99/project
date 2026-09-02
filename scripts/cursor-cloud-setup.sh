@@ -4,10 +4,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ALU="$ROOT/alutsmani"
 API_URL="${CURSOR_STAGING_API_URL:-https://api.alutsmani.my.id/api}"
 GAMBAR_BASE="${CURSOR_STAGING_GAMBAR_URL:-https://gambar.alutsmani.id}"
 EBEDDIEN_URL="${CURSOR_STAGING_EBEDDIEN_URL:-https://ebeddien.alutsmani.my.id}"
 MYBEDDIEN_URL="${CURSOR_STAGING_MYBEDDIEN_URL:-https://mybeddien.alutsmani.my.id}"
+
+if [[ ! -d "$ALU" ]]; then
+  echo "[cursor-cloud] folder alutsmani/ tidak ditemukan di $ROOT" >&2
+  exit 1
+fi
 
 write_env() {
   local dest="$1"
@@ -16,20 +22,20 @@ write_env() {
   printf '%s\n' "$@" > "$dest"
 }
 
-write_env "$ROOT/ebeddien/.env" \
+write_env "$ALU/ebeddien/.env" \
   "VITE_API_BASE_URL=${API_URL}" \
   "VITE_APP_ENV=staging" \
   "VITE_APP_BASE=/" \
   "VITE_GAMBAR_BASE=${GAMBAR_BASE}" \
   "VITE_MYBEDDIEN_APP_URL=${MYBEDDIEN_URL}"
 
-write_env "$ROOT/mybeddien/.env" \
+write_env "$ALU/mybeddien/.env" \
   "VITE_API_BASE_URL=${API_URL}" \
   "VITE_APP_ENV=staging" \
   "VITE_GAMBAR_BASE=${GAMBAR_BASE}" \
   "VITE_EBEDDien_APP_URL=${EBEDDIEN_URL}"
 
-write_env "$ROOT/daftar/.env" \
+write_env "$ALU/daftar/.env" \
   "VITE_API_BASE=/api" \
   "VITE_API_BASE_URL=${API_URL}" \
   "VITE_APP_ENV=staging" \
@@ -37,8 +43,8 @@ write_env "$ROOT/daftar/.env" \
 
 install_app() {
   local dir="$1"
-  echo "[cursor-cloud] npm di ${dir}"
-  cd "$ROOT/$dir"
+  echo "[cursor-cloud] npm di alutsmani/${dir}"
+  cd "$ALU/$dir"
   if [[ -f package-lock.json ]]; then
     npm ci --no-audit --no-fund || npm install --no-audit --no-fund
   else

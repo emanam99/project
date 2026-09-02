@@ -1,6 +1,6 @@
 ---
 description: Frontend ebeddien — React, Vite, Tailwind
-globs: ebeddien/**/*.{js,jsx}
+globs: alutsmani/ebeddien/**/*.{js,jsx}
 alwaysApply: false
 ---
 

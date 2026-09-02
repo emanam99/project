@@ -7,13 +7,13 @@ alwaysApply: true
 
 ## Wajib pakai `deploy.ps1`
 
-- Setiap deploy ke **staging** atau **production** **harus** lewat `.\deploy.ps1` dari root `htdocs`.
+- Setiap deploy ke **staging** atau **production** **harus** lewat `.\deploy.ps1` dari root `htdocs` (wrapper) atau `alutsmani\deploy.ps1`.
 - Contoh: `.\deploy.ps1 -Target staging -Scope frontend -Frontend ebeddien`
 - **Jangan** upload manual (scp/rsync ad-hoc) kecuali `deploy.ps1` gagal dan user meminta workaround.
 
 ## Env lokal: jangan diubah agent
 
-- `.env` lokal frontend **tetap local** (`localhost` / `development`).
+- `.env` lokal frontend **tetap local** (`localhost` / `development`) di bawah `alutsmani/`.
 - Agent **jangan** mengubah `.env` lokal ke staging/production di luar alur deploy.
 - Perubahan env target (staging/prod) **hanya** saat upload lewat `deploy.ps1` (set sementara → build → upload → kembalikan ke local), seperti pola lama.
 - Env di **server** (API `.env`, dll.) diubah langsung di server; agent hanya ikut jika user menyuruh atau ada error terkait env.
