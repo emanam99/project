@@ -1,0 +1,14 @@
+{
+  "name": "htdocs-meta",
+  "private": true,
+  "description": "Wrapper root: E2E Alutsmani ada di folder alutsmani/",
+  "scripts": {
+    "test:e2e": "npm --prefix alutsmani run test:e2e",
+    "test:e2e:ebeddien": "npm --prefix alutsmani run test:e2e:ebeddien",
+    "test:e2e:mybeddien": "npm --prefix alutsmani run test:e2e:mybeddien",
+    "test:e2e:api": "npm --prefix alutsmani run test:e2e:api",
+    "test:e2e:ui": "npm --prefix alutsmani run test:e2e:ui",
+    "test:e2e:headed": "npm --prefix alutsmani run test:e2e:headed",
+    "test:e2e:report": "npm --prefix alutsmani run test:e2e:report"
+  }
+}
