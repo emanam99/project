@@ -1,4 +1,4 @@
-# htdocs workspace (meta)
+﻿# htdocs workspace (meta)
 
 Folder kerja lokal XAMPP. **Aplikasi utama sudah punya repo GitHub sendiri** — jangan lagi menganggap repo `project` sebagai sumber kebenaran kode app.
 
@@ -13,10 +13,11 @@ Folder kerja lokal XAMPP. **Aplikasi utama sudah punya repo GitHub sendiri** —
 | `sppg/` | https://github.com/emanam99/sppg | SPPG (domain terpisah) |
 | `tri_leadclass/` | https://github.com/emanam99/tri-leadclass | TRI Leadclass |
 | `ra/` | https://github.com/emanam99/ra | Bot RA (VPS) |
+| `tshirt-mockup/` | https://github.com/emanam99/tshirt-mockup | T-shirt mockup |
 
 Semua repo di atas **private**. Clone / push dari folder masing-masing (`cd alutsmani` lalu `git pull` / `git push`).
 
-Repo ini (`emanam99/project`) menyimpan sisa meta: `AGENTS.md`, `.cursor`, skrip root, dan folder kecil yang belum dipisah (`tongkrongan-ai`, `tshirt-mockup`, `uwaba`, …).
+Repo ini (`emanam99/project`) menyimpan sisa meta: `AGENTS.md`, `.cursor`, skrip root, dan folder kecil yang belum dipisah (`tongkrongan-ai`, `uwaba`, …).
 
 ## Deploy Alutsmani
 
