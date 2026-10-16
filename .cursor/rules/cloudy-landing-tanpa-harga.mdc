@@ -1,0 +1,20 @@
+---
+description: Landing cloudy.my.id tidak menampilkan harga aplikasi/layanan
+alwaysApply: true
+---
+
+# Landing Cloudy tanpa harga
+
+Berlaku untuk `cloudy/index.html` (landing https://cloudy.my.id) dan setiap aplikasi/layanan yang ditambahkan ke sana.
+
+- **Jangan** menampilkan harga, tarif langganan, biaya setup, atau label "gratis/coba gratis" untuk aplikasi (SPPG, Wifi, dll.) maupun layanan pembuatan website/landing/aplikasi.
+- Kotak `.listing-meta` diisi sorotan fitur, bukan harga.
+  - ❌ `<div><b>Rp50.000</b><span>per SPPG / bulan</span></div>`
+  - ✅ `<div><b>Multi unit</b><span>tiap SPPG punya data sendiri</span></div>`
+- Arahkan pertanyaan harga ke kontak (WhatsApp 082232999921 / admin@cloudy.my.id).
+- Angka rupiah sebagai **contoh data di mock UI** (dashboard, tagihan, saldo) boleh, karena bukan harga produk.
+- "Konsultasi gratis" untuk sesi diskusi awal boleh.
+
+## Pengecualian
+
+Tampilkan harga/promo **hanya bila user memerintahkan secara eksplisit** (mis. penawaran khusus), sesuai teks yang user berikan.

@@ -7,6 +7,9 @@
 /tri_leadclass/
 /ra/
 /tshirt-mockup/
+/cloudy/
+/duo-quest/
+/swiss-duo/
 
 # Environment & rahasia
 .env
@@ -67,6 +70,7 @@ id_rsa
 id_rsa.*
 *.keystore
 secret_api_key.csv
+backup_codes*.csv
 
 # Database dump / ekspor (besar, berisi data produksi & PII)
 **/db.sql

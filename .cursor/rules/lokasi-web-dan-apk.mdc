@@ -1,0 +1,50 @@
+---
+description: Peta lokasi web eBeddien (alutsmani) vs APK Android eBeddien + checklist rilis APK
+alwaysApply: true
+---
+
+# Lokasi web vs APK eBeddien
+
+Dua proyek terpisah — jangan cari ulang, pakai path ini.
+
+| Bagian | Path |
+|---|---|
+| Monorepo web (utama) | `C:\xampp\htdocs\alutsmani` |
+| Frontend eBeddien (React/Vite, PWA) | `C:\xampp\htdocs\alutsmani\ebeddien` |
+| API PHP (Slim + Phinx) | `C:\xampp\htdocs\alutsmani\api` |
+| Deploy script | `C:\xampp\htdocs\alutsmani\deploy.ps1` (wrapper: `C:\xampp\htdocs\deploy.ps1`) |
+| APK Android (Kotlin, WebView shell) | `C:\Users\Lenovo\AndroidStudioProjects\eBeddien` |
+
+## APK (Android)
+- Kode native: `app\src\main\java\com\ebeddien\` (`MainActivity.kt`, `widget\*` — bridge, widget jam/pengeluaran, `ApkUpdate.kt`, `FileDownload.kt`).
+- Layout/resource: `app\src\main\res\` (opening video: `res\raw\opening_apk.mp4`).
+- Versi: `app\build.gradle.kts` → `versionCode` / `versionName`.
+- Hasil build: `.\gradlew.bat assembleRelease` → `app\build\outputs\apk\release\app-release.apk`; arsip di `distribution\ebeddien-<versi>.apk`.
+- APK memuat web `https://ebeddien.alutsmani.id` — perubahan UI web cukup deploy web, **tidak** perlu build APK.
+
+## Web yang terkait APK
+- Kotak install/update APK: `ebeddien\src\components\ApkInstallBox\`.
+- Deteksi & bridge native di web: `ebeddien\src\utils\ebeddienNative.js` (`window.EbeddienNative`).
+- Info versi APK untuk cek update: tabel `app___settings` (`ebeddien_apk_version_name` / `_code`), endpoint `GET /api/v2/public/ebeddien-apk`.
+
+## Checklist rilis APK baru
+1. Naikkan `versionCode` + `versionName` di `app\build.gradle.kts`.
+2. Migrasi baru `api\db\migrations\<timestamp>_ebeddien_apk_<versi>.php` (set `app___settings`, pola sama dengan migrasi `ebeddien_apk_*` sebelumnya).
+3. Naikkan `api_version` di `api\config.php` dan `APP_VERSION` + `BACKEND_VERSION` di `ebeddien\src\config\version.js`.
+4. Tambah entri di `api\db\seeds\ChangelogVersionSeed.php` (app `ebeddien` + `api`).
+5. Tambah path `distribution\ebeddien-<versi>.apk` di daftar `$apkCandidates` pada `deploy.ps1`.
+6. Build release, salin APK ke `distribution\ebeddien-<versi>.apk` dan `ebeddien\public\apk\ebeddien.apk`.
+7. Deploy: `.\deploy.ps1 -Target production -Scope both -Frontend ebeddien -IncludeApk -Migrate -Seed`.
+
+## myBeddien (aplikasi santri/wali/PJGT/toko)
+| Bagian | Path |
+|---|---|
+| Frontend myBeddien (React/Vite, PWA) | `C:\xampp\htdocs\alutsmani\mybeddien` |
+| APK Android myBeddien (Kotlin, WebView shell, juga di Play Store) | `C:\Users\Lenovo\AndroidStudioProjects\myBeddien` |
+
+- Kode native: `app\src\main\java\com\mybeddien\` (`MainActivity.kt`, `apk\` — `MybeddienNativeBridge.kt`, `ApkUpdate.kt`, `ApkDownloadReceiver.kt`).
+- APK memuat `https://mybeddien.alutsmani.id`; UA `myBeddienApp/<versionName>`; bridge `window.MybeddienNative`.
+- Web: halaman `mybeddien\src\pages\Tentang\` (`/tentang`, `/tentang/info-aplikasi`, `/tentang/version`), kotak APK `mybeddien\src\components\ApkInstallBox\`, util `mybeddien\src\utils\mybeddienNative.js`.
+- Versi APK di server: `app___settings` (`mybeddien_apk_version_name` / `_code` / `_download_url` / `_play_url`), endpoint `GET /api/v2/public/mybeddien-apk`.
+- Play App Signing: APK dari server (kunci upload) tidak bisa menimpa instalasi Play Store — web mengarahkan update ke Play Store bila `installer` = `com.android.vending`.
+- Rilis APK myBeddien: naikkan versi di `app\build.gradle.kts`, migrasi `<timestamp>_mybeddien_apk_<versi>.php`, `.\gradlew.bat assembleRelease bundleRelease`, salin ke `distribution\mybeddien-<versi>.apk/.aab` + `mybeddien\public\apk\mybeddien.apk`, tambah path di `$mybeddienApkCandidates` (`deploy.ps1`), lalu `.\deploy.ps1 -Target production -Scope both -Frontend mybeddien -IncludeApk -Migrate -Seed`. AAB diunggah manual ke Play Console.
